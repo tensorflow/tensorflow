@@ -4154,13 +4154,13 @@ TEST_F(HloEvaluatorTest, GetDimensionSize) {
 HloModule Test
 
 ENTRY main {
-  size = u32[] parameter(0)
+  size = s32[] parameter(0)
 
   data = s32[4] parameter(1)
 
   sum = s32[4] add(data, data)
 
-  ROOT dynamic_size = u32[] get-dimension-size(sum), dimensions={0}
+  ROOT dynamic_size = s32[] get-dimension-size(sum), dimensions={0}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
@@ -4174,12 +4174,12 @@ ENTRY main {
                           DynamicDimensionInference::Run(m_.get()));
 
   evaluator_.set_dynamic_dimension_inference(&dynamic_dimension_inference);
-  Literal size_arg = LiteralUtil::CreateR0<uint32>(3);
+  Literal size_arg = LiteralUtil::CreateR0<int32>(3);
   Literal data_arg = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
 
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&size_arg, &data_arg}));
 
-  EXPECT_EQ(actual.GetFirstElement<uint32>(), static_cast<uint32>(3));
+  EXPECT_EQ(actual.GetFirstElement<int32>(), static_cast<int32>(3));
 }
 
 // Check that we get a useful error if we pass inputs of the wrong shape.

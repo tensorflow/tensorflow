@@ -23,10 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -108,6 +106,10 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         return n;
       }
       return n / window_shift_;
+    }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -309,5 +311,6 @@ REGISTER_KERNEL_BUILDER(
     SlidingWindowDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -11,7 +11,7 @@ import "tensorflow/core/framework/attr_value.proto";
 message NodeDef {
   // The name given to this operator. Used for naming inputs,
   // logging, visualization, etc.  Unique within a single GraphDef.
-  // Must match the regexp "[A-Za-z0-9.][A-Za-z0-9_./]*".
+  // Must match the regexp "[A-Za-z0-9.][A-Za-z0-9_>./]*".
   string name = 1;
 
   // The operation name.  There may be custom parameters in attrs.

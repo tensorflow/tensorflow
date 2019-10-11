@@ -17,30 +17,13 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
-
-namespace ops {
-namespace builtin {
-// ADD and MUL are used to test simple branch.
-// ADD and MUL can be used to test dynamic sized subgraphs with the
-// use of IF op.
-TfLiteRegistration* Register_ADD();
-TfLiteRegistration* Register_MUL();
-// PAD is used to test dynamic sized subgraphs.
-TfLiteRegistration* Register_PAD();
-TfLiteRegistration* Register_LESS_EQUAL();
-}  // namespace builtin
-namespace custom {
-TfLiteRegistration* Register_IF();
-TfLiteRegistration* Register_WHILE();
-}  // namespace custom
-}  // namespace ops
-
 namespace subgraph_test_util {
 
 namespace {
@@ -170,19 +153,15 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kInput2, kTfLiteInt32);
   SetupTensor(subgraph, kOutput, kTfLiteInt32);
 
-  flexbuffers::Builder fbb;
-  fbb.Map([&]() {
-    fbb.Int("then_subgraph_index", 1);
-    fbb.Int("else_subgraph_index", 2);
-  });
-  fbb.Finish();
-  const auto& buffer = fbb.GetBuffer();
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteIfParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
 
   int node_index;
   subgraph->AddNodeWithParameters(
-      {kCondInput, kInput1, kInput2}, {kOutput}, {},
-      reinterpret_cast<const char*>(buffer.data()), buffer.size(), nullptr,
-      ::tflite::ops::custom::Register_IF(), &node_index);
+      {kCondInput, kInput1, kInput2}, {kOutput}, {}, nullptr, 0, params,
+      ::tflite::ops::builtin::Register_IF(), &node_index);
 }
 
 void SubgraphBuilder::BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs) {
@@ -333,19 +312,15 @@ void SubgraphBuilder::BuildWhileSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kOutput1, kTfLiteInt32);
   SetupTensor(subgraph, kOutput2, kTfLiteInt32);
 
-  flexbuffers::Builder fbb;
-  fbb.Map([&]() {
-    fbb.Int("cond_subgraph_index", 1);
-    fbb.Int("body_subgraph_index", 2);
-  });
-  fbb.Finish();
-  const auto& buffer = fbb.GetBuffer();
+  TfLiteWhileParams* params =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->cond_subgraph_index = 1;
+  params->body_subgraph_index = 2;
 
   int node_index;
-  subgraph->AddNodeWithParameters(
-      {0, 1}, {2, 3}, {}, reinterpret_cast<const char*>(buffer.data()),
-      buffer.size(), nullptr, ::tflite::ops::custom::Register_WHILE(),
-      &node_index);
+  subgraph->AddNodeWithParameters({0, 1}, {2, 3}, {}, nullptr, 0, params,
+                                  ::tflite::ops::builtin::Register_WHILE(),
+                                  &node_index);
 }
 
 void SubgraphBuilder::CreateConstantInt32Tensor(Subgraph* subgraph,

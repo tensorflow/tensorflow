@@ -1,0 +1,26 @@
+op {
+  name: "AudioSpectrogram"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "spectrogram"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "window_size"
+    type: "int"
+  }
+  attr {
+    name: "stride"
+    type: "int"
+  }
+  attr {
+    name: "magnitude_squared"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

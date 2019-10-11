@@ -1383,8 +1383,8 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({28.5, 64, -59.5, -46})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({56, 127, -120, -93}));
+              ElementsAreArray(ArrayFloatNear({31, 64, -57, -46})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({61, 127, -115, -93}));
 }
 
 INSTANTIATE_TEST_SUITE_P(

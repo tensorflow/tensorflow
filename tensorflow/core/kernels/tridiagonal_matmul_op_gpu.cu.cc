@@ -35,10 +35,11 @@ namespace tensorflow {
 
 template <typename Scalar>
 __global__ void TridiagonalMatMulKernel(int batch_size, int m, int n,
-                                        const Scalar* superdiag,
-                                        const Scalar* maindiag,
-                                        const Scalar* subdiag,
-                                        const Scalar* rhs, Scalar* product) {
+                                        const Scalar* __restrict__ superdiag,
+                                        const Scalar* __restrict__ maindiag,
+                                        const Scalar* __restrict__ subdiag,
+                                        const Scalar* __restrict__ rhs,
+                                        Scalar* __restrict__ product) {
   for (int i : CudaGridRangeX(batch_size * m * n)) {
     int row_id = i / n;
     Scalar result = maindiag[row_id] * rhs[i];
@@ -77,7 +78,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
 
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
-    CudaLaunchConfig cfg = GetGpuLaunchConfig(1, device);
+    GpuLaunchConfig cfg = GetGpuLaunchConfig(1, device);
     TF_CHECK_OK(GpuLaunchKernel(
         TridiagonalMatMulKernel<Scalar>, cfg.block_count, cfg.thread_per_block,
         0, device.stream(), batch_size, m, n, superdiag.flat<Scalar>().data(),

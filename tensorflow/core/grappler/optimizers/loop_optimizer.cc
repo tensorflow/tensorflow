@@ -558,6 +558,9 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
                                          DeviceBase* cpu_device,
                                          ResourceMgr* resource_mgr,
                                          bool* value) {
+  VLOG(4) << "Evaluate bool op: op_node=" << op_node.name()
+          << " input0=" << constant_operand_0.name()
+          << " input1=" << constant_operand_1.name();
   TensorVector inputs;
 
   const TensorProto& raw_val_0 = constant_operand_0.attr().at("value").tensor();
@@ -604,10 +607,14 @@ Status CheckForDeadFanout(const MutableGraphView& view,
 
   // CASE 1: Control is a constant.
   if (IsReallyConstant(*switch_predicate, feed_nodes)) {
+    VLOG(3) << "Found switch node with constant predicate:"
+            << " switch_node=" << switch_node.name()
+            << " switch_predicate=" << switch_predicate->name();
     Tensor selector;
     CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
     *has_dead_fanout = true;
     *dead_fanout = selector.scalar<bool>()() ? 0 : 1;
+    return Status::OK();
   }
 
   GraphView::InputPort switch_input_port(&switch_node, 0);
@@ -617,28 +624,29 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   // We check if its a while loop such that the condition is a simple binary
   // operator which returns false for the initialization value.
   // TODO(srjoglekar): Improve to work with arbitrary predicate subgraphs.
-  if (!IsMerge(*switch_input)) {
+  if (!IsMerge(*switch_input) || !IsLoopCond(*switch_predicate)) {
     return Status::OK();
   }
 
-  // Find the boolean Op from predicate node.
-  NodeDef* switch_ctrl_node = nullptr;
-  for (int i = 0; i < switch_predicate->input().size(); ++i) {
-    NodeDef* node = node_map.GetNode(switch_predicate->input(i));
-    if (IsSimpleBinaryOperator(*node)) {
-      switch_ctrl_node = node;
-    }
-  }
-  if (switch_ctrl_node == nullptr) {
+  VLOG(3) << "Try to find a zero iteration while loop:"
+          << " switch_node=" << switch_node.name();
+
+  // Find the boolean predicate from a LoopCond node (e.g. Greater).
+  NodeDef* switch_ctrl_node = view.GetRegularFanin({switch_predicate, 0}).node;
+  if (!switch_ctrl_node || !IsSimpleBinaryOperator(*switch_ctrl_node)) {
     return Status::OK();
   }
+
   // Find the Merge node & the Constant Operand to the condition node, if
   // available.
   NodeDef* merge_node = nullptr;
   NodeDef* constant_ctrl_input = nullptr;
   int constant_index = 0;
   for (int i = 0; i < switch_ctrl_node->input().size(); ++i) {
-    NodeDef* node = node_map.GetNode(switch_ctrl_node->input(i));
+    const string& input = switch_ctrl_node->input(i);
+    if (IsControlInput(input)) continue;
+
+    NodeDef* node = view.GetNode(switch_ctrl_node->input(i));
     if (IsMerge(*node)) {
       merge_node = node;
     }
@@ -650,6 +658,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   if (merge_node == nullptr || constant_ctrl_input == nullptr) {
     return Status::OK();
   }
+
   // Find the initialization constant (via Enter, if one exists).
   NodeDef* enter_node = nullptr;
   NodeDef* constant_init_node = nullptr;
@@ -675,6 +684,15 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     return Status::OK();
   }
 
+  VLOG(4) << "Check if loop will be 0 iterations:"
+          << "\n|  switch_node        : " << switch_node.name()
+          << "\n|  switch_ctrl_node   : " << switch_ctrl_node->name()
+          << "\n|  merge_node         : " << merge_node->name()
+          << "\n|  constant_ctrl_input: " << constant_ctrl_input->name()
+          << "\n|  enter_node         : "
+          << (enter_node ? enter_node->name() : "<n/a>")
+          << "\n|  constant_init_node : " << constant_init_node->name();
+
   // Check if there will be 0 iterations. This will only happen if the condition
   // evaluates to false with respect to the initialization value.
   NodeDef* operand_0 =
@@ -685,9 +703,14 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   TF_RETURN_IF_ERROR(EvaluateBoolOpForConstantOperands(
       *switch_ctrl_node, *operand_0, *operand_1, cpu_device, resource_mgr,
       &constant_switch_value));
+
   if (constant_switch_value == false) {
+    VLOG(4) << "Remove 0 iteration while loop:"
+            << " switch_node=" << switch_node.name();
     *has_dead_fanout = true;
     *dead_fanout = 1;
+  } else {
+    VLOG(4) << "Was not able to prove that loop has 0 iterations.";
   }
   return Status::OK();
 }

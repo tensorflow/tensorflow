@@ -23,6 +23,7 @@ from __future__ import print_function
 import sys as _sys
 
 from tensorflow.python import autograph
+from tensorflow.python.training.experimental import loss_scaling_gradient_tape
 
 # pylint: disable=g-bad-import-order
 # Imports the following modules so that @RegisterGradient get executed.

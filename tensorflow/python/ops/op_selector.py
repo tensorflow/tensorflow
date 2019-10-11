@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.util import object_identity
 
 
 def is_differentiable(op):
@@ -275,11 +276,11 @@ def get_backward_walk_ops(seed_ops,
   else:
     seed_ops = make_list_of_op(seed_ops, allow_graph=False)
 
-  stop_at_ts = frozenset(make_list_of_t(stop_at_ts))
-  seed_ops = frozenset(make_list_of_op(seed_ops))
+  stop_at_ts = object_identity.ObjectIdentitySet(make_list_of_t(stop_at_ts))
+  seed_ops = object_identity.ObjectIdentitySet(make_list_of_op(seed_ops))
   if within_ops:
     within_ops = make_list_of_op(within_ops, allow_graph=False)
-    within_ops = frozenset(within_ops)
+    within_ops = object_identity.ObjectIdentitySet(within_ops)
     seed_ops &= within_ops
 
   def is_within(op):
@@ -390,7 +391,7 @@ def map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
       sources and add_sources is False.
   """
   ops_to_visit = [_as_operation(init_tensor)]
-  extra_sources = set()
+  extra_sources = object_identity.ObjectIdentitySet()
   while ops_to_visit:
     op = ops_to_visit.pop()
     if op in visited_ops:

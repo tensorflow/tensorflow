@@ -101,6 +101,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -127,6 +131,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+    }
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(
+          prefix(), "#batch_size=", dataset()->batch_size_,
+          ",drop_remainder=", dataset()->drop_remainder_ ? "true" : "false",
+          ",parallel_copy=", dataset()->parallel_copy_ ? "true" : "false", "#");
     }
 
     Status GetNextInternal(IteratorContext* ctx,

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 
 #include <cstddef>
-#include <cstdint>
+#include <cstdint>  // IWYU pragma: keep
 #include <type_traits>
 
 #include "tensorflow/lite/experimental/ruy/check_macros.h"

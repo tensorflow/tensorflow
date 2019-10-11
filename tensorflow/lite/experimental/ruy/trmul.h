@@ -27,46 +27,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TRMUL_H_
 
 #include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
-#include "tensorflow/lite/experimental/ruy/kernel.h"
-#include "tensorflow/lite/experimental/ruy/pack.h"
-#include "tensorflow/lite/experimental/ruy/tune.h"
+#include "tensorflow/lite/experimental/ruy/trmul_params.h"
 
 namespace ruy {
-
-// Type-erased data needed for implementing TrMul.
-struct TrMulParams {
-  // Helper functions for invoking the function pointers.
-  void LhsRunPack(Tuning tuning, int start_c, int end_c) {
-    lhs_run_pack(tuning, lhs, &packed_lhs, start_c, end_c);
-  }
-  void RhsRunPack(Tuning tuning, int start_c, int end_c) {
-    rhs_run_pack(tuning, rhs, &packed_rhs, start_c, end_c);
-  }
-  void RunKernel(Tuning tuning, int start_r, int start_c, int end_r,
-                 int end_c) {
-    run_kernel(tuning, packed_lhs, packed_rhs, spec, start_r, start_c, end_r,
-               end_c, &dst);
-  }
-
-  // Function pointers to type-erased entry points for kernels and packers.
-  RunPackFn* lhs_run_pack = nullptr;
-  RunPackFn* rhs_run_pack = nullptr;
-  RunKernelFn* run_kernel = nullptr;
-
-  // Matrices and packed matrices.
-  DMatrix lhs;
-  DMatrix rhs;
-  DMatrix dst;
-  PMatrix packed_lhs;
-  PMatrix packed_rhs;
-  bool lhs_is_prepacked = false;
-  bool rhs_is_prepacked = false;
-  int cache_friendly_traversal_threshold = 0;
-
-  // Type-erased Spec.
-  void* spec = nullptr;
-};
 
 void TrMul(TrMulParams* params, Context* context);
 

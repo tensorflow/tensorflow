@@ -109,7 +109,7 @@ TfLiteStatus ObjectDetectionStage::Run() {
   TF_LITE_ENSURE_STATUS(inference_stage_->Run());
 
   // Convert model output to ObjectsSet.
-  ObjectDetectionResult predicted_objects;
+  predicted_objects_.Clear();
   const int class_offset =
       config_.specification().object_detection_params().class_offset();
   const std::vector<void*>* outputs = inference_stage_->GetOutputs();
@@ -119,7 +119,7 @@ TfLiteStatus ObjectDetectionStage::Run() {
   float* detected_label_probabilities = static_cast<float*>(outputs->at(2));
   for (int i = 0; i < num_detections; ++i) {
     const int bounding_box_offset = i * 4;
-    auto* object = predicted_objects.add_objects();
+    auto* object = predicted_objects_.add_objects();
     // Bounding box
     auto* bbox = object->mutable_bounding_box();
     bbox->set_normalized_top(detected_label_boxes[bounding_box_offset + 0]);
@@ -134,7 +134,7 @@ TfLiteStatus ObjectDetectionStage::Run() {
   }
 
   // AP Evaluation.
-  eval_stage_->SetEvalInputs(predicted_objects, *ground_truth_objects_);
+  eval_stage_->SetEvalInputs(predicted_objects_, *ground_truth_objects_);
   TF_LITE_ENSURE_STATUS(eval_stage_->Run());
 
   return kTfLiteOk;
@@ -174,7 +174,7 @@ TfLiteStatus PopulateGroundTruth(
   std::string proto_str((std::istreambuf_iterator<char>(t)),
                         std::istreambuf_iterator<char>());
   ObjectDetectionGroundTruth ground_truth_proto;
-  proto2::TextFormat::ParseFromString(proto_str, &ground_truth_proto);
+  google::protobuf::TextFormat::ParseFromString(proto_str, &ground_truth_proto);
 
   for (auto image_ground_truth : ground_truth_proto.detection_results()) {
     (*ground_truth_mapping)[image_ground_truth.image_name()] =

@@ -52,6 +52,27 @@ bool GPUBFCAllocator::GetAllowGrowthValue(const GPUOptions& gpu_options) {
   return gpu_options.allow_growth();
 }
 
+bool GPUBFCAllocator::GetGarbageCollectionValue() {
+  const char* enable_gpu_garbage_collection =
+      std::getenv("TF_ENABLE_GPU_GARBAGE_COLLECTION");
+  if (enable_gpu_garbage_collection == nullptr) {
+    // By default, turn on the memory garbage collection.
+    return true;
+  }
+  if (strcmp("false", enable_gpu_garbage_collection) == 0) {
+    return false;
+  } else if (strcmp("true", enable_gpu_garbage_collection) == 0) {
+    return true;
+  }
+
+  LOG(ERROR)
+      << "The TF_ENABLE_GPU_GARBAGE_COLLECTION environment variable is set but"
+      << " could not be parsed: \"" << enable_gpu_garbage_collection << "\"."
+      << " Valid values are \"true\" or \"false\"."
+      << " Using the default value \"true\".";
+  return true;
+}
+
 GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
                                  size_t total_memory, const string& name)
     : GPUBFCAllocator(sub_allocator, total_memory, GPUOptions(), name) {}
@@ -61,6 +82,7 @@ GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
                                  const GPUOptions& gpu_options,
                                  const string& name)
     : BFCAllocator(sub_allocator, total_memory,
-                   GPUBFCAllocator::GetAllowGrowthValue(gpu_options), name) {}
+                   GPUBFCAllocator::GetAllowGrowthValue(gpu_options), name,
+                   GPUBFCAllocator::GetGarbageCollectionValue()) {}
 
 }  // namespace tensorflow

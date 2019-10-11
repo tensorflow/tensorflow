@@ -37,7 +37,7 @@ class TensorResponse;
 class WorkerInterface {
  public:
   virtual void GetStatusAsync(const GetStatusRequest* request,
-                              GetStatusResponse* response,
+                              GetStatusResponse* response, bool fail_fast,
                               StatusCallback done) = 0;
 
   virtual void CreateWorkerSessionAsync(
@@ -62,13 +62,12 @@ class WorkerInterface {
 
   virtual void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
                              RunGraphResponse* response, StatusCallback done) {
-    // TODO(mrry): Convert this to std::bind/std::move if the overhead
-    // of std::function copying becomes too much.
     RunGraphRequestWrapper* wrapped_request = new ProtoRunGraphRequest(request);
     MutableRunGraphResponseWrapper* wrapped_response =
         new NonOwnedProtoRunGraphResponse(response);
     RunGraphAsync(opts, wrapped_request, wrapped_response,
-                  [wrapped_request, wrapped_response, done](const Status& s) {
+                  [wrapped_request, wrapped_response,
+                   done = std::move(done)](const Status& s) {
                     done(s);
                     delete wrapped_request;
                     delete wrapped_response;
@@ -131,7 +130,15 @@ class WorkerInterface {
 
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
-    return CallAndWait(&ME::GetStatusAsync, request, response);
+    Status ret;
+    Notification n;
+    GetStatusAsync(request, response, /*fail_fast=*/true,
+                   [&ret, &n](const Status& s) {
+                     ret = s;
+                     n.Notify();
+                   });
+    n.WaitForNotification();
+    return ret;
   }
 
   Status CreateWorkerSession(const CreateWorkerSessionRequest* request,

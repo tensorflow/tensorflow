@@ -2,6 +2,15 @@
 
 ### Specification summary
 
+We are providing a specification, and we can only provide some guarantees on
+behaviour if the spec is followed. We also understand different hardware may
+have preferences and restrictions that may cause slight deviations when
+implementing the spec that result in implementations that are not bit-exact.
+Whereas that may be acceptable in most cases (and we will provide a suite of
+tests that to the best of our knowledge include per-operation tolerances that we
+gathered from several models), the nature of machine learning (and deep learning
+in the most common case) makes it impossible to provide any hard guarantees.
+
 8-bit quantization approximates floating point values using the following
 formula.
 
@@ -36,8 +45,8 @@ quantization params: `scale=[1.0, 2.0, 3.0]`, `zero_point=[1, 2, 3]`,
 `quantization_dimension=1` will be quantized across the second dimension of t:
 
     t[:, 0, :, :] will have scale[0]=1.0, zero_point[0]=1
-    t[:, 1, :, :] will have scale[1]=2.0, zero_point[0]=2
-    t[:, 2, :, :] will have scale[2]=3.0, zero_point[0]=3
+    t[:, 1, :, :] will have scale[1]=2.0, zero_point[1]=2
+    t[:, 2, :, :] will have scale[2]=3.0, zero_point[2]=3
 
 Often, the quantized_dimension is the output_channel of the weights of
 convolutions, but in theory it can be the dimension that corresponds to each

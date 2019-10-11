@@ -26,28 +26,11 @@ tensorflow::Status EagerOperation::SetDeviceName(const char* device) {
   return Status::OK();
 }
 
-void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
-  h->Ref();
-  inputs_.push_back(h);
-  attrs_.NumInputs(static_cast<int>(inputs_.size()));
-}
-
-void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
-  h->Ref();
-  inputs_[i]->Unref();
-  inputs_[i] = h;
-}
-
-void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
-  inputs_.push_back(h);
-  attrs_.NumInputs(static_cast<int>(inputs_.size()));
-}
-
 string EagerOperation::DebugString() const {
   string out;
   VLOG(1) << "EagerOperation::DebugString() over " << this;
 
-  strings::StrAppend(&out, "Name: ", name_, "\n");
+  strings::StrAppend(&out, "Name: ", Name(), "\n");
   strings::StrAppend(&out, "Device Name: [",
                      DeviceNameUtils::ParsedNameToString(device_name_), "]\n");
   strings::StrAppend(

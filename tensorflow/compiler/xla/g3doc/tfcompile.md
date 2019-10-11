@@ -16,9 +16,7 @@ kernels that are actually used in the computation.
 
 The compiler is built on top of the XLA framework. The code bridging TensorFlow
 to the XLA framework resides under
-[tensorflow/compiler](https://www.tensorflow.org/code/tensorflow/compiler/),
-which also includes support for [just-in-time (JIT) compilation](jit.md) of
-TensorFlow graphs.
+[tensorflow/compiler](https://www.tensorflow.org/code/tensorflow/compiler/).
 
 ## What does tfcompile do?
 

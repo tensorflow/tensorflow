@@ -227,7 +227,7 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
     }
 
     NodeDef* cast = gdef->add_node();
-    *status = cast_builder.Finalize(cast);
+    *status = cast_builder.Finalize(cast, /*consume=*/true);
     if (!status->ok()) return nullptr;
 
     // Connect the Send op to the cast.
@@ -244,7 +244,7 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
     send_builder.Attr("_start_time", start_time);
   }
   NodeDef* send = gdef->add_node();
-  *status = send_builder.Finalize(send);
+  *status = send_builder.Finalize(send, /*consume=*/true);
   return send;
 }
 
@@ -301,7 +301,7 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   recv_builder.Device(dst->assigned_device_name())
       .Attr("tensor_type", cast_dtype);
   NodeDef* recv = gdef->add_node();
-  *status = recv_builder.Finalize(recv);
+  *status = recv_builder.Finalize(recv, /*consume=*/true);
   if (!status->ok()) return nullptr;
   *real_recv = recv;
 
@@ -314,7 +314,7 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
     cast_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
     NodeDef* cast = gdef->add_node();
-    *status = cast_builder.Finalize(cast);
+    *status = cast_builder.Finalize(cast, /*consume=*/true);
     if (!status->ok()) return nullptr;
     return cast;
   } else if (edge->IsControlEdge()) {
@@ -324,7 +324,7 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
     id_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
     NodeDef* id = gdef->add_node();
-    *status = id_builder.Finalize(id);
+    *status = id_builder.Finalize(id, /*consume=*/true);
     if (!status->ok()) return nullptr;
     return id;
   } else {
@@ -341,7 +341,7 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
                 .Device(src->assigned_device_name())
                 .Attr("dtype", DT_FLOAT)
                 .Attr("value", tensor)
-                .Finalize(result);
+                .Finalize(result, /*consume=*/true);
   return result;
 }
 
@@ -354,7 +354,7 @@ NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
                            "ControlTrigger")
                 .Device(assigned_device_name)
                 .Attr("_start_time", starttime)
-                .Finalize(result);
+                .Finalize(result, /*consume=*/true);
   return result;
 }
 
@@ -424,7 +424,7 @@ Node* AddControlEnter(Graph* g, const string& node_name,
   node_builder.Attr("frame_name", frame_name);
   node_builder.Attr("parallel_iterations", parallel_iterations);
   Node* res_node;
-  *status = node_builder.Finalize(g, &res_node);
+  *status = node_builder.Finalize(g, &res_node, /*consume=*/true);
   if (!status->ok()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -437,7 +437,7 @@ Node* AddControlMerge(const string& in_name1, const string& in_name2, Graph* g,
   NodeBuilder node_builder(node_name, "Merge", g->op_registry());
   node_builder.Input({{in_name1, 0, DT_FLOAT}, {in_name2, 0, DT_FLOAT}});
   Node* res_node;
-  *status = node_builder.Finalize(g, &res_node);
+  *status = node_builder.Finalize(g, &res_node, /*consume=*/true);
   if (!status->ok()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -947,13 +947,13 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // Not related to send/recv.
     return;
   }
-  string send_device;
-  if (!GetNodeAttr(*ndef, "send_device", &send_device).ok()) {
+  const string& send_device = GetNodeAttrString(*ndef, "send_device");
+  if (send_device.empty()) {
     // No known send_device. The runtime will detect it later.
     return;
   }
   int64 incarnation = PartitionOptions::kIllegalIncarnation;
-  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+  if (!TryGetNodeAttr(*ndef, "send_device_incarnation", &incarnation) ||
       (incarnation == PartitionOptions::kIllegalIncarnation)) {
     incarnation = opts.get_incarnation(send_device);
     SetAttrValue(incarnation,

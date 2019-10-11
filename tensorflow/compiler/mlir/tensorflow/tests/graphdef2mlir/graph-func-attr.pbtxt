@@ -1,5 +1,13 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
+# CHECK-LABEL:       func @main() {
+
+# Verify that the NameAttrList is properly turned into reference to functions on import
+# CHECK:    tf.Case
+# CHECK-SAME: branches = [@[[FOO:[a-z0-9]+]], @[[BAR:[a-z0-9]+]]]
+# CHECK-DAG:  func @[[FOO]]()
+# CHECK-DAG:  func @[[BAR]]()
+
 node {
   name: "predicate"
   op: "Const"
@@ -152,16 +160,3 @@ versions {
   min_consumer: 12
 }
 
-# CHECK:       func @main() {
-# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "predicate", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
-# CHECK-NEXT:    %1:2 = "_tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo0, @bar0], device = "", name = "Case", output_shapes = []} : (tensor<i32>) -> (tensor<*xf32>, !_tf.control)
-# CHECK-NEXT:    return
-# CHECK-NEXT:  }
-# CHECK:  func @foo0() -> tensor<10xf32> {
-# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "const_1", value = dense<1.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control)
-# CHECK-NEXT:    return %0#0 : tensor<10xf32>
-# CHECK-NEXT:  }
-# CHECK:  func @bar0() -> tensor<10xf32> {
-# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "const_2", value = dense<2.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control)
-# CHECK-NEXT:    return %0#0 : tensor<10xf32>
-# CHECK-NEXT:  }

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -135,10 +136,6 @@ struct CanonicalDebugOptions {
   bool dump_as_url;
   bool dump_snapshots;
 };
-
-string FilenameFor(const HloModule& module, string_view suffix) {
-  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
-}
 
 void DumpToFileInDirImpl(string_view filename, string_view contents,
                          const CanonicalDebugOptions& opts) {
@@ -263,6 +260,10 @@ static auto& module_id_to_step_number GUARDED_BY(mu) =
 
 }  // namespace
 
+string FilenameFor(const HloModule& module, string_view suffix) {
+  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
+}
+
 void DumpToFileInDir(const HloModule& module, string_view suffix,
                      string_view contents) {
   DumpToFileInDirImpl(FilenameFor(module, suffix), contents,
@@ -274,6 +275,23 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view suffix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpExecutionOptions(const ExecutionOptions& execution_options,
+                          const DebugOptions& debug_options) {
+  CanonicalDebugOptions opts(debug_options);
+  tensorflow::Env* env = tensorflow::Env::Default();
+  const string& dir = opts.dump_to;
+  if (env->IsDirectory(dir).ok()) {
+    string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    if (opts.dump_as_text) {
+      TF_CHECK_OK(tensorflow::WriteTextProto(
+          env, absl::StrCat(filename, ".txt"), execution_options));
+    } else {
+      TF_CHECK_OK(tensorflow::WriteBinaryProto(
+          env, absl::StrCat(filename, ".pb"), execution_options));
+    }
+  }
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {

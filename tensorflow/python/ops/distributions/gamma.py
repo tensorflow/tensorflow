@@ -210,7 +210,7 @@ class Gamma(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(
       """Note: See `tf.random.gamma` docstring for sampling details and

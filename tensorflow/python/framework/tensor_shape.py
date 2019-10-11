@@ -22,6 +22,7 @@ from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
@@ -738,6 +739,7 @@ class TensorShape(object):
   for details of shape functions and how to register them. Alternatively,
   the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
+  __slots__ = ["_dims"]
 
   def __init__(self, dims):
     """Creates a new TensorShape with the given dimensions.
@@ -1238,11 +1240,13 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape([Dimension(None)] * rank)
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([]).")
 def scalar():
   """Returns a shape representing a scalar."""
   return TensorShape([])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([length]).")
 def vector(length):
   """Returns a shape representing a vector.
 
@@ -1255,6 +1259,7 @@ def vector(length):
   return TensorShape([length])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([rows, cols]).")
 def matrix(rows, cols):
   """Returns a shape representing a matrix.
 

@@ -67,6 +67,11 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2);
 
+// Check if fusing producer and consumer will generate a nested loop, e.g. both
+// producer and consumer are `reduce-window` HLO instructions.
+bool CreatesNestedLoop(const HloInstruction& producer,
+                       const HloInstruction& consumer);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output

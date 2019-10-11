@@ -63,6 +63,11 @@ BufferErrorReporter::~BufferErrorReporter() { delete[] buffer_; }
 
 int BufferErrorReporter::Report(const char* format, va_list args) {
   int size = 0;
+  // If an error has already been logged, insert a newline.
+  if (start_idx_ > 0 && start_idx_ < end_idx_) {
+    buffer_[start_idx_++] = '\n';
+    ++size;
+  }
   if (start_idx_ < end_idx_) {
     size = vsnprintf(buffer_ + start_idx_, end_idx_ - start_idx_, format, args);
   }

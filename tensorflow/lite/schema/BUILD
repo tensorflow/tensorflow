@@ -66,6 +66,17 @@ flatbuffer_cc_library(
     srcs = ["schema.fbs"],
 )
 
+# Generic schema for flatbuffer converter (but with mutable makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_mutable",
+    srcs = ["schema.fbs"],
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
+)
+
 # Generic schema for inference on device (but with reflections makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
@@ -77,6 +88,12 @@ flatbuffer_cc_library(
         "--gen-object-api",
     ],
     out_prefix = "reflection/",
+)
+
+# Generic schema for model metadata.
+flatbuffer_cc_library(
+    name = "metadata_schema_fbs",
+    srcs = ["metadata_schema.fbs"],
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes
@@ -95,7 +112,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        "//tensorflow/core:lib_platform",
+        "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],

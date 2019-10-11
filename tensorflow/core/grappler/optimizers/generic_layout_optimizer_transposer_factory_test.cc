@@ -67,6 +67,8 @@ TEST(TransposerFactoryTest, SanityCheck) {
 
   CheckSameTransposerForOps({"BiasAddGrad"}, &factory, &transposers);
 
+  CheckSameTransposerForOps({"_FusedBatchNormEx"}, &factory, &transposers);
+
   CheckSameTransposerForOps({"FusedBatchNormGrad", "FusedBatchNormGradV2"},
                             &factory, &transposers);
 

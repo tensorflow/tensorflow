@@ -18,11 +18,12 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "tf_cc_binary",
 )
 
 # For platform specific build config
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_kernel_tests_linkstatic",
     "tf_proto_library",
@@ -71,6 +72,9 @@ cc_library(
         ":debugger_state_impl",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:debug_ops_op_lib",
+        # Depends on grpc and hence should stay out of
+        # //third_party/tensorflow/core.
+        "//tensorflow/core/kernels:debug_ops",
     ],
     alwayslink = 1,
 )
@@ -101,7 +105,6 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
@@ -124,7 +127,6 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -168,6 +170,9 @@ tf_cc_test(
     size = "small",
     srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_oss",  # TODO(b/137652456): remove when fixed
+    ],
     deps = [
         ":debug_callback_registry",
         ":debug_grpc_testlib",
@@ -268,6 +273,16 @@ cc_library(
     deps = [
         ":debug_node_key",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_binary(
+    name = "bfc_dump_reader",
+    srcs = ["bfc_dump_reader.cc"],
+    deps = [
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],

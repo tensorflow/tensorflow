@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tflite_driver.h"
 
+#include <algorithm>
 #include <complex>
+#include <memory>
+#include <vector>
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
@@ -25,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace testing {
@@ -35,100 +39,36 @@ const double kAbsoluteThreshold = 1e-4f;
 
 // Returns the value in the given position in a tensor.
 template <typename T>
-T Value(const TfLitePtrUnion& data, int index);
-template <>
-float Value(const TfLitePtrUnion& data, int index) {
-  return data.f[index];
-}
-template <>
-int32_t Value(const TfLitePtrUnion& data, int index) {
-  return data.i32[index];
-}
-template <>
-int64_t Value(const TfLitePtrUnion& data, int index) {
-  return data.i64[index];
-}
-template <>
-uint8_t Value(const TfLitePtrUnion& data, int index) {
-  return data.uint8[index];
-}
-template <>
-int8_t Value(const TfLitePtrUnion& data, int index) {
-  return data.int8[index];
-}
-template <>
-bool Value(const TfLitePtrUnion& data, int index) {
-  return data.b[index];
-}
-
-template <>
-std::complex<float> Value(const TfLitePtrUnion& data, int index) {
-  return std::complex<float>(data.c64[index].re, data.c64[index].im);
+T Value(char* data, int index) {
+  return reinterpret_cast<T*>(data)[index];
 }
 
 template <typename T>
-void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
-  T* input_ptr = reinterpret_cast<T*>(data->raw);
-  for (const T& v : values) {
-    *input_ptr = v;
-    ++input_ptr;
-  }
+void SetTensorData(const std::vector<T>& values, char* data) {
+  T* input_ptr = reinterpret_cast<T*>(data);
+  std::copy(values.begin(), values.end(), input_ptr);
 }
 
 }  // namespace
 
-class TfLiteDriver::Expectation {
+class TfLiteDriver::DataExpectation {
  public:
-  Expectation()
-      : relative_threshold_(kRelativeThreshold),
-        absolute_threshold_(kAbsoluteThreshold) {
-    data_.raw = nullptr;
-    num_elements_ = 0;
-  }
-  Expectation(double relative_threshold, double absolute_threshold) {
-    data_.raw = nullptr;
-    num_elements_ = 0;
-    relative_threshold_ = relative_threshold;
-    absolute_threshold_ = absolute_threshold;
-  }
-  ~Expectation() { delete[] data_.raw; }
+  DataExpectation(double relative_threshold, double absolute_threshold)
+      : data_(nullptr),
+        num_elements_(0),
+        relative_threshold_(relative_threshold),
+        absolute_threshold_(absolute_threshold) {}
+  ~DataExpectation() { delete[] data_; }
+
   template <typename T>
   void SetData(const string& csv_values) {
     const auto& values = testing::Split<T>(csv_values, ",");
     num_elements_ = values.size();
-    data_.raw = new char[num_elements_ * sizeof(T)];
-    SetTensorData(values, &data_);
+    data_ = new char[num_elements_ * sizeof(T)];
+    SetTensorData(values, data_);
   }
 
   bool Check(bool verbose, const TfLiteTensor& tensor);
-
-  bool CheckShape(bool verbose, const TfLiteTensor& tensor) {
-    bool valid = true;
-    if (tensor.dims->size == num_elements_) {
-      for (int i = 0; i < num_elements_; ++i) {
-        if (data_.i32[i] != tensor.dims->data[i]) {
-          valid = false;
-        }
-      }
-    } else {
-      valid = false;
-    }
-    if (!valid && verbose) {
-      std::cerr << "Incorrect output shape while checking tensor "
-                << tensor.name << std::endl;
-      std::cerr << "TFLite output shape: ";
-      for (int i = 0; i < tensor.dims->size; ++i) {
-        std::cerr << tensor.dims->data[i] << ", ";
-      }
-      std::cerr << std::endl;
-      std::cerr << "Expected output shape: ";
-      for (int i = 0; i < num_elements_; ++i) {
-        std::cerr << data_.i32[i] << ", ";
-      }
-      std::cerr << std::endl;
-    }
-    return valid;
-  }
 
  private:
   bool CompareTwoValuesHelper(float v1, float v2) {
@@ -166,7 +106,7 @@ class TfLiteDriver::Expectation {
 
     bool good_output = true;
     for (int i = 0; i < tensor_size; ++i) {
-      TS computed = Value<T>(tensor.data, i);
+      TS computed = Value<T>(tensor.data.raw, i);
       TS reference = Value<T>(data_, i);
       if (CompareTwoValues(computed, reference)) {
         good_output = false;
@@ -181,29 +121,66 @@ class TfLiteDriver::Expectation {
 
   bool TypedCheckString(bool verbose, const TfLiteTensor& tensor);
 
-  TfLitePtrUnion data_;
+  char* data_;
   size_t num_elements_;
   double relative_threshold_;
   double absolute_threshold_;
 };
 
+class TfLiteDriver::ShapeExpectation {
+ public:
+  explicit ShapeExpectation(const string& csv_values)
+      : shape_(testing::Split<int32_t>(csv_values, ",")) {}
+
+  bool CheckShape(bool verbose, const TfLiteTensor& tensor) {
+    bool valid = true;
+    if (tensor.dims->size == shape_.size()) {
+      for (int i = 0; i < shape_.size(); ++i) {
+        if (shape_[i] != tensor.dims->data[i]) {
+          valid = false;
+        }
+      }
+    } else {
+      valid = false;
+    }
+    if (!valid && verbose) {
+      std::cerr << "Incorrect output shape while checking tensor "
+                << tensor.name << std::endl;
+      std::cerr << "TFLite output shape: ";
+      for (int i = 0; i < tensor.dims->size; ++i) {
+        std::cerr << tensor.dims->data[i] << ", ";
+      }
+      std::cerr << std::endl;
+      std::cerr << "Expected output shape: ";
+      for (int i = 0; i < shape_.size(); ++i) {
+        std::cerr << shape_[i] << ", ";
+      }
+      std::cerr << std::endl;
+    }
+    return valid;
+  }
+
+ private:
+  std::vector<int32_t> shape_;
+};
+
 template <>
-void TfLiteDriver::Expectation::SetData<string>(const string& csv_values) {
+void TfLiteDriver::DataExpectation::SetData<string>(const string& csv_values) {
   string s = absl::HexStringToBytes(csv_values);
-  data_.raw = new char[s.size()];
-  memcpy(data_.raw, s.data(), s.size());
+  data_ = new char[s.size()];
+  memcpy(data_, s.data(), s.size());
 }
 
-bool TfLiteDriver::Expectation::TypedCheckString(bool verbose,
-                                                 const TfLiteTensor& tensor) {
+bool TfLiteDriver::DataExpectation::TypedCheckString(
+    bool verbose, const TfLiteTensor& tensor) {
   if (tensor.data.raw == nullptr) {
     if (verbose) {
       std::cerr << "  got empty string" << std::endl;
     }
     return false;
   }
-  int expected_num_strings = GetStringCount(data_.raw);
-  int returned_num_strings = GetStringCount(tensor.data.raw);
+  int expected_num_strings = GetStringCount(data_);
+  int returned_num_strings = GetStringCount(&tensor);
   if (expected_num_strings != returned_num_strings) {
     if (verbose) {
       std::cerr << "  string count differ: got " << returned_num_strings
@@ -212,8 +189,8 @@ bool TfLiteDriver::Expectation::TypedCheckString(bool verbose,
     return false;
   }
   for (int i = 0; i < returned_num_strings; ++i) {
-    auto expected_ref = GetString(data_.raw, i);
-    auto returned_ref = GetString(tensor.data.raw, i);
+    auto expected_ref = GetString(data_, i);
+    auto returned_ref = GetString(&tensor, i);
     if (expected_ref.len != returned_ref.len) {
       if (verbose) {
         std::cerr << "  index " << i << ": got string of size "
@@ -233,8 +210,8 @@ bool TfLiteDriver::Expectation::TypedCheckString(bool verbose,
   return true;
 }
 
-bool TfLiteDriver::Expectation::Check(bool verbose,
-                                      const TfLiteTensor& tensor) {
+bool TfLiteDriver::DataExpectation::Check(bool verbose,
+                                          const TfLiteTensor& tensor) {
   switch (tensor.type) {
     case kTfLiteFloat32:
       return TypedCheck<float, float>(verbose, tensor);
@@ -259,9 +236,8 @@ bool TfLiteDriver::Expectation::Check(bool verbose,
   }
 }
 
-TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
-                           bool reference_kernel)
-    : use_nnapi_(use_nnapi),
+TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
+    : delegate_(nullptr, nullptr),
       relative_threshold_(kRelativeThreshold),
       absolute_threshold_(kAbsoluteThreshold) {
   if (reference_kernel) {
@@ -274,8 +250,21 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
                                    tflite::ops::custom::Register_RFFT2D());
   }
 
-  if (delegate_name == "FLEX") {
-    delegate_ = FlexDelegate::Create();
+  switch (delegate_type) {
+    case DelegateType::kNone:
+      break;
+    case DelegateType::kNnapi:
+      delegate_ = evaluation::CreateNNAPIDelegate();
+      break;
+    case DelegateType::kGpu:
+      delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
+      break;
+    case DelegateType::kFlex:
+      delegate_ = Interpreter::TfLiteDelegatePtr(
+          FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
+            delete static_cast<tflite::FlexDelegate*>(delegate);
+          });
+      break;
   }
 }
 
@@ -283,7 +272,6 @@ TfLiteDriver::~TfLiteDriver() {
   for (auto t : tensors_to_deallocate_) {
     DeallocateStringTensor(t.second);
   }
-  interpreter_.reset();
 }
 
 void TfLiteDriver::AllocateTensors() {
@@ -310,8 +298,6 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed build interpreter");
     return;
   }
-  interpreter_->UseNNAPI(use_nnapi_);
-
   if (delegate_) {
     if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
@@ -345,37 +331,37 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
     case kTfLiteFloat32: {
       const auto& values = testing::Split<float>(csv_values, ",");
       if (!CheckSizes<float>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteInt32: {
       const auto& values = testing::Split<int32_t>(csv_values, ",");
       if (!CheckSizes<int32_t>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteInt64: {
       const auto& values = testing::Split<int64_t>(csv_values, ",");
       if (!CheckSizes<int64_t>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteUInt8: {
       const auto& values = testing::Split<uint8_t>(csv_values, ",");
       if (!CheckSizes<uint8_t>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteInt8: {
       const auto& values = testing::Split<int8_t>(csv_values, ",");
       if (!CheckSizes<int8_t>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteBool: {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
-      SetTensorData(values, &tensor->data);
+      SetTensorData(values, tensor->data.raw);
       break;
     }
     case kTfLiteString: {
@@ -408,7 +394,7 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
   expected_output_[id].reset(
-      new Expectation(relative_threshold_, absolute_threshold_));
+      new DataExpectation(relative_threshold_, absolute_threshold_));
   switch (tensor->type) {
     case kTfLiteFloat32:
       expected_output_[id]->SetData<float>(csv_values);
@@ -448,8 +434,7 @@ void TfLiteDriver::SetShapeExpectation(int id, const string& csv_values) {
     Invalidate(
         absl::StrCat("Overridden shape expectation for tensor '", id, "'"));
   }
-  expected_output_shape_[id].reset(new Expectation);
-  expected_output_shape_[id]->SetData<int32_t>(csv_values);
+  expected_output_shape_[id].reset(new ShapeExpectation(csv_values));
 }
 
 void TfLiteDriver::Invoke() {

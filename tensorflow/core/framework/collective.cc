@@ -90,9 +90,10 @@ CollInstanceParams& CollInstanceParams::operator=(
 }
 
 string CollInstanceParams::ToString() const {
-  string v = strings::StrCat("CollInstanceParams { instance_key=", instance_key,
-                             " type=", type, " data_type=", data_type,
-                             " shape=", shape.DebugString(), " devices {");
+  string v =
+      strings::StrCat("CollInstanceParams { instance_key=", instance_key,
+                      " type=", type, " data_type=", DataTypeString(data_type),
+                      " shape=", shape.DebugString(), " devices {");
   for (const auto& d : device_names) {
     strings::StrAppend(&v, d, ",");
   }

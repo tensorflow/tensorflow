@@ -6,11 +6,13 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
 // CHECK-NEXT:    builtin_code: MUL
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
 // CHECK-NEXT:    builtin_code: CUSTOM,
 // CHECK-NEXT:    custom_code: "FlexDiv"
 // CHECK-NEXT:  }, {
 // CHECK-NEXT:    builtin_code: EXP
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -28,21 +30,21 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "mul",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "div",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "exp",
 // CHECK-NEXT:      quantization: {

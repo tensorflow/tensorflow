@@ -149,20 +149,22 @@ ext = Extension(
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
-
 setup(
-    name=PACKAGE_NAME,
+    name=PACKAGE_NAME.replace('_', '-'),
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/lite/',
-    author='Google Inc.',
+    author='Google, LLC',
     author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
     keywords='tflite tensorflow tensor machine learning',
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
+    install_requires=[
+        'numpy >= 1.12.1',
+    ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,

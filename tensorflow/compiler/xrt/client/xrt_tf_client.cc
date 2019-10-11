@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
@@ -286,15 +286,16 @@ XrtTensorHandle XrtTfContext::SendTensor(
     op_id = op->id;
   }
 
-  eager::SendTensorRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  request.set_op_id(op_id);
-  request.mutable_tensors()->AddAllocated(tensor_proto.release());
-  request.set_device_name(devices_.at(rpc_device_id).name());
-  auto response = std::make_shared<eager::SendTensorResponse>();
+  auto* send_tensor = request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(op_id);
+  send_tensor->mutable_tensors()->AddAllocated(tensor_proto.release());
+  send_tensor->set_device_name(devices_.at(rpc_device_id).name());
+  auto response = std::make_shared<eager::EnqueueResponse>();
   auto context_ptr = shared_from_this();
   absl::Notification done;
-  eager_client_->SendTensorAsync(
+  eager_client_->EnqueueAsync(
       &request, response.get(),
       [context_ptr, op_id, response, &done](Status status) {
         absl::MutexLock lock(&context_ptr->mu_);
@@ -380,14 +381,15 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
 }
 
 Status XrtTfContext::RegisterFunction(const FunctionDef& def) {
-  eager::RegisterFunctionRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  *request.mutable_function_def() = def;
+  auto* register_function = request.add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = def;
 
-  eager::RegisterFunctionResponse response;
+  eager::EnqueueResponse response;
   Status status;
   absl::Notification done;
-  eager_client_->RegisterFunctionAsync(&request, &response, [&](Status s) {
+  eager_client_->EnqueueAsync(&request, &response, [&](Status s) {
     status = s;
     done.Notify();
   });
@@ -440,6 +442,7 @@ XrtTensorHandle& XrtTensorHandle::operator=(XrtTensorHandle&& other) {
 void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_op_id(tensor_id_.first);
   proto->set_output_num(tensor_id_.second);
+  proto->set_device(context_->devices_.at(device_id_).name());
 }
 
 AttrValue MakeAttrValue(std::string s) {

@@ -51,7 +51,7 @@ if sys.version_info.major == 3:
   _NORMALIZE_TYPE = {}
   for t in ('property', 'object', 'getset_descriptor', 'int', 'str', 'type',
             'tuple', 'module', 'collections.defaultdict', 'set', 'dict',
-            'NoneType', 'frozenset'):
+            'NoneType', 'frozenset', 'member_descriptor'):
     _NORMALIZE_TYPE["<class '%s'>" % t] = "<type '%s'>" % t
   for e in 'Exception', 'RuntimeError':
     _NORMALIZE_TYPE["<class '%s'>" % e] = "<type 'exceptions.%s'>" % e

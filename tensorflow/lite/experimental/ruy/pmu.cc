@@ -21,7 +21,9 @@ limitations under the License.
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
 #include <sys/ioctl.h>
+#include <syscall.h>
 #include <unistd.h>
+
 #include <cstdio>
 #endif
 
@@ -47,7 +49,8 @@ class PerfEvent {
     pe.exclude_hv = 1;
     fd_ = syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
     if (fd_ == -1) {
-      fprintf(stderr, "perf_event_open failed for config 0x%lx\n", config);
+      fprintf(stderr, "perf_event_open failed for config 0x%lx\n",
+              static_cast<unsigned long>(config));
       // abort();
     }
     ioctl(fd_, PERF_EVENT_IOC_RESET, 0);

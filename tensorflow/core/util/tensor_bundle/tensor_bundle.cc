@@ -23,10 +23,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -69,7 +68,7 @@ namespace {
 // Checksums the string lengths (as restored uint32 or uint64, not varint64
 // bytes) and string bytes, and stores it into "actual_crc32c".
 Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
-                        size_t offset, size_t size, string* destination,
+                        size_t offset, size_t size, tstring* destination,
                         uint32* actual_crc32c, bool need_to_swap_bytes) {
   if (size == 0) return Status::OK();
   CHECK_GT(size, 0);
@@ -127,7 +126,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
     const uint64 string_length = string_lengths[i];
-    string* buffer = &destination[i];
+    tstring* buffer = &destination[i];
 
     buffer->resize(string_length);
     size_t bytes_read = 0;
@@ -205,9 +204,9 @@ char* GetBackingBuffer(const Tensor& val) {
   return const_cast<char*>(val.tensor_data().data());
 }
 
-string* GetStringBackingBuffer(const Tensor& val) {
+tstring* GetStringBackingBuffer(const Tensor& val) {
   CHECK_EQ(DT_STRING, val.dtype());
-  return const_cast<string*>(val.flat<string>().data());
+  return const_cast<tstring*>(val.flat<tstring>().data());
 }
 
 Status ParseEntryProto(StringPiece key, StringPiece value,
@@ -244,14 +243,14 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   // Var "crc32c" checksums the string lengths (as uint64, not varint64 bytes),
   // the length-checksum, and all the string bytes.
   DCHECK_EQ(val.dtype(), DT_STRING);
-  const string* strings = GetStringBackingBuffer(val);
+  const tstring* strings = GetStringBackingBuffer(val);
 
   // Writes the varint lengths.
   string lengths;
   lengths.reserve(val.NumElements());  // At least 1 byte per element.
   *crc32c = 0;
   for (int64 i = 0; i < val.NumElements(); ++i) {
-    const string* elem = &strings[i];
+    const tstring* elem = &strings[i];
     DCHECK_EQ(elem->size(), static_cast<uint64>(elem->size()));
     const uint64 elem_size = static_cast<uint64>(elem->size());
 
@@ -281,7 +280,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
 
   // Writes all the string bytes out.
   for (int64 i = 0; i < val.NumElements(); ++i) {
-    const string* string = &strings[i];
+    const tstring* string = &strings[i];
     TF_RETURN_IF_ERROR(out->Append(*string));
     *bytes_written += string->size();
     *crc32c = crc32c::Extend(*crc32c, string->data(), string->size());
@@ -675,7 +674,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   return Status::OK();
 }
 
-Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
+Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     StringPiece merged_prefix) {
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
@@ -798,7 +797,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
     return errors::DataLoss("Invalid tensor shape: ", key, " ",
-                            ProtoShortDebugString(entry_copy.shape()));
+                            entry_copy.shape().ShortDebugString());
   }
 
   *entry = entry_copy;
@@ -823,10 +822,10 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // Relaxes the check for string tensors as follows:
     //   entry.size() == bytes(varint lengths) + bytes(data)
     //                >= NumElems + bytes(data), since size bytes(varint) >= 1.
-    //   TotalBytes() == sizeof(string) * NumElems + bytes(data)
+    //   TotalBytes() == sizeof(tstring) * NumElems + bytes(data)
     // Since we don't know bytes(varint lengths), we just check an inequality.
     const size_t lower_bound = ret->NumElements() + ret->TotalBytes() -
-                               sizeof(string) * ret->NumElements();
+                               sizeof(tstring) * ret->NumElements();
     if (entry.size() < lower_bound) {
       return errors::DataLoss("Invalid size in bundle entry: key ", key(),
                               "; stored size ", entry.size(),
@@ -920,7 +919,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
     return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
-                            ProtoShortDebugString(entry.shape()));
+                            entry.shape().ShortDebugString());
   }
 
   if (entry.slices().empty()) {
@@ -1095,9 +1094,8 @@ string BundleReader::DebugString() {
     CHECK(entry.ParseFromArray(value().data(), value().size()));
     if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
 
-    strings::StrAppend(&shape_str, key(), " (",
-                       EnumName_DataType(entry.dtype()), ") ",
-                       TensorShape(entry.shape()).DebugString());
+    strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
+                       ") ", TensorShape(entry.shape()).DebugString());
     strings::StrAppend(&shape_str, "\n");
   }
   return shape_str;

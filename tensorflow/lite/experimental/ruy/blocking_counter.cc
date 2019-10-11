@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/blocking_counter.h"
 
-#include <condition_variable>  // NOLINT(build/c++11)
-#include <mutex>               // NOLINT(build/c++11)
-
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/wait.h"
 

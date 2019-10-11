@@ -148,9 +148,9 @@ class ConversionOptions(object):
   Attributes:
     recursive: bool, whether to recursively convert any user functions or
       classes that the converted function may use.
-    force_conversion: bool, whether to force convertinng the target entity. When
-      force_conversion is turned off, the converter may decide to return the
-      function as-is.
+    user_requested: bool, whether the conversion was explicitly requested by
+      the user, as opposed to being performed as a result of other logic. This
+      value always auto-resets resets to False in child conversions.
     optional_features: Union[Feature, Set[Feature]], controls the use of
       optional features in the conversion process. See Feature for available
       options.
@@ -158,11 +158,11 @@ class ConversionOptions(object):
 
   def __init__(self,
                recursive=False,
-               force_conversion=False,
+               user_requested=False,
                internal_convert_user_code=True,
                optional_features=Feature.ALL):
     self.recursive = recursive
-    self.force_conversion = force_conversion
+    self.user_requested = user_requested
     # TODO(mdan): Rename to conversion_recursion_depth?
     self.internal_convert_user_code = internal_convert_user_code
 
@@ -174,7 +174,7 @@ class ConversionOptions(object):
     self.optional_features = optional_features
 
   def as_tuple(self):
-    return (self.recursive, self.force_conversion,
+    return (self.recursive, self.user_requested,
             self.internal_convert_user_code, self.optional_features)
 
   def __hash__(self):
@@ -191,15 +191,19 @@ class ConversionOptions(object):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
 
-  def to_ast(self, internal_convert_user_code=None):
+  def call_options(self):
+    """Returns the corresponding options to be used for recursive conversion."""
+    return ConversionOptions(
+        recursive=self.recursive,
+        user_requested=False,
+        internal_convert_user_code=self.recursive,
+        optional_features=self.optional_features)
+
+  def to_ast(self):
     """Returns a representation of this object as an AST node.
 
     The AST node encodes a constructor that would create an object with the
     same contents.
-
-    Args:
-      internal_convert_user_code: Optional[bool], allows ovrriding the
-        corresponding value.
 
     Returns:
       ast.Node
@@ -210,7 +214,7 @@ class ConversionOptions(object):
     template = """
       ag__.ConversionOptions(
           recursive=recursive_val,
-          force_conversion=force_conversion_val,
+          user_requested=user_requested_val,
           optional_features=optional_features_val,
           internal_convert_user_code=internal_convert_user_code_val)
     """
@@ -219,23 +223,19 @@ class ConversionOptions(object):
       return parser.parse_expression('({})'.format(', '.join(
           'ag__.{}'.format(str(v)) for v in values)))
 
-    if internal_convert_user_code is None:
-      internal_convert_user_code = self.internal_convert_user_code
-
     expr_ast = templates.replace(
         template,
         recursive_val=parser.parse_expression(str(self.recursive)),
-        force_conversion_val=parser.parse_expression(
-            str(self.force_conversion)),
+        user_requested_val=parser.parse_expression(str(self.user_requested)),
         internal_convert_user_code_val=parser.parse_expression(
-            str(internal_convert_user_code)),
+            str(self.internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
 
 
 STANDARD_OPTIONS = ConversionOptions(
     recursive=True,
-    force_conversion=False,
+    user_requested=False,
     internal_convert_user_code=True,
     optional_features=None)
 
@@ -262,13 +262,15 @@ class EntityContext(transformer.Context):
   Attributes:
     namer: Namer
     info: transformer.EntityInfo
-    program: ProgramContext
+    program: ProgramContext,
+    targe_name: Text
   """
 
-  def __init__(self, namer, entity_info, program_ctx):
+  def __init__(self, namer, entity_info, program_ctx, target_name=None):
     super(EntityContext, self).__init__(entity_info)
     self.namer = namer
     self.program = program_ctx
+    self.target_name = target_name
 
 
 class Base(transformer.Base):

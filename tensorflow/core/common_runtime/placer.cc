@@ -52,8 +52,8 @@ void LogDeviceAssignment(const Node* node, bool log_device_placement) {
     printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
            node->assigned_device_name().c_str());
     LOG(INFO) << node->name() << ": "
-              << "(" << node->type_string() << ")"
-              << node->assigned_device_name();
+              << "(" << node->type_string()
+              << "): " << node->assigned_device_name();
   }
 }
 
@@ -73,20 +73,20 @@ Status AssignAndLog(int assigned_device, Node* node,
 
 Placer::Placer(Graph* graph, const string& function_name,
                const FunctionLibraryDefinition* flib_def,
-               const DeviceSet* devices, const Device* default_device,
+               const DeviceSet* devices, const Device* default_local_device,
                bool allow_soft_placement, bool log_device_placement)
     : graph_(graph),
       function_name_(function_name),
       flib_def_(flib_def),
       devices_(devices),
-      default_device_(default_device),
+      default_local_device_(default_local_device),
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {}
 
 Placer::Placer(Graph* graph, const string& function_name,
-               const DeviceSet* devices, const Device* default_device)
-    : Placer(graph, function_name, &graph->flib_def(), devices, default_device,
-             true, false) {}
+               const DeviceSet* devices, const Device* default_local_device)
+    : Placer(graph, function_name, &graph->flib_def(), devices,
+             default_local_device, true, false) {}
 
 Placer::Placer(Graph* graph, const string& function_name,
                const DeviceSet* devices)
@@ -113,7 +113,7 @@ Status Placer::Run() {
 
   FunctionStack stack(function_name_);
   ColocationGraph colocation_graph(graph_, stack, flib_def_, devices_,
-                                   default_device_, allow_soft_placement_,
+                                   default_local_device_, allow_soft_placement_,
                                    log_device_placement_);
 
   TF_RETURN_IF_ERROR(colocation_graph.Initialize());

@@ -819,8 +819,8 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   auto constant0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  builder.AddInstruction(HloInstruction::CreateUnary(
-      constant0->shape(), HloOpcode::kBitcast, constant0));
+  builder.AddInstruction(
+      HloInstruction::CreateBitcast(constant0->shape(), constant0));
   auto m = CreateNewVerifiedModule();
   m->AddEntryComputation(builder.Build());
 

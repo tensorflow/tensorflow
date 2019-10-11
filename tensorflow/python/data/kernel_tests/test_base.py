@@ -19,13 +19,14 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -33,18 +34,16 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
+def default_test_combinations():
+  """Returns the default test combinations for tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode=["eager", "graph"])
+
+
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
-  @classmethod
-  def setUpClass(cls):
-    if tf2.enabled():
-      dataset_ops.Dataset = dataset_ops.DatasetV2
-    else:
-      dataset_ops.Dataset = dataset_ops.DatasetV1
-
   def assert_op_cancelled(self, op):
-    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+    with self.assertRaises(errors.CancelledError):
       self.evaluate(op)
 
   def assertValuesEqual(self, expected, actual):
@@ -87,7 +86,11 @@ class DatasetTestBase(test.TestCase):
         else:
           return r
       return _wrapper
-    if context.executing_eagerly():
+
+    # Create an anonymous iterator if we are in eager-mode or are graph inside
+    # of a tf.function.
+    building_function = ops.get_default_graph()._building_function  # pylint: disable=protected-access
+    if context.executing_eagerly() or building_function:
       iterator = iter(dataset)
       return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:
@@ -139,7 +142,7 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
-        to 2.
+        to 1.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
       expected_error_iter: How many times to iterate before expecting an error,

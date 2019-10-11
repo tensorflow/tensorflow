@@ -63,9 +63,10 @@ def initialize_tpu_system(cluster_resolver=None):
 
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name in _INITIALIZED_TPU_SYSTEMS:
-    logging.warning("TPU system %s has already been initialized. "
-                    "Reinitializing the TPU can cause previously created "
-                    "variables on TPU to be lost.")
+    logging.warning(
+        "TPU system %s has already been initialized. "
+        "Reinitializing the TPU can cause previously created "
+        "variables on TPU to be lost.", tpu_name)
 
   logging.info("Initializing the TPU system: %s", tpu_name)
 

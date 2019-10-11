@@ -22,7 +22,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/stream_executor/platform/google/dso_loader.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/stream_executor/platform/default/dso_loader.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

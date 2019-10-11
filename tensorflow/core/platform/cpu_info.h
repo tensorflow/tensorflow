@@ -23,7 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 
 #if defined(_MSC_VER)
-#include "tensorflow/core/platform/windows/cpu_info.h"
+// included so __cpuidex function is available for GETCPUID on Windows
+#include <intrin.h>
 #endif
 
 namespace tensorflow {

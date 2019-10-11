@@ -82,7 +82,7 @@ versions {
 
 # Find PartitionedCall ops in main and match the callee name.
 # CHECK: func @main
-# CHECK: "_tf.PartitionedCall"
+# CHECK: "tf.PartitionedCall"
 # CHECK-SAME: f = @[[FUNCTION_FOO:[a-zA-Z0-9_]*]]
 
 # Find callee and verify it has the stateful attribute set.

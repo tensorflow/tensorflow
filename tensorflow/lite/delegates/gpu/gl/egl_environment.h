@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_context.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_surface.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 
 namespace tflite {
 namespace gpu {

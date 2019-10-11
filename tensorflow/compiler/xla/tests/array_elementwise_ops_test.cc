@@ -1550,8 +1550,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
 XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
   XlaBuilder b(TestName());
 
-  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, 4.0f, 0.5f, 5.7f};
-  std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+  std::vector<float> values0 = {1.0f, -10.0f, -2.0f, 2.0f,
+                                3.2f, 4.0f,   0.5f,  5.7f};
+  std::vector<float> values1 = {0.0f, 10.0f, -4.0f, 1.0f,
+                                2.0f, 0.5f,  -1.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
   std::unique_ptr<GlobalData> data0 =

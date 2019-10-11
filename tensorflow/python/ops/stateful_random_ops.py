@@ -193,10 +193,12 @@ class Generator(tracking.AutoTrackable):
       copy_from: a generator to be copied from.
       state: a vector of dtype STATE_TYPE representing the initial state of the
         RNG, whose length and semantics are algorithm-specific.
-      alg: the RNG algorithm. Possible values are RNG_ALG_PHILOX for the
-        Philox algorithm and RNG_ALG_THREEFRY for the ThreeFry
+      alg: the RNG algorithm. Possible values are `RNG_ALG_PHILOX` for the
+        Philox algorithm and `RNG_ALG_THREEFRY` for the ThreeFry
         algorithm (see paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
+        Note `RNG_ALG_PHILOX` guarantees the same numbers are produced (given
+        the same random state) across all architextures (CPU, GPU, XLA etc).
     """
     if copy_from is not None:
       # All other arguments should be None

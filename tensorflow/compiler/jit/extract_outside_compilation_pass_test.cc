@@ -232,7 +232,7 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
         session_options, "/job:localhost/replica:0/task:0", &devices));
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   }
 
   Status ExtractOutsideCompilationTest(
@@ -246,8 +246,9 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
       bool *has_outside_compilation) {
     OptimizerOptions opts;
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, fld, opts,
-        /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, fld, opts,
+        /*default_thread_pool=*/nullptr);
     auto flr = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     return ExtractOutsideCompilationForFunction(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
@@ -342,7 +343,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
       *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
@@ -417,76 +418,8 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
-  // Check host graph is empty.
-  std::unique_ptr<FunctionBody> host_fbody;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
-  Graph *host_graph = host_fbody->graph;
-  EXPECT_EQ(host_graph->num_nodes(), 2);
-}
-
-TEST_F(ExtractOutsideCompilationForFunctionTest, XlaHostComputeRemoved) {
-  // Build the XLA computation func.
-  // "const0"
-  // "const1" (outside compilation cluster "0")
-  FunctionDefLibrary fdl;
-  {
-    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-    Output const0 = ops::Const(s.WithOpName("const0"), 1, {2});
-    Output const1 = ops::Const(s.WithOpName("const1"), 1, {2});
-    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
-    TF_CHECK_OK(s.ToGraph(g.get()));
-    auto node_name_image = g->BuildNodeNameIndex();
-    node_name_image["const1"]->AddAttr("_oc", "0");
-
-    FunctionDef *xla_fdef = fdl.add_function();
-    TF_CHECK_OK(GraphToFunctionDef(*g, "cluster", xla_fdef));
-  }
-  FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
-
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
-  bool has_outside_compilation;
-  NameAttrList name_attrs;
-  name_attrs.set_name("cluster");
-  *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationTest(
-      "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
-      host_compute_core, &fld, &shape_inference_graphs,
-      &has_outside_compilation));
-
-  // Check rewritten XLA graph: verify that we have no XlaHostCompute.
-  std::unique_ptr<FunctionBody> xla_fbody;
-  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
-                                      AttrSlice(), &fld, &xla_fbody));
-  for (Node *n : xla_fbody->graph->nodes()) {
-    EXPECT_NE(n->type_string(), "XlaHostCompute");
-  }
-
-  // Check host graph: verify we have no placeholder, but we have "const1".
-  std::unique_ptr<FunctionBody> host_fbody;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
-  Graph *host_graph = host_fbody->graph;
-  int num_key_placeholders = 0;
-  for (Node *n : host_graph->nodes()) {
-    if (n->type_string() == "Placeholder" &&
-        absl::EndsWith(n->name(), "_key_placeholder")) {
-      num_key_placeholders++;
-    }
-  }
-  EXPECT_EQ(num_key_placeholders, 0);
-  auto node_name_index = host_graph->BuildNodeNameIndex();
-  EXPECT_NE(node_name_index.find("const1"), node_name_index.end());
+  // Check host graph is not created.
+  EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
 REGISTER_OP("XlaSendToHost")
@@ -579,7 +512,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));
@@ -729,7 +662,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));
@@ -865,7 +798,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));

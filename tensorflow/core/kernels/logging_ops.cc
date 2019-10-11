@@ -143,7 +143,7 @@ class PrintV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
-    const string& msg = input_->scalar<string>()();
+    const string& msg = input_->scalar<tstring>()();
 
     string ended_msg = strings::StrCat(msg, end_);
 

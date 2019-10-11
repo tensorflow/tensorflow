@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 
@@ -985,6 +986,9 @@ struct SoftmaxParams {
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
   int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
 };
 
 struct SpaceToBatchParams {

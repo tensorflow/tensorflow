@@ -17,44 +17,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/lite/toco/graph_transformations/identify_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-namespace {
-
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator* op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == op) {
-      break;
-    }
-  }
-  return it;
-}
-
-bool CheckArrayIsScalarFloat(Model* model, const std::string& name, float val) {
-  const auto& op_array = model->GetArray(name);
-  if (!op_array.buffer || op_array.buffer->type != ArrayDataType::kFloat ||
-      RequiredBufferSizeForShape(op_array.shape()) != 1) {
-    return false;
-  }
-  const auto& op_data = op_array.GetBuffer<ArrayDataType::kFloat>().data;
-  return op_data[0] == val;
-}
-
-// Returns index of scalar input when there is exactly one scalar, -1 otherwise
-int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
-                                        float val) {
-  bool input0_is_scalar = CheckArrayIsScalarFloat(model, op->inputs[0], val);
-  bool input1_is_scalar = CheckArrayIsScalarFloat(model, op->inputs[1], val);
-  return input0_is_scalar == input1_is_scalar ? -1 : input0_is_scalar ? 0 : 1;
-}
-}  // namespace
+using util::GetSingleScalarInputIndexOfBinaryOp;
 
 ::tensorflow::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
                                         bool* modified) {

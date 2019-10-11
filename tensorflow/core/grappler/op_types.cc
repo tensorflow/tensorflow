@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/op_types.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -253,6 +254,10 @@ bool IsFusedBatchNorm(const NodeDef& node) {
          op == "FusedBatchNormV3";
 }
 
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
@@ -312,6 +317,8 @@ bool IsLogicalAnd(const NodeDef& node) { return node.op() == "LogicalAnd"; }
 bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
+
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
 
 bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
@@ -952,6 +959,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
          absl::StrContains(op_name, "Segment") ||
          absl::StartsWith(op_name, "Quantize");
 }
+
+bool IsXlaLaunch(const NodeDef& node) { return node.op() == "XlaLaunch"; }
 
 }  // namespace grappler
 }  // end namespace tensorflow

@@ -69,7 +69,7 @@ MangledKind GetMangledKind(absl::string_view str) {
 }
 
 string MangleShape(const TensorShapeProto& shape) {
-  return absl::StrCat(kTensorShapePrefix, shape.DebugString());
+  return absl::StrCat(kTensorShapePrefix, shape.ShortDebugString());
 }
 
 Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
@@ -85,7 +85,7 @@ Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
 }
 
 string MangleTensor(const TensorProto& tensor) {
-  return absl::StrCat(kTensorPrefix, tensor.DebugString());
+  return absl::StrCat(kTensorPrefix, tensor.ShortDebugString());
 }
 
 Status DemangleTensor(absl::string_view str, TensorProto* proto) {

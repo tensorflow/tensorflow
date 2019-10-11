@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
+from six.moves import range
 
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.optimize import calibrator as _calibrator
@@ -58,6 +60,21 @@ class CalibratorTest(test_util.TensorFlowTestCase):
     quantized_model = quantizer.calibrate_and_quantize(input_gen,
                                                        constants.FLOAT,
                                                        constants.FLOAT, True)
+    self.assertIsNotNone(quantized_model)
+
+  def test_calibration_with_quantization_single_op(self):
+    model_path = resource_loader.get_path_to_datafile(
+        'test_data/mobilenet_like_model.bin')
+    float_model = open(model_path, 'rb').read()
+    quantizer = _calibrator.Calibrator(float_model)
+
+    # Input generator for the model.
+    def input_gen():
+      for _ in range(10):
+        yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
+
+    quantized_model = quantizer.calibrate_and_quantize_single(
+        input_gen, constants.FLOAT, constants.FLOAT, True, 'conv2d_8/BiasAdd')
     self.assertIsNotNone(quantized_model)
 
   def test_calibration_with_quantization_multiple_inputs(self):
@@ -109,7 +126,7 @@ class CalibratorTest(test_util.TensorFlowTestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 2, 2, 3), dtype=np.float32)]
 
-    with self.assertRaisesWithRegexpMatch(ValueError, 'Dimension mismatch'):
+    with self.assertRaisesWithRegexpMatch(ValueError, 'Size mismatch'):
       quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
                                        constants.FLOAT, False)
 

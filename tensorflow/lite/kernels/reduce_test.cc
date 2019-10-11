@@ -256,7 +256,6 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
-
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
 TEST(ConstFloatMeanOpTest, KeepDims4DMean) {

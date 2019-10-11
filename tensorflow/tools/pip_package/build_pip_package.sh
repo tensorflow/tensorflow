@@ -99,6 +99,9 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
+    cp \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
     cp -R \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -110,6 +113,9 @@ function prepare_src() {
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -127,6 +133,9 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -151,7 +160,7 @@ function prepare_src() {
   reorganize_includes "${TMPDIR}"
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
-  cp tensorflow/tools/pip_package/README ${TMPDIR}
+  cp tensorflow/tools/pip_package/README ${TMPDIR}/README.md
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
@@ -227,8 +236,10 @@ function usage() {
   echo ""
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
+  echo "    --cpu                 build tensorflow_cpu"
   echo "    --gpu                 build tensorflow_gpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
+  echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
   echo ""
   exit 1
@@ -238,6 +249,8 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   GPU_BUILD=0
+  PROJECT_NAME_CPU=0
+  ROCM_BUILD=0
   NIGHTLY_BUILD=0
   SRCDIR=""
   DSTDIR=""
@@ -250,8 +263,19 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
+    elif [[ "$1" == "--cpu" ]]; then
+      # Check that --gpu has not been passed.
+      if [[ ${GPU_BUILD} == "1" ]]; then
+        echo "Specifying both --cpu and --gpu to build_pip_package is not allowed."
+        usage
+        exit 1
+      fi
+
+      PROJECT_NAME_CPU=1
     elif [[ "$1" == "--gpudirect" ]]; then
       PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+    elif [[ "$1" == "--rocm" ]]; then
+      ROCM_BUILD=1
     elif [[ "$1" == "--project_name" ]]; then
       shift
       if [[ -z "$1" ]]; then
@@ -297,10 +321,18 @@ function main() {
     PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${ROCM_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_rocm"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${PROJECT_NAME_CPU} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_cpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  elif [[ ${ROCM_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_rocm"
+  elif [[ ${PROJECT_NAME_CPU} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_cpu"
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"

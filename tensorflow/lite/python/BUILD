@@ -15,6 +15,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -25,7 +26,7 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -34,20 +35,51 @@ py_test(
     ],
     deps = [
         ":interpreter",
+        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "interpreter_test_py3",
+    srcs = ["interpreter_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+        "//tensorflow/lite/python/testdata:test_delegate.so",
+    ],
+    main = "interpreter_test.py",
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+        "noasan",  # TODO(b/137568139): enable after this is fixed.
+        "nomsan",  # TODO(b/137568139): enable after this is fixed.
+    ],
+    deps = [
+        ":interpreter",
+        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "tflite_convert",
     srcs = ["tflite_convert.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":tflite_convert_main_lib"],
+    deps = [
+        ":tflite_convert_main_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -55,7 +87,10 @@ py_library(
     srcs = ["tflite_convert.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":tflite_convert_lib"],
+    deps = [
+        ":tflite_convert_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -65,6 +100,24 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "tflite_convert_test",
+    srcs = ["tflite_convert_test.py"],
+    data = [":tflite_convert"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tflite_convert",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -88,6 +141,7 @@ py_library(
         "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
+        "@six_archive//:six",
     ],
 )
 
@@ -95,7 +149,7 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
-    python_version = "PY2",
+    python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
@@ -105,13 +159,14 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -120,13 +175,14 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         # TODO(b/111881877): Enable in oss after resolving op registry issues.
@@ -137,6 +193,22 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_mlir_test",
+    srcs = ["lite_mlir_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
@@ -152,13 +224,14 @@ py_library(
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:wrap_function",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "util_test",
     srcs = ["util_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -167,6 +240,7 @@ py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
@@ -175,6 +249,7 @@ py_library(
     srcs = [
         "wrap_toco.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
@@ -205,6 +280,7 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -224,7 +300,7 @@ py_library(
 py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":convert",
@@ -256,7 +332,7 @@ py_library(
 py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -272,19 +348,5 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-py_binary(
-    name = "create_custom_op",
-    srcs = ["create_custom_op.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/flags",
     ],
 )

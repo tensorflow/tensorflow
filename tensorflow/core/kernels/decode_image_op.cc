@@ -154,7 +154,7 @@ class DecodeImageOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Determine format
-    const StringPiece input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<tstring>()();
     const auto magic = ClassifyFileFormat(input);
     OP_REQUIRES(
         context,

@@ -37,6 +37,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:list_ops",
@@ -46,6 +47,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -97,6 +99,24 @@ py_test(
     srcs = ["py_builtins_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core",
+    ],
+)
+
+py_test(
+    name = "py_builtins_py3_test",
+    srcs = ["py_builtins_py3_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_windows",
+        # TODO(kkimlabs): Temporay workaround since KokoroPresubmit was failing.
+        #                 cl/259400943 for more context.
+        "no_oss_py2",
+    ],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",

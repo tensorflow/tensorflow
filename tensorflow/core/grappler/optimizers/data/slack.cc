@@ -51,24 +51,29 @@ bool IsDatasetNodeOfType(const NodeDef& node,
 constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset", "ConcatenateDataset"};
 
-constexpr std::array<const char*, 17> kPassThroughOps = {
+constexpr std::array<const char*, 21> kPassThroughOps = {
     "CacheDataset",
+    "CacheDatasetV2",
     "ExperimentalMaxIntraOpParallelismDataset",
     "ExperimentalPrivateThreadPoolDataset",
     "FilterDataset",
     "Identity",
     "MapDataset",
+    "MaxIntraOpParallelismDataset",
     "ModelDataset",
     "OptimizeDataset",
     "ParallelMapDataset",
+    "PrivateThreadPoolDataset",
     "ReduceDataset",
     "RepeatDataset",
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
+    "ShuffleDatasetV2",
     "SkipDataset",
     "TakeDataset",
-    "WindowDataset"};
+    "WindowDataset",
+};
 
 }  // namespace
 

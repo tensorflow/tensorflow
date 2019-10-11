@@ -22,7 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
@@ -46,101 +46,101 @@ bool operator==(const Variable& l, const Variable& r) {
 namespace {
 
 TEST(Preprocessor, CornerCases) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   std::string result;
   ASSERT_EQ(accessor.Rewrite("", &result), RewriteStatus::NOT_RECOGNIZED);
   ASSERT_EQ(accessor.Rewrite("=", &result), RewriteStatus::NOT_RECOGNIZED);
 }
 
 TEST(Preprocessor, ReadFromBuffer) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyBuffer(std::vector<float>{1.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[i]", &result), RewriteStatus::SUCCESS);
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "obj.data[i]");
 }
 
 TEST(Preprocessor, ReadFromBufferLinear) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyBuffer(uint3(1, 2, 3), std::vector<float>{1.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[i]", &result), RewriteStatus::SUCCESS);
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "obj.data[i]");
 }
 
 TEST(Preprocessor, ReadFromBufferByIndex) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyBuffer(uint3(1, 2, 3), std::vector<float>{1.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[x,y + 5,z]", &result),
             RewriteStatus::SUCCESS);
-  EXPECT_THAT(parameters.GetUniformParameters(),
+  EXPECT_THAT(variable_accessor.GetUniformParameters(),
               testing::UnorderedElementsAre(Variable{"obj_w", 1},
                                             Variable{"obj_h", 2}));
   ASSERT_EQ(result, "obj.data[x + $obj_w$ * (y + 5 + $obj_h$ * (z))]");
 }
 
 TEST(Preprocessor, ReadFromTexture) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyTexture(uint3(1, 2, 3), {1.0, 2.0, 3.0, 4.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[i,j,k]", &result), RewriteStatus::SUCCESS);
   // textures don't need extra variables to be stored for indexed access
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "imageLoad(obj, ivec3(i, j, k))");
 }
 
 TEST(Preprocessor, ReadFromTexture1D) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyTexture({1.0, 2.0, 3.0, 4.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[i]", &result), RewriteStatus::SUCCESS);
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "imageLoad(obj, ivec2(i, 0))");
 }
 
 TEST(Preprocessor, WriteToBuffer) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyBuffer(std::vector<float>{1.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite(" obj[i]  =value", &result),
             RewriteStatus::SUCCESS);
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "obj.data[i] = value");
 }
 
 TEST(Preprocessor, WriteToBufferByIndex) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyBuffer(uint3(1, 2, 3), {1.0, 2.0, 3.0, 4.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite(" obj[i,j,k]  =value", &result),
             RewriteStatus::SUCCESS);
-  EXPECT_THAT(parameters.GetUniformParameters(),
+  EXPECT_THAT(variable_accessor.GetUniformParameters(),
               testing::UnorderedElementsAre(Variable{"obj_w", 1},
                                             Variable{"obj_h", 2}));
   ASSERT_EQ(result, "obj.data[i + $obj_w$ * (j + $obj_h$ * (k))] = value");
 }
 
 TEST(Preprocessor, WriteToTexture) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyTexture(uint3(1, 1, 1), {1.0, 2.0, 3.0, 4.0})));
   std::string result;
@@ -150,20 +150,20 @@ TEST(Preprocessor, WriteToTexture) {
 }
 
 TEST(Preprocessor, WriteToTexture1D) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyTexture({1.0, 2.0, 3.0, 4.0})));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("obj[i]= value ", &result),
             RewriteStatus::SUCCESS);
-  EXPECT_TRUE(parameters.GetUniformParameters().empty());
+  EXPECT_TRUE(variable_accessor.GetUniformParameters().empty());
   ASSERT_EQ(result, "imageStore(obj, ivec2(i, 0), value)");
 }
 
 TEST(Preprocessor, FailedWriteToBuffer) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyBuffer(std::vector<float>{1.0})));
   std::string result;
@@ -173,8 +173,8 @@ TEST(Preprocessor, FailedWriteToBuffer) {
 }
 
 TEST(Preprocessor, FailedWriteToTexture) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyTexture(uint3(1, 1, 1), {1.0, 2.0, 3.0, 4.0})));
   std::string result;
@@ -183,8 +183,8 @@ TEST(Preprocessor, FailedWriteToTexture) {
 }
 
 TEST(Preprocessor, DeclareTexture) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(false, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(false, &variable_accessor);
   ASSERT_TRUE(accessor.AddObject(
       "obj", MakeReadonlyTexture(uint3(1, 1, 1), {1.0, 2.0, 3.0, 4.0})));
   ASSERT_EQ(accessor.GetObjectDeclarations(),
@@ -193,8 +193,8 @@ TEST(Preprocessor, DeclareTexture) {
 }
 
 TEST(Preprocessor, DeclareBuffer) {
-  ParameterAccessor parameters(false);
-  ObjectAccessor accessor(true, &parameters);
+  VariableAccessor variable_accessor(/*inline_values=*/false);
+  ObjectAccessor accessor(true, &variable_accessor);
   ASSERT_TRUE(
       accessor.AddObject("obj", MakeReadonlyBuffer(std::vector<float>{1.0})));
   ASSERT_EQ(accessor.GetObjectDeclarations(),

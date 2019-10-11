@@ -80,6 +80,7 @@ cuda_py_test(
     srcs = ["trt_convert_test.py"],
     additional_deps = [
         ":trt_convert_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -98,7 +99,6 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -106,10 +106,8 @@ cuda_py_tests(
     srcs = [
         "test/base_test.py",
         "test/batch_matmul_test.py",
-        "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
         "test/combined_nms_test.py",
-        "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
         "test/dynamic_input_shapes_test.py",
@@ -138,7 +136,25 @@ cuda_py_tests(
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_tests(
+    name = "concatenation_test",
+    srcs = [
+        "test/biasadd_matmul_test.py",
+        "test/concatenation_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_rocm",
+        "no_windows",
+        "nomac",
+        "notap",  # b/140261407
+    ],
 )
 
 cuda_py_test(
@@ -165,5 +181,4 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )

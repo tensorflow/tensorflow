@@ -36,5 +36,9 @@ class CancellationManager(object):
     """Cancels blocking operations that have been registered with this object."""
     pywrap_tensorflow.TFE_CancellationManagerStartCancel(self._impl)
 
+  def get_cancelable_function(self, concrete_function):
+    # pylint: disable=protected-access
+    return concrete_function._experimental_with_cancellation_manager(self)
+
   def __del__(self):
     pywrap_tensorflow.TFE_DeleteCancellationManager(self._impl)

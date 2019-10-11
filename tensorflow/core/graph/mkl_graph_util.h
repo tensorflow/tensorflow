@@ -18,7 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
@@ -104,12 +104,24 @@ static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
+// TODO(intel-tf): PR review feedback (penpornk)
+// Can we add eager_mode (or is_eager) as an op attribute instead?
+// This way we don't need to rename the op just to pass eager_mode
+// through template parameter.
+static const char* const kMklEagerOpPrefix = "_MklEager";
 
 // Get the name of Mkl op from original TensorFlow op
 // We prefix 'Mkl' to the original op to get Mkl op.
 inline string GetMklOpName(const string& name) {
   return string(kMklOpPrefix) + name;
 }
+
+// Get the name of Mkl Eager op from original TensorFlow op
+// We prefix 'MklEager' to the original op to get Mkl Eager op.
+inline string GetMklEagerOpName(const string& name) {
+  return string(kMklEagerOpPrefix) + name;
+}
+
 // Check whether opname with type T is registered as MKL operator
 // that can accept input tensors in MKL layout.
 //
@@ -140,7 +152,7 @@ static inline bool IsMklLayoutDependentOp(const string& op_name,
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (Tinput == DT_QUINT8 && Tfilter == DT_QINT8);
+    return (Tfilter == DT_QINT8);
   }
   return false;
 }
@@ -165,9 +177,18 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   // Now we just construct a search string to match what we are looking for.
   string search_string = kMklNameChangeOpLabelPattern;
   search_string += string(";") + string(" T in [");
-  search_string += EnumName_DataType(T) + string("]");
+  search_string += DataType_Name(T) + string("]");
 
-  return kernel.find(search_string) != string::npos;
+  // Temporarily replacing earlier check by adding a type-specific check so
+  // that we can selectively decide which type is supported by MKL operators.
+  // That way kernel registration does not decide which operators we support.
+  // We are using this change to temporarily disable BFLOAT16 support. Once
+  // we want to enable it, we will go back to earlier check.
+  if (kernel.find(search_string) != string::npos) {
+    return T == DT_COMPLEX128 || T == DT_COMPLEX64 || T == DT_DOUBLE ||
+           T == DT_FLOAT;
+  }
+  return false;
 }
 
 // Check if the operator with 'op_name' and type 'T' is an MKL operator that
@@ -175,6 +196,11 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
 // rewrite that some operators go through.
 static inline bool IsMklOp(const string& op_name, DataType T) {
   return IsMklLayoutDependentOp(op_name, T) || IsMklNameChangeOp(op_name, T);
+}
+
+static inline bool IsMklOp(const Node* n) {
+  DataType T;
+  return GetNodeAttr(n->def(), "T", &T).ok() && IsMklOp(n->type_string(), T);
 }
 
 // Check whether opname with type T is registered as MKL-compliant and
@@ -189,6 +215,7 @@ static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
     return false;
   }
   bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
+                 0 == op_name.compare(GetMklOpName("AddV2")) ||
                  0 == op_name.compare(GetMklOpName("Sub")) ||
                  0 == op_name.compare(GetMklOpName("Mul")) ||
                  0 == op_name.compare(GetMklOpName("Maximum")) ||

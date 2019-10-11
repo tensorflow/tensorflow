@@ -5,9 +5,11 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK:  {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: MUL
+// CHECK-NEXT:    builtin_code: MUL,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: EXP
+// CHECK-NEXT:    builtin_code: EXP,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -25,21 +27,21 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "mul0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "mul1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "exp",
 // CHECK-NEXT:      quantization: {

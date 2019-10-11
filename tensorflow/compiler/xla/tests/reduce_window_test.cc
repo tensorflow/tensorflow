@@ -142,6 +142,15 @@ XLA_TEST_P(ReduceWindowTest, Min3In5Stride2) {
                            {}, ErrorSpec(0.00001));
 }
 
+XLA_TEST_P(ReduceWindowTest, Min3In5Stride2Same) {
+  const auto input = CreateConstantFromLiteral(
+      LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);
+  ReduceWindowMin(input, {3}, {2}, Padding::kSame);
+  ComputeAndCompareLiteral(&builder_,
+                           LiteralUtil::CreateR1<float>({1000, 10, 1}), {},
+                           ErrorSpec(0.00001));
+}
+
 XLA_TEST_P(ReduceWindowTest, Min3In5Stride1WithSamePadding) {
   const auto input = CreateConstantFromLiteral(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);

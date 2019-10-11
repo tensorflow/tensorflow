@@ -17,6 +17,7 @@ py_library(
     deps = if_not_windows([
         "//tensorflow/python/compiler/tensorrt:init_py",
     ]) + [
+        "//tensorflow/python/compiler/mlir",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )

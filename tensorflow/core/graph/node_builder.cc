@@ -112,7 +112,7 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
-Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
+Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
   if (!errors_.empty()) {
@@ -120,7 +120,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   }
 
   NodeDef node_def;
-  TF_RETURN_IF_ERROR(def_builder_.Finalize(&node_def));
+  TF_RETURN_IF_ERROR(def_builder_.Finalize(&node_def, consume));
   TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));

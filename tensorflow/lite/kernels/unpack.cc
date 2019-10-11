@@ -36,7 +36,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
-  TF_LITE_ENSURE(context, NumDimensions(input) > 1);
+  TF_LITE_ENSURE(context, NumElements(input) > 0);
   int axis = data->axis;
   if (axis < 0) {
     axis += NumDimensions(input);

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+from absl.testing import parameterized
 import six
 
 from tensorflow.core.protobuf import config_pb2
@@ -26,8 +27,8 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -39,8 +40,7 @@ except ImportError:
   memory_profiler = None
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class MemoryCleanupTest(test_base.DatasetTestBase):
+class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def assertNotIncreasingMemory(self,
                                 f,
@@ -64,10 +64,9 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
           "Maximum allowed increase: %f") % (initial, increase,
                                              increase_threshold_absolute_mb)
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236): Support v2 behavior
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
   def testEagerMemoryUsageWithReset(self):
-    if not context.executing_eagerly():
-      self.skipTest("Only eager mode test")
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
@@ -82,10 +81,10 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
     self.assertNotIncreasingMemory(
         f, num_iters=100, increase_threshold_absolute_mb=350)
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236): Support v2 behavior
+  @combinations.generate(
+      combinations.combine(tf_api_version=1, mode="eager"))
   def testEagerMemoryUsageWithRecreation(self):
-    if not context.executing_eagerly():
-      self.skipTest("Only eager mode test")
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 

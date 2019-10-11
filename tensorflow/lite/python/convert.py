@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
-
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
+
+import six
+from six.moves import map
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
@@ -55,7 +58,7 @@ def _try_convert_to_unicode(output):
 
   if isinstance(output, bytes):
     try:
-      return output.decode()
+      return six.ensure_text(output)
     except UnicodeDecodeError:
       pass
   return output
@@ -96,7 +99,7 @@ class ConverterError(Exception):
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,
-                        debug_info_str="",
+                        debug_info_str=None,
                         enable_mlir_converter=False):
   """Convert `input_data_str` according to model and toco parameters.
 
@@ -110,7 +113,7 @@ def toco_convert_protos(model_flags_str,
       `toco/toco_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
-      information. (default "")
+      information. (default None)
     enable_mlir_converter: Enables the MLIR converter instead of the TOCO
       converter. (default False)
   Returns:
@@ -151,8 +154,20 @@ def toco_convert_protos(model_flags_str,
 
       fp_model.write(model_flags_str)
       fp_toco.write(toco_flags_str)
-      fp_input.write(input_data_str)
-      fp_debug.write(debug_info_str)
+      fp_input.write(six.ensure_binary(input_data_str))
+      debug_info_str = debug_info_str if debug_info_str else ""
+      # if debug_info_str contains a "string value", then the call to
+      # fp_debug.write(debug_info_str) will fail with the following error
+      #
+      # TypeError: a bytes-like object is required, not 'str'
+      #
+      # Some of the subtests within the "convert_test" unit-test fail
+      # with the error shown above. So watch out for that scenario and
+      # convert debug_info_str to bytes where needed
+      if not isinstance(debug_info_str, bytes):
+        fp_debug.write(debug_info_str.encode("utf-8"))
+      else:
+        fp_debug.write(debug_info_str)
 
     # Reserve an output file
     with _tempfile.NamedTemporaryFile(delete=False) as fp:
@@ -335,7 +350,7 @@ def build_toco_convert_protos(input_tensors,
       shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
@@ -388,7 +403,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for name in output_arrays:
     model_flags.output_arrays.append(name)
@@ -428,7 +443,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
   """
   model_flags, toco_flags, debug_info = build_toco_convert_protos(
       input_tensors, output_tensors, *args, **kwargs)
-  debug_info_str = debug_info.SerializeToString() if debug_info else ""
+  debug_info_str = debug_info.SerializeToString() if debug_info else None
   data = toco_convert_protos(
       model_flags.SerializeToString(),
       toco_flags.SerializeToString(),

@@ -19,7 +19,9 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
 
+#include <atomic>
 #include <limits>
+#include <memory>
 #include <sstream>
 
 #include "absl/base/log_severity.h"
@@ -42,7 +44,7 @@ namespace internal {
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, int severity);
-  ~LogMessage();
+  ~LogMessage() override;
 
   // Returns the minimum log level for VLOG statements.
   // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
@@ -81,7 +83,14 @@ struct Voidifier {
 class LogMessageFatal : public LogMessage {
  public:
   LogMessageFatal(const char* file, int line) TF_ATTRIBUTE_COLD;
-  TF_ATTRIBUTE_NORETURN ~LogMessageFatal();
+  TF_ATTRIBUTE_NORETURN ~LogMessageFatal() override;
+};
+
+// LogMessageNull supports the DVLOG macro by simply dropping any log messages.
+class LogMessageNull : public std::basic_ostringstream<char> {
+ public:
+  LogMessageNull() {}
+  ~LogMessageNull() override {}
 };
 
 #define _TF_LOG_INFO \
@@ -122,6 +131,118 @@ class LogMessageFatal : public LogMessage {
   : ::tensorflow::internal::Voidifier() &                        \
           ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
                                              tensorflow::INFO)
+
+// `DVLOG` behaves like `VLOG` in debug mode (i.e. `#ifndef NDEBUG`).
+// Otherwise, it compiles away and does nothing.
+#ifndef NDEBUG
+#define DVLOG VLOG
+#else
+#define DVLOG(verbose_level) \
+  while (false && (verbose_level) > 0) ::tensorflow::internal::LogMessageNull()
+#endif
+
+class LogEveryNState {
+ public:
+  bool ShouldLog(int n);
+  uint32_t counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogFirstNState {
+ public:
+  bool ShouldLog(int n);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogEveryPow2State {
+ public:
+  bool ShouldLog(int ignored);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogEveryNSecState {
+ public:
+  bool ShouldLog(double seconds);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+  // Cycle count according to CycleClock that we should next log at.
+  std::atomic<int64> next_log_time_cycles_{0};
+};
+
+// This macro has a lot going on!
+//
+// * A local static (`logging_internal_stateful_condition_state`) is
+//   declared in a scope such that each `LOG_EVERY_N` (etc.) line has its own
+//   state.
+// * `COUNTER`, the third variable, is used to support `<< COUNTER`. It is not
+//   mangled, so shadowing can be a problem, albeit more of a
+//   shoot-yourself-in-the-foot one.  Don't name your variables `COUNTER`.
+// * A single for loop can declare state and also test
+//   `condition && state.ShouldLog()`, but there's no way to constrain it to run
+//   only once (or not at all) without declaring another variable.  The outer
+//   for-loop declares this variable (`do_log`).
+// * Using for loops instead of if statements means there's no risk of an
+//   ambiguous dangling else statement.
+#define LOGGING_INTERNAL_STATEFUL_CONDITION(kind, condition, arg)   \
+  for (bool logging_internal_stateful_condition_do_log(condition);  \
+       logging_internal_stateful_condition_do_log;                  \
+       logging_internal_stateful_condition_do_log = false)          \
+    for (static ::tensorflow::internal::Log##kind##State            \
+             logging_internal_stateful_condition_state;             \
+         logging_internal_stateful_condition_do_log &&              \
+         logging_internal_stateful_condition_state.ShouldLog(arg);  \
+         logging_internal_stateful_condition_do_log = false)        \
+      for (const uint32_t COUNTER ABSL_ATTRIBUTE_UNUSED =           \
+               logging_internal_stateful_condition_state.counter(); \
+           logging_internal_stateful_condition_do_log;              \
+           logging_internal_stateful_condition_do_log = false)
+
+// An instance of `LOG_EVERY_N` increments a hidden zero-initialized counter
+// every time execution passes through it and logs the specified message when
+// the counter's value is a multiple of `n`, doing nothing otherwise.  Each
+// instance has its own counter.  The counter's value can be logged by streaming
+// the symbol `COUNTER`.  `LOG_EVERY_N` is thread-safe.
+// Example:
+//
+//   for (const auto& user : all_users) {
+//     LOG_EVERY_N(INFO, 1000) << "Processing user #" << COUNTER;
+//     ProcessUser(user);
+//   }
+#define LOG_EVERY_N(severity, n)                       \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryN, true, n) \
+  LOG(severity)
+// `LOG_FIRST_N` behaves like `LOG_EVERY_N` except that the specified message is
+// logged when the counter's value is less than `n`.  `LOG_FIRST_N` is
+// thread-safe.
+#define LOG_FIRST_N(severity, n)                       \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(FirstN, true, n) \
+  LOG(severity)
+// `LOG_EVERY_POW_2` behaves like `LOG_EVERY_N` except that the specified
+// message is logged when the counter's value is a power of 2.
+// `LOG_EVERY_POW_2` is thread-safe.
+#define LOG_EVERY_POW_2(severity)                         \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryPow2, true, 0) \
+  LOG(severity)
+// An instance of `LOG_EVERY_N_SEC` uses a hidden state variable to log the
+// specified message at most once every `n_seconds`.  A hidden counter of
+// executions (whether a message is logged or not) is also maintained and can be
+// logged by streaming the symbol `COUNTER`.  `LOG_EVERY_N_SEC` is thread-safe.
+// Example:
+//
+//   LOG_EVERY_N_SEC(INFO, 2.5) << "Got " << COUNTER << " cookies so far";
+#define LOG_EVERY_N_SEC(severity, n_seconds)                      \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryNSec, true, n_seconds) \
+  LOG(severity)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of

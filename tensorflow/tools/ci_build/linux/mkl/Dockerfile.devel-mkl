@@ -10,7 +10,7 @@ ARG PYTHON="python"
 ARG WHL_DIR="/tmp/pip"
 ARG PIP="pip"
 ARG TARGET_PLATFORM="haswell"
-ARG CONFIG_V2_DISABLE="--disable-v2"
+ARG CONFIG_V2_DISABLE=""
 ARG ENABLE_SECURE_BUILD
 
 # Download and build TensorFlow from the latest sources found in the root container

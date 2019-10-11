@@ -365,4 +365,26 @@ REGISTER_OP("UnicodeDecodeWithOffsets")
       return Status::OK();
     });
 
+REGISTER_OP("StringNGrams")
+    .Attr("separator: string")
+    .Attr("ngram_widths: list(int) >= 0")
+    .Attr("left_pad: string")
+    .Attr("right_pad: string")
+    .Attr("pad_width: int")
+    .Attr("preserve_short_sequences: bool")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
+    .Input("data: string")
+    .Input("data_splits: Tsplits")
+    .Output("ngrams: string")
+    .Output("ngrams_splits: Tsplits")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      ShapeHandle data = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRank(data, 1, &data));
+      ShapeHandle data_splits = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(data_splits, 1, &data_splits));
+      c->set_output(1, data_splits);
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

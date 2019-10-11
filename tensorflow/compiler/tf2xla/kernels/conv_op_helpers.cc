@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -85,7 +86,7 @@ xla::XlaOp TransposeInputForGroupConvolutionBackpropFilter(
     int batch_dim, int depth_dim) {
   // 1. Reshape the depth_dim C into [G, C/G]
   int num_dims = input_shape.dimensions_size();
-  std::vector<int64> reshape_dims = input_shape.dimensions();
+  std::vector<int64> reshape_dims = xla::SpanToVector(input_shape.dimensions());
   reshape_dims[depth_dim] = reshape_dims[depth_dim] / num_groups;
   reshape_dims.insert(reshape_dims.begin() + depth_dim, num_groups);
   xla::XlaOp result = xla::Reshape(input, reshape_dims);

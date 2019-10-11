@@ -16,17 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
 namespace xla {
-namespace mlir {
+namespace mlir_gpu {
 
 // A Compiler implementation that converts XLAs IR to a matching MLIR dialect,
 // performs all lowering on the MLIR IR and finally converts MLIR to LLVMIR for
 // generation of a think suitable for XLAs runtime.
 class MlirCompiler : public Compiler {
+  using ErrorHandler =
+      std::function<void(const EmissionContext::ErrorMap&, HloModule*)>;
+
  public:
-  MlirCompiler() {}
+  MlirCompiler();
 
   se::Platform::Id PlatformId() const override;
 
@@ -36,16 +43,6 @@ class MlirCompiler : public Compiler {
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group,
-      absl::Span<se::StreamExecutor* const> executors,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -58,15 +55,38 @@ class MlirCompiler : public Compiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // TODO(herhut): Get this from the LLVMDialect in MLIR.
-    int64 pointer_size = 8;
+    int64 pointer_size = pointer_size_;
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
   }
+
+  struct IRHook {
+    enum class LoweringStage { LHLO, GPU, LLVM, KERNEL };
+
+    Status invoke(LoweringStage stage_, mlir::ModuleOp module) {
+      if (callback && stage == stage_) {
+        return callback(module);
+      }
+      return Status::OK();
+    }
+
+    std::function<Status(mlir::ModuleOp)> callback;
+    LoweringStage stage;
+  };
+
+  void SetModuleHook(IRHook module_hook);
+  void RemoveModuleHook();
+  void SetErrorHandler(ErrorHandler error_handler);
+
+ private:
+  ::mlir::MLIRContext context_;
+  int64 pointer_size_;
+  IRHook module_hook_;
+  ErrorHandler error_handler_;
 };
 
-}  // namespace mlir
+}  // namespace mlir_gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_

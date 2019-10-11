@@ -23,13 +23,12 @@ limitations under the License.
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
 
-struct TF_Tensor {
-  ~TF_Tensor();
-
-  TF_DataType dtype;
-  tensorflow::TensorShape shape;
-  tensorflow::TensorBuffer* buffer;
-};
+// This struct forms part of the C API's public interface. It must strictly be
+// passed to or returned from C functions *by pointer*. Otherwise, changes to
+// its internal structure will break the C API's binary interface.
+typedef struct TF_Tensor {
+  ::tensorflow::Tensor tensor;
+} TF_Tensor;
 
 namespace tensorflow {
 
@@ -42,5 +41,13 @@ class TensorCApi {
   }
 };
 
+// Allocates tensor data buffer using specified allocator.
+// `operation` is a name for this operation.
+void* allocate_tensor(const char* operation, size_t len, Allocator* allocator);
+
+// Deallocates tensor data buffer.
+// Defaults to deallocating using CPU allocator. You can pass pointer to
+// a different Allocator as `arg`.
+void deallocate_buffer(void* data, size_t len, void* arg);
 }  // namespace tensorflow
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

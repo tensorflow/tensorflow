@@ -190,13 +190,8 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
-#if defined(_MSC_VER)
-constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
-constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
-#else
-constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
-constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
-#endif
+constexpr const char MemmappedFileSystem::kMemmappedPackagePrefix[];
+constexpr const char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {

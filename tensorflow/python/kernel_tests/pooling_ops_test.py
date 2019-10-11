@@ -206,8 +206,10 @@ class PoolingTest(test.TestCase):
 
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float32, expected, use_gpu, v2)
-    self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
-                        data_format, dtypes.float64, expected, use_gpu, v2)
+    if not test.is_built_with_rocm():
+      # double datatype is not supported for pooling ops on the ROCm platform
+      self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                          data_format, dtypes.float64, expected, use_gpu, v2)
 
     if not use_gpu or test_util.GpuSupportsHalfMatMulAndConv():
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,

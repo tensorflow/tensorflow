@@ -1,7 +1,9 @@
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
+    "gen_zipped_test_file",
     "generated_test_models_all",
+    "merged_test_models",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -11,12 +13,20 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+gen_zipped_test_file(
+    name = "zip_conv_edgetpu",
+    file = "conv_edgetpu.zip",
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
 )
 
 [gen_zip_test(
@@ -64,7 +74,7 @@ package(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -74,11 +84,21 @@ test_suite(
 )
 
 py_library(
-    name = "generate_examples_lib",
-    srcs = ["generate_examples_lib.py"],
+    name = "toco_convert",
+    srcs = ["toco_convert.py"],
     data = [
         "//tensorflow/lite/toco",
     ],
+    deps = [
+        ":generate_examples_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_report",
@@ -93,13 +113,11 @@ py_library(
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    data = [
-        "//tensorflow/lite/toco",
-    ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",
+        ":toco_convert",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -190,6 +208,7 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/tools/evaluation:utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -242,6 +261,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
@@ -335,6 +355,7 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
@@ -368,6 +389,7 @@ cc_library(
     deps = [
         ":split",
         ":tflite_diff_util",
+        ":tflite_driver",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",

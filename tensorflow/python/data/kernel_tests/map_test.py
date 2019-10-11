@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from collections import namedtuple
 import threading
+import time
 import warnings
 
 from absl.testing import parameterized
@@ -521,10 +522,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -554,10 +555,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       def divide():
         return x // 2
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              divide,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), divide),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -595,10 +596,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -731,6 +732,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
+
+  def testSparseMapShapeInference(self):
+    if not context.executing_eagerly():
+      self.skipTest("SparseTensor shape inference requires eager mode")
+    row_lengths = np.random.randint(0, 4, size=128)
+    values = np.ones(np.sum(row_lengths))
+    sparse = ragged_tensor.RaggedTensor.from_row_lengths(
+        values, row_lengths).to_sparse()
+    dataset = dataset_ops.Dataset.from_tensor_slices(sparse)
+    dataset = dataset.batch(32, drop_remainder=True)
+    dataset = dataset.map(lambda x: x)
+    self.assertEqual((32, 3), dataset.element_spec.shape)
+
+  def testSparseMapShapeInferencePartial(self):
+    if not context.executing_eagerly():
+      self.skipTest("SparseTensor shape inference requires eager mode")
+    row_lengths = np.random.randint(0, 4, size=128)
+    values = np.ones(np.sum(row_lengths))
+    sparse = ragged_tensor.RaggedTensor.from_row_lengths(
+        values, row_lengths).to_sparse()
+    dataset = dataset_ops.Dataset.from_tensor_slices(sparse)
+    dataset = dataset.batch(32, drop_remainder=False)
+    dataset = dataset.map(lambda x: x)
+    self.assertEqual([None, 3], dataset.element_spec.shape.as_list())
 
   def testTensorArray(self):
 
@@ -1093,6 +1118,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensors(constant_op.constant(1.0))
     dataset.map(func)
+
+  @parameterized.named_parameters(
+      ("Sequential", None),
+      ("Parallel", 12),
+  )
+  @test_util.run_v1_only("graph-mode specific test")
+  def testSkipEagerMapCancellation(self, num_parallel_calls):
+    # Checks that a cancellation of is threaded through to map transformation.
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int32, ())
+
+    def fn(_):
+      return queue.dequeue()
+
+    dataset = dataset_ops.Dataset.range(1).map(
+        fn, num_parallel_calls=num_parallel_calls)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+      thread.start()
+      time.sleep(0.2)
+      sess.close()
+      thread.join()
+
 
 # TODO(shivaniagarwal): separate out `map` and `map_with_legacy_function` tests
 # as later would not work in v2.

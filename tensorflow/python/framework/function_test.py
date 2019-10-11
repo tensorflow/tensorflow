@@ -1388,6 +1388,20 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(FunctionWithBoolAttr.definition.attr["experimental_tag"].b,
                      True)
 
+  def testImplementsReferenceAttrs(self):
+
+    @function.Defun(
+        dtypes.int32, _implements="org.google.lstm", _reference="arxiv.org")
+    def FunctionWithStrAttr(i):
+      return array_ops.identity(i)
+
+    self.assertIn("_implements", FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["_implements"].s,
+                     b"org.google.lstm")
+    self.assertIn("_reference", FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["_reference"].s,
+                     b"arxiv.org")
+
 
 class FunctionOverloadTest(test.TestCase):
 

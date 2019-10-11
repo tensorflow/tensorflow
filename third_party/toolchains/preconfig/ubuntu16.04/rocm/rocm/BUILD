@@ -1,6 +1,35 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
+
+# Point both runtimes to the same python binary to ensure we always
+# use the python binary specified by ./configure.py script.
+py_runtime(
+    name = "py2_runtime",
+    interpreter_path = "/usr/bin/python3",
+    python_version = "PY2",
+)
+
+py_runtime(
+    name = "py3_runtime",
+    interpreter_path = "/usr/bin/python3",
+    python_version = "PY3",
+)
+
+py_runtime_pair(
+    name = "py_runtime_pair",
+    py2_runtime = ":py2_runtime",
+    py3_runtime = ":py3_runtime",
+)
+
+toolchain(
+    name = "py_toolchain",
+    toolchain = ":py_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
 
 config_setting(
     name = "using_hipcc",
@@ -14,6 +43,7 @@ cc_library(
     hdrs = [
         "rocm/rocm_config.h",
         ":miopen-include",
+        ":rccl-include",
         ":rocblas-include",
         ":rocfft-include",
         ":rocm-include",
@@ -88,6 +118,18 @@ cc_library(
 )
 
 cc_library(
+    name = "rccl",
+    srcs = ["rocm/lib/librccl.so"],
+    data = ["rocm/lib/librccl.so"],
+    includes = [
+        ".",
+        "rocm/include",
+    ],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "rocm",
     visibility = ["//visibility:public"],
     deps = [
@@ -98,6 +140,11 @@ cc_library(
         ":rocfft",
         ":rocm_headers",
     ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
 )
 
 genrule(
@@ -218,13 +265,13 @@ genrule(
         "rocm/include/hip/hcc_detail/hip_fp16_math_fwd.h",
         "rocm/include/hip/hcc_detail/hip_ldg.h",
         "rocm/include/hip/hcc_detail/hip_memory.h",
-        "rocm/include/hip/hcc_detail/hip_prof_api.h",
         "rocm/include/hip/hcc_detail/hip_prof_str.h",
         "rocm/include/hip/hcc_detail/hip_runtime.h",
         "rocm/include/hip/hcc_detail/hip_runtime_api.h",
         "rocm/include/hip/hcc_detail/hip_surface_types.h",
         "rocm/include/hip/hcc_detail/hip_texture_types.h",
         "rocm/include/hip/hcc_detail/hip_vector_types.h",
+        "rocm/include/hip/hcc_detail/hiprtc.h",
         "rocm/include/hip/hcc_detail/host_defines.h",
         "rocm/include/hip/hcc_detail/hsa_helpers.hpp",
         "rocm/include/hip/hcc_detail/llvm_intrinsics.h",
@@ -244,6 +291,7 @@ genrule(
         "rocm/include/hip/hip_runtime_api.h",
         "rocm/include/hip/hip_texture_types.h",
         "rocm/include/hip/hip_vector_types.h",
+        "rocm/include/hip/hiprtc.h",
         "rocm/include/hip/math_functions.h",
         "rocm/include/hip/nvcc_detail/channel_descriptor.h",
         "rocm/include/hip/nvcc_detail/hip_complex.h",
@@ -288,6 +336,7 @@ genrule(
         "rocm/include/miopen/export.h",
         "rocm/include/miopen/miopen.h",
         "rocm/include/miopen/version.h",
+        "rocm/include/miopen_kernel_includes.h",
         "rocm/include/miopen_kernels.h",
         "rocm/include/miopengemm/accuracytests.hpp",
         "rocm/include/miopengemm/alphagenerator.hpp",
@@ -340,12 +389,14 @@ genrule(
         "rocm/include/opencl1.2-c.pch",
         "rocm/include/opencl2.0-c.pch",
         "rocm/include/profiler/CXLActivityLogger/CXLActivityLogger.h",
+        "rocm/include/rccl.h",
         "rocm/include/rocblas-auxiliary.h",
         "rocm/include/rocblas-export.h",
         "rocm/include/rocblas-functions.h",
         "rocm/include/rocblas-types.h",
         "rocm/include/rocblas-version.h",
         "rocm/include/rocblas.h",
+        "rocm/include/rocblas_bfloat16.h",
         "rocm/include/rocfft-export.h",
         "rocm/include/rocfft-version.h",
         "rocm/include/rocfft.h",
@@ -394,6 +445,7 @@ genrule(
         "rocm/include/rocblas/rocblas-types.h",
         "rocm/include/rocblas/rocblas-version.h",
         "rocm/include/rocblas/rocblas.h",
+        "rocm/include/rocblas/rocblas_bfloat16.h",
     ],
     cmd = """cp -rLf "/opt/rocm/rocblas/include/." "$(@D)/rocm/include/rocblas/" """,
 )
@@ -405,9 +457,18 @@ genrule(
         "rocm/include/miopen/miopen/export.h",
         "rocm/include/miopen/miopen/miopen.h",
         "rocm/include/miopen/miopen/version.h",
+        "rocm/include/miopen/miopen_kernel_includes.h",
         "rocm/include/miopen/miopen_kernels.h",
     ],
     cmd = """cp -rLf "/opt/rocm/miopen/include/." "$(@D)/rocm/include/miopen/" """,
+)
+
+genrule(
+    name = "rccl-include",
+    outs = [
+        "rocm/include/rccl/rccl.h",
+    ],
+    cmd = """cp -rLf "/opt/rocm/rccl/include/." "$(@D)/" """,
 )
 
 genrule(
@@ -418,10 +479,12 @@ genrule(
         "rocm/lib/librocfft.so",
         "rocm/lib/libhiprand.so",
         "rocm/lib/libMIOpen.so",
+        "rocm/lib/librccl.so",
     ],
     cmd = """cp -f "/opt/rocm/hip/lib/libhip_hcc.so" "$(location rocm/lib/libhip_hcc.so)" && \
-cp -f "/opt/rocm/rocblas/lib/librocblas.so.2.2.6.0" "$(location rocm/lib/librocblas.so)" && \
-cp -f "/opt/rocm/rocfft/lib/librocfft.so.0.9.3.0" "$(location rocm/lib/librocfft.so)" && \
-cp -f "/opt/rocm/hiprand/lib/libhiprand.so.1.8.2" "$(location rocm/lib/libhiprand.so)" && \
-cp -f "/opt/rocm/miopen/lib/libMIOpen.so.1" "$(location rocm/lib/libMIOpen.so)" """,
+cp -f "/opt/rocm/rocblas/lib/librocblas.so.2.2.11.0" "$(location rocm/lib/librocblas.so)" && \
+cp -f "/opt/rocm/rocfft/lib/librocfft.so.0.9.4.0" "$(location rocm/lib/librocfft.so)" && \
+cp -f "/opt/rocm/hiprand/lib/libhiprand.so.2.6.0" "$(location rocm/lib/libhiprand.so)" && \
+cp -f "/opt/rocm/miopen/lib/libMIOpen.so.1" "$(location rocm/lib/libMIOpen.so)" && \
+cp -f "/opt/rocm/rccl/lib/librccl.so" "$(location rocm/lib/librccl.so)" """,
 )

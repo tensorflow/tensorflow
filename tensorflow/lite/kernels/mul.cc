@@ -101,8 +101,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type == kTfLiteInt16) {
     double real_multiplier =
         input1->params.scale * input2->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                       &data->output_shift);
   }
 
   return context->ResizeTensor(context, output, output_size);

@@ -30,6 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static mutex* get_counters_map_lock() {
@@ -266,7 +267,7 @@ class StatsAggregatorSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &summary_t));
     Summary summary;
     resource->stats_aggregator()->EncodeToProto(&summary);
-    summary_t->scalar<string>()() = summary.SerializeAsString();
+    summary_t->scalar<tstring>()() = summary.SerializeAsString();
   }
 };
 
@@ -316,5 +317,6 @@ REGISTER_KERNEL_BUILDER(
     StatsAggregatorSetSummaryWriterOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

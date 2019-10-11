@@ -304,13 +304,8 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-def _reduce_join_reduction_dims(x, axis, reduction_indices):
-  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _reduce_join_reduction_dims(x, axis):
+  """Returns range(rank(x) - 1, 0, -1) if axis is None; or axis otherwise."""
   if axis is not None:
     return axis
   else:
@@ -324,35 +319,73 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
 
 
 @tf_export(v1=["strings.reduce_join", "reduce_join"])
+@deprecation.deprecated_args(None,
+                             "keep_dims is deprecated, use keepdims instead",
+                             "keep_dims")
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
-                keep_dims=False,
+                keep_dims=None,
                 separator="",
                 name=None,
                 reduction_indices=None,
                 keepdims=None):
-  keep_dims = deprecation.deprecated_argument_lookup(
-      "keepdims", keepdims, "keep_dims", keep_dims)
-  inputs_t = ops.convert_to_tensor(inputs)
-  reduction_indices = _reduce_join_reduction_dims(
-      inputs_t, axis, reduction_indices)
-  return gen_string_ops.reduce_join(
-      inputs=inputs_t,
-      reduction_indices=reduction_indices,
-      keep_dims=keep_dims,
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
+  axis = deprecation.deprecated_argument_lookup("axis", axis,
+                                                "reduction_indices",
+                                                reduction_indices)
+  return reduce_join_v2(
+      inputs=inputs,
+      axis=axis,
+      keepdims=keepdims,
       separator=separator,
       name=name)
 
 
 @tf_export("strings.reduce_join", v1=[])
+@dispatch.add_dispatch_support
 def reduce_join_v2(  # pylint: disable=missing-docstring
     inputs,
     axis=None,
     keepdims=False,
     separator="",
     name=None):
-  return reduce_join(
-      inputs, axis, keep_dims=keepdims, separator=separator, name=name)
+  """Joins all strings into a single string, or joins along an axis.
+
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']]).numpy()
+  b'abc123def456'
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']], axis=-1).numpy()
+  array([b'abc123', b'def456'], dtype=object)
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']],
+  ...                        axis=-1,
+  ...                        separator=" ").numpy()
+  array([b'abc 123', b'def 456'], dtype=object)
+
+  Args:
+    input: A `tf.string` tensor.
+    axis: Which axis to join along. The default behavior is to join all
+      elements, producing a scalar.
+    keepdims: If true, retains reduced dimensions with length 1.
+    separator: a string added between each string being joined.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor.
+  """
+  with ops.name_scope(None, "ReduceJoin", [inputs, axis]):
+    inputs_t = ops.convert_to_tensor(inputs)
+    axis = _reduce_join_reduction_dims(inputs_t, axis)
+    return gen_string_ops.reduce_join(
+        inputs=inputs_t,
+        reduction_indices=axis,
+        keep_dims=keepdims,
+        separator=separator,
+        name=name)
 
 
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(

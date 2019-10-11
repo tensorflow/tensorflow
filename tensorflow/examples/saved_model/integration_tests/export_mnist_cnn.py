@@ -41,6 +41,11 @@ flags.DEFINE_integer(
     'epochs', 10,
     'Number of epochs to train.')
 flags.DEFINE_bool(
+    'use_keras_save_api', False,
+    'Uses tf.keras.models.save_model() on the feature extractor '
+    'instead of tf.saved_model.save() on a manually wrapped version. '
+    'With this, the exported model has no hparams.')
+flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
 flags.DEFINE_bool(
@@ -117,7 +122,7 @@ def wrap_keras_model_for_export(model, batch_input_shape,
   # the desired argspec.
   def wrapped(*args, **kwargs):  # TODO(arnoegw): Can we use call_fn itself?
     return call_fn(*args, **kwargs)
-  traced_call_fn = tf.function(autograph=False)(
+  traced_call_fn = tf.function(
       tf_decorator.make_decorator(call_fn, wrapped, decorator_argspec=argspec))
 
   # Now we need to trigger traces for all supported combinations of the
@@ -180,11 +185,19 @@ def main(argv):
   # Save the feature extractor to a framework-agnostic SavedModel for reuse.
   # Note that the feature_extractor object has not been compiled or fitted,
   # so it does not contain an optimizer and related state.
-  exportable = wrap_keras_model_for_export(feature_extractor,
-                                           (None,) + mnist_util.INPUT_SHAPE,
-                                           set_feature_extractor_hparams,
-                                           default_hparams)
-  tf.saved_model.save(exportable, FLAGS.export_dir)
+  if FLAGS.use_keras_save_api:
+    # Use Keras' built-in way of creating reusable SavedModels.
+    # This has no support for adjustable hparams at this time (July 2019).
+    # (We could also call tf.saved_model.save(feature_extractor, ...),
+    # point is we're passing a Keras model, not a plain Checkpoint.)
+    tf.keras.models.save_model(feature_extractor, FLAGS.export_dir)
+  else:
+    # Assemble a reusable SavedModel manually, with adjustable hparams.
+    exportable = wrap_keras_model_for_export(feature_extractor,
+                                             (None,) + mnist_util.INPUT_SHAPE,
+                                             set_feature_extractor_hparams,
+                                             default_hparams)
+    tf.saved_model.save(exportable, FLAGS.export_dir)
 
 
 if __name__ == '__main__':

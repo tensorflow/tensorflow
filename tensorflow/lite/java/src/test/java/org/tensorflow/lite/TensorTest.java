@@ -67,6 +67,7 @@ public final class TensorTest {
     assertThat(tensor.numBytes()).isEqualTo(2 * 8 * 8 * 3 * 4);
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
     assertThat(tensor.numDimensions()).isEqualTo(4);
+    assertThat(tensor.name()).isEqualTo("output");
   }
 
   @Test

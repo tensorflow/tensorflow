@@ -23,6 +23,7 @@ import errno
 import gc
 import itertools
 import os
+import re
 import shutil
 import tempfile
 import warnings
@@ -234,10 +235,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
-        use_function_backup=False,
         max_batch_size=min(batch_list))
-    return conversion_params._replace(
-        use_function_backup=IsQuantizationWithCalibration(conversion_params))
+    return conversion_params
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -388,8 +387,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=conversion_params.minimum_segment_size,
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
-        use_calibration=conversion_params.use_calibration,
-        use_function_backup=conversion_params.use_function_backup)
+        use_calibration=conversion_params.use_calibration)
 
   def _GetCalibratedInferGraph(self, run_params, saved_model_dir, inputs_data):
     """Return trt converted graphdef in INT8 mode."""
@@ -558,21 +556,18 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if node.op == "TRTEngineOp":
         logging.info("Found TRTEngineOp: " + node.name)
         num_engines += 1
-        segment_funcdef_name = node.attr["segment_funcdef_name"].s
+        segment_funcdef_name = node.attr["segment_func"].func.name
         function_name = node.name + "_native_segment"
-        if IsQuantizationWithCalibration(run_params):
-          self.assertNotEmpty(segment_funcdef_name, node.name)
-          self.assertIn(function_name, functions)
-        else:
-          self.assertEmpty(segment_funcdef_name, node.name)
-          self.assertNotIn(function_name, functions)
+        is_dynamic_engine = not node.attr["static_engine"].b
+        self.assertNotEmpty(segment_funcdef_name, node.name)
+        self.assertIn(function_name, functions)
+        if not IsQuantizationWithCalibration and not is_dynamic_engine:
+          self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(node.name, expected_engines)
-        self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertEqual(
             self._ToBytes(run_params.precision_mode),
             node.attr["precision_mode"].s, node.name)
 
-        is_dynamic_engine = not node.attr["static_engine"].b
         self.assertEqual(run_params.dynamic_engine, is_dynamic_engine,
                          node.name)
         self.assertEqual(node.attr["use_calibration"].b,
@@ -602,10 +597,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
     ]
     for func in gdef_to_verify.library.function:
-      for node in func.node_def:
-        all_op_names.append(node.name)
-        if node.op == "TRTEngineOp":
-          trt_op_names.append(node.name)
+      if not re.search(r"TRTEngineOp_\d+_native_segment", func.signature.name):
+        for node in func.node_def:
+          all_op_names.append(node.name)
+          if node.op == "TRTEngineOp":
+            trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
       return set([self._ToString(name.split("/")[-1]) for name in names])

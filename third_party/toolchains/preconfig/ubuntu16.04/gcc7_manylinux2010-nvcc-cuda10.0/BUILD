@@ -57,14 +57,12 @@ cc_toolchain(
 cc_toolchain_config(
     name = "cc-compiler-local-config",
     builtin_include_directories = [
-        "/usr/include/c++/5",
-        "/usr/include/x86_64-linux-gnu/c++/5",
-        "/usr/include/c++/5/backward",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include",
-        "/usr/local/include",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include-fixed",
-        "/usr/include/x86_64-linux-gnu",
-        "/usr/include",
+        "/dt7/usr/include/c++/7",
+        "/dt7/usr/include/c++/7/x86_64-pc-linux-gnu",
+        "/dt7/usr/include/c++/7/backward",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include-fixed",
+        "/dt7/usr/include",
         "/usr/local/cuda-10.0/targets/x86_64-linux/include",
         "/usr/local/cuda-10.0/include",
         "/usr/local/cuda-10.0/extras/CUPTI/include",
@@ -73,10 +71,10 @@ cc_toolchain_config(
     cpu = "local",
     extra_no_canonical_prefixes_flags = ["-fno-canonical-system-headers"],
     host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
-    host_compiler_prefix = "/dt7/usr/bin",
+    host_compiler_prefix = "/usr/bin",
     host_compiler_warnings = [],
     host_unfiltered_compile_flags = [],
-    linker_bin_path = "/dt7/usr/bin",
+    linker_bin_path = "/usr/bin",
 )
 
 cc_toolchain(
@@ -95,14 +93,12 @@ cc_toolchain(
 cc_toolchain_config(
     name = "cc-compiler-local-darwin",
     builtin_include_directories = [
-        "/usr/include/c++/5",
-        "/usr/include/x86_64-linux-gnu/c++/5",
-        "/usr/include/c++/5/backward",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include",
-        "/usr/local/include",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include-fixed",
-        "/usr/include/x86_64-linux-gnu",
-        "/usr/include",
+        "/dt7/usr/include/c++/7",
+        "/dt7/usr/include/c++/7/x86_64-pc-linux-gnu",
+        "/dt7/usr/include/c++/7/backward",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include-fixed",
+        "/dt7/usr/include",
         "/usr/local/cuda-10.0/targets/x86_64-linux/include",
         "/usr/local/cuda-10.0/include",
         "/usr/local/cuda-10.0/extras/CUPTI/include",
@@ -111,10 +107,10 @@ cc_toolchain_config(
     cpu = "darwin",
     extra_no_canonical_prefixes_flags = ["-fno-canonical-system-headers"],
     host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
-    host_compiler_prefix = "/dt7/usr/bin",
+    host_compiler_prefix = "/usr/bin",
     host_compiler_warnings = [],
     host_unfiltered_compile_flags = [],
-    linker_bin_path = "/dt7/usr/bin",
+    linker_bin_path = "/usr/bin",
 )
 
 cc_toolchain(
@@ -133,14 +129,12 @@ cc_toolchain(
 cc_toolchain_config(
     name = "cc-compiler-windows-config",
     builtin_include_directories = [
-        "/usr/include/c++/5",
-        "/usr/include/x86_64-linux-gnu/c++/5",
-        "/usr/include/c++/5/backward",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include",
-        "/usr/local/include",
-        "/usr/lib/gcc/x86_64-linux-gnu/5/include-fixed",
-        "/usr/include/x86_64-linux-gnu",
-        "/usr/include",
+        "/dt7/usr/include/c++/7",
+        "/dt7/usr/include/c++/7/x86_64-pc-linux-gnu",
+        "/dt7/usr/include/c++/7/backward",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include",
+        "/dt7/usr/lib/gcc/x86_64-pc-linux-gnu/7/include-fixed",
+        "/dt7/usr/include",
         "/usr/local/cuda-10.0/targets/x86_64-linux/include",
         "/usr/local/cuda-10.0/include",
         "/usr/local/cuda-10.0/extras/CUPTI/include",

@@ -89,7 +89,7 @@ class _ObjectGraphProtoPrettyPrinter(object):
     """Lazily creates a mapping from node id to ("path", "to", "root")."""
     if self._node_name_cache is not None:
       return self._node_name_cache
-    path_to_root = object_identity.ObjectIdentityDictionary()
+    path_to_root = {}
     path_to_root[0] = ("(root)",)
     to_visit = collections.deque([0])
     while to_visit:
@@ -155,7 +155,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
           "load status object, e.g. "
           "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
           "warnings, or use assert_consumed() to make the check explicit. See "
-          "https://www.tensorflow.org/alpha/guide/checkpoints#loading_mechanics"
+          "https://www.tensorflow.org/guide/checkpoint#loading_mechanics"
           " for details.")
 
 
@@ -301,7 +301,10 @@ class _NameBasedRestoreCoordinator(object):
   def __init__(self, save_path, dtype_map=None):
     self.save_path = save_path
     self.dtype_map = dtype_map
-    self.unused_attributes = weakref.WeakKeyDictionary()
+    # A map from trackable objects to unused attribute names. We don't have
+    # proto IDs when doing a name-based restore, so the map keys differ from
+    # those in _CheckpointRestoreCoordinator.
+    self.unused_attributes = object_identity.ObjectIdentityWeakKeyDictionary()
     self.restore_uid = ops.uid()
 
   def globally_named_object_attributes(self, trackable):
@@ -930,11 +933,14 @@ class NameBasedSaverStatus(_LoadStatus):
 
   def assert_consumed(self):
     """Raises an exception if any variables/objects are unmatched."""
-    unused_attributes = dict(self._checkpoint.unused_attributes)
+    unused_attributes = list(self._checkpoint.unused_attributes.items())
     if unused_attributes:
+      unused_attribute_strings = [
+          "\n    {}: {}".format(obj, attributes)
+          for obj, attributes in unused_attributes]
       raise AssertionError(
-          "Some objects had attributes which were not restored: %s" %
-          (unused_attributes,))
+          "Some objects had attributes which were not restored:{}".format(
+              "".join(unused_attribute_strings)))
     for trackable in self._graph_view.list_objects():
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
@@ -1406,7 +1412,7 @@ class CheckpointV1(tracking.AutoTrackable):
   `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
   attached (or vice versa) will not match the `Model`'s variables. See the
   [guide to training
-  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  checkpoints](https://www.tensorflow.org/guide/checkpoint) for
   details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
   training checkpoints.
 
@@ -1743,7 +1749,7 @@ class Checkpoint(tracking.AutoTrackable):
   `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
   attached (or vice versa) will not match the `Model`'s variables. See the
   [guide to training
-  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  checkpoints](https://www.tensorflow.org/guide/checkpoint) for
   details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
   training checkpoints.
 

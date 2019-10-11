@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -103,12 +104,18 @@ class SquareLinearOperatorFullMatrixTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=True)
     with self.cached_session():
       with self.assertRaises(errors.InvalidArgumentError):
         operator.assert_positive_definite().run()
+
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.check_tape_safe(operator)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -173,6 +180,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     self.assertTrue(operator._can_use_cholesky)
     self.assertTrue(operator.is_square)
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_non_singular(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
@@ -191,6 +199,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
@@ -200,6 +209,12 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       # non-singular.
       with self.assertRaisesOpError(""):
         operator.assert_positive_definite().run()
+
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorFullMatrix(
+        matrix, is_self_adjoint=True, is_positive_definite=True)
+    self.check_tape_safe(operator)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -233,6 +248,11 @@ class NonSquareLinearOperatorFullMatrixTest(
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorFullMatrix([1.])
+
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2., 1.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.check_tape_safe(operator)
 
 
 if __name__ == "__main__":

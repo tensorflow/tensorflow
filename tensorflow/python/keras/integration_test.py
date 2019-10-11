@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
@@ -56,15 +57,13 @@ class KerasIntegrationTest(keras_parameterized.TestCase):
 class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
 
   def test_vector_classification(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     model = testing_utils.get_model_from_layers(
         [keras.layers.Dense(16, activation='relu'),
@@ -76,7 +75,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -95,7 +94,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     base_model = testing_utils.get_model_from_layers(
         [keras.layers.Dense(16,
@@ -113,7 +112,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     if not testing_utils.should_run_eagerly():
       self.assertEqual(len(model.get_losses_for(None)), 2)
       self.assertEqual(len(model.get_updates_for(x)), 2)
@@ -143,7 +142,7 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
     model = keras.Sequential([
         keras.layers.Dense(16, activation='relu'),
         keras.layers.Dropout(0.1),
@@ -154,7 +153,7 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x_train, y_train, epochs=1, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)
@@ -177,7 +176,7 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -195,16 +194,13 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_timeseries_classification(self):
-    if testing_utils.should_run_distributed():
-      # Test timeout, seems to be a performance issue.
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
         test_samples=0,
         input_shape=(4, 10),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     layers = [
         keras.layers.LSTM(5, return_sequences=True),
@@ -217,7 +213,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -228,16 +224,13 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
     self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
   def test_timeseries_classification_sequential_tf_rnn(self):
-    if testing_utils.should_run_distributed():
-      # Test timeout, seems to be a performance issue.
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
         test_samples=0,
         input_shape=(4, 10),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     model = keras.models.Sequential()
     model.add(keras.layers.RNN(rnn_cell.LSTMCell(5), return_sequences=True,
@@ -250,7 +243,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -266,15 +259,13 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
 class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
 
   def test_image_classification(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
         test_samples=0,
         input_shape=(10, 10, 3),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     layers = [
         keras.layers.Conv2D(4, 3, padding='same', activation='relu'),
@@ -291,7 +282,7 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -318,7 +309,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
 
     model = keras.Sequential([
         keras.layers.Flatten(input_shape=x_train.shape[1:]),
@@ -336,7 +327,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x_train, y_train, epochs=2, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)

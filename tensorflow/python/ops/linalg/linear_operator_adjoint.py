@@ -181,9 +181,8 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     return self.operator.matmul(
         x, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
-  def _matvec(self, x, adjoint=False, adjoint_arg=False):
-    return self.operator.matvec(
-        x, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
+  def _matvec(self, x, adjoint=False):
+    return self.operator.matvec(x, adjoint=(not adjoint))
 
   def _determinant(self):
     if self.is_self_adjoint:
@@ -202,9 +201,8 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     return self.operator.solve(
         rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
-  def _solvevec(self, rhs, adjoint=False, adjoint_arg=False):
-    return self.operator.solvevec(
-        rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
+  def _solvevec(self, rhs, adjoint=False):
+    return self.operator.solvevec(rhs, adjoint=(not adjoint))
 
   def _to_dense(self):
     if self.is_self_adjoint:

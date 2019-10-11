@@ -1,5 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string -
-// | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
   %cst = constant unit
@@ -9,7 +8,7 @@ func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf
   return %2 : tensor<40x40xf32>
 }
 
-// CHECK-NEXT: operators: [ {
+// CHECK: operators: [ {
 // CHECK-NEXT:       inputs: [ 0, 1, -1 ],
 // CHECK-NEXT:       outputs: [ 2, 3 ],
 // CHECK-NEXT:       builtin_options_type: FullyConnectedOptions,

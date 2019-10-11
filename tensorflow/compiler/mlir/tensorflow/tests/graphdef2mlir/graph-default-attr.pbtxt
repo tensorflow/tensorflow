@@ -1,7 +1,15 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
-# CHECK:  %3:2 = "_tf.Conv2D"(%2#0, %1#0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], name = "MobilenetV1/MobilenetV1/Conv2d_0/Conv2D", padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}
-# CHECK-NEXT: %4:2 = "_tf.MaxPool"(%3#0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", device = "", ksize = [1, 2, 2, 1], name = "MaxPool", padding = "SAME", strides = [1, 2, 2, 1]}
+# Verify that the data_format attributes is pulled from the default value in the
+# registry when not present in the GraphDef
+# CHECK:  tf.Conv2D
+# CHECK-SAME: data_format = "NHWC"
+
+# Verify that we can also pull some attributes that are needed to be able to
+# create a Graph in memory, like `T`.
+# CHECK: tf.MaxPool
+# CHECK-SAME: T = "tfdtype$DT_FLOAT"
+
 node {
   name: "input"
   op: "Placeholder"

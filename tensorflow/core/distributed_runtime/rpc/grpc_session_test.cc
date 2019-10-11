@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -286,6 +286,41 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   TF_CHECK_OK(session->Close());
 }
 
+TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  SessionOptions options = Options(cluster->targets()[0], 1);
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  {
+    // Just run to target node.
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+  }
+  {
+    // Attempting to get the partition graphs should fail.
+    RunOptions run_options;
+    run_options.set_output_partition_graphs(true);
+    RunMetadata run_metadata;
+    Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
+                            &run_metadata);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "disable_output_partition_graphs"));
+  }
+
+  TF_CHECK_OK(session->Close());
+}
+
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end
@@ -501,7 +536,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
   Graph graph(OpRegistry::Global());
   Tensor a_tensor(DT_STRING, TensorShape({2, 2}));
   for (int i = 0; i < 4; ++i) {
-    a_tensor.flat<string>()(i) = "hello, world";
+    a_tensor.flat<tstring>()(i) = "hello, world";
   }
   Node* a = test::graph::Constant(&graph, a_tensor);
   Node* b = test::graph::Identity(&graph, a);
@@ -525,7 +560,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
         ASSERT_EQ(outputs[0].dtype(), DT_STRING);
         ASSERT_EQ(outputs[0].NumElements(), 4);
         for (int i = 0; i < outputs[0].NumElements(); ++i) {
-          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
+          EXPECT_EQ(outputs[0].flat<tstring>()(i), "hello, world");
         }
         TF_CHECK_OK(session->Close());
       } else {

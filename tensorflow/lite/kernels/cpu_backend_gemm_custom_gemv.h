@@ -541,8 +541,10 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
       // being processed.
 
       // Add bias values.
-      int32x4_t bias_vec = vld1q_s32(params.bias + row);
-      reduced = vaddq_s32(reduced, bias_vec);
+      if (params.bias) {
+        int32x4_t bias_vec = vld1q_s32(params.bias + row);
+        reduced = vaddq_s32(reduced, bias_vec);
+      }
 
       // Get multiplier parameters.
       int32x4_t multiplier_fixedpoint;

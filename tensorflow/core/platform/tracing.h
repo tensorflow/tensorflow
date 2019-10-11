@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
@@ -139,67 +140,6 @@ class ScopedRegion {
 
  private:
   const EventCollector* collector_;
-};
-
-// Interface for accelerator profiler annotations.
-class TraceCollector {
- public:
-  class Handle {
-   public:
-    virtual ~Handle() {}
-  };
-
-  virtual ~TraceCollector() {}
-  virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const = 0;
-
-  // Returns true if this annotation tracing is enabled for any op.
-  virtual bool IsEnabledForAnnotations() const = 0;
-
-  static string ConcatenateNames(StringPiece first, StringPiece second);
-
- private:
-  friend void SetTraceCollector(const TraceCollector*);
-  friend const TraceCollector* GetTraceCollector();
-};
-// Set the callback for ScopedAnnotation and ScopedActivity.
-void SetTraceCollector(const TraceCollector* collector);
-// Returns the callback for ScopedAnnotation and ScopedActivity.
-const TraceCollector* GetTraceCollector();
-
-// Adds an annotation to all activities for the duration of the instance
-// lifetime through the currently registered TraceCollector.
-//
-// Usage: {
-//          ScopedAnnotation annotation("my kernels");
-//          Kernel1<<<x,y>>>;
-//          LaunchKernel2(); // Launches a CUDA kernel.
-//        }
-// This will add 'my kernels' to both kernels in the profiler UI
-class ScopedAnnotation {
- public:
-  explicit ScopedAnnotation(StringPiece name)
-      : ScopedAnnotation(name, StringPiece()) {}
-
-  // If tracing is enabled, add a name scope of
-  // "<name_part1>:<name_part2>".  This can be cheaper than the
-  // single-argument constructor because the concatenation of the
-  // label string is only done if tracing is enabled.
-  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2)
-      : handle_([&] {
-          auto trace_collector = GetTraceCollector();
-          return trace_collector ? trace_collector->CreateAnnotationHandle(
-                                       name_part1, name_part2)
-                                 : nullptr;
-        }()) {}
-
-  static bool IsEnabled() {
-    auto* trace_collector = GetTraceCollector();
-    return trace_collector && trace_collector->IsEnabledForAnnotations();
-  }
-
- private:
-  std::unique_ptr<TraceCollector::Handle> handle_;
 };
 
 // Return the pathname of the directory where we are writing log files.

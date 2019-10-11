@@ -186,7 +186,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                          /*input_buffer_bytes=*/k_buffer_size,
                          /*output_buffer_bytes=*/k_buffer_size,
                          io::ZlibCompressionOptions::GZIP());
-  string decompressed_pbtxt_string;
+  tstring decompressed_pbtxt_string;
   Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
   if (!s.ok() && !errors::IsOutOfRange(s)) {
     // OutOfRange is fine since we set the number of read bytes to INT_MAX.

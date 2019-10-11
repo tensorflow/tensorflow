@@ -18,6 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
+import numpy as np
+
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
@@ -26,7 +31,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 
@@ -69,7 +76,9 @@ class SingleWorkerTest(test.TestCase):
 
     @def_function.function
     def remote_output(i):
-      return variable_b, i + variable_b
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+        c = variable_b + 1
+      return c, i + variable_b
 
     with self.assertRaises(errors.UnimplementedError) as cm:
       remote_output(constant_op.constant([1]))
@@ -87,11 +96,49 @@ class SingleWorkerTest(test.TestCase):
 
     with self.assertRaises(errors.InvalidArgumentError) as cm:
       with ops.device('/job:worker/replica:0/task:0/cpu:0'):
-        self.assertAllEqual(
-            ambiguous_device(constant_op.constant([2])).numpy(), [3])
+        ambiguous_device(constant_op.constant([2])).numpy()
 
     self.assertIn('the output node must match exactly one device',
                   cm.exception.message)
+
+  def testStreaming(self):
+    """A mini stress test for streaming - issuing many RPCs back to back."""
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      x = array_ops.ones([2, 2])
+      y = array_ops.zeros([2, 2])
+      num_iters = 200
+      for _ in range(num_iters):
+        y = x + y
+        # Ask for y's shape after every 10 additions on average.
+        # This exercises waiting for remote shape logic in TensorHandle.
+        if random.randint(1, 10) == 1:
+          _ = y.shape
+    np.testing.assert_array_equal(
+        [[num_iters, num_iters], [num_iters, num_iters]], y.numpy())
+
+  def testShapeError_OpByOp(self):
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      x = array_ops.ones([2, 3])
+      y = array_ops.zeros([2, 2])
+      with self.assertRaises(errors.InvalidArgumentError) as cm:
+        math_ops.matmul(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
+
+  def testShapeError_Function(self):
+
+    @def_function.function
+    def matmul_func(x, y):
+      return math_ops.matmul(x, y)
+
+    x = array_ops.ones([2, 3])
+    y = array_ops.zeros([2, 2])
+
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      with self.assertRaises(ValueError) as cm:
+        matmul_func(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
 
 
 class MultiWorkersTest(test.TestCase):
@@ -205,7 +252,6 @@ class MultiJobsTest(test.TestCase):
     super(MultiJobsTest, self).setUp()
 
     workers, ps = test_util.create_local_cluster(2, 1)
-
     cluster = {
         'my_worker': [
             _strip_prefix(workers[0].target, _GRPC_PREFIX),
@@ -213,10 +259,18 @@ class MultiJobsTest(test.TestCase):
         ],
         'my_ps': [_strip_prefix(ps[0].target, _GRPC_PREFIX)],
     }
+    self._cluster = server_lib.ClusterSpec(cluster)
+    self._cluster_resolver = SimpleClusterResolver(
+        cluster_spec=self._cluster, master=ps[0].target)
 
-    remote.connect_to_cluster(server_lib.ClusterSpec(cluster))
+  def tearDown(self):
+    super(MultiJobsTest, self).tearDown()
+
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
 
   def testSimpleParameterServer(self):
+    remote.connect_to_cluster(self._cluster)
 
     with ops.device('/job:my_ps/task:0/device:CPU:0'):
       v1 = variables.Variable(initial_value=0)
@@ -233,6 +287,37 @@ class MultiJobsTest(test.TestCase):
 
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
+
+  def testConnectWithClusterResolver(self):
+    remote.connect_to_cluster(self._cluster_resolver)
+
+    v1 = variables.Variable(initial_value=0)
+    v2 = variables.Variable(initial_value=10)
+
+    @def_function.function
+    def worker_fn():
+      v1.assign_add(1)
+      v2.assign_sub(2)
+      return v1.read_value() + v2.read_value()
+
+    with ops.device('/job:my_worker/task:0/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 9)
+
+    with ops.device('/job:my_worker/task:1/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 8)
+
+  def testConnectToClusterTwiceOk(self):
+    remote.connect_to_cluster(self._cluster_resolver)
+    remote.connect_to_cluster(self._cluster_resolver)
+
+  def testConnectToClusterOnMismatchedDevice(self):
+    remote.connect_to_cluster(self._cluster_resolver)
+
+    # enter into another device scope.
+    ops.device('/job:my_worker/task:0/device:CPU:0').__enter__()
+
+    with self.assertRaises(ValueError):
+      remote.connect_to_cluster(self._cluster_resolver)
 
 
 def _strip_prefix(s, prefix):

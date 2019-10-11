@@ -83,7 +83,7 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
     const ConstMatrixMap& rhs = inputs[1];
     MatrixMap& output = outputs->at(0);
 
-    if (matrix.rows() == 0 || rhs.cols() == 0) {
+    if (matrix.rows() == 0 || rhs.rows() == 0 || rhs.cols() == 0) {
       // To be consistent with the MatrixInverse op, we define the solution for
       // an empty set of equation as the empty matrix.
       return;

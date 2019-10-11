@@ -69,83 +69,83 @@ struct TestCase {
 
 // Test case 1: skip fewer than input size.
 TestCase SkipLessTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 4,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {7}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 6,
-          /*breakpoints*/ {0, 2, 7}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 4,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {4}),
+       CreateTensor<int64>(TensorShape{1}, {5}),
+       CreateTensor<int64>(TensorShape{1}, {6}),
+       CreateTensor<int64>(TensorShape{1}, {7}),
+       CreateTensor<int64>(TensorShape{1}, {8}),
+       CreateTensor<int64>(TensorShape{1}, {9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 6,
+      /*breakpoints*/ {0, 2, 7}};
 }
 
 // Test case 2: skip more than input size.
 TestCase SkipMoreTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 25,
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 2, 5}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 25,
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 3: skip exactly the input size.
 TestCase SkipAllTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 10,
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 2, 5}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 10,
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 4: skip nothing.
 TestCase SkipNothingTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 0,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {7}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 10,
-          /*breakpoints*/ {0, 2, 5, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 0,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {0}),
+       CreateTensor<int64>(TensorShape{1}, {1}),
+       CreateTensor<int64>(TensorShape{1}, {2}),
+       CreateTensor<int64>(TensorShape{1}, {3}),
+       CreateTensor<int64>(TensorShape{1}, {4}),
+       CreateTensor<int64>(TensorShape{1}, {5}),
+       CreateTensor<int64>(TensorShape{1}, {6}),
+       CreateTensor<int64>(TensorShape{1}, {7}),
+       CreateTensor<int64>(TensorShape{1}, {8}),
+       CreateTensor<int64>(TensorShape{1}, {9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 10,
+      /*breakpoints*/ {0, 2, 5, 11}};
 }
 
 // Test case 5: set -1 for `count` to skip the entire dataset.
 TestCase SkipEntireDatasetTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ -1,
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 2, 5}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ -1,
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {0, 2, 5}};
 }
 
 class ParameterizedSkipDatasetOpTest
@@ -354,41 +354,6 @@ TEST_P(ParameterizedSkipDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(skip_dataset);
 
   EXPECT_EQ(skip_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_F(SkipDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = SkipLessTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
-
-  std::unique_ptr<OpKernel> skip_dataset_kernel;
-  TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
-                                       test_case.expected_output_shapes,
-                                       &skip_dataset_kernel));
-  std::unique_ptr<OpKernelContext> skip_dataset_context;
-  TF_ASSERT_OK(CreateSkipDatasetContext(skip_dataset_kernel.get(),
-                                        &inputs_for_skip_dataset,
-                                        &skip_dataset_context));
-  DatasetBase *skip_dataset;
-  TF_ASSERT_OK(CreateDataset(skip_dataset_kernel.get(),
-                             skip_dataset_context.get(), &skip_dataset));
-  core::ScopedUnref scoped_unref(skip_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(skip_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputDtypes) {

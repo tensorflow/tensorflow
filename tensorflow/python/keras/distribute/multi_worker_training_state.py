@@ -57,6 +57,18 @@ def _remove_dir(dir_to_remove):
   file_io.delete_recursively(dir_to_remove)
 
 
+def _get_backup_filepath(original_filepath):
+  backup_dir = os.path.join(os.path.dirname(original_filepath), 'backup')
+  return backup_dir, os.path.join(backup_dir, 'training_state')
+
+
+def _get_temp_filepath(original_filepath):
+  temp_dir = os.path.join(
+      os.path.dirname(original_filepath), 'temp_training_states',
+      str(uuid.uuid4()))
+  return temp_dir, os.path.join(temp_dir, 'training_state')
+
+
 class MultiWorkerTrainingState(object):
   """Training state management class in multi-worker distributed training.
 
@@ -69,14 +81,14 @@ class MultiWorkerTrainingState(object):
     self._model = model
 
     # The directory and filepath that store the training state backup file.
-    self._backup_dir, self._backup_filepath = self._get_backup_filepath(
+    self._backup_dir, self._backup_filepath = _get_backup_filepath(
         original_filepath)
 
     # For those who should not checkpoint (e.g. non-chief worker in sync
     # training), create a temporary directory to write to (that will be
     # removed later).
     if not multi_worker_util.should_save_checkpoint():
-      self._temp_dir, self._temp_filepath = self._get_temp_filepath(
+      self._temp_dir, self._temp_filepath = _get_temp_filepath(
           original_filepath)
 
     # The epoch at which the checkpoint is saved. Used for fault-tolerance.
@@ -209,18 +221,9 @@ class MultiWorkerTrainingState(object):
     tracking.AutoTrackable.__setattr__(self._model, CKPT_SAVED_EPOCH,
                                        self._ckpt_saved_epoch)
 
-  def _get_backup_filepath(self, original_filepath):
-    backup_dir = os.path.join(os.path.dirname(original_filepath), 'backup')
-    return backup_dir, os.path.join(backup_dir, 'training_state')
-
-  def _get_temp_filepath(self, original_filepath):
-    temp_dir = os.path.join(
-        os.path.dirname(original_filepath), 'temp_training_states',
-        str(uuid.uuid4()))
-    return temp_dir, os.path.join(temp_dir, 'training_state')
-
   def _assert_in_multi_worker_mode(self):
-    if not multi_worker_util.in_multi_worker_mode():
+    # pylint: disable=protected-access
+    if not self._model._in_multi_worker_mode():
       raise ValueError('MultiWorkerTrainingState is only supposed to be used '
                        'in multi-worker training. This indicates some error '
                        'that needs to be fixed. Please submit a bug issue to '

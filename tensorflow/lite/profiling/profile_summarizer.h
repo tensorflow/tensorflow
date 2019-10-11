@@ -45,6 +45,8 @@ class ProfileSummarizer {
     return stats_calculator_->GetShortSummary();
   }
 
+  bool HasProfiles() const { return stats_calculator_->num_runs() >= 1; }
+
  private:
   std::unique_ptr<tensorflow::StatsCalculator> stats_calculator_;
 };

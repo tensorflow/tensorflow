@@ -35,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import layer_utils
+from tensorflow.python.util.compat import collections_abc
 
 
 class NoDependency(object):
@@ -139,9 +140,16 @@ class TrackableDataStructure(base.Trackable):
 
   def __init__(self):
     # Attributes prefixed with "_self_" for compatibility with
-    # wrapt.ObjectProxy.
+    # wrapt.ObjectProxy. All additional attrs MUST conform to this pattern, as
+    # extending `__slots__` on a subclass of ObjectProxy breaks in a variety of
+    # ways.
     self._self_trainable = True
     self._self_extra_variables = []
+    self._self_attribute_sentinel = layer_utils.AttributeSentinel(True)
+
+  @property
+  def _attribute_sentinel(self):
+    return self._self_attribute_sentinel
 
   @property
   def trainable(self):
@@ -163,6 +171,9 @@ class TrackableDataStructure(base.Trackable):
       # In subclassed models, legacy layers (tf.layers) must always use
       # resource variables.
       value._use_resource_variables = True  # pylint: disable=protected-access
+    value_attribute_sentinel = getattr(value, "_attribute_sentinel", None)
+    if value_attribute_sentinel:
+      value_attribute_sentinel.add_parent(self._attribute_sentinel)
     return value
 
   @property
@@ -185,7 +196,7 @@ class TrackableDataStructure(base.Trackable):
 
   @property
   def layers(self):
-    return layer_utils.filter_empty_layer_containers(self._layers)
+    return list(layer_utils.filter_empty_layer_containers(self._layers))
 
   @property
   def trainable_weights(self):
@@ -249,7 +260,7 @@ class TrackableDataStructure(base.Trackable):
     return self is other
 
 
-class List(TrackableDataStructure, collections.Sequence):
+class List(TrackableDataStructure, collections_abc.Sequence):
   """An append-only sequence type which is trackable.
 
   Maintains checkpoint dependencies on its contents (which must also be
@@ -371,9 +382,11 @@ class List(TrackableDataStructure, collections.Sequence):
 # TODO(tomhennigan) Update to collections.UserList?
 # TODO(allenl): Try switching this to wrapt.ObjectProxy again when we drop
 # Python 3.4 support (may still be tricky).
-class ListWrapper(List, collections.MutableSequence,
-                  # Shadowed, but there for isinstance checks.
-                  list):
+class ListWrapper(
+    List,
+    collections_abc.MutableSequence,
+    # Shadowed, but there for isinstance checks.
+    list):
   """Wraps the built-in `list` to support restore-on-create for variables.
 
   Unlike `List`, this sequence type is mutable in the same ways built-in lists
@@ -399,10 +412,36 @@ class ListWrapper(List, collections.MutableSequence,
     # Monotonic flags which indicate this object would not be restored properly,
     # and therefore should throw an error on save to avoid giving the impression
     # that restoring it will work.
-    self._non_append_mutation = False
-    self._external_modification = False
+    self._non_append_mutation_value = False
+    self._external_modification_value = False
     super(ListWrapper, self).__init__(wrapped_list)
     self._last_wrapped_list_snapshot = list(self._storage)
+
+  @property
+  def _non_append_mutation(self):
+    return self._non_append_mutation_value
+
+  @_non_append_mutation.setter
+  def _non_append_mutation(self, value):
+    # Trackable only cares that a mutation occured at some point; when
+    # attempting to save it checks whether a mutation occured and the object is
+    # in a "dirty" state but otherwise the specifics of how it got to that state
+    # are ignored. By contrast, the attribute cache needs to signal the mutation
+    # immediately since a caller could query the value of an attribute (And
+    # should not hit the cached value since the mutation may have affected the
+    # result.)
+    self._attribute_sentinel.invalidate_all()
+    self._non_append_mutation_value = value
+
+  @property
+  def _external_modification(self):
+    return self._external_modification_value
+
+  @_external_modification.setter
+  def _external_modification(self, value):
+    # Invalidate for the same reason as `_non_append_mutation`
+    self._attribute_sentinel.invalidate_all()
+    self._external_modification_value = value
 
   # pylint: disable=protected-access
   def __copy__(self):
@@ -436,6 +475,10 @@ class ListWrapper(List, collections.MutableSequence,
 
   def _update_snapshot(self):
     """Acknowledges tracked changes to the wrapped list."""
+
+    # Mutation tracking for attributes reuses the same infrastructure as
+    # Trackable mutation tracking.
+    self._attribute_sentinel.invalidate_all()
     if self._external_modification or self._non_append_mutation:
       return
     self._last_wrapped_list_snapshot = list(self._storage)
@@ -579,7 +622,7 @@ class ListWrapper(List, collections.MutableSequence,
     }
 
 
-class Mapping(TrackableDataStructure, collections.Mapping):
+class Mapping(TrackableDataStructure, collections_abc.Mapping):
   """An append-only trackable mapping data structure with string keys.
 
   Maintains checkpoint dependencies on its contents (which must also be
@@ -760,6 +803,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
 
   def _update_snapshot(self):
     """Acknowledges tracked changes to the wrapped dict."""
+    self._attribute_sentinel.invalidate_all()
     if self._dirty:
       return
     self._self_last_wrapped_dict_snapshot = dict(self)

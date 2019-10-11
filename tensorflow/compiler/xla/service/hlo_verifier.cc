@@ -615,6 +615,19 @@ Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
 }
 
 Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
+  if (fusion->called_computations().size() != 1) {
+    return InternalError(
+        "Fusion has a non-unary number of called computations (%s)",
+        fusion->ToString().c_str());
+  }
+  const Shape& root_computation_shape =
+      fusion->called_computations()[0]->root_instruction()->shape();
+  if (!ShapesSame(fusion->shape(), root_computation_shape)) {
+    return InternalError(
+        "Fused computation shape (%s) is not equal to the fusion shape (%s)",
+        root_computation_shape.ToString(true), fusion->shape().ToString(true));
+  }
+
   auto& fused_parameters = fusion->fused_parameters();
   if (fused_parameters.size() != fusion->operand_count()) {
     return InternalError(
@@ -625,7 +638,11 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
   for (HloInstruction* fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
-    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
+    // Since fusion buffers aren't materialized, fusion parameters will not have
+    // the same memory space as the fusion operand.
+    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape(),
+                    /*minor_to_major_only=*/false,
+                    /*ignore_memory_space=*/true)) {
       return InternalError(
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",
@@ -976,6 +993,12 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
   return CheckShape(get_size,
                     ShapeInference::InferGetDimensionSizeShape(
                         get_size->operand(0)->shape(), get_size->dimension()));
+}
+
+Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
+  return CheckShape(set_size,
+                    ShapeInference::InferSetDimensionSizeShape(
+                        set_size->operand(0)->shape(), set_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

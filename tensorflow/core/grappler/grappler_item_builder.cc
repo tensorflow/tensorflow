@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
@@ -200,6 +201,20 @@ Status UpdatePlaceholderShape(
   return Status::OK();
 }
 
+bool OutputShapesFullyDefined(const NodeDef& node) {
+  if (node.attr().count("_output_shapes") == 0) return false;
+
+  int size = node.attr().at("_output_shapes").list().shape_size();
+  for (int i = 0; i < size; ++i) {
+    const TensorShapeProto& shape =
+        node.attr().at("_output_shapes").list().shape(i);
+    for (int j = 0; j < shape.dim_size(); ++j) {
+      if (shape.dim(j).size() < 0) return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
@@ -239,7 +254,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(std::move(devices)));
+  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -256,7 +271,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env, &options.config,
                                         graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
   FunctionLibraryRuntime* flr = pflr->GetFLR(cpu_device->name());
@@ -267,8 +282,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      graph_ctor_opts, std::move(graph_def), graphptr.get()));
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
@@ -553,6 +568,21 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                   << node.name();
         *(iter->second.mutable_tensor()->mutable_string_val(0)) = it->second;
       }
+    }
+
+    // If the graph has _output_shapes and is not annotated, use it for
+    // shape annotation. This is only for tf-sim purpose with aggressive shape
+    // inference enabled.
+    // TODO(grappler-dev): Investigate if _output_shapes is reliable to be used
+    // in non-aggressive shape inference.
+    if (node.attr().count("_output_shapes") > 0 &&
+        node.attr().count(kOutputSame) == 0 &&
+        node.attr().count(kOutputShapes) == 0 &&
+        OutputShapesFullyDefined(node)) {
+      AttrValue attr_output_same;
+      attr_output_same.set_b(true);
+      AddNodeAttr(kOutputSame, attr_output_same, &node);
+      AddNodeAttr(kOutputShapes, node.attr().at("_output_shapes"), &node);
     }
 
     // Erase the recorded result of any previous shape inference to start again

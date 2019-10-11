@@ -410,7 +410,6 @@ void ProcessInputWithQuantizedModel(
   model->error_reporter();
   LOG(INFO) << "resolved reporter";
 
-  tflite::ops::builtin::BuiltinOpResolver resolver;
   LoadLabels(labels_file_name, labels_file_type, &labels);
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);

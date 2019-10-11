@@ -378,10 +378,13 @@ class DistributedDelegate(DistributedValues):
 
   def __getattr__(self, name):
     # The '_use_resource_variables' and the attrs starts with '_self' are used
-    # for restoring the saved_model proto. At the point these attrs are queried,
-    # the variable has not been initialized. Thus it should not query those of
-    # the underlying components.
-    if name.startswith("_self_") or name == "_use_resource_variables":
+    # for restoring the saved_model proto, and '_attribute_sentinel' is used for
+    # Layer tracking. At the point these attrs are queried, the variable has not
+    # been initialized. Thus it should not query those of the underlying
+    # components.
+    if name.startswith("_self_") or name in (
+        "_use_resource_variables", "_attribute_sentinel",
+        "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
@@ -467,7 +470,8 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    value_specs = [type_spec.type_spec_from_value(v) for v in self._values]
+    value_specs = nest.map_structure(type_spec.type_spec_from_value,
+                                     self._values)
     return PerReplicaSpec(value_specs, self._device_map, self._logical_device)
 
 
@@ -594,7 +598,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from replica to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
@@ -776,6 +780,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
+  def _clone_with_new_values(self, new_values):
+    raise NotImplementedError("Must be implemented in descendents.")
+
 
 ops.register_dense_tensor_like_type(DistributedVariable)
 
@@ -848,6 +855,10 @@ class TPUVariableMixin(object):
       raise NotImplementedError(
           "numpy() is only available when eager execution is enabled.")
 
+  def _is_mirrored(self):
+    raise NotImplementedError(
+        "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
+
   @property
   def handle(self):
     # If we're in a tpu.rewrite(), return the replicated handle.
@@ -855,8 +866,10 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map,
+                                                   self._is_mirrored())
 
   @property
   def device(self):
@@ -969,6 +982,89 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
         for v in self._mirrored_variable.values))
 
 
+def create_mirrored_variable(  # pylint: disable=missing-docstring
+    strategy, device_map, logical_device, real_mirrored_creator, mirrored_cls,
+    sync_on_read_cls, *args, **kwargs):
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  var_collections = kwargs.pop("collections", None)
+  if var_collections is None:
+    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  synchronization = kwargs.get(
+      "synchronization", vs.VariableSynchronization.ON_WRITE)
+
+  if synchronization == vs.VariableSynchronization.NONE:
+    raise ValueError(
+        "`NONE` variable synchronization mode is not supported with `Mirrored` "
+        "distribution strategy. Please change the `synchronization` for "
+        "variable: " + str(kwargs["name"]))
+  elif synchronization == vs.VariableSynchronization.ON_READ:
+    is_sync_on_read = True
+  elif synchronization in (
+      vs.VariableSynchronization.ON_WRITE,
+      vs.VariableSynchronization.AUTO):
+    # `AUTO` synchronization defaults to `ON_WRITE`.
+    is_sync_on_read = False
+  else:
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
+
+  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+
+  if aggregation not in (
+      vs.VariableAggregation.NONE,
+      vs.VariableAggregation.SUM,
+      vs.VariableAggregation.MEAN,
+      vs.VariableAggregation.ONLY_FIRST_REPLICA):
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
+
+  # Ignore user-specified caching device, not needed for mirrored variables.
+  kwargs.pop("caching_device", None)
+
+  # TODO(josh11b,apassos): It would be better if variable initialization
+  # was never recorded on the tape instead of having to do this manually
+  # here.
+  with tape.stop_recording():
+    devices = device_map.logical_to_actual_devices(logical_device)
+    value_list = real_mirrored_creator(devices, *args, **kwargs)
+
+    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
+
+    result = var_cls(
+        strategy, device_map, value_list, aggregation,
+        logical_device=logical_device)
+
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
+  if not context.executing_eagerly():
+    g = ops.get_default_graph()
+    # If "trainable" is True, next_creator() will add the member variables
+    # to the TRAINABLE_VARIABLES collection, so we manually remove
+    # them and replace with the MirroredVariable. We can't set
+    # "trainable" to False for next_creator() since that causes functions
+    # like implicit_gradients to skip those variables.
+    if kwargs.get("trainable", True):
+      var_collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+      for value in value_list:
+        for i, trainable_variable in enumerate(l):
+          if value is trainable_variable:
+            del l[i]
+            break
+
+    g.add_to_collections(var_collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in var_collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
+  return result
+
+
 class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from replica to variables whose values are kept in sync."""
 
@@ -1069,6 +1165,10 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -1081,13 +1181,20 @@ ops.register_tensor_conversion_function(MirroredVariable,
 
 
 def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  tpu_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while tpu_context is not None and not isinstance(
-      tpu_context, control_flow_ops.XLAControlFlowContext):
-    tpu_context = tpu_context.outer_context
-  return tpu_context
+  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 def is_distributed_variable(v):
@@ -1122,6 +1229,13 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
     assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
     return self._assign_func(f=assign_fn, *args, **kwargs)
+
+  def _is_mirrored(self):
+    if self.aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+      # TODO(b/142440743): Remove this check once ONLY_FIRST_REPLICA aggregation
+      # works as expected.
+      return False
+    return True
 
 
 class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
@@ -1159,7 +1273,7 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class SyncOnReadVariable(DistributedVariable, PerReplica):
+class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
   def __init__(
@@ -1202,7 +1316,7 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor *= 1. / len(self.devices)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(tuple(
             _assign_on_device(v.device, v, tensor) for v in self._values))
       else:
@@ -1245,6 +1359,10 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
+
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
 # be true.
@@ -1281,6 +1399,9 @@ class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
     else:
       return _make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
+
+  def _is_mirrored(self):
+    return False
 
 
 def regroup(device_map, values, wrap_class=PerReplica):
@@ -1371,7 +1492,14 @@ def regroup(device_map, values, wrap_class=PerReplica):
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.values[replica_id] if isinstance(x, DistributedValues) else x
+    # `DistributedValues` would be sliced according to replica unless it is a
+    # `DistributedVariable` because `DistributedVariable` can be handled
+    # directly in the replica context.
+    if (isinstance(x, DistributedVariable) or
+        not isinstance(x, DistributedValues)):
+      return x
+    else:
+      return x.values[replica_id]
 
   return nest.map_structure(_get, structured)
 

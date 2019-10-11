@@ -104,6 +104,11 @@ class Embedding(Layer):
       else:
         kwargs['input_shape'] = (None,)
     dtype = kwargs.pop('dtype', K.floatx())
+    # We set autocast to False, as we do not want to cast floating- point inputs
+    # to self.dtype. In call(), we cast to int32, and casting to self.dtype
+    # before casting to int32 might cause the int32 values to be different due
+    # to a loss of precision.
+    kwargs['autocast'] = False
     super(Embedding, self).__init__(dtype=dtype, **kwargs)
 
     self.input_dim = input_dim

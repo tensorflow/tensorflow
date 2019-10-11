@@ -23,6 +23,8 @@ import itertools
 import numpy as np
 import six
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -48,6 +50,15 @@ class OperatorShapesInfo(object):
   def __init__(self, shape, **kwargs):
     self.shape = shape
     self.__dict__.update(kwargs)
+
+
+class CheckTapeSafeSkipOptions(object):
+
+  # Skip checking this particular method.
+  DETERMINANT = "determinant"
+  DIAG_PART = "diag_part"
+  LOG_ABS_DETERMINANT = "log_abs_determinant"
+  TRACE = "trace"
 
 
 @six.add_metaclass(abc.ABCMeta)  # pylint: disable=no-init
@@ -167,11 +178,87 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     raise NotImplementedError("make_x is not defined.")
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     """List of test names to skip."""
     # Subclasses should over-ride if they want to skip some tests.
     # To skip "test_foo", add "foo" to this list.
     return []
+
+  def assertRaisesError(self, msg):
+    """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
+    if context.executing_eagerly():
+      return self.assertRaisesRegexp(Exception, msg)
+    return self.assertRaisesOpError(msg)
+
+  def check_tape_safe(self, operator, skip_options=None):
+    """Check gradients are not None w.r.t. operator.variables.
+
+    Meant to be called from the derived class.
+
+    This ensures grads are not w.r.t every variable in operator.variables.  If
+    more fine-grained testing is needed, a custom test should be written.
+
+    Args:
+      operator: LinearOperator.  Exact checks done will depend on hints.
+      skip_options: Optional list of CheckTapeSafeSkipOptions.
+        Makes this test skip particular checks.
+    """
+    skip_options = skip_options or []
+
+    if not operator.variables:
+      raise AssertionError("`operator.variables` was empty")
+
+    def _assert_not_none(iterable):
+      for item in iterable:
+        self.assertIsNotNone(item)
+
+    # Tape tests that can be run on every operator below.
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.to_dense(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.adjoint().to_dense(), operator.variables))
+
+    x = math_ops.cast(
+        array_ops.ones(shape=operator.H.shape_tensor()[:-1]), operator.dtype)
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.matvec(x), operator.variables))
+
+    # Tests for square, but possibly non-singular operators below.
+    if not operator.is_square:
+      return
+
+    for option in [
+        CheckTapeSafeSkipOptions.DETERMINANT,
+        CheckTapeSafeSkipOptions.LOG_ABS_DETERMINANT,
+        CheckTapeSafeSkipOptions.DIAG_PART,
+        CheckTapeSafeSkipOptions.TRACE,
+    ]:
+      with backprop.GradientTape() as tape:
+        if option not in skip_options:
+          _assert_not_none(
+              tape.gradient(getattr(operator, option)(), operator.variables))
+
+    # Tests for non-singular operators below.
+    if operator.is_non_singular is False:  # pylint: disable=g-bool-id-comparison
+      return
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.inverse().to_dense(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.solvevec(x), operator.variables))
+
+    # Tests for SPD operators below.
+    if not (operator.is_self_adjoint and operator.is_positive_definite):
+      return
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.cholesky().to_dense(), operator.variables))
 
 
 # pylint:disable=missing-docstring
@@ -185,7 +272,7 @@ def _test_to_dense(use_placeholder, shapes_info, dtype):
           shapes_info, dtype, use_placeholder=use_placeholder)
       op_dense = operator.to_dense()
       if not use_placeholder:
-        self.assertAllEqual(shapes_info.shape, op_dense.get_shape())
+        self.assertAllEqual(shapes_info.shape, op_dense.shape)
       op_dense_v, mat_v = sess.run([op_dense, mat])
       self.assertAC(op_dense_v, mat_v)
   return test_to_dense
@@ -199,7 +286,7 @@ def _test_det(use_placeholder, shapes_info, dtype):
           shapes_info, dtype, use_placeholder=use_placeholder)
       op_det = operator.determinant()
       if not use_placeholder:
-        self.assertAllEqual(shapes_info.shape[:-2], op_det.get_shape())
+        self.assertAllEqual(shapes_info.shape[:-2], op_det.shape)
       op_det_v, mat_det_v = sess.run(
           [op_det, linalg_ops.matrix_determinant(mat)])
       self.assertAC(op_det_v, mat_det_v)
@@ -216,7 +303,7 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
       _, mat_log_abs_det = linalg.slogdet(mat)
       if not use_placeholder:
         self.assertAllEqual(
-            shapes_info.shape[:-2], op_log_abs_det.get_shape())
+            shapes_info.shape[:-2], op_log_abs_det.shape)
       op_log_abs_det_v, mat_log_abs_det_v = sess.run(
           [op_log_abs_det, mat_log_abs_det])
       self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
@@ -253,8 +340,8 @@ def _test_matmul_base(
       op_matmul = operator.matmul(x, adjoint=adjoint)
     mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
     if not use_placeholder:
-      self.assertAllEqual(op_matmul.get_shape(),
-                          mat_matmul.get_shape())
+      self.assertAllEqual(op_matmul.shape,
+                          mat_matmul.shape)
     op_matmul_v, mat_matmul_v = sess.run(
         [op_matmul, mat_matmul])
     self.assertAC(op_matmul_v, mat_matmul_v)
@@ -358,8 +445,8 @@ def _test_solve_base(
     mat_solve = linear_operator_util.matrix_solve_with_broadcast(
         mat, rhs, adjoint=adjoint)
     if not use_placeholder:
-      self.assertAllEqual(op_solve.get_shape(),
-                          mat_solve.get_shape())
+      self.assertAllEqual(op_solve.shape,
+                          mat_solve.shape)
     op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
     self.assertAC(op_solve_v, mat_solve_v)
 
@@ -413,7 +500,7 @@ def _test_trace(use_placeholder, shapes_info, dtype):
       op_trace = operator.trace()
       mat_trace = math_ops.trace(mat)
       if not use_placeholder:
-        self.assertAllEqual(op_trace.get_shape(), mat_trace.get_shape())
+        self.assertAllEqual(op_trace.shape, mat_trace.shape)
       op_trace_v, mat_trace_v = sess.run([op_trace, mat_trace])
       self.assertAC(op_trace_v, mat_trace_v)
   return test_trace
@@ -428,7 +515,7 @@ def _test_add_to_tensor(use_placeholder, shapes_info, dtype):
       op_plus_2mat = operator.add_to_tensor(2 * mat)
 
       if not use_placeholder:
-        self.assertAllEqual(shapes_info.shape, op_plus_2mat.get_shape())
+        self.assertAllEqual(shapes_info.shape, op_plus_2mat.shape)
 
       op_plus_2mat_v, mat_v = sess.run([op_plus_2mat, mat])
 
@@ -446,8 +533,8 @@ def _test_diag_part(use_placeholder, shapes_info, dtype):
       mat_diag_part = array_ops.matrix_diag_part(mat)
 
       if not use_placeholder:
-        self.assertAllEqual(mat_diag_part.get_shape(),
-                            op_diag_part.get_shape())
+        self.assertAllEqual(mat_diag_part.shape,
+                            op_diag_part.shape)
 
       op_diag_part_, mat_diag_part_ = sess.run(
           [op_diag_part, mat_diag_part])
@@ -482,7 +569,7 @@ def add_tests(test_cls):
   ]
 
   for name, test_template_fn in test_name_dict.items():
-    if name in test_cls.tests_to_skip():
+    if name in test_cls.skip_these_tests():
       continue
 
     for dtype, use_placeholder, shape_info in itertools.product(
@@ -587,7 +674,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   """
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     """List of test names to skip."""
     return [
         "cholesky",

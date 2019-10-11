@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +22,7 @@ from __future__ import print_function
 import argparse
 import re
 import sys
+import six
 
 
 def replace_includes(line, supplied_headers_list):
@@ -29,10 +31,11 @@ def replace_includes(line, supplied_headers_list):
   if include_match:
     path = include_match.group(2)
     for supplied_header in supplied_headers_list:
-      if supplied_header.endswith(path):
+      if six.ensure_str(supplied_header).endswith(path):
         path = supplied_header
         break
-    line = include_match.group(1) + path + include_match.group(3)
+    line = include_match.group(1) + six.ensure_str(path) + include_match.group(
+        3)
   return line
 
 
@@ -44,18 +47,59 @@ def replace_main(line):
   return line
 
 
+def check_ino_functions(input_text):
+  """Ensures the required functions exist."""
+  # We're moving to an Arduino-friendly structure for all our examples, so they
+  # have to have a setup() and loop() function, just like their IDE expects.
+  if not re.search(r'void setup\(\) \{', input_text):
+    raise Exception(
+        'All examples must have a setup() function for Arduino compatiblity\n' +
+        input_text)
+  if not re.search(r'void loop\(\) \{', input_text):
+    raise Exception(
+        'All examples must have a loop() function for Arduino compatiblity')
+  return input_text
+
+
+def add_example_ino_library_include(input_text):
+  """Makes sure the example includes the header that loads the library."""
+  return re.sub(r'#include ', '#include <TensorFlowLite.h>\n\n#include ',
+                input_text, 1)
+
+
+def replace_example_includes(line, _):
+  """Updates any includes for local example files."""
+  # Because the export process moves the example source and header files out of
+  # their default locations into the top-level 'examples' folder in the Arduino
+  # library, we have to update any include references to match.
+  dir_path = 'tensorflow/lite/experimental/micro/examples/'
+  include_match = re.match(
+      r'(.*#include.*")' + six.ensure_str(dir_path) + r'([^/]+)/(.*")', line)
+  if include_match:
+    flattened_name = re.sub(r'/', '_', include_match.group(3))
+    line = include_match.group(1) + flattened_name
+  return line
+
+
 def main(unused_args, flags):
-  """Resolves third party headers to their full paths in source code."""
+  """Transforms the input source file to work when exported to Arduino."""
   input_file_lines = sys.stdin.read().split('\n')
 
-  supplied_headers_list = flags.third_party_headers.split(' ')
+  supplied_headers_list = six.ensure_str(flags.third_party_headers).split(' ')
 
   output_lines = []
   for line in input_file_lines:
     line = replace_includes(line, supplied_headers_list)
-    line = replace_main(line)
+    if flags.is_example_ino or flags.is_example_source:
+      line = replace_example_includes(line, flags.source_path)
+    else:
+      line = replace_main(line)
     output_lines.append(line)
   output_text = '\n'.join(output_lines)
+
+  if flags.is_example_ino:
+    output_text = check_ino_functions(output_text)
+    output_text = add_example_ino_library_include(output_text)
 
   sys.stdout.write(output_text)
 
@@ -63,12 +107,26 @@ def main(unused_args, flags):
 def parse_args():
   """Converts the raw arguments into accessible flags."""
   parser = argparse.ArgumentParser()
-  parser.register('type', 'bool', lambda v: v.lower() == 'true')
   parser.add_argument(
       '--third_party_headers',
       type=str,
       default='',
       help='Space-separated list of headers to resolve.')
+  parser.add_argument(
+      '--is_example_ino',
+      dest='is_example_ino',
+      action='store_true',
+      help='Whether the destination is an example main ino.')
+  parser.add_argument(
+      '--is_example_source',
+      dest='is_example_source',
+      action='store_true',
+      help='Whether the destination is an example cpp or header file.')
+  parser.add_argument(
+      '--source_path',
+      type=str,
+      default='',
+      help='The relative path of the source code file.')
   flags, unparsed = parser.parse_known_args()
 
   main(unparsed, flags)

@@ -20,8 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 
 namespace tflite {
@@ -54,15 +54,15 @@ namespace gl {
 //
 class ObjectAccessor : public InlineRewrite {
  public:
-  ObjectAccessor(bool is_mali, ParameterAccessor* parameter_accessor)
-      : ObjectAccessor(is_mali, /*sampler_textures=*/false,
-                       parameter_accessor) {}
+  ObjectAccessor(bool is_mali, VariableAccessor* variable_accessor)
+      : ObjectAccessor(is_mali, /*sampler_textures=*/false, variable_accessor) {
+  }
 
   ObjectAccessor(bool is_mali, bool sampler_textures,
-                 ParameterAccessor* parameter_accessor)
+                 VariableAccessor* variable_accessor)
       : is_mali_(is_mali),
         sampler_textures_(sampler_textures),
-        parameter_accessor_(parameter_accessor) {}
+        variable_accessor_(variable_accessor) {}
 
   RewriteStatus Rewrite(absl::string_view input, std::string* output) final;
 
@@ -89,7 +89,7 @@ class ObjectAccessor : public InlineRewrite {
 
   const bool is_mali_;
   const bool sampler_textures_;
-  ParameterAccessor* parameter_accessor_;
+  VariableAccessor* variable_accessor_;
 };
 
 // Implementation details below.

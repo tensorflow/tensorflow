@@ -1,0 +1,5 @@
+tflite-runtime (1.14.0-1) unstable; urgency=low
+
+  * Initial release.
+
+ -- TensorFlow team <packages@tensorflow.org>  Thu, 29 Aug 2019 14:34:40 -0700

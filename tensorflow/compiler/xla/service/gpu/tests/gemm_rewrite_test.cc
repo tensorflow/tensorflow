@@ -35,17 +35,6 @@ namespace {
 
 class GemmRewriteTest : public GpuCodegenTest {
  public:
-  void MatchOptimizedHlo(const std::string& hlo, const std::string& pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo));
-    HloPrintOptions print_opts;
-    print_opts.set_print_operand_shape(false);
-    StatusOr<bool> filecheck_result =
-        RunFileCheck(optimized_module->ToString(print_opts), pattern);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.ValueOrDie());
-  }
-
   void CheckNumberOfAllocations(const std::string& hlo,
                                 int expected_number_of_allocations) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
@@ -63,17 +52,6 @@ class GemmRewriteTest : public GpuCodegenTest {
              expected_number_of_allocations)
         << "Unexpected buffer assignment. Was:\n"
         << buffer_assignment->ToString();
-  }
-
- private:
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      const std::string& hlo) {
-    HloModuleConfig config;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(hlo, config));
-    return backend().compiler()->RunHloPasses(
-        std::move(module), backend().default_stream_executor(),
-        backend().default_stream_executor()->GetAllocator());
   }
 };
 

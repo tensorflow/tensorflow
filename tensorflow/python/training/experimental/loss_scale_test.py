@@ -92,6 +92,11 @@ class FixedLossScaleTest(test.TestCase):
     scalar = loss_scale_module.FixedLossScale(123)
     self.assertIsInstance(scalar(), ops.Tensor)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_repr(self):
+    loss_scale = loss_scale_module.FixedLossScale(123)
+    self.assertEqual(repr(loss_scale), 'FixedLossScale(123.0)')
+
 
 def _get_example_iter(inputs):
   dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
@@ -301,6 +306,23 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
   def test_call_type(self):
     scalar = loss_scale_module.DynamicLossScale()
     self.assertIsInstance(scalar(), ops.Tensor)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_repr(self, strategy_fn):
+    with strategy_fn().scope():
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=1, increment_period=2, multiplier=3)
+      if context.executing_eagerly():
+        self.assertEqual(repr(loss_scale),
+                         'DynamicLossScale(current_loss_scale=1.0, '
+                         'num_good_steps=0, initial_loss_scale=1.0, '
+                         'increment_period=2, multiplier=3.0)')
+      else:
+        self.assertEqual(repr(loss_scale),
+                         'DynamicLossScale(initial_loss_scale=1.0, '
+                         'increment_period=2, multiplier=3.0)')
+
 
 if __name__ == '__main__':
   test.main()

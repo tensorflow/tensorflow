@@ -28,7 +28,7 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
     with self.converted(test_fn, break_statements, {},
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_while_loop(self):
@@ -58,7 +58,7 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
       return v
 
     with self.converted(test_fn, break_statements, {},
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       # The break is incompletely canonicalized. The loop will not interrupt,
       # but the section following the break will be skipped.
       self.assertEqual([3], result.test_fn([5, 4]))

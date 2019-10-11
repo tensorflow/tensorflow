@@ -92,15 +92,15 @@ def add_check_numerics_ops():
 
   @compatibility(eager)
   Not compatible with eager execution. To check for `Inf`s and `NaN`s under
-  eager execution, call `tfe.seterr(inf_or_nan='raise')` once before executing
-  the checked operations.
+  eager execution, call `tf.debugging.enable_check_numerics()` once before
+  executing the checked operations.
   @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError(
         "add_check_numerics_ops() is not compatible with eager execution. "
         "To check for Inf's and NaN's under eager execution, call "
-        "tfe.seterr(inf_or_nan='raise') once before executing the "
+        "tf.debugging.enable_check_numerics() once before executing the "
         "checked operations.")
 
   check_op = []

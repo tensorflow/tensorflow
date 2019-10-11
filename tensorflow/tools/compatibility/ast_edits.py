@@ -1032,10 +1032,25 @@ class ASTCodeUpgrader(object):
       output_directory = os.path.dirname(output_path)
       if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
+
+      if os.path.islink(input_path):
+        link_target = os.readlink(input_path)
+        link_target_output = os.path.join(
+            output_root_directory, os.path.relpath(link_target, root_directory))
+        if (link_target, link_target_output) in files_to_process:
+          # Create a link to the new location of the target file
+          os.symlink(link_target_output, output_path)
+        else:
+          report += "Copying symlink %s without modifying its target %s" % (
+              input_path, link_target)
+          os.symlink(link_target, output_path)
+        continue
+
       file_count += 1
       _, l_report, l_errors = self.process_file(input_path, output_path)
       tree_errors[input_path] = l_errors
       report += l_report
+
     for input_path, output_path in files_to_copy:
       output_directory = os.path.dirname(output_path)
       if not os.path.isdir(output_directory):
@@ -1059,6 +1074,9 @@ class ASTCodeUpgrader(object):
     report += ("=" * 80) + "\n"
 
     for path in files_to_process:
+      if os.path.islink(path):
+        report += "Skipping symlink %s.\n" % path
+        continue
       file_count += 1
       _, l_report, l_errors = self.process_file(path, path)
       tree_errors[path] = l_errors

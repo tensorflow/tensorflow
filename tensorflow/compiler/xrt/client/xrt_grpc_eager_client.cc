@@ -44,8 +44,6 @@ EAGER_CLIENT_METHOD(Enqueue);
 EAGER_CLIENT_METHOD(WaitQueueDone);
 EAGER_CLIENT_METHOD(KeepAlive);
 EAGER_CLIENT_METHOD(CloseContext);
-EAGER_CLIENT_METHOD(RegisterFunction);
-EAGER_CLIENT_METHOD(SendTensor);
 #undef EAGER_CLIENT_METHOD
 
 #define WORKER_CLIENT_METHOD(method)                                           \

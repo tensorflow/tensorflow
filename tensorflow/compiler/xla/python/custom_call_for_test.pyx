@@ -15,7 +15,7 @@ cdef void test_subtract_f32(void* out_ptr, void** data_ptr) nogil:
 cpu_custom_call_targets = {}
 
 cdef register_custom_call_target(fn_name, void* fn):
-  cdef const char* name = "xla._CPU_CUSTOM_CALL_TARGET"
+  cdef const char* name = "xla._CUSTOM_CALL_TARGET"
   cpu_custom_call_targets[fn_name] = PyCapsule_New(fn, name, NULL)
 
 register_custom_call_target(b"test_subtract_f32", <void*>(test_subtract_f32))

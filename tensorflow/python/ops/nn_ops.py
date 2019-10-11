@@ -33,6 +33,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+from tensorflow.python.ops import control_flow_ops
+# copybara:strip_end
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -42,6 +46,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
@@ -57,7 +62,7 @@ def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
   if value is None:
     value = [1]
-  elif not isinstance(value, collections.Sized):
+  elif not isinstance(value, collections_abc.Sized):
     value = [value]
 
   current_n = len(value)
@@ -280,7 +285,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
-    data_format: A `string`, only `"NCHW"` is currently supported.
+    data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
       `[1, rate_height, rate_width, 1]`.
@@ -289,8 +294,8 @@ def dilation2d_v2(
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if data_format != "NCHW":
-    raise ValueError("Data formats other than NCHW are not yet supported")
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
@@ -918,6 +923,22 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  run_context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while run_context is not None and not isinstance(
+      run_context, control_flow_ops.XLAControlFlowContext):
+    run_context = run_context.outer_context
+  return run_context
+
+
+# copybara:strip_end
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -925,40 +946,58 @@ def convolution_internal(
     padding="VALID",
     data_format=None,
     dilations=None,
-    name=None):
+    name=None,
+    call_from_convolution=True):
   """Internal function which performs rank agnostic convolution."""
-  with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShape) and \
+  if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
-      n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
-      n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
-      n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(filters.shape) - 2
+  elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
-      n = len(filters.shape) - 2
-    else:
-      raise ValueError("rank of input or filter must be known")
+    n = len(filters.shape) - 2
+  else:
+    raise ValueError("rank of input or filter must be known")
 
-    if not 1 <= n <= 3:
-      raise ValueError(
-          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+  if not 1 <= n <= 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
 
-    if data_format is None:
-      channel_index = n + 1
-    else:
-      channel_index = 1 if data_format.startswith("NC") else n + 1
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
 
-    strides = _get_sequence(strides, n, channel_index, "strides")
-    dilations = _get_sequence(dilations, n, channel_index, "dilations")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+  dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
+  # copybara:strip_begin
+  # TODO(b/138808492): Remove code inside copybara
+  # to make TPU code and CPU code consistent.
+  scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
+  if not call_from_convolution and _enclosing_tpu_context() is not None:
+    scope = scopes[n]
+  else:
+    scope = "convolution"
+  # copybara:strip_end
+  # copybara:insert scope = "convolution"
+
+  with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    if all(i == 1 for i in dilations):
-      # fast path if no dilation as gradient only supported on GPU for dilations
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+      # fast path for TPU or if no dilation as gradient only supported on GPU
+      # for dilations
+      # copybara:strip_end
+      # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1055,7 +1094,9 @@ class Convolution(object):
     self.filter_shape = filter_shape
     self.data_format = data_format
     self.strides = strides
+    self.padding = padding
     self.name = name
+    self.dilation_rate = dilation_rate
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
@@ -1075,7 +1116,24 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    return self.conv_op(inp, filter)
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # TPU convolution supports dilations greater than 1.
+    if _enclosing_tpu_context() is not None:
+      return convolution_internal(
+          inp,
+          filter,
+          strides=self.strides,
+          padding=self.padding,
+          data_format=self.data_format,
+          dilations=self.dilation_rate,
+          name=self.name,
+          call_from_convolution=False)
+    else:
+      return self.conv_op(inp, filter)
+    # copybara:strip_end
+    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -2282,7 +2340,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -2600,10 +2659,10 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if isinstance(output_shape, collections.Sized):
-      n = len(output_shape) - 2
-    elif isinstance(output_shape, ops.Tensor):
+    if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
+    elif isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")
 
@@ -2742,7 +2801,7 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models. 
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:
@@ -2878,9 +2937,17 @@ def softmax(logits, axis=None, name=None, dim=None):
 
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
+  See: https://en.wikipedia.org/wiki/Softmax_function
+
+  Example usage:
+  >>> tf.nn.softmax([-1, 0., 1.])
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+
   Args:
-    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    logits: A non-empty `Tensor`, or an object whose type has a registered
+      `Tensor` conversion function. Must be one of the following types:
+      `half`,`float32`, `float64`. See also `convert_to_tensor`
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
@@ -2892,6 +2959,11 @@ def softmax(logits, axis=None, name=None, dim=None):
   Raises:
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
+    TypeError: If no conversion function is registered for `logits` to
+      Tensor.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+      
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
@@ -3008,6 +3080,13 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
 
   If using exclusive `labels` (wherein one and only
   one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
+  Usage:
+  >>> logits = [[0.6, 0.2, 0.2], [0.0, 0.9, 0.1]]
+  >>> labels = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+  >>> tf.nn.softmax_cross_entropy_with_logits(labels, logits)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([0.8504244, 0.6183691], dtype=float32)>
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
@@ -3594,8 +3673,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.avg_pool(
@@ -3785,8 +3864,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.max_pool(
@@ -4142,7 +4221,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
     rate: A scalar `Tensor` with the same type as `x`. The probability that each
       element of `x` is discarded.
@@ -4172,23 +4251,51 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 
 @tf_export("nn.dropout", v1=[])
 def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
-  """Computes dropout.
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
 
-  With probability `rate`, drops elements of `x`. Input that are kept are
-  scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
-  the expected sum is unchanged.
-
-  **Note:** The behavior of dropout has changed between TensorFlow 1.x and 2.x.
+  Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
   When converting 1.x code, please use named arguments to ensure behavior stays
   consistent.
+
+  See also: `tf.keras.layers.Dropout` for a dropout layer.
+
+  [Dropout](https://arxiv.org/abs/1207.0580) is useful for regularizing DNN
+  models. Inputs elements are randomly set to zero (and the other elements are
+  rescaled). This encourages each node to be independently useful, as it cannot
+  rely on the output of other nodes.
+
+  More precisely: With probability `rate` elements of `x` are set to `0`.
+  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  expected value is preserved.
+
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate = 0.5).numpy()
+  array([[0., 0., 2., 2., 0.],
+         [2., 0., 2., 2., 0.],
+         [2., 2., 2., 0., 0.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 0.8).numpy()
+  array([[0., 0., 5., 0., 0.],
+         [0., 0., 5., 0., 0.],
+         [5., 0., 0., 5., 0.]], dtype=float32)
+
+  If rate is set to `0` the input is returned, unchanged:
+
+  >>> tf.nn.dropout(x, rate = 0.0) is x
+  True
 
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
   to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
-  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
-  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
-  kept independently and each row and column will be kept or not kept together.
+  will make independent decisions. This is useful for dropping whole
+  channels from an image or sequence. For example:
+
+  >>> x = tf.ones([3,10])
+  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10]).numpy()
+  array([[0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.]], dtype=float32)
 
   Args:
     x: A floating point tensor.
@@ -4198,15 +4305,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `rate` is not in `(0, 1]` or if `x` is not a floating point
-      tensor.
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because theoutput would be all zeros,
+      which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -4233,7 +4341,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:

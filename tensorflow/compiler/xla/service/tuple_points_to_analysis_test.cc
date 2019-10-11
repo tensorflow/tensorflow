@@ -564,8 +564,8 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      constant2->shape(), HloOpcode::kBitcast, constant2));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(constant2->shape(), constant2));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant1, bitcast}));
 

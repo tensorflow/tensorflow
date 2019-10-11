@@ -160,12 +160,12 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
   OptimizeTwice(&optimizer, &item, &output);
   NodeMap node_map(&output);
 
-  EXPECT_EQ(output.node_size(), 5);
+  EXPECT_EQ(output.node_size(), 6);
   const NodeDef* new_div = node_map.GetNode("div");
   ASSERT_NE(new_div, nullptr);
   ASSERT_EQ(new_div->input_size(), 3);
   EXPECT_EQ(new_div->input(0), "check1");
-  EXPECT_EQ(new_div->input(1), "check1");
+  EXPECT_EQ(new_div->input(1), "check2");
   EXPECT_EQ(new_div->input(2), "^assert1");
 
   auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", bool_t}});

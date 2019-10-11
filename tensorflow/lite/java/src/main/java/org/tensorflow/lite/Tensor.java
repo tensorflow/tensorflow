@@ -90,6 +90,15 @@ public final class Tensor {
   }
 
   /**
+   * Returns the name of the tensor within the owning {@link Interpreter}.
+   *
+   * @hide
+   */
+  public String name() {
+    return name(nativeHandle);
+  }
+
+  /**
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
@@ -325,6 +334,8 @@ public final class Tensor {
   private static native void writeMultiDimensionalArray(long handle, Object src);
 
   private static native int index(long handle);
+
+  private static native String name(long handle);
 
   static {
     TensorFlowLite.init();

@@ -69,7 +69,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       context_(),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
-                 error_reporter_) {
+                 error_reporter_),
+      tensors_allocated_(false) {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -83,7 +84,58 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
+
+  // If the system is big endian then convert weights from the flatbuffer from
+  // little to big endian on startup so that it does not need to be done during
+  // inference.
+  // NOTE: This requires that the flatbuffer is held in memory which can be
+  // modified by this process.
+  if (!FLATBUFFERS_LITTLEENDIAN) {
+    for (int t = 0; t < tensors_size(); ++t) {
+      TfLiteTensor* thisTensor = &context_.tensors[t];
+      if (thisTensor->allocation_type == kTfLiteMmapRo)
+        CorrectTensorEndianness(thisTensor);
+    }
+  }
+
   initialization_status_ = kTfLiteOk;
+}
+
+void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
+  int32_t tensorSize = 1;
+  for (int d = 0; d < tensorCorr->dims->size; ++d)
+    tensorSize *= reinterpret_cast<const int32_t*>(tensorCorr->dims->data)[d];
+
+  switch (tensorCorr->type) {
+    case TfLiteType::kTfLiteFloat32:
+      CorrectTensorDataEndianness(tensorCorr->data.f, tensorSize);
+      break;
+    case TfLiteType::kTfLiteFloat16:
+      CorrectTensorDataEndianness(tensorCorr->data.f16, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt64:
+      CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt32:
+      CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt16:
+      CorrectTensorDataEndianness(tensorCorr->data.i16, tensorSize);
+      break;
+    case TfLiteType::kTfLiteComplex64:
+      CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
+      break;
+    default:
+      // Do nothing for other data types.
+      break;
+  }
+}
+
+template <class T>
+void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
+  for (int32_t i = 0; i < size; ++i) {
+    data[i] = flatbuffers::EndianScalar(data[i]);
+  }
 }
 
 TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
@@ -92,7 +144,10 @@ TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  return allocator_.AllocateTensors();
+  TfLiteStatus status = allocator_.AllocateTensors();
+  TF_LITE_ENSURE_OK(&context_, status);
+  tensors_allocated_ = true;
+  return kTfLiteOk;
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {
@@ -100,11 +155,17 @@ TfLiteStatus MicroInterpreter::Invoke() {
     error_reporter_->Report("Invoke() called after initialization failed\n");
     return kTfLiteError;
   }
+
+  // Ensure tensors are allocated before the interpreter is invoked to avoid
+  // difficult to debug segfaults.
+  if (!tensors_allocated_) {
+    AllocateTensors();
+  }
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
-  for (flatbuffers::uoffset_t i = 0; i < operators_->size(); ++i) {
+  for (size_t i = 0; i < operators_->size(); ++i) {
     const auto* op = operators_->Get(i);
-    uint32_t index = op->opcode_index();
+    size_t index = op->opcode_index();
     if (index < 0 || index >= opcodes->size()) {
       error_reporter_->Report("Missing registration for opcode_index %d\n",
                               index);
@@ -126,8 +187,10 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
-          "Found builtin operator %s with custom options.\n",
+          "Unsupported behavior: found builtin operator %s with custom "
+          "options.\n",
           EnumNameBuiltinOperator(op_type));
+      return kTfLiteError;
     }
     StackDataAllocator stack_data_allocator;
     const char* custom_data = nullptr;
@@ -204,7 +267,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
   return status;
 }
 
-TfLiteTensor* MicroInterpreter::input(int index) {
+TfLiteTensor* MicroInterpreter::input(size_t index) {
   const flatbuffers::Vector<int32_t>* inputs = subgraph_->inputs();
   const size_t length = inputs->size();
   if ((index < 0) || (index >= (int)length)) {
@@ -215,7 +278,7 @@ TfLiteTensor* MicroInterpreter::input(int index) {
   return &(context_.tensors[inputs->Get(index)]);
 }
 
-TfLiteTensor* MicroInterpreter::output(int index) {
+TfLiteTensor* MicroInterpreter::output(size_t index) {
   const flatbuffers::Vector<int32_t>* outputs = subgraph_->outputs();
   const size_t length = outputs->size();
   if ((index < 0) || (index >= (int)outputs->size())) {
@@ -224,6 +287,16 @@ TfLiteTensor* MicroInterpreter::output(int index) {
     return nullptr;
   }
   return &(context_.tensors[outputs->Get(index)]);
+}
+
+TfLiteTensor* MicroInterpreter::tensor(size_t index) {
+  const size_t length = tensors_size();
+  if ((index < 0) || (index >= tensors_size())) {
+    error_reporter_->Report("Tensor index %d out of range (length is %d)",
+                            index, length);
+    return nullptr;
+  }
+  return &context_.tensors[index];
 }
 
 }  // namespace tflite

@@ -40,15 +40,18 @@ static const char kNotInvertibleScalarMsg[] =
     "The matrix is not invertible: it is a scalar with value zero.";
 
 template <typename Scalar>
-__global__ void SolveForSizeOneOrTwoKernel(const int m, const Scalar* diags,
-                                           const Scalar* rhs, const int num_rhs,
-                                           Scalar* x, bool* not_invertible) {
+__global__ void SolveForSizeOneOrTwoKernel(const int m,
+                                           const Scalar* __restrict__ diags,
+                                           const Scalar* __restrict__ rhs,
+                                           const int num_rhs,
+                                           Scalar* __restrict__ x,
+                                           bool* __restrict__ not_invertible) {
   if (m == 1) {
     if (diags[1] == Scalar(0)) {
       *not_invertible = true;
       return;
     }
-    for (int i : CudaGridRangeX(num_rhs)) {
+    for (int i : GpuGridRangeX(num_rhs)) {
       x[i] = rhs[i] / diags[1];
     }
   } else {
@@ -57,7 +60,7 @@ __global__ void SolveForSizeOneOrTwoKernel(const int m, const Scalar* diags,
       *not_invertible = true;
       return;
     }
-    for (int i : CudaGridRangeX(num_rhs)) {
+    for (int i : GpuGridRangeX(num_rhs)) {
       x[i] = (diags[3] * rhs[i] - diags[0] * rhs[i + num_rhs]) / det;
       x[i + num_rhs] = (diags[2] * rhs[i + num_rhs] - diags[5] * rhs[i]) / det;
     }

@@ -326,6 +326,26 @@ def random_flip_up_down(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the first
   dimension, which is `height`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
+    [[[3], [4]], [[1], [2]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
+    [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -347,6 +367,25 @@ def random_flip_left_right(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the
   second dimension, which is `width`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
+    [[[2], [1]], [[4], [3]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
+    [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1597,6 +1636,13 @@ def adjust_brightness(image, delta):
 
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
+  
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.adjust_brightness(x, delta=0.1)
+    ```
   """
   with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -1957,7 +2003,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `max_jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: 3D image. Size of the last dimension must be 1 or 3.
     min_jpeg_quality: Minimum jpeg encoding quality to use.
     max_jpeg_quality: Maximum jpeg encoding quality to use.
     seed: An operation-specific seed. It will be used in conjunction with the
@@ -1992,30 +2038,38 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
 @tf_export('image.adjust_jpeg_quality')
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
-  """Adjust jpeg encoding quality of an RGB image.
+  """Adjust jpeg encoding quality of an image.
 
-  This is a convenience method that adjusts jpeg encoding quality of an
-  RGB image.
+  This is a convenience method that converts an image to uint8 representation,
+  encodes it to jpeg with `jpeg_quality`, decodes it, and then converts back
+  to the original data type.
 
-  `image` is an RGB image.  The image's encoding quality is adjusted
-  to `jpeg_quality`.
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
+    image: 3D image. Size of the last dimension must be None, 1 or 3.
+    jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
-    Adjusted image(s), same shape and DType as `image`.
+    Adjusted image, same shape and DType as `image`.
+
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_jpeg_quality(x, 75)
+    ```
+  Raises:
+    InvalidArgumentError: quality must be in [0,100]
+    InvalidArgumentError: image must have 1 or 3 channels
   """
-  with ops.name_scope(name, 'adjust_jpeg_quality', [image]) as name:
+  with ops.name_scope(name, 'adjust_jpeg_quality', [image]):
     image = ops.convert_to_tensor(image, name='image')
+    channels = image.shape.as_list()[-1]
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
-    # Encode image to jpeg with given jpeg quality
     if compat.forward_compatible(2019, 4, 4):
       if not _is_tensor(jpeg_quality):
         # If jpeg_quality is a int (not tensor).
@@ -2024,9 +2078,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     else:
       image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
 
-    # Decode jpeg image
-    image = gen_image_ops.decode_jpeg(image)
-    # Convert back to original dtype and return
+    image = gen_image_ops.decode_jpeg(image, channels=channels)
     return convert_image_dtype(image, orig_dtype)
 
 
@@ -3417,7 +3469,40 @@ def image_gradients(image):
   Returns:
     Pair of tensors (dy, dx) holding the vertical and horizontal image
     gradients (1-step finite difference).
-
+    
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 5
+    IMAGE_WIDTH = 5
+    CHANNELS = 1
+    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS, 
+      delta=1, dtype=tf.float32), 
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    dx, dy = tf.image.image_gradients(image)
+    print(image[0, :,:,0])
+    tf.Tensor(
+      [[ 0.  1.  2.  3.  4.]
+      [ 5.  6.  7.  8.  9.]
+      [10. 11. 12. 13. 14.]
+      [15. 16. 17. 18. 19.]
+      [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
+    print(dx[0, :,:,0])
+    tf.Tensor(
+      [[5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
+    print(dy[0, :,:,0])
+    tf.Tensor(
+      [[1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
+    ```
+    
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
@@ -3611,6 +3696,26 @@ def crop_and_resize_v2(image,
 
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+
+  Example:
+
+  ```python
+  import tensorflow as tf
+  BATCH_SIZE = 1
+  NUM_BOXES = 5
+  IMAGE_HEIGHT = 256
+  IMAGE_WIDTH = 256
+  CHANNELS = 3
+  CROP_SIZE = (24, 24)
+
+  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
+  CHANNELS) )
+  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
+  maxval=BATCH_SIZE, dtype=tf.int32)
+  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  output.shape  #=> (5, 24, 24, 3)
+  ```
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)

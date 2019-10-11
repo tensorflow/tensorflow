@@ -1894,6 +1894,7 @@ TEST_F(MutationTest, ConsecutiveMutations) {
 constexpr char kMatchingFiles[] = "MatchingFiles";
 
 TEST_F(MutationTest, OpWithUnsupportedDevice) {
+  GTEST_SKIP() << "Reenable once offline optimization tests enable CUDA.";
   auto test_graph = []() {
     return GDef({NDef("a", kMatchingFiles, {}, {}, kDeviceCPU0)},
                 /*funcs=*/{});
@@ -1930,6 +1931,7 @@ TEST_F(MutationTest, OpWithUnsupportedDevice) {
 }
 
 TEST_F(MutationTest, OpMissingAttribute) {
+  GTEST_SKIP() << "Reenable once offline optimization tests enable CUDA.";
   auto test_graph = []() {
     return GDef({NDef("a", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU0)},
                 /*funcs=*/{});

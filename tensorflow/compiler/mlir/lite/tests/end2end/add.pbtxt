@@ -41,7 +41,7 @@ versions {
 # CHECK:      {
 # CHECK-NEXT:   version: 3,
 # CHECK-NEXT:   operator_codes: [ {
-# CHECK-EMPTY:
+# CHECK-NEXT:     version: 1
 # CHECK-NEXT:   } ],
 # CHECK-NEXT:   subgraphs: [ {
 # CHECK-NEXT:     tensors: [ {
@@ -61,7 +61,7 @@ versions {
 # CHECK-EMPTY:
 # CHECK-NEXT:       }
 # CHECK-NEXT:     }, {
-# CHECK-NEXT:       shape: [ ],
+# CHECK-NEXT:       shape: [ 4 ],
 # CHECK-NEXT:       type: INT32,
 # CHECK-NEXT:       buffer: 3,
 # CHECK-NEXT:       name: "Add",

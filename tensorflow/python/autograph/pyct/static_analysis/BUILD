@@ -66,6 +66,9 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_oss_py35",
+        # TODO(mdan): Remove this tag once no_oss_py35 is properly supported.
+        "no_oss",
         "no_pip",
         "nopip",
     ],

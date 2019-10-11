@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -108,17 +110,25 @@ class ScatterNdOp : public XlaOpKernel {
                                  buffer_shape.dim_sizes());
     auto indices = context->Input(0);
     auto updates = context->Input(1);
+    auto combine =
+        context->input_xla_type(1) == xla::PRED ? CombineBool : CombineNum;
     auto result =
         XlaScatter(buffer, updates, indices,
-                   /*indices_are_vectors=*/true, /*combiner=*/Combine, builder);
+                   /*indices_are_vectors=*/true, /*combiner=*/combine, builder);
     OP_REQUIRES_OK(context, result.status());
     context->SetOutput(0, result.ValueOrDie());
   }
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
-                            xla::XlaBuilder* builder) {
+  static xla::XlaOp CombineNum(const xla::XlaOp x, const xla::XlaOp y,
+                               xla::XlaBuilder* builder) {
+    (void)builder;
     return xla::Add(x, y);
+  }
+  static xla::XlaOp CombineBool(const xla::XlaOp x, const xla::XlaOp y,
+                                xla::XlaBuilder* builder) {
+    (void)builder;
+    return xla::Or(x, y);
   }
 };
 

@@ -87,6 +87,7 @@ class AlignedConcatByChannels : public NodeShader {
     *generated_code = {
         /*parameters=*/{{"border", inputs[0]->tensor.shape.c / 4}},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),
@@ -174,6 +175,7 @@ class ConcatByAnyChannel : public NodeShader {
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),
@@ -373,6 +375,7 @@ class FlatConcatByHeight : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(params),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),
@@ -439,6 +442,7 @@ class FlatConcatByWidth : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(params),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),

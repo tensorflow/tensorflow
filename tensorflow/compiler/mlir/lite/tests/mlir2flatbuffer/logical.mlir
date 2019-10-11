@@ -5,9 +5,11 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: LOGICAL_OR
+  // CHECK-NEXT:     builtin_code: LOGICAL_OR,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: LOGICAL_AND
+  // CHECK-NEXT:     builtin_code: LOGICAL_AND,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {
@@ -35,7 +37,7 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [  ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
   // CHECK-NEXT:       buffer: 4,
   // CHECK-NEXT:       name: "logical_or",
@@ -43,7 +45,7 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [  ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
   // CHECK-NEXT:       buffer: 5,
   // CHECK-NEXT:       name: "logical_and",

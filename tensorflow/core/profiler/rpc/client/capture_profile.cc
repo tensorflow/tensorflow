@@ -80,6 +80,11 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   return request;
 }
 
+bool ShouldRetryTracing(Status status) {
+  return status.code() == error::Code::UNAVAILABLE ||
+         status.code() == error::Code::ALREADY_EXISTS;
+}
+
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
 Status Profile(const string& service_addr, const string& logdir,
@@ -215,16 +220,14 @@ Status StartTracing(const tensorflow::string& service_addr,
       status = NewSession(tpu_master, hostnames, duration_ms, repository_root,
                           session_id, opts);
     }
-    if (remaining_attempts <= 0 || status.ok() ||
-        status.code() != tensorflow::error::Code::UNAVAILABLE ||
-        status.code() != tensorflow::error::Code::ALREADY_EXISTS)
+    if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
       break;
     std::cout << "No trace event is collected. Automatically retrying."
               << std::endl
               << std::endl;
   }
 
-  if (status.code() == tensorflow::error::Code::UNAVAILABLE) {
+  if (ShouldRetryTracing(status)) {
     std::cout << "No trace event is collected after " << num_tracing_attempts
               << " attempt(s). "
               << "Perhaps, you want to try again (with more attempts?)."

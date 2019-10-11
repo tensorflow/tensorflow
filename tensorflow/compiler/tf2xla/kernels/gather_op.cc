@@ -25,8 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -150,6 +152,85 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   return Status::OK();
 }
 
+Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
+                                    const xla::XlaOp input,
+                                    const TensorShape& input_shape,
+                                    int batch_dims, xla::XlaOp* gather_output) {
+  auto indices = context->Input(1);
+  auto indices_shape = context->InputShape(1);
+
+  absl::optional<int64> axis;
+  if (context->num_inputs() == 3) {
+    const TensorShape axis_shape = context->InputShape(2);
+    if (!TensorShapeUtils::IsScalar(axis_shape)) {
+      return errors::InvalidArgument("axis must be scalar");
+    }
+    DataType axis_type = context->input_type(2);
+    if (axis_type != DT_INT32 && axis_type != DT_INT64) {
+      return errors::InvalidArgument("axis must be int32 or int64");
+    }
+
+    int64 axis_input;
+    TF_RETURN_IF_ERROR(context->ConstantInputAsIntScalar(2, &axis_input));
+
+    const auto params_dims = input_shape.dims();
+    if (-params_dims > axis_input || axis_input >= params_dims) {
+      return errors::InvalidArgument("Expected axis in the range [",
+                                     -params_dims, ", ", params_dims,
+                                     "), but got ", axis_input);
+    }
+    if (axis_input < 0) {
+      axis_input += params_dims;
+    }
+    axis = axis_input;
+  }
+
+  if (batch_dims != 0) {
+    if (batch_dims < 0) {
+      batch_dims = indices_shape.dims() + batch_dims;
+    }
+
+    axis = axis.value_or(batch_dims);
+
+    if (batch_dims < -indices_shape.dims() ||
+        batch_dims >= indices_shape.dims()) {
+      return errors::InvalidArgument(
+          "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
+          indices_shape.dims(), "), but got ", batch_dims);
+    }
+
+    if (batch_dims >= input_shape.dims()) {
+      return errors::InvalidArgument("batch_dims (", batch_dims,
+                                     ") must be less than rank(input) (",
+                                     input_shape.dims(), ").");
+    }
+
+    if (*axis < batch_dims) {
+      return errors::InvalidArgument("batch_dims (", batch_dims,
+                                     ") must be less than or equal to ",
+                                     "axis (", *axis, ").");
+    }
+  }
+
+  axis = axis.value_or(0);
+  DataType index_type = context->input_type(1);
+  if (index_type != DT_INT32 && index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int32 or int64");
+  }
+
+  xla::XlaOp gather;
+  if (batch_dims > 0) {
+    *gather_output = xla::TorchIndexSelect(input, indices, *axis, batch_dims);
+  } else {
+    // XlaGather() manages degenerate cases, like empty-indices, which are
+    // error conditions and caught above if batch_dims is not 0.
+    TF_RETURN_IF_ERROR(
+        XlaGather(input, input_shape, indices, indices_shape, *axis,
+                  /*indices_are_nd=*/false, context->expected_output_dtype(0),
+                  index_type, context->builder(), gather_output));
+  }
+  return Status::OK();
+}
 class GatherOp : public XlaOpKernel {
  public:
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
@@ -164,76 +245,11 @@ class GatherOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override {
     auto input = context->Input(0);
     auto input_shape = context->InputShape(0);
-    auto indices = context->Input(1);
-    auto indices_shape = context->InputShape(1);
-
-    absl::optional<int64> axis;
-    if (context->num_inputs() == 3) {
-      const TensorShape axis_shape = context->InputShape(2);
-      OP_REQUIRES(context, TensorShapeUtils::IsScalar(axis_shape),
-                  errors::InvalidArgument("axis must be scalar"));
-      DataType axis_type = input_type(2);
-      OP_REQUIRES(context, axis_type == DT_INT32 || axis_type == DT_INT64,
-                  errors::InvalidArgument("axis must be int32 or int64"));
-
-      int64 axis_input;
-      OP_REQUIRES_OK(context,
-                     context->ConstantInputAsIntScalar(2, &axis_input));
-
-      const auto params_dims = input_shape.dims();
-      OP_REQUIRES(context,
-                  -params_dims <= axis_input && axis_input < params_dims,
-                  errors::InvalidArgument("Expected axis in the range [",
-                                          -params_dims, ", ", params_dims,
-                                          "), but got ", axis_input));
-      if (axis_input < 0) {
-        axis_input += params_dims;
-      }
-      axis = axis_input;
-    }
-
-    if (batch_dims_ != 0) {
-      if (batch_dims_ < 0) {
-        batch_dims_ = indices_shape.dims() + batch_dims_;
-      }
-
-      axis = axis.value_or(batch_dims_);
-
-      OP_REQUIRES(context,
-                  batch_dims_ >= -indices_shape.dims() &&
-                      batch_dims_ < indices_shape.dims(),
-                  errors::InvalidArgument("Expected batch_dims in the range [",
-                                          -indices_shape.dims(), ", ",
-                                          indices_shape.dims(), "), but got ",
-                                          batch_dims_));
-
-      OP_REQUIRES(context, batch_dims_ < input_shape.dims(),
-                  errors::InvalidArgument("batch_dims (", batch_dims_,
-                                          ") must be less than rank(input) (",
-                                          input_shape.dims(), ")."));
-
-      OP_REQUIRES(context, *axis >= batch_dims_,
-                  errors::InvalidArgument("batch_dims (", batch_dims_,
-                                          ") must be less than or equal to ",
-                                          "axis (", *axis, ")."));
-    }
-
-    axis = axis.value_or(0);
-    DataType index_type = input_type(1);
-    OP_REQUIRES(context, index_type == DT_INT32 || index_type == DT_INT64,
-                errors::InvalidArgument("indices must be int32 or int64"));
 
     xla::XlaOp gather;
-    if (batch_dims_ > 0) {
-      gather = xla::TorchIndexSelect(input, indices, *axis, batch_dims_);
-    } else {
-      // XlaGather() manages degenerate cases, like empty-indices, which are
-      // error conditions and caught above if batch_dims is not 0.
-      OP_REQUIRES_OK(
-          context, XlaGather(input, input_shape, indices, indices_shape, *axis,
-                             /*indices_are_nd=*/false, input_type(0),
-                             index_type, context->builder(), &gather));
-    }
+    OP_REQUIRES_OK(context,
+                   XlaGatherWithBatchDimsOpImpl(context, input, input_shape,
+                                                batch_dims_, &gather));
     context->SetOutput(0, gather);
   }
 

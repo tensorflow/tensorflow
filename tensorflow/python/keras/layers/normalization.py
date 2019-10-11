@@ -41,11 +41,26 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 class BatchNormalizationBase(Layer):
-  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
+  r"""Normalize and scale inputs or activations. (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
   close to 0 and the activation standard deviation close to 1.
+
+  Batch normalization differs from other layers in several key aspects:
+
+  1) Adding BatchNormalization with `training=True` to a model causes the
+  result of one example to depend on the contents of all other examples in a
+  minibatch. Be careful when padding batches or masking examples, as these can
+  change the minibatch statistics and affect other examples.
+
+  2) Updates to the weights (moving statistics) are based on the forward pass
+  of a model rather than the result of gradient computations.
+
+  3) When performing inference using a model containing batch normalization, it
+  is generally (though not always) desirable to use accumulated statistics
+  rather than mini-batch statistics. This is acomplished by passing
+  `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
     axis: Integer, the axis that should be normalized
@@ -124,11 +139,31 @@ class BatchNormalizationBase(Layer):
   Output shape:
     Same shape as input.
 
-  References:
-    - [Batch Normalization: Accelerating Deep Network Training by Reducing
-      Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
-
   {{TRAINABLE_ATTRIBUTE_NOTE}}
+
+  Normalization equations:
+    Consider the intermediate activations \(x\) of a mini-batch of size
+    \(m\):
+
+    We can compute the mean and variance of the batch
+
+    \({\mu_B} = \frac{1}{m} \sum_{i=1}^{m} {x_i}\)
+
+    \({\sigma_B^2} = \frac{1}{m} \sum_{i=1}^{m} ({x_i} - {\mu_B})^2\)
+
+    and then compute a normalized \(x\), including a small factor
+    \({\epsilon}\) for numerical stability.
+
+    \(\hat{x_i} = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}\)
+
+    And finally \(\hat{x}\) is linearly transformed by \({\gamma}\)
+    and \({\beta}\), which are learned parameters:
+
+    \({y_i} = {\gamma * \hat{x_i} + \beta}\)
+
+  References:
+  - [Batch Normalization: Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -263,6 +298,11 @@ class BatchNormalizationBase(Layer):
       return dtypes.float32
     else:
       return self.dtype or dtypes.float32
+
+  def _support_zero_size_input(self):
+    return distribution_strategy_context.has_strategy() and getattr(
+        distribution_strategy_context.get_strategy().extended,
+        'experimental_enable_get_next_as_optional', False)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -484,9 +524,7 @@ class BatchNormalizationBase(Layer):
 
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    # TODO(b/130185866): Support zero batch input in graph mode.
-    if ops.executing_eagerly_outside_functions(
-    ) and distribution_strategy_context.has_strategy():
+    if self._support_zero_size_input():
       inputs_size = array_ops.size(inputs)
     else:
       inputs_size = None
@@ -617,9 +655,7 @@ class BatchNormalizationBase(Layer):
     mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    # TODO(b/130185866): Support zero batch input in graph mode.
-    if (ops.executing_eagerly_outside_functions() and
-        distribution_strategy_context.has_strategy()):
+    if self._support_zero_size_input():
       inputs_size = array_ops.size(inputs)
       mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
       variance = array_ops.where(inputs_size > 0, variance,
@@ -735,8 +771,7 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
-      if ops.executing_eagerly_outside_functions(
-      ) and distribution_strategy_context.has_strategy():
+      if self._support_zero_size_input():
         inputs_size = array_ops.size(inputs)
       else:
         inputs_size = None
@@ -849,7 +884,7 @@ def replace_in_base_docstring(replacements):
   string = BatchNormalizationBase.__doc__
   for old, new in replacements:
     assert old in string
-    string.replace(old, new)
+    string = string.replace(old, new)
   return string
 
 
@@ -954,6 +989,8 @@ class LayerNormalization(Layer):
     # Convert axis to list and resolve negatives
     if isinstance(self.axis, int):
       self.axis = [self.axis]
+    elif isinstance(self.axis, tuple):
+      self.axis = list(self.axis)
     for idx, x in enumerate(self.axis):
       if x < 0:
         self.axis[idx] = ndims + x

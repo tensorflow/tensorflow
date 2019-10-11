@@ -697,6 +697,23 @@ class PyFuncTest(test.TestCase):
       output = sess.run(z, feed_dict={x: 3.0})
       self.assertEqual(output, 18.0)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerPyFuncOnGPUWithStrings(self):
+
+    def fn(a):
+      return str(a.dtype)
+
+    x = constant_op.constant("x", dtype=dtypes.string)
+    output = script_ops.eager_py_func(fn, inp=[x], Tout=dtypes.string)
+    self.assertEqual(self.evaluate(output), "<dtype: 'string'>".encode("utf8"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerPyFuncNotACallable(self):
+    x = constant_op.constant("x", dtype=dtypes.string)
+
+    with self.assertRaisesRegexp(ValueError, "callable"):
+      _ = script_ops.eager_py_func(x, inp=[x], Tout=dtypes.string)
+
 
 if __name__ == "__main__":
   test.main()

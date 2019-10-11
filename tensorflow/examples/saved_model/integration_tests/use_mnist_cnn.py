@@ -47,7 +47,8 @@ flags.DEFINE_bool(
     'If set, the imported SavedModel is trained further.')
 flags.DEFINE_float(
     'dropout_rate', None,
-    'If set, dropout rate passed to the SavedModel.')
+    'If set, dropout rate passed to the SavedModel. '
+    'Requires a SavedModel with support for adjustable hyperparameters.')
 flags.DEFINE_float(
     'regularization_loss_multiplier', None,
     'If set, multiplier for the regularization losses in the SavedModel.')

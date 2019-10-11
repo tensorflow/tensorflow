@@ -49,4 +49,9 @@ void PythonRefManager::CollectGarbage() {
   python_garbage_.clear();
 }
 
+PythonRefManager* GlobalPyRefManager() {
+  static PythonRefManager* static_ref_manager = new PythonRefManager();
+  return static_ref_manager;
+}
+
 }  // namespace xla

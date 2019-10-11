@@ -278,10 +278,11 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       maxval = 1
       if dtype.is_integer:
         maxval = 100
-      x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
+      t = gen.uniform(shape=[n], maxval=maxval, dtype=dtype)
+      x = t.numpy().astype(float)
       if maxval > 1:
         # Normalize y to range [0, 1).
-        x = x.astype(float) / maxval
+        x = x / maxval
       # Tests that the values are distributed amongst 10 bins with equal
       # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
       # p=0.05. This test is probabilistic and would be flaky if the random
@@ -327,7 +328,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, [0, 0], shape)
       with self.assertRaisesWithPredicateMatch(
-          TypeError, "Requested dtype: int64"):
+          TypeError, "EagerTensor of dtype int64"):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, 1.1, shape)
       with self.assertRaisesWithPredicateMatch(

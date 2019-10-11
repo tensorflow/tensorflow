@@ -10,6 +10,21 @@ package(
 
 exports_files(["LICENSE"])
 
+py_test(
+    name = "tf_doctest",
+    srcs = ["tf_doctest.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "doc_generator_visitor",
     srcs = [

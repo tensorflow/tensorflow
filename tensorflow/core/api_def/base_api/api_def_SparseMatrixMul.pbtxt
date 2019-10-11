@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "SparseMatrixMul"
+  in_arg {
+    name: "a"
+    description: "A CSRSparseMatrix."
+  }
+  in_arg {
+    name: "b"
+    description: "A dense tensor."
+  }
+  out_arg {
+    name: "output"
+    description: "A dense output tensor."
+  }
+  summary: "Element-wise multiplication of a sparse matrix with a dense tensor."
+  description: <<END
+Returns a sparse matrix.
+
+The dense tensor `b` may be either a scalar; otherwise `a` must be a rank-3
+`SparseMatrix`; in this case `b` must be shaped `[batch_size, 1, 1]` and the
+multiply operation broadcasts.
+
+**NOTE** even if `b` is zero, the sparsity structure of the output does not
+change.
+END
+}

@@ -14,27 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+
 #include <memory>
 #include <utility>
+
 #include "grpcpp/grpcpp.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
-std::unique_ptr<Thread> StartProfilerServer(
-    ProfilerContext* const profiler_context, int32 port) {
-  Env* env = profiler_context->eager_context != nullptr
-                 ? profiler_context->eager_context->TFEnv()
-                 : Env::Default();
-  // Starting the server in the child thread may be delay and user may already
-  // delete the profiler context at that point. So we need to make a copy.
-  ProfilerContext ctx = *profiler_context;
-  return WrapUnique(env->StartThread({}, "profiler server", [ctx, port]() {
+std::unique_ptr<Thread> StartProfilerServer(int32 port) {
+  Env* env = Env::Default();
+  return WrapUnique(env->StartThread({}, "profiler server", [port]() {
     string server_address = strings::StrCat("0.0.0.0:", port);
     std::unique_ptr<grpc::ProfilerService::Service> service =
-        CreateProfilerService(ctx);
+        CreateProfilerService();
     ::grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address,
                              ::grpc::InsecureServerCredentials());

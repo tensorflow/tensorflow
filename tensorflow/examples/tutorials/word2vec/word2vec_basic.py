@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import collections
+import hashlib
 import math
 import os
 import random
@@ -37,6 +38,14 @@ from tensorflow.contrib.tensorboard.plugins import projector
 data_index = 0
 
 
+def _hash_file(fpath):
+  hasher = hashlib.sha256()
+  with open(fpath, 'rb') as fpath_file:
+    for chunk in iter(lambda: fpath_file.read(65535), b''):
+      hasher.update(chunk)
+  return hasher.hexdigest()
+
+
 def word2vec_basic(log_dir):
   """Example of building, training and visualizing a word2vec model."""
   # Create the directory for TensorBoard variables if there is not.
@@ -44,16 +53,22 @@ def word2vec_basic(log_dir):
     os.makedirs(log_dir)
 
   # Step 1: Download the data.
+  # Note: Source website does not support HTTPS right now.
   url = 'http://mattmahoney.net/dc/'
 
   # pylint: disable=redefined-outer-name
-  def maybe_download(filename, expected_bytes):
+  def maybe_download(filename, expected_bytes, sha256=None):
     """Download a file if not present, and make sure it's the right size."""
     local_filename = os.path.join(gettempdir(), filename)
     if not os.path.exists(local_filename):
       local_filename, _ = urllib.request.urlretrieve(url + filename,
                                                      local_filename)
     statinfo = os.stat(local_filename)
+
+    if sha256 and _hash_file(local_filename) != sha256:
+      raise Exception('Failed to verify ' + local_filename + ' due to hash '
+                      'mismatch. Can you get to it with a browser?')
+
     if statinfo.st_size == expected_bytes:
       print('Found and verified', filename)
     else:
@@ -62,7 +77,10 @@ def word2vec_basic(log_dir):
                       '. Can you get to it with a browser?')
     return local_filename
 
-  filename = maybe_download('text8.zip', 31344016)
+  filename = maybe_download(
+      'text8.zip',
+      31344016,
+      sha256='a6640522afe85d1963ad56c05b0ede0a0c000dddc9671758a6cc09b7a38e5232')
 
   # Read the data into a list of strings.
   def read_data(filename):
@@ -81,9 +99,7 @@ def word2vec_basic(log_dir):
     """Process raw inputs into a dataset."""
     count = [['UNK', -1]]
     count.extend(collections.Counter(words).most_common(n_words - 1))
-    dictionary = {}
-    for word, _ in count:
-      dictionary[word] = len(dictionary)
+    dictionary = {word: index for index, (word, _) in enumerate(count)}
     data = []
     unk_count = 0
     for word in words:
@@ -100,7 +116,7 @@ def word2vec_basic(log_dir):
   #   This is the original text but words are replaced by their codes
   # count - map of words(strings) to count of occurrences
   # dictionary - map of words(strings) to their codes(integers)
-  # reverse_dictionary - maps codes(integers) to words(strings)
+  # reverse_dictionary - map of codes(integers) to words(strings)
   data, count, unused_dictionary, reverse_dictionary = build_dataset(
       vocabulary, vocabulary_size)
   del vocabulary  # Hint to reduce memory.
@@ -133,7 +149,7 @@ def word2vec_basic(log_dir):
         buffer.append(data[data_index])
         data_index += 1
     # Backtrack a little bit to avoid skipping words in the end of a batch
-    data_index = (data_index + len(data) - span) % len(data)
+    data_index = (data_index - span) % len(data)
     return batch, labels
 
   batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
@@ -186,8 +202,9 @@ def word2vec_basic(log_dir):
     # Compute the average NCE loss for the batch.
     # tf.nce_loss automatically draws a new sample of the negative labels each
     # time we evaluate the loss.
-    # Explanation of the meaning of NCE loss:
+    # Explanation of the meaning of NCE loss and why choosing NCE over tf.nn.sampled_softmax_loss:
     #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
+    #   http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf
     with tf.name_scope('loss'):
       loss = tf.reduce_mean(
           tf.nn.nce_loss(
@@ -275,10 +292,10 @@ def word2vec_basic(log_dir):
           top_k = 8  # number of nearest neighbors
           nearest = (-sim[i, :]).argsort()[1:top_k + 1]
           log_str = 'Nearest to %s:' % valid_word
-          for k in xrange(top_k):
-            close_word = reverse_dictionary[nearest[k]]
-            log_str = '%s %s,' % (log_str, close_word)
-          print(log_str)
+
+          print(
+              log_str,
+              ', '.join([reverse_dictionary[nearest[k]] for k in range(top_k)]))
     final_embeddings = normalized_embeddings.eval()
 
     # Write corresponding labels for the embeddings.

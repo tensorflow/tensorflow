@@ -35,21 +35,6 @@ namespace gpu {
       ShapeUtil::ElementIsFloating(instruction.shape())) {
     return false;
   }
-  // LLVM optimizes the integer division/remainder by a
-  // constant scalar to a few fast operations.
-  if ((instruction.opcode() == HloOpcode::kDivide ||
-       instruction.opcode() == HloOpcode::kRemainder) &&
-      ShapeUtil::ElementIsIntegral(instruction.shape())) {
-    auto* operand1 = instruction.operand(1);
-    if (hlo_query::IsScalarConstant(operand1)) {
-      return false;
-    }
-    // Broadcasted scalar is also being optimized.
-    if (operand1->opcode() == HloOpcode::kBroadcast &&
-        hlo_query::IsScalarConstant(operand1->operand(0))) {
-      return false;
-    }
-  }
   return InstructionFusion::IsExpensive(instruction);
 }
 

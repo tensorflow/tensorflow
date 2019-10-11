@@ -18,6 +18,7 @@
 To update renames_v2.py, run:
   bazel build tensorflow/tools/compatibility/update:generate_v2_renames_map
   bazel-bin/tensorflow/tools/compatibility/update/generate_v2_renames_map
+  pyformat --in_place third_party/tensorflow/tools/compatibility/renames_v2.py
 """
 # pylint: enable=line-too-long
 import sys

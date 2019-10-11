@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -51,8 +52,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         test_samples=10,
         input_shape=(DATA_DIM,),
         num_classes=NUM_CLASSES)
-    y_train = keras.utils.to_categorical(y_train, NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test, NUM_CLASSES)
+    y_train = np_utils.to_categorical(y_train, NUM_CLASSES)
+    y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
     return (x_train, y_train), (x_test, y_test)
 
   def create_multi_input_model_from(self, layer1, layer2):
@@ -79,7 +80,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         loss='categorical_crossentropy',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     self.assertEqual(len(model.losses), 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -97,7 +98,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         loss='categorical_crossentropy',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     self.assertEqual(len(model.losses), 1 if context.executing_eagerly() else 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -113,7 +114,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, batch_size=5, epochs=1)
 
   def test_custom_regularizer_saving(self):
@@ -144,7 +145,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         loss='categorical_crossentropy',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     self.assertEqual(len(model.losses), 5)
 
   @keras_parameterized.run_all_keras_modes
@@ -167,7 +168,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         loss='categorical_crossentropy',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     self.assertEqual(len(model.losses), 6)
 
   @keras_parameterized.run_all_keras_modes
@@ -195,7 +196,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         loss='categorical_crossentropy',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     self.assertEqual(len(model.losses), 14)
 
 

@@ -210,8 +210,9 @@ def infeed_dequeue(dtype, shape, name=None):
   """
   if dtype not in _SUPPORTED_INFEED_DTYPES:
     raise TypeError(
-        "{} is not a supported TPU infeed type. Supported types are: "
-        "{}".format(dtype, list(_SUPPORTED_INFEED_DTYPES)))
+        "Operation '{}' has type {} which is not a supported TPU infeed type. "
+        "Supported types are: {}".format(name, dtype,
+                                         list(_SUPPORTED_INFEED_DTYPES)))
 
   return gen_tpu_ops.infeed_dequeue(dtype, shape, name=name)
 

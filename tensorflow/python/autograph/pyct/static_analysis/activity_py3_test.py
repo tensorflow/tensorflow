@@ -32,7 +32,6 @@ class ActivityAnalyzerTest(activity_test.ActivityAnalyzerTestBase):
   """Tests which can only run in Python 3."""
 
   def test_nonlocal_symbol(self):
-
     nonlocal_a = 3
     nonlocal_b = 13
 
@@ -47,7 +46,6 @@ class ActivityAnalyzerTest(activity_test.ActivityAnalyzerTestBase):
     self.assertScopeIs(body_scope, ('nonlocal_b', 'c'), ('nonlocal_a',))
 
   def test_annotated_assign(self):
-
     b = int
 
     def test_fn(c):

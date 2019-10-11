@@ -33,7 +33,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kInsertOpName[] = "ExperimentalLatencyStatsDataset";
+constexpr char kInsertOpName[] = "LatencyStatsDataset";
 
 NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef new_node;
@@ -78,7 +78,7 @@ Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
   // TODO(shivaniagrawal): Add Op to return Latency for the particular Op than
   // for the edge (e2 - e1?).
   for (const NodeDef& node : item.graph.node()) {
-    if (!str_util::EndsWith(node.op(), "Dataset") || node.attr().empty()) {
+    if (!absl::EndsWith(node.op(), "Dataset") || node.attr().empty()) {
       // TODO(b/111805951): Replace this with non-approximate way to check if
       // node corresponds to a `Dataset` op.
       continue;

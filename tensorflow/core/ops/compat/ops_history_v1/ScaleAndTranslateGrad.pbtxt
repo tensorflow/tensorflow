@@ -1,0 +1,85 @@
+op {
+  name: "ScaleAndTranslateGrad"
+  input_arg {
+    name: "grads"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "original_image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "translation"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "kernel_type"
+    type: "string"
+    default_value {
+      s: "lanczos3"
+    }
+  }
+}
+op {
+  name: "ScaleAndTranslateGrad"
+  input_arg {
+    name: "grads"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "original_image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "translation"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "kernel_type"
+    type: "string"
+    default_value {
+      s: "lanczos3"
+    }
+  }
+  attr {
+    name: "antialias"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}

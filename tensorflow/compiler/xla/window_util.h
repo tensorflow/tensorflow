@@ -55,6 +55,9 @@ bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);
 bool HasDilation(const Window& window);
 
+// Returns true if the window overlaps.
+bool HasOverlappingWindow(const Window& window);
+
 bool HasWindowReversal(const Window& window);
 bool AllOrNoneReversed(const Window& window);
 

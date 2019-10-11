@@ -25,6 +25,10 @@ tf_module {
     argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
+    name: "ngrams"
+    argspec: "args=[\'data\', \'ngram_width\', \'separator\', \'pad_values\', \'padding_width\', \'preserve_short_sequences\', \'name\'], varargs=None, keywords=None, defaults=[\' \', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "reduce_join"
     argspec: "args=[\'inputs\', \'axis\', \'keepdims\', \'separator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'\', \'None\'], "
   }

@@ -98,7 +98,7 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
 
 

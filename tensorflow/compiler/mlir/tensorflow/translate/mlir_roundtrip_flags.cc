@@ -30,34 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool IsQuantizationType(DataType dtype) {
-  switch (dtype) {
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_QINT32:
-      return true;
-    default:
-      return false;
-  }
-}
-
-int64_t GetQuantizationTypeWidth(DataType dtype) {
-  switch (dtype) {
-    case DT_QINT8:
-    case DT_QUINT8:
-      return 8;
-    case DT_QINT16:
-    case DT_QUINT16:
-      return 16;
-    case DT_QINT32:
-      return 32;
-    default:
-      return 0;
-  }
-}
-
 Status ParseOutputArrayInfo(absl::string_view array_names,
                             absl::flat_hash_set<string>* array,
                             std::vector<string>* order) {
@@ -79,10 +51,7 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
 Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view data_types,
                            absl::string_view shapes,
-                           absl::string_view inference_type,
-                           absl::string_view min_values,
-                           absl::string_view max_values,
-                           NodeSpecs::InputArrays* inputs) {
+                           GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names = absl::StrSplit(array_names, ',');
   std::vector<string> node_dtypes = absl::StrSplit(data_types, ',');
 
@@ -99,65 +68,19 @@ Status ParseInputArrayInfo(absl::string_view array_names,
     }
     node_shapes.push_back(dims);
   }
-
-  std::vector<float> node_mins;
-  if (!min_values.empty()) {
-    std::vector<string> node_mins_str = absl::StrSplit(min_values, ',');
-    for (int i = 0; i < node_mins_str.size(); i++) {
-      double value;
-      TF_RET_CHECK(absl::SimpleAtod(node_mins_str[i], &value));
-      node_mins.push_back(value);
-    }
-  }
-
-  std::vector<float> node_maxs;
-  if (!max_values.empty()) {
-    std::vector<string> node_maxs_str = absl::StrSplit(max_values, ',');
-    for (int i = 0; i < node_maxs_str.size(); i++) {
-      double value;
-      TF_RET_CHECK(absl::SimpleAtod(node_maxs_str[i], &value));
-      node_maxs.push_back(value);
-    }
-  }
-
-  DataType final_type = tensorflow::DT_FLOAT;
-  if (!inference_type.empty()) {
-    TF_RET_CHECK(DataType_Parse(string(inference_type), &final_type));
-  }
-  return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, final_type,
-                             node_mins, node_maxs, inputs);
+  return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
 Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            const std::vector<string>& node_dtypes,
                            const std::vector<std::vector<int>>& node_shapes,
-                           DataType inference_type,
-                           const std::vector<float>& node_mins,
-                           const std::vector<float>& node_maxs,
-                           NodeSpecs::InputArrays* inputs) {
+                           GraphImportConfig::InputArrays* inputs) {
   if (node_names.size() != node_dtypes.size() ||
       node_names.size() != node_shapes.size()) {
     return errors::FailedPrecondition(
         absl::StrCat("Unmatched node, data type and shape numbers (#arrays ",
                      node_names.size(), ", #data_types ", node_dtypes.size(),
                      ", #input_shapes ", node_shapes.size(), ")"));
-  }
-
-  if (IsQuantizationType(inference_type)) {
-    if (node_names.size() != node_mins.size() ||
-        node_names.size() != node_maxs.size()) {
-      return errors::FailedPrecondition(absl::StrCat(
-          "Unmatched node, min and max value numbers (#arrays ",
-          node_names.size(), ", #input_min_values ", node_mins.size(),
-          ", #input_max_values ", node_maxs.size(), ")"));
-    }
-  } else {
-    if (!node_mins.empty()) {
-      LOG(WARNING) << "Ignored input_min_values.";
-    }
-    if (!node_maxs.empty()) {
-      LOG(WARNING) << "Ignored input_max_values.";
-    }
   }
 
   // StringMap doesn't support reserve else reserve input map size here.
@@ -176,12 +99,6 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
           absl::StrCat("Invalid node type '", node_dtypes[i], "'"));
     }
     TF_RET_CHECK(DataType_Parse(node_dtypes[i], &info.imported_dtype));
-    info.final_dtype = inference_type;
-
-    if (IsQuantizationType(inference_type)) {
-      info.min_value = node_mins[i];
-      info.max_value = node_maxs[i];
-    }
 
     for (auto& dim : node_shapes[i]) {
       info.shape.add_dim()->set_size(dim);

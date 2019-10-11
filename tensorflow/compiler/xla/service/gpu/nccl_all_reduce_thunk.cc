@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-#if GOOGLE_CUDA
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -62,14 +60,9 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-#if GOOGLE_CUDA
-  return true;
-#else
-  return false;
-#endif
+  return true;  // Skylark selects this source file if NCCL is enabled.
 }
 
-#if GOOGLE_CUDA
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -162,6 +155,57 @@ class NcclComm {
   absl::optional<ncclComm_t> comm_;
 };
 
+absl::optional<ncclRedOp_t> MatchAllReduceComputation(
+    const HloComputation* computation) {
+  namespace m = match;
+  const HloInstruction* root = computation->root_instruction();
+
+  auto match_opcode = [&](HloOpcode opcode) {
+    return Match(
+        root, m::Op()
+                  .WithOpcode(opcode)
+                  .WithBinaryOperandsAnyOrder(m::Parameter(0), m::Parameter(1))
+                  .WithShape(m::Shape().IsEffectiveScalar()));
+  };
+
+  if (match_opcode(HloOpcode::kAdd)) {
+    return ncclSum;
+  } else if (match_opcode(HloOpcode::kMultiply)) {
+    return ncclProd;
+  } else if (match_opcode(HloOpcode::kMinimum)) {
+    return ncclMin;
+  } else if (match_opcode(HloOpcode::kMaximum)) {
+    return ncclMax;
+  } else {
+    return absl::nullopt;
+  }
+}
+
+absl::optional<ncclDataType_t> MatchNcclDataType(const HloInstruction* crs) {
+  switch (crs->operand(0)->shape().element_type()) {
+    case S8:
+      return ncclInt8;
+    case U8:
+      return ncclUint8;
+    case S32:
+      return ncclInt32;
+    case U32:
+      return ncclUint32;
+    case S64:
+      return ncclInt64;
+    case U64:
+      return ncclUint64;
+    case F16:
+      return ncclFloat16;
+    case F32:
+      return ncclFloat32;
+    case F64:
+      return ncclFloat64;
+    default:
+      return absl::nullopt;
+  }
+}
+
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
 // The rules are as follows.
@@ -201,6 +245,14 @@ struct RendezvousKey {
             : std::make_pair(
                   kCrossReplica,
                   static_cast<int64>(instr->GetModule()->unique_id()));
+    absl::optional<ncclRedOp_t> computation =
+        MatchAllReduceComputation(instr->to_apply());
+    CHECK(computation.has_value());
+    computation_kind = *computation;
+    absl::optional<ncclDataType_t> allreduce_datatype =
+        MatchNcclDataType(instr);
+    CHECK(allreduce_datatype.has_value());
+    datatype = *allreduce_datatype;
   }
 
   int num_participants() const { return participating_replicas.size(); }
@@ -231,6 +283,8 @@ struct RendezvousKey {
   RunId run_id;
   std::vector<int64> participating_replicas;
   AllReduceKind all_reduce_kind;
+  ncclRedOp_t computation_kind;
+  ncclDataType_t datatype;
   int64 op_id;
 };
 
@@ -568,8 +622,8 @@ Status Rendezvous::DoAllReduce(ParticipantData participant, ncclComm_t comm) {
       static_cast<const void*>(comm), cu_stream);
   XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                          /*count=*/participant.element_count,
-                                         /*datatype=*/ncclFloat,
-                                         /*op=*/ncclSum,
+                                         /*datatype=*/key_.datatype,
+                                         /*op=*/key_.computation_kind,
                                          /*comm=*/comm,
                                          /*stream=*/*cu_stream));
 
@@ -589,6 +643,12 @@ struct NcclAllReduceThunk::AuxData {
   tensorflow::mutex mu;
   absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques GUARDED_BY(mu);
 };
+
+/*static*/ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+  return MatchAllReduceComputation(crs->to_apply()).has_value() &&
+         MatchNcclDataType(crs).has_value() && crs->IsCrossReplicaAllReduce() &&
+         crs->operand_count() == 1;  // One array to reduce.
+}
 
 /*static*/ absl::flat_hash_set<int>
 NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
@@ -726,36 +786,6 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 NcclAllReduceThunk::~NcclAllReduceThunk() {}
-
-#else
-
-Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-}
-
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
-/*static*/ absl::flat_hash_set<int>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
-}
-
-struct NcclAllReduceThunk::AuxData {};
-
-NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
-      replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
-
-#endif  // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

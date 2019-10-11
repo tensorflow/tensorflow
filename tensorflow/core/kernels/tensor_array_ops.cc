@@ -65,7 +65,7 @@ Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
           "Tensor array handle must be 2-element vector, but had shape: ",
           tensor.shape().DebugString());
     }
-    auto h = tensor.flat<string>();
+    auto h = tensor.flat<tstring>();
     *container = h(0);
     *ta_handle = h(1);
   }
@@ -194,7 +194,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
       return errors::InvalidArgument("Size should be >= 0.");
     }
 
-    auto handle = tensor_array_output_handle->flat<string>();
+    auto handle = tensor_array_output_handle->flat<tstring>();
     string unique_tensor_array_name =
         strings::StrCat(tensor_array_name_, "_",
                         TensorArray::tensor_array_counter.fetch_add(1));
@@ -301,7 +301,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           string(StringPiece(resource.name()).substr(container.size()));
     }
 
-    auto output_handle = tensor_array_output_handle->flat<string>();
+    auto output_handle = tensor_array_output_handle->flat<tstring>();
     output_handle(0) = "_tensor_array_grads";
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 

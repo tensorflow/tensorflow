@@ -23,15 +23,22 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#ifdef TENSORFLOW_MEM_DEBUG
+#include "tensorflow/core/platform/stacktrace.h"
+#endif
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
 namespace tensorflow {
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                           bool allow_growth, const string& name)
-    : sub_allocator_(sub_allocator),
+                           bool allow_growth, const string& name,
+                           bool garbage_collection)
+    : garbage_collection_(garbage_collection),
+      sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
@@ -260,6 +267,97 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
   return rounded_bytes;
 }
 
+bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
+    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+  // Do nothing if garbage collection is off.
+  if (!garbage_collection_) {
+    return false;
+  }
+
+  // Searching for free regions.
+  absl::flat_hash_set<void*> free_region_ptrs;
+  size_t total_free_bytes = 0;
+  for (const AllocationRegion& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    bool any_use = false;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        any_use = true;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (!any_use) {
+      VLOG(2) << "Found free region with ptr = " << region.ptr();
+      free_region_ptrs.insert(region.ptr());
+      total_free_bytes += region.memory_size();
+    }
+  }
+
+  if (total_free_bytes == 0) {
+    return false;
+  }
+
+  // Rough estimation to check whether deallocation can help.
+  size_t available_bytes =
+      memory_limit_ - total_region_allocated_bytes_ + total_free_bytes;
+  if (rounded_bytes > available_bytes) {
+    return false;
+  }
+
+  LOG(WARNING) << "Garbage collection: deallocate free memory regions"
+               << " (i.e., allocations) so that we can re-allocate a larger"
+               << " region to avoid OOM due to memory fragmentation. If you"
+               << " see this message frequently, you are running near the"
+               << " threshold of the available device memory and re-allocation"
+               << " may incur great performance overhead. You may try smaller"
+               << " batch sizes to observe the performance impact."
+               << " Set TF_ENABLE_GPU_GARBAGE_COLLECTION=false if you'd like to"
+               << " disable this feature.";
+
+  // Deallocate free regions.
+  DeallocateRegions(free_region_ptrs);
+
+  return true;
+}
+
+void BFCAllocator::DeallocateRegions(
+    const absl::flat_hash_set<void*>& region_ptrs)
+    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+  // Explicitly remove the const qualifier as some compilers disallow passing
+  // const_iterator to std::vector::erase(), which is used in
+  // RemoveAllocationRegion().
+  auto regions =
+      const_cast<std::vector<AllocationRegion>*>(&region_manager_.regions());
+  auto it = regions->begin();
+  while (it != regions->end()) {
+    if (!region_ptrs.contains(it->ptr())) {
+      ++it;
+      continue;
+    }
+
+    VLOG(2) << "Deallocate region with ptr = " << it->ptr();
+    // Remove all chunk registrations from Bins.
+    ChunkHandle h = region_manager_.get_handle(it->ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->bin_num != kInvalidBinNum) {
+        RemoveFreeChunkFromBin(h);
+      }
+      auto h_to_delete = h;
+      h = c->next;
+      DeleteChunk(h_to_delete);
+    }
+
+    // Deallocate the memory.
+    sub_allocator_->Free(it->ptr(), it->memory_size());
+    total_region_allocated_bytes_ -= it->memory_size();
+    it = region_manager_.RemoveAllocationRegion(it);
+  }
+}
+
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
                                         bool dump_log_on_failure,
@@ -307,9 +405,22 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     }
   }
 
+  // Reaching this point means that no chunks can satisfy the request. Also,
+  // the unallocated bytes cannot satisfy the request. Before giving up, let's
+  // try deallocating free regions so that suballocator can combine them with
+  // the unallocated bytes and form a larger region.
+  if (DeallocateFreeRegions(rounded_bytes) &&
+      Extend(unused_alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+    if (ptr != nullptr) {
+      return ptr;
+    }
+  }
+
   // We searched all bins for an existing free chunk to use and
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
+  MaybeWriteMemoryMap();
   if (dump_log_on_failure) {
     LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
                  << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
@@ -366,6 +477,22 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
             std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
         stats_.largest_alloc_size =
             std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
+
+#ifdef TENSORFLOW_MEM_DEBUG
+        if (ShouldRecordOpName()) {
+          if (pending_op_name != nullptr) {
+            chunk->op_name = pending_op_name;
+          } else {
+            LOG(INFO) << "missing pending_op_name for " << Name()
+                      << " reading addr "
+                      << static_cast<const void*>(&pending_op_name) << "\n"
+                      << CurrentStackTrace();
+            chunk->op_name = nullptr;
+          }
+          chunk->action_count = ++action_counter_;
+          chunk->step_id = pending_step_id;
+        }
+#endif
 
         VLOG(4) << "Returning: " << chunk->ptr;
         if (VLOG_IS_ON(4)) {
@@ -533,6 +660,12 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
+
+#ifdef TENSORFLOW_MEM_DEBUG
+  if (ShouldRecordOpName()) {
+    c->action_count = ++action_counter_;
+  }
+#endif
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
@@ -755,6 +888,7 @@ string BFCAllocator::RenderOccupancy() {
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
+  LOG(INFO) << "BFCAllocator dump for " << Name();
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
     Bin* b = BinFromIndex(bin_num);
     const BinDebugInfo& bin_info = bin_infos[bin_num];
@@ -797,11 +931,20 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      LOG(INFO) << (c->in_use() ? "InUse" : "Free ") << " at " << c->ptr
-                << " next " << c->next << " of size " << c->size
-                << (timing_counter_
-                        ? strings::StrCat(" freed_at_count ", c->freed_at_count)
-                        : "");
+      string buf = strings::StrCat(
+          (c->in_use() ? "InUse" : "Free "), " at ",
+          strings::Hex(reinterpret_cast<uint64>(c->ptr)), " of size ", c->size);
+#ifdef TENSORFLOW_MEM_DEBUG
+      if (ShouldRecordOpName()) {
+        strings::StrAppend(&buf, " by op ", c->op_name, " action_count ",
+                           c->action_count, " step ", c->step_id);
+      }
+#endif
+      strings::StrAppend(&buf, " next ", c->next);
+      if (timing_counter_) {
+        strings::StrAppend(&buf, " freed_at_count ", c->freed_at_count);
+      }
+      LOG(INFO) << buf;
       h = c->next;
     }
   }
@@ -822,6 +965,75 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
             << " curr_region_allocation_bytes_: "
             << curr_region_allocation_bytes_;
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
+}
+
+void BFCAllocator::MaybeWriteMemoryMap() {
+  const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
+  if (gpu_memory_map_file != nullptr) {
+    std::unique_ptr<WritableFile> dump_file;
+    string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                       Env::Default()->NowMicros());
+    Status status = Env::Default()->NewWritableFile(file_name, &dump_file);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to open file " << file_name;
+      return;
+    }
+    MemoryDump md = RecordMemoryMapInternal();
+    status = dump_file->Append(md.SerializeAsString());
+    if (!status.ok()) {
+      LOG(ERROR) << "Error on writing to file " << gpu_memory_map_file << ": "
+                 << status;
+    }
+  }
+}
+
+MemoryDump BFCAllocator::RecordMemoryMap() {
+  mutex_lock l(lock_);
+  return RecordMemoryMapInternal();
+}
+
+MemoryDump BFCAllocator::RecordMemoryMapInternal() {
+  MemoryDump md;
+  md.set_allocator_name(Name());
+
+  // Record summary data for every bin.
+  const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
+  for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
+    Bin* b = BinFromIndex(bin_num);
+    const BinDebugInfo& bin_info = bin_infos[bin_num];
+    DCHECK_EQ(b->free_chunks.size(),
+              bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use);
+    BinSummary* bs = md.add_bin_summary();
+    bs->set_bin(bin_num);
+    bs->set_total_bytes_in_use(bin_info.total_bytes_in_use);
+    bs->set_total_bytes_in_bin(bin_info.total_bytes_in_bin);
+    bs->set_total_chunks_in_use(bin_info.total_chunks_in_use);
+    bs->set_total_chunks_in_bin(bin_info.total_chunks_in_bin);
+  }
+
+  // Record state of every defined Chunk.
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      MemChunk* mc = md.add_chunk();
+      mc->set_in_use(c->in_use());
+      mc->set_address(reinterpret_cast<uint64>(c->ptr));
+      mc->set_size(c->size);
+      mc->set_requested_size(c->requested_size);
+      mc->set_bin(c->bin_num);
+#ifdef TENSORFLOW_MEM_DEBUG
+      mc->set_op_name(c->op_name ? string(c->op_name) : "UNKNOWN");
+      mc->set_step_id(c->step_id);
+      mc->set_action_count(c->action_count);
+#endif
+      if (timing_counter_) {
+        mc->set_freed_at_count(c->in_use() ? 0 : c->freed_at_count);
+      }
+      h = c->next;
+    }
+  }
+  return md;
 }
 
 absl::optional<AllocatorStats> BFCAllocator::GetStats() {

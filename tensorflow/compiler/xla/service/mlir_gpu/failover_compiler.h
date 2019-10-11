@@ -57,16 +57,6 @@ class FailoverCompiler final : public Compiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group,
-      absl::Span<se::StreamExecutor* const> executors,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
@@ -77,6 +67,9 @@ class FailoverCompiler final : public Compiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+  Compiler* GetPrimary() const { return primary_.get(); }
+  Compiler* GetSecondary() const { return secondary_.get(); }
 
  private:
   std::unique_ptr<Compiler> primary_;

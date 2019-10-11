@@ -120,6 +120,8 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     fn_library.emplace(OpRegistry::Global(), graph.library());
   }
   for (const NodeDef& node : graph.node()) {
+    const auto attrs = AttrSlice(&node.attr());
+
     // Tensorflow functions do not prune stateful or dataset-output ops from
     // the function body (see PruneFunctionBody in common_runtime/function.cc).
     if (!optimization_options_.allow_pruning_stateful_and_dataset_ops &&
@@ -129,8 +131,9 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
 
     // Do not remove ops with attribute _grappler_do_not_remove. This is useful
     // for debugging.
-    auto iter = node.attr().find("_grappler_do_not_remove");
-    if (iter != node.attr().end() && iter->second.b()) {
+    bool do_not_remove;
+    if (TryGetNodeAttr(attrs, "_grappler_do_not_remove", &do_not_remove) &&
+        do_not_remove) {
       result.insert(node.name());
     }
   }

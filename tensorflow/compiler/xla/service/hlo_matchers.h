@@ -215,6 +215,8 @@ HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
+HLO_MATCHER(CopyDone);
+HLO_MATCHER(CopyStart);
 HLO_MATCHER(AllReduce);
 HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);

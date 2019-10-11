@@ -18,11 +18,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
@@ -112,7 +113,10 @@ class LocalCLIDebuggerWrapperSessionForTest(
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
 
-    readline_cli = ui_factory.get_ui("readline")
+    readline_cli = ui_factory.get_ui(
+        "readline",
+        config=cli_config.CLIConfig(
+            config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
     self._register_this_run_info(readline_cli)
 
     while True:
@@ -171,7 +175,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._tmp_dir):
-      shutil.rmtree(self._tmp_dir)
+      file_io.delete_recursively(self._tmp_dir)
 
   def testConstructWrapper(self):
     local_cli_wrapper.LocalCLIDebugWrapperSession(
@@ -455,7 +459,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebuggingMakeCallableFromOptionsWithTwoFeedsWorks(self):
     ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
@@ -482,7 +487,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
     variable_1 = variables.VariableV1(
