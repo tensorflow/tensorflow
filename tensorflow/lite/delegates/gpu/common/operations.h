@@ -302,11 +302,11 @@ struct ConstTensorAttributes {
 // Simple slicing without advanced support for shrinking, reverse slicing etc.
 struct SliceAttributes {
   // Specifies start and end dimensions for slicing.
-  HWC starts;
-  HWC ends;
+  BHWC starts;
+  BHWC ends;
 
   // Stride should be >= 1.
-  HWC strides;
+  BHWC strides;
 };
 
 // @return shape of a tensor after Slice2D operation is applied to the given

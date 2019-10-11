@@ -322,7 +322,8 @@ BHWC CalculateOutputShape(const BHWC& input,
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
-  return BHWC(input.b, StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
+  return BHWC(StridedSize(attr.ends.b - attr.starts.b, attr.strides.b),
+              StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
               StridedSize(attr.ends.w - attr.starts.w, attr.strides.w),
               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
 }
