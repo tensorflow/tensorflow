@@ -548,7 +548,7 @@ using BinaryOpLLVMOpLowering = NaryOpLLVMOpLowering<SourceOp, TargetOp, 2>;
 
 // Specific lowerings.
 // FIXME: this should be tablegen'ed.
-struct ExpOpLowering : public UnaryOpLLVMOpLowering<ExpOp, LLVM::exp> {
+struct ExpOpLowering : public UnaryOpLLVMOpLowering<ExpOp, LLVM::ExpOp> {
   using Super::Super;
 };
 struct AddIOpLowering : public BinaryOpLLVMOpLowering<AddIOp, LLVM::AddOp> {
