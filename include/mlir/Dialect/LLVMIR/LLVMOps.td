@@ -579,7 +579,7 @@ def LLVM_ConstantOp
 // operations and intrinsics. However, we systematically prefix them with
 // "intr." to avoid potential name clashes.
 
-def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
+def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
@@ -591,7 +591,7 @@ def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
   }];
 }
 
-def LLVM_exp : LLVM_Op<"intr.exp", [NoSideEffect]>,
+def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$in)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
