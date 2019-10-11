@@ -34,6 +34,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -459,9 +461,9 @@ class FromConcreteFunctionTest(TFLiteMLIRTest):
 
 class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
 
-  @parameterized.named_parameters(('LSTM', keras.layers.LSTM),
-                                  ('SimpleRNN', keras.layers.SimpleRNN),
-                                  ('GRU', keras.layers.GRU))
+  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
+                                  ('SimpleRNN', recurrent.SimpleRNN),
+                                  ('GRU', recurrent_v2.GRU))
   @test_util.run_v2_only
   def testKerasRNN(self, rnn_layer):
     # This test case is similar to `FromConcreteFunctionTest.testKerasLSTM`
@@ -471,7 +473,13 @@ class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
     input_data = constant_op.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
 
-    model = keras.models.Sequential([rnn_layer(units=10, input_shape=(10, 10))])
+    # We need to instruct keras to not use `cudnn` kernels explicitly here.
+    # Otherwise the frozen graph will contain ops that we can't convert (e.g.
+    # `StatefulPartitionedCall`, `CudnnRNN`).
+    # TODO(b/142360481): Remove this when the freezing issue is resolved.
+    rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
+    rnn_obj.could_use_cudnn = False
+    model = keras.models.Sequential([rnn_obj])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
