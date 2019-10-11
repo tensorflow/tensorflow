@@ -20,13 +20,16 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
-class StructuredTensor(object):
+class StructuredTensor(composite_tensor.CompositeTensor):
   """A multidimensional collection of structures with the same schema.
 
   A **`StructuredTensor`** is a multi-dimensional collection of ***structures***
@@ -240,6 +243,82 @@ class StructuredTensor(object):
 
   def __repr__(self):
     return 'StructuredTensor(%s, %r)' % (self._static_shape, self._fields)
+
+  #=============================================================================
+  # Composite Tensor
+  #=============================================================================
+
+  @property
+  def _type_spec(self):
+    return StructuredTensorSpec.from_value(self)
+
+
+class StructuredTensorSpec(type_spec.BatchableTypeSpec):
+  """Type specification for `StructuredTensor`s."""
+
+  __slots__ = ['_shape', '_field_specs']
+
+  def __init__(self, shape, field_specs):
+    """Build a type specification for a StructuredTensor.
+
+    Args:
+      shape: The shape of the StructuredTensor.  shape.ndims must not be None.
+      field_specs: A dictionary mapping from field name to TypeSpec, specifying
+        the tensor type used to encode each field. These TypeSpecs should
+        specify the type of the entire field (including outer dimensions which
+        correspond to `shape`).  For example, if `shape=[2, 3]`, and field 'x'
+        contains an int32 vector of size `10` for each structure, then
+        `field_specs['x']` should be `tf.TensorSpec([2, 3, 10], tf.int32)`.
+    """
+    self._shape = tensor_shape.as_shape(shape)
+    self._field_specs = dict(field_specs)
+
+    # Perform a few sanity checks on the inputs.
+    if self._shape.ndims is None:
+      raise TypeError("StructuredTensor's shape must have known rank.")
+    if not isinstance(self._field_specs, dict):
+      raise TypeError('field_specs must be a dictionary')
+    for key, value in self._field_specs.items():
+      if not isinstance(key, str):
+        raise TypeError('field_specs must be a dictionary with string keys.')
+      if not isinstance(value, (StructuredTensorSpec, tensor_spec.TensorSpec,
+                                ragged_tensor.RaggedTensorSpec)):
+        raise TypeError('field_spec must be a dictionary with TypeSpec values.')
+
+  @property
+  def value_type(self):
+    return StructuredTensor
+
+  def _to_components(self, value):
+    return value._fields
+
+  def _from_components(self, components):
+    return StructuredTensor(self._shape, components)
+
+  @property
+  def _component_specs(self):
+    return self._field_specs
+
+  @classmethod
+  def from_value(cls, value):
+    field_specs = dict((k, type_spec.type_spec_from_value(v))
+                       for (k, v) in value._fields.items())
+    return cls(value.shape, field_specs)
+
+  def _serialize(self):
+    return (self._shape, self._field_specs)
+
+  def _batch(self, batch_size):
+    # pylint: disable=protected-access
+    return StructuredTensorSpec(
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
+        dict((k, v._batch(batch_size)) for (k, v) in self._field_specs.items()))
+
+  def _unbatch(self):
+    # pylint: disable=protected-access
+    return StructuredTensorSpec(
+        self._shape[1:],
+        dict((k, v._unbatch()) for (k, v) in self._field_specs.items()))
 
 
 # Regular expression used to determine whether a string is a valid field name.
