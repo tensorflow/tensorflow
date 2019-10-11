@@ -1704,7 +1704,7 @@ cuda_py_test(
     additional_deps = [
         ":bias_op_base",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
