@@ -10,8 +10,7 @@ ifeq ($(TARGET), xcore)
   CXXFLAGS += -std=c++11 $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   TARGET_ARCH := xcore
-  TARGET_TOOLCHAIN_PREFIX := 
-  # tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/bin/
+  TARGET_TOOLCHAIN_PREFIX := tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/bin/
   TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_xcore_binary.sh
   GCC_XCORE := $(MAKEFILE_DIR)/downloads/xtimecomposer/
   
