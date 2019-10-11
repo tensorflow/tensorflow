@@ -255,3 +255,11 @@ func @invalid_vector_type_3(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2
   // expected-error@+1 {{expected LLVM IR dialect vector type for operand #1}}
   %0 = llvm.shufflevector %arg2, %arg2 [0 : i32, 0 : i32, 0 : i32, 0 : i32, 7 : i32] : !llvm.float, !llvm.float
 }
+
+// -----
+
+func @null_non_llvm_type() {
+  // expected-error@+1 {{expected LLVM IR pointer type}}
+  llvm.mlir.null : !llvm.i32
+}
+

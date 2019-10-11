@@ -189,3 +189,12 @@ func @alloca(%size : !llvm.i64) {
   llvm.alloca %size x !llvm.i32 {alignment = 8} : (!llvm.i64) -> (!llvm<"i32*">)
   llvm.return
 }
+
+// CHECK-LABEL: @null
+func @null() {
+  // CHECK: llvm.mlir.null : !llvm<"i8*">
+  %0 = llvm.mlir.null : !llvm<"i8*">
+  // CHECK: llvm.mlir.null : !llvm<"{ void (i32, void ()*)*, i64 }*">
+  %1 = llvm.mlir.null : !llvm<"{void(i32, void()*)*, i64}*">
+  llvm.return
+}

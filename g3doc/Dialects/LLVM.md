@@ -357,6 +357,23 @@ llvm.mlir.global @string("abc") : !llvm<"[3 x i8]">
 llvm.mlir.global constant @no_trailing_type("foo bar")
 ```
 
+#### `llvm.mlir.null`
+
+Unlike LLVM IR, MLIR does not have first-class null pointers. They must be
+explicitly created as SSA values using `llvm.mlir.null`. This operation has
+operands or attributes, and returns a null value of a wrapped LLVM IR pointer
+type.
+
+Examples:
+
+```mlir {.mlir}
+// Null pointer to i8 value.
+%0 = llvm.mlir.null : !llvm<"i8*">
+
+// Null pointer to a function with signature void() value.
+%1 = llvm.mlir.null : !llvm<"void()*">
+```
+
 #### `llvm.mlir.undef`
 
 Unlike LLVM IR, MLIR does not have first-class undefined values. Such values

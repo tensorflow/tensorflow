@@ -560,6 +560,15 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
   }];
 }
 
+def LLVM_NullOp
+    : LLVM_OneResultOp<"mlir.null", [NoSideEffect]>,
+      LLVM_Builder<"$res = llvm::ConstantPointerNull::get("
+                   "    llvm::cast<llvm::PointerType>($_resultType));"> {
+  let parser = [{ return parseNullOp(parser, result); }];
+  let printer = [{ printNullOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def LLVM_UndefOp : LLVM_OneResultOp<"mlir.undef", [NoSideEffect]>,
                    LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);"> {
   let parser = [{ return parseUndefOp(parser, result); }];

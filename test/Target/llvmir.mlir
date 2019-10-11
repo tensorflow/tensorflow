@@ -958,3 +958,11 @@ llvm.func @integer_extension_and_truncation(%a : !llvm.i32) {
   %2 = llvm.trunc %a : !llvm.i32 to !llvm.i16
   llvm.return
 }
+
+// Check that the auxiliary `null` operation is converted into a `null` value.
+// CHECK-LABEL: @null
+llvm.func @null() -> !llvm<"i32*"> {
+  %0 = llvm.mlir.null : !llvm<"i32*">
+  // CHECK: ret i32* null
+  llvm.return %0 : !llvm<"i32*">
+}

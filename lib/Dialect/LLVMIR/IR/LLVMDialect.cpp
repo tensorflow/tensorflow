@@ -1140,6 +1140,33 @@ static LogicalResult verify(LLVMFuncOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Printing, parsing and verification for LLVM::NullOp.
+//===----------------------------------------------------------------------===//
+
+static void printNullOp(OpAsmPrinter &p, LLVM::NullOp op) {
+  p << NullOp::getOperationName();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : ";
+  p.printType(op.getType());
+}
+
+// <operation> = `llvm.mlir.null` : type
+static ParseResult parseNullOp(OpAsmParser &parser, OperationState &result) {
+  Type type;
+  return failure(parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+// Only LLVM pointer types are supported.
+static LogicalResult verify(LLVM::NullOp op) {
+  auto llvmType = op.getType().dyn_cast<LLVM::LLVMType>();
+  if (!llvmType || !llvmType.isPointerTy())
+    return op.emitOpError("expected LLVM IR pointer type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 
