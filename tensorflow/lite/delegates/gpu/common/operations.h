@@ -70,6 +70,7 @@ enum class OperationType {
   SQUARED_DIFF,
   SUB,
   TANH,
+  TRANSPOSE,
   UPSAMPLE_2D,
 };
 
@@ -331,6 +332,15 @@ BHWC CalculateOutputShape(const BHWC& input,
 struct ReshapeAttributes {
   BHWC new_shape;
 };
+
+struct TransposeAttributes {
+  // A permutation of the dimensions of input tensor
+  BHWC perm;
+};
+
+// @return shape of a tensor after Transpose operation is applied to
+// the given input.
+BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
 
 }  // namespace gpu
 }  // namespace tflite

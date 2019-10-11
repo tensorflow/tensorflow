@@ -120,6 +120,8 @@ std::string ToString(enum OperationType op) {
       return "subtract";
     case OperationType::TANH:
       return "tanh";
+    case OperationType::TRANSPOSE:
+      return "transpose";
     case OperationType::UPSAMPLE_2D:
       return "upsample_2d";
     default:
@@ -166,6 +168,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
+          {"transpose", OperationType::TRANSPOSE},
           {"upsample_2d", OperationType::UPSAMPLE_2D},
       });
   auto op = operations->find(name);
@@ -415,6 +418,11 @@ float CalculateResizeScale(int32_t input_size, int32_t output_size,
 
 BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr) {
   return BHWC(input.b, attr.new_shape.h, attr.new_shape.w, input.c);
+}
+
+BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
+  return BHWC(input.get(attr.perm.b), input.get(attr.perm.h),
+              input.get(attr.perm.w), input.get(attr.perm.c));
 }
 
 }  // namespace gpu
