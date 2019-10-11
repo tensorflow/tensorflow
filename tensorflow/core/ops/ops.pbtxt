@@ -12232,6 +12232,18 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
