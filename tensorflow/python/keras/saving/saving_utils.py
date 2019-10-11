@@ -231,7 +231,7 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   # Recover loss functions and metrics.
   loss_config = training_config['loss']  # Deserialize loss class.
   if isinstance(loss_config, dict) and 'class_name' in loss_config:
-    loss_config = losses.get(loss_config)
+    loss_config = losses.get(loss_config, custom_objects)
   loss = nest.map_structure(
       lambda obj: custom_objects.get(obj, obj), loss_config)
   metrics = nest.map_structure(
