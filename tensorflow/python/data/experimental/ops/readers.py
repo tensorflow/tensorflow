@@ -25,7 +25,6 @@ import gzip
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import error_ops
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
