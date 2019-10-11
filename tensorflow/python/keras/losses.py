@@ -793,7 +793,7 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
-      (y_true - y_pred) / K.clip(math_ops.abs(y_true), K.epsilon(), None))
+      (y_true - y_pred) / K.maximum(math_ops.abs(y_true), K.epsilon()))
   return 100. * K.mean(diff, axis=-1)
 
 
@@ -806,8 +806,8 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
 def mean_squared_logarithmic_error(y_true, y_pred):  # pylint: disable=missing-docstring
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
-  second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
+  first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
+  second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
