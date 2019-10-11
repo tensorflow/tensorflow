@@ -127,6 +127,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(
+          this->prefix(), "#buffer_size=", this->dataset()->buffer_size_, "#");
+    }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
