@@ -40,7 +40,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
       "FixedResultUniformScale<([0-9]+).*(true|false)>"};
   emitSourceFileHeader("Generated Ops Quant Spec Getters", os);
 
-  // Retrieve all the definitions derived from Op defintion and sort by record
+  // Retrieve all the definitions derived from Op definition and sort by record
   // name.
   std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
