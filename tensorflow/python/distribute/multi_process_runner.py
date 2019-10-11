@@ -93,8 +93,7 @@ def run(proc_func,
   """Run functions on local sub-processes.
 
   Experimental. API subject to change. To fully inspect logging from
-  subprocesses, use following two flags with bazel test:
-  `--test_arg=--logtostderr --test_output=streamed`.
+  subprocesses, use `--test_arg=--logtostderr` flag with bazel test.
 
   Args:
     proc_func: Function to be run on the processes. This will be run on
@@ -239,7 +238,8 @@ def run(proc_func,
           raise internal_queue_result
       # If none of those did, report time out to user.
       raise RuntimeError(
-          'One or more subprocesses timed out. Please inspect logs for '
+          'One or more subprocesses timed out. Please use '
+          '`--test_arg=--logtostderr` bazel flag to inspect logs for '
           'subprocess debugging info. Timeout = {} sec.'.format(timeout))
 
   for internal_queue_result in internal_queue_results:
