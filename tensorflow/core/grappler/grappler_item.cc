@@ -208,6 +208,5 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   CHECK(!ill_formed);
   return result;
 }
-
 }  // end namespace grappler
 }  // end namespace tensorflow
