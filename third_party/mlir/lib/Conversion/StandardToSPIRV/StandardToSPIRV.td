@@ -31,4 +31,10 @@ class BinaryOpPattern<Op src, Op tgt> :
 def : BinaryOpPattern<AddFOp, SPV_FAddOp>;
 def : BinaryOpPattern<MulFOp, SPV_FMulOp>;
 
+// Constant Op
+// TODO(ravishankarm): Handle lowering other constant types.
+def : Pat<(ConstantOp:$result $valueAttr),
+          (SPV_ConstantOp $valueAttr),
+          [(SPV_ScalarOrVector $result)]>;
+
 #endif // MLIR_CONVERSION_STANDARDTOSPIRV_TD

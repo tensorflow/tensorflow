@@ -91,6 +91,7 @@ cc_library(
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/core:framework",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -425,8 +426,8 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/xla:ir/hlo_ops.td",
-        "//tensorflow/compiler/mlir/xla:ir/hlo_ops_base.td",
+        ":ir/hlo_ops.td",
+        ":ir/hlo_ops_base.td",
     ],
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +

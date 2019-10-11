@@ -844,7 +844,7 @@ class _TapeGradientFunctions(object):
       if backprop_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
-        output = handles_to_variables.get(ops.tensor_id(output), output)
+        output = handles_to_variables.get(id(output), output)
         trainable_outputs.append(output)
         trainable_indices.append(index)
 
@@ -2660,10 +2660,8 @@ class Function(object):
         return self._define_function_with_shape_relaxation(args, kwargs)
 
       self._function_cache.missed.add(call_context_key)
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is None:
-        graph_function = self._create_graph_function(args, kwargs)
-        self._function_cache.primary[cache_key] = graph_function
+      graph_function = self._create_graph_function(args, kwargs)
+      self._function_cache.primary[cache_key] = graph_function
       return graph_function, args, kwargs
 
 

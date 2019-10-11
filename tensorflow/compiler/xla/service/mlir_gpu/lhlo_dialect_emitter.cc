@@ -150,11 +150,17 @@ StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
 
 }  // namespace
 
-LhloDialectEmitter::LhloDialectEmitter(const HloModule& hlo_module,
-                                       const BufferAssignment& assignment,
-                                       const se::Platform* platform,
-                                       ModuleOp mlir_module)
-    : mlir_module_(mlir_module),
+mlir::Location LhloDialectEmitter::getLocation(
+    const HloInstruction* instr) const {
+  return emission_context_->getLocation(instr);
+}
+
+LhloDialectEmitter::LhloDialectEmitter(
+    xla::mlir_gpu::EmissionContext* emission_context,
+    const BufferAssignment& assignment, const se::Platform* platform,
+    ModuleOp mlir_module)
+    : emission_context_(emission_context),
+      mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
       platform_(platform),
@@ -188,11 +194,11 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
   TF_ASSIGN_OR_RETURN(auto args, GetInstructionArgTypes(instr, builder_));
   auto function_type = builder_.getFunctionType(args, {});
   auto function =
-      FuncOp::create(builder_.getUnknownLoc(), instr.name(), function_type);
+      FuncOp::create(getLocation(&instr), instr.name(), function_type);
   mlir_module_.push_back(function);
   function.addEntryBlock();
   OpBuilder op_builder(function.getBody());
-  op_builder.create<::mlir::ReturnOp>(builder_.getUnknownLoc());
+  op_builder.create<::mlir::ReturnOp>(getLocation(&instr));
   instruction_to_mlir_func_[&instr] = function;
   return function;
 }
@@ -205,7 +211,7 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   llvm::SmallVector<NamedAttribute, 10> attributes{
       builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()))};
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
-                                  builder_.getUnknownLoc(), ArrayRef<Type>{},
+                                  getLocation(instr), ArrayRef<Type>{},
                                   arg_values, attributes));
   return Status::OK();
 }
@@ -217,7 +223,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
       builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
 
   auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
-      builder_.getUnknownLoc(), attribute);
+      getLocation(fusion), attribute);
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.

@@ -22,6 +22,10 @@ namespace gpu {
   return false;  // Skylark selects this source file if NCCL is disabled.
 }
 
+/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+  return false;
+}
+
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

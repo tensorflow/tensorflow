@@ -16,8 +16,10 @@ limitations under the License.
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 
 #include <cstdint>
+#include <iterator>
 #include <numeric>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -36,6 +38,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 using namespace mlir;
 
@@ -103,6 +108,17 @@ static xla_hlo::ConvertOp CastElementsToI64(Location loc, Value *value,
   ArrayRef<int64_t> shape = type.getShape();
   auto i64_type = rewriter->getTensorType(shape, rewriter->getIntegerType(64));
   return rewriter->create<xla_hlo::ConvertOp>(loc, i64_type, value);
+}
+
+// Returns size of dimension at the specified index, if ranked tensor.
+// Otherwise, returns -1.
+//
+// Aborts if the type is ranked but doesn't have the dimension.
+int64_t GetDimSize(Type ty, int64_t index) {
+  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return -1;
+
+  return ranked_ty.getDimSize(index);
 }
 
 // Returns minimum value for the given int or float element type.
@@ -402,6 +418,166 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 namespace mlir {
 namespace xla {
 namespace {
+
+NamedAttribute GetConvDimensionNumbersAttr(
+    ArrayRef<int64_t> spatial_dim_indices, tensorflow::TensorFormat format,
+    Builder *builder) {
+  int64_t num_spatial_dims = spatial_dim_indices.size();
+  int64_t num_dims = num_spatial_dims + 2;
+
+  IntegerAttr batch_dim =
+      builder->getI64IntegerAttr(GetTensorBatchDimIndex(num_dims, format));
+  IntegerAttr feature_dim =
+      builder->getI64IntegerAttr(GetTensorFeatureDimIndex(num_dims, format));
+  DenseIntElementsAttr spatial_dims =
+      GetI64ElementsAttr(spatial_dim_indices, builder);
+
+  // Filters data_format is always HWIO so input channels dimension is after
+  // all spatial dimensions.
+  IntegerAttr kernel_input_feature_dim =
+      builder->getI64IntegerAttr(num_spatial_dims);
+  IntegerAttr kernel_output_feature_dim =
+      builder->getI64IntegerAttr(num_spatial_dims + 1);
+  DenseIntElementsAttr kernel_spatial_dimensions =
+      GetI64ElementsAttrForSeq(0, num_spatial_dims, builder);
+
+  return builder->getNamedAttr(
+      "dimension_numbers",
+      mlir::xla_hlo::ConvDimensionNumbers::get(
+          batch_dim, feature_dim, spatial_dims, kernel_input_feature_dim,
+          kernel_output_feature_dim, kernel_spatial_dimensions, batch_dim,
+          feature_dim, spatial_dims, builder->getContext()));
+}
+
+// Converts the TensorFlow conv op in template to the generic HLO conv op by
+// converting TensorFlow op attributes to HLO op attributes.
+//
+// Sample result for Conv2D:
+//
+//   %conv = "xla_hlo.conv"(%input, %filter) {
+//     strides = [1, 2],
+//     paddings = [[1, 0], [1, 1]],
+//     ...
+//   }
+//
+// This pattern is not defined using declarative rewrite rules as computation of
+// the paddings attribute anyway requires multiple source op attributes and
+// result op attributes. Defining it as declarative rewrite rule will introduce
+// some duplication in the C++ helper methods.
+template <typename OpT, int num_spatial_dims>
+class ConvertConv : public OpRewritePattern<OpT> {
+ public:
+  explicit ConvertConv(MLIRContext *context) : OpRewritePattern<OpT>(context) {}
+
+  PatternMatchResult matchAndRewrite(OpT op,
+                                     PatternRewriter &rewriter) const override {
+    tensorflow::TensorFormat format;
+    std::string data_format = op.data_format().str();
+    if (!FormatFromString(data_format, &format)) return Pattern::matchFailure();
+
+    auto input_ty = op.input()->getType().template dyn_cast<RankedTensorType>();
+    auto filter_ty =
+        op.filter()->getType().template dyn_cast<RankedTensorType>();
+    auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
+
+    // Input, filter and the result needs to have static shape for calculation
+    // of HLO paddings and feature group count attributes.
+    for (RankedTensorType ty : {input_ty, filter_ty, result_ty}) {
+      if (!ty || !ty.hasStaticShape()) return Pattern::matchFailure();
+    }
+
+    int num_dims = num_spatial_dims + 2;
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return Pattern::matchFailure();
+
+    auto get_int = [](Attribute attr) {
+      return attr.template cast<IntegerAttr>().getInt();
+    };
+
+    SmallVector<int64_t, 4> spatial_dim_indices;
+    SmallVector<int64_t, 4> rhs_dilations;
+    SmallVector<int64_t, 4> window_strides;
+    SmallVector<int64_t, 8> paddings;
+
+    ArrayRef<Attribute> dilations = op.dilations().getValue();
+    ArrayRef<Attribute> strides = op.strides().getValue();
+    ArrayRef<Attribute> explicit_paddings;
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      // EXPLICIT padding mode and the associated attribute is limited to
+      // Conv2D. So, fetch attribute by identifier instead of the
+      // op.explicit_paddings() attribute getter.
+      explicit_paddings =
+          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+    }
+
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
+      spatial_dim_indices.push_back(dim);
+
+      int64_t stride = get_int(strides[dim]);
+      int64_t dilation = get_int(dilations[dim]);
+      window_strides.push_back(stride);
+      rhs_dilations.push_back(dilation);
+
+      int64_t pad_low, pad_high;
+      if (padding == tensorflow::Padding::EXPLICIT) {
+        pad_low = get_int(explicit_paddings[2 * dim]);
+        pad_high = get_int(explicit_paddings[2 * dim + 1]);
+      } else {
+        tensorflow::int64 output_size;
+        tensorflow::int64 pad_low_int64;
+        tensorflow::int64 pad_high_int64;
+        tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+            input_ty.getDimSize(i), filter_ty.getDimSize(i), dilation, stride,
+            padding, &output_size, &pad_low_int64, &pad_high_int64);
+        if (!status.ok()) return Pattern::matchFailure();
+        pad_low = pad_low_int64;
+        pad_high = pad_high_int64;
+      }
+      paddings.push_back(pad_low);
+      paddings.push_back(pad_high);
+    }
+
+    auto rhs_dilations_attr = rewriter.getNamedAttr(
+        "rhs_dilation", GetI64ElementsAttr(rhs_dilations, &rewriter));
+
+    auto window_strides_attr = rewriter.getNamedAttr(
+        "window_strides", GetI64ElementsAttr(window_strides, &rewriter));
+
+    auto dimension_numbers_attr =
+        GetConvDimensionNumbersAttr(spatial_dim_indices, format, &rewriter);
+
+    int64_t input_channels =
+        GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, format));
+    // Filters data_format is always HWIO so input channels dimension is after
+    // all spatial dimensions.
+    int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
+    // TensorFlow convolution op verifies that the number of input channels is
+    // divisible by the number of filter channels.
+    int64_t feature_group_count = input_channels / filter_channels;
+    auto feature_group_count_attr = rewriter.getNamedAttr(
+        "feature_group_count", rewriter.getI64IntegerAttr(feature_group_count));
+
+    auto batch_group_count_attr = rewriter.getNamedAttr(
+        "batch_group_count", rewriter.getI64IntegerAttr(1));
+
+    RankedTensorType paddings_ty = rewriter.getTensorType(
+        {num_spatial_dims, 2}, rewriter.getIntegerType(64));
+    auto paddings_attr = rewriter.getNamedAttr(
+        "padding", DenseElementsAttr::get<int64_t>(paddings_ty, paddings));
+
+    SmallVector<Value *, 2> operands(op.getOperands());
+    NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
+                              dimension_numbers_attr, feature_group_count_attr,
+                              batch_group_count_attr, paddings_attr};
+    rewriter.replaceOpWithNewOp<xla_hlo::ConvOp>(op, op.getType(), operands,
+                                                 llvm::makeArrayRef(attrs));
+    return Pattern::matchSuccess();
+  }
+};
+
+using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
 
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
@@ -1073,8 +1249,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertMaxPoolOp,
-                  mlir::xla::ConvertSigmoidOp,
+  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertConv2D,
+                  mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,

@@ -354,8 +354,7 @@ class LayerCallCollection(object):
 
     # If the layer call function has kwargs, then the traced function cannot
     # have an input signature.
-    arg_spec = tf_inspect.getfullargspec(
-        self.layer_call_method)
+    arg_spec = tf_inspect.getfullargspec(self.layer_call_method)
     self._has_kwargs = bool(self._expects_training_arg or
                             arg_spec.defaults or
                             arg_spec.kwonlyargs or
@@ -366,6 +365,12 @@ class LayerCallCollection(object):
     # Bool indicating whether this object is currently tracing the layer call
     # functions.
     self.tracing = False
+
+    # Get the input argument name from the args.
+    args = arg_spec.args
+    if tf_inspect.ismethod(self.layer_call_method):
+      args = args[1:]
+    self._input_arg_name = args[0] if args else 'inputs'
 
   def _generate_input_signature(self, layer):
     """Inspects layer object and returns the inferred input signature.
@@ -453,6 +458,10 @@ class LayerCallCollection(object):
       return self.layer._get_call_arg_value(  # pylint: disable=protected-access
           'training', args, kwargs, inputs_in_args=True)
 
+  def get_input_arg_value(self, args, kwargs):
+    return self.layer._get_call_arg_value(  # pylint: disable=protected-access
+        self._input_arg_name, args, kwargs, inputs_in_args=True)
+
   def _maybe_wrap_with_training_arg(self, call_fn):
     """Wraps call function with added training argument if necessary."""
     if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
@@ -511,11 +520,10 @@ def layer_call_wrapper(call_collection, method):
     """Calls method within call context."""
     layer = call_collection.layer
     training = None
-    inputs = None
+    inputs = call_collection.get_input_arg_value(args, kwargs)
     # pylint: disable=protected-access
     if (args or kwargs) and call_collection.training_arg_was_passed(
         args, kwargs):
-      inputs = args[0]
       training = call_collection.get_training_arg_value(args, kwargs)
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)

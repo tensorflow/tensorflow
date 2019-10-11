@@ -1853,6 +1853,7 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/distribute:mirrored_strategy",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],

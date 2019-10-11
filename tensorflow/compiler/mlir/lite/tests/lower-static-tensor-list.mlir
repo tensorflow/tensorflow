@@ -231,29 +231,29 @@ func @tensorlistWhileLoop(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
 // CHECK:  return %0#1 : tensor<*xf32>
 }
 
-func @tensorlistWhileBody(%arg0: tensor<*xi32>, %arg1: tensor<!tf.variant>) -> (tensor<*xi32>, tensor<!tf.variant>) {
-  %0 = "tf.TensorListLength"(%arg1) : (tensor<!tf.variant>) -> tensor<*xi32>
+func @tensorlistWhileBody(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> (tensor<i32>, tensor<!tf.variant>) {
+  %0 = "tf.TensorListLength"(%arg1) : (tensor<!tf.variant>) -> tensor<i32>
   %1 = "tf.Identity"(%arg1) : (tensor<!tf.variant>) -> tensor<!tf.variant>
-  return %0, %1 : tensor<*xi32>, tensor<!tf.variant>
+  return %0, %1 : tensor<i32>, tensor<!tf.variant>
 
 // verify `body` function's signature.
-// CHECK: func @tensorlistWhileBody(%[[ARG0:.*]]: tensor<*xi32>, %[[ARG:.*]]: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+// CHECK: func @tensorlistWhileBody(%[[ARG0:.*]]: tensor<i32>, %[[ARG:.*]]: tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
 // CHECK-NOT: tensor<!tf.variant>
 // CHECK:  %[[LEN:.*]] = "tf.Gather"
 // CHECK-NOT: tensor<!tf.variant>
 // CHECK:  %[[LIST:.*]] = "tf.Identity"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:  return %[[LEN]], %[[LIST]] : tensor<*xi32>, tensor<*xf32>
+// CHECK:  return %[[LEN]], %[[LIST]] : tensor<i32>, tensor<*xf32>
 }
 
-func @tensorlistWhileCond(%arg0: tensor<*xi32>, %arg1: tensor<!tf.variant>) -> tensor<*xi1> {
+func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> tensor<i1> {
   %cst = constant dense<2> : tensor<i32>
-  %0 = "tf.Less"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-  return %0 : tensor<*xi1>
+  %0 = "tf.Less"(%arg0, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
 
 // verify `cond` function's signature.
-// CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<*xi32>, %[[ARG1:.*]]: tensor<*xf32>) -> tensor<*xi1>
-// CHECK:  %[[RESULT:.*]] = "tf.Less"(%[[ARG0]], {{.*}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-// CHECK:  return %[[RESULT]] : tensor<*xi1>
+// CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<*xf32>) -> tensor<i1>
+// CHECK:  %[[RESULT:.*]] = "tf.Less"(%[[ARG0]], {{.*}}) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:  return %[[RESULT]] : tensor<i1>
 }
 
 func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<?x10xf32> {

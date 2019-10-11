@@ -48,6 +48,7 @@ namespace {
 
 constexpr int kFloatValuesPerNeonVector = 4;
 constexpr int kInt16ValuesPerNeonVector = 8;
+constexpr int kInt8ValuesPerNeonVector = 16;
 
 template <int PerNeonSize>
 inline int RoundDownVectors(int size) {
@@ -1604,6 +1605,30 @@ bool NeonIsZeroVector(const float* vector, int v_size) {
   // Postamble loop
   for (; v < v_size; ++v) {
     if (vector[v] != 0.0) return false;
+  }
+  return true;
+}
+
+bool NeonIsZeroVector(const int8_t* vector, int v_size) {
+  // If v_size is not divisible by the vector size, then we need to process the
+  // final few elements sequentially. postamble_start shows the start index
+  // where this should happen.
+  const int postamble_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(v_size);
+
+  static const int32x4_t zero_x4_int32 = vmovq_n_s32(0);
+  int v = 0;
+  for (; v < postamble_start; v += kInt8ValuesPerNeonVector) {
+    const int32x4_t i_x4_int32 = vreinterpretq_s32_s8(vld1q_s8(vector + v));
+    const uint32x4_t cmp_result = vceqq_s8(i_x4_int32, zero_x4_int32);
+    if (vgetq_lane_u8(cmp_result, 0) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 1) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 2) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 3) == 0) return false;
+  }
+  // Postamble loop
+  for (; v < v_size; ++v) {
+    if (vector[v] != 0) return false;
   }
   return true;
 }

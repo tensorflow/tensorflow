@@ -908,6 +908,8 @@ def TFL_DivOp : TFL_Op<"div", [Broadcastable, NoSideEffect]> {
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_EluOp: TFL_Op<"elu", [NoSideEffect, SameOperandsAndResultType]> {

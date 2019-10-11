@@ -2297,6 +2297,34 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
+  let summary = "Computes gradients of the maxpooling function.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_MaximumOp : TF_Op<"Maximum", [Broadcastable, NoSideEffect]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns the max of x and y (i.e. x > y ? x : y) element-wise.";

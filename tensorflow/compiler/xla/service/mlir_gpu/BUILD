@@ -31,10 +31,31 @@ cc_library(
 )
 
 cc_library(
+    name = "emission_context",
+    srcs = ["emission_context.cc"],
+    hdrs = ["emission_context.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
+    name = "inject_errors_pass",
+    srcs = ["inject_errors_pass.cc"],
+    hdrs = ["inject_errors_pass.h"],
+    deps = [
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+    ],
+)
+
+cc_library(
     name = "mlir_compiler",
     srcs = ["mlir_compiler.cc"],
     hdrs = ["mlir_compiler.h"],
     deps = [
+        ":emission_context",
         ":failover_compiler",
         ":kernel_lowering",
         ":lhlo_dialect_emitter",
@@ -50,8 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:stream_assignment",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_mlir//:GPUDialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
@@ -79,6 +99,7 @@ cc_library(
     srcs = ["lhlo_dialect_emitter.cc"],
     hdrs = ["lhlo_dialect_emitter.h"],
     deps = [
+        ":emission_context",
         ":hlo_dialect_emitter",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/xla:status",
@@ -126,12 +147,15 @@ cc_library(
     hdrs = ["mlir_irgen_test_base.h"],
     deps = [
         ":failover_compiler",
+        ":inject_errors_pass",
         ":mlir_compiler",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:codegen_test_base",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
     ],
 )

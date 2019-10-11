@@ -13,23 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <utility>
-
-#include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_irgen_test_base.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace mlir_gpu {
 
 class LhloGenTest : public MlirIrGenTestBase {};
+
+TEST_F(LhloGenTest, BrokenAdd) {
+  CompileAndVerifyErrors(
+      R"(
+HloModule Add
+
+ENTRY %Add (x: f32[2,2,2], y: f32[2,2,2]) -> f32[2,2,2] {
+  %x = f32[2,2,2]{2,1,0} parameter(0)
+  %y = f32[2,2,2]{2,1,0} parameter(1)
+  ROOT %add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y)
+})",
+      R"(CHECK: ERRORS FOUND: [%add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y): failed for testing: xla_lhlo.add; failed for testing: std.return])",
+      LoweringStage::LHLO);
+}
 
 TEST_F(LhloGenTest, Add) {
   CompileAndVerifyIr(R"(

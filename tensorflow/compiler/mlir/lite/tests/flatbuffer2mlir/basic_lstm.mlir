@@ -3,7 +3,7 @@
 
 func @main(%arg0: tensor<1x384xf32>, %arg1: tensor<1x96xf32>, %arg2: tensor<384x480xf32>, %arg3: tensor<384xf32>, %arg4: tensor<1x96xf32>) -> tensor<1x96xf32> {
 // CHECK-LABEL: @main
-// CHECK: "basic_lstm"({{.*}}) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "RELU", kernel_type = "BASIC", proj_clip = 2.000000e+00 : f32} : (tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384xf32>, tensor<1x96xf32>) -> (tensor<1x96xf32>, tensor<1x96xf32>, tensor<1x480xf32>, tensor<1x384xf32>)
+// CHECK: "tfl.basic_lstm"({{.*}}) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "RELU", kernel_type = "BASIC", proj_clip = 2.000000e+00 : f32} : (tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384xf32>, tensor<1x96xf32>) -> (tensor<1x96xf32>, tensor<1x96xf32>, tensor<1x480xf32>, tensor<1x384xf32>)
 
   %0 = "tfl.pseudo_input" (%arg0) : (tensor<1x384xf32>) -> tensor<1x384xf32>
   %1 = "tfl.pseudo_input" (%arg1) : (tensor<1x96xf32>) -> tensor<1x96xf32>

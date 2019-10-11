@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 from absl.testing import parameterized
+import numpy as np
 
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -113,8 +112,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           },
       },
   ])  # pyformat: disable
-  def testFromFields(self, shape, fields, expected_shape=None):
-    struct = structured_tensor.StructuredTensor.from_fields(shape, fields)
+  def testConstructor(self, shape, fields, expected_shape=None):
+    struct = structured_tensor.StructuredTensor(shape, fields)
     if expected_shape is None:
       expected_shape = shape
     self.assertEqual(struct.shape.as_list(), expected_shape)
@@ -129,16 +128,10 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
   def testNestedStructConstruction(self):
     rt = ragged_factory_ops.constant([[1, 2], [3]])
-    struct1 = structured_tensor.StructuredTensor.from_fields([], {"x": [1, 2]})
-    struct2 = structured_tensor.StructuredTensor.from_fields([2], {"x": [1, 2]})
-    struct3 = structured_tensor.StructuredTensor.from_fields([], {
-        "r": rt,
-        "s": struct1
-    })
-    struct4 = structured_tensor.StructuredTensor.from_fields([2], {
-        "r": rt,
-        "s": struct2
-    })
+    struct1 = structured_tensor.StructuredTensor([], {"x": [1, 2]})
+    struct2 = structured_tensor.StructuredTensor([2], {"x": [1, 2]})
+    struct3 = structured_tensor.StructuredTensor([], {"r": rt, "s": struct1})
+    struct4 = structured_tensor.StructuredTensor([2], {"r": rt, "s": struct2})
 
     self.assertEqual(struct3.shape.as_list(), [])
     self.assertEqual(struct3.rank, 0)
@@ -163,22 +156,10 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
        r"Shapes \([01],\) and \([01],\) are not compatible"),
       ([], {"": 5}, ValueError, "Field name '' is not currently allowed."),
       ([], {"_": 5}, ValueError, "Field name '_' is not currently allowed."),
-      {
-          # Note: fields must have identical outer row_splits.
-          "shape": [2, None],
-          "fields": {
-              "r1": ragged_factory_ops.constant_value(
-                  [[1, 2], [3]]),
-              "r2": ragged_factory_ops.constant_value(
-                  [[1, 2, 3], [4]]),
-          },
-          "err": errors.InvalidArgumentError,
-          "msg": r"`fields` are not consistent in the outer 2 dimension"
-      },
   ])  # pyformat: disable
-  def testFromFieldsErrors(self, shape, fields, err, msg=None):
+  def testConstructorErrors(self, shape, fields, err, msg=None):
     with self.assertRaisesRegexp(err, msg):
-      struct = structured_tensor.StructuredTensor.from_fields(shape, fields)
+      struct = structured_tensor.StructuredTensor(shape, fields)
       self.evaluate(struct.field_value(struct.field_names()[0]))
 
   @parameterized.parameters([
@@ -189,12 +170,12 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       },
   ])  # pyformat: disable
   def testFromRowSplits(self, shape, fields, row_splits, expected_shape=None):
-    values = structured_tensor.StructuredTensor.from_fields(shape, fields)
+    values = structured_tensor.StructuredTensor(shape, fields)
     struct = structured_tensor.StructuredTensor.from_row_splits(
         values, row_splits)
     if expected_shape is None:
-      expected_shape = tensor_shape.TensorShape([None,
-                                                 None]).concatenate(shape[1:])
+      expected_shape = (
+          tensor_shape.TensorShape([None, None]).concatenate(shape[1:]))
       struct.shape.assert_is_compatible_with(expected_shape)
     else:
       self.assertEqual(struct.shape.as_list(), expected_shape)
@@ -221,7 +202,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   ])  # pyformat: disable
   def testFromRowSplitsErrors(self, shape, fields, row_splits, err, msg=None):
     with self.assertRaisesRegexp(err, msg):
-      values = structured_tensor.StructuredTensor.from_fields(shape, fields)
+      values = structured_tensor.StructuredTensor(shape, fields)
       structured_tensor.StructuredTensor.from_row_splits(values, row_splits)
 
   def testFromRowSplitsBadValueType(self):

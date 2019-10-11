@@ -1261,9 +1261,12 @@ def internal_convert_to_tensor(value,
                                name=None,
                                as_ref=False,
                                preferred_dtype=None,
+                               dtype_hint=None,
                                ctx=None,
                                accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
+  # TODO(b/142518781): Fix all call-sites and remove redundant arg
+  preferred_dtype = preferred_dtype or dtype_hint
   if isinstance(value, EagerTensor):
     if ctx is None:
       ctx = context.context()

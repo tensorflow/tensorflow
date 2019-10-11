@@ -428,7 +428,7 @@ StatusOr<Operation*> ConvertOp(
 
   const bool is_basic_lstm = IsBasicLSTMOp(op.builtin_options);
   const std::string& op_name =
-      is_basic_lstm ? "basic_lstm" : op_names.at(op.opcode_index);
+      is_basic_lstm ? "tfl.basic_lstm" : op_names.at(op.opcode_index);
   OperationState op_state(loc, op_name);
 
   for (auto input_num : op.inputs) {

@@ -1258,3 +1258,47 @@ func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x12x64xf32> {
   return %0 : tensor<12x12x64xf32>
 }
 
+//===----------------------------------------------------------------------===//
+// Conv op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: conv_simple
+func @conv_simple(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+
+  // CHECK: "xla_hlo.conv"(%arg0, %arg1)
+
+  // Default attributes
+  // CHECK-NOT: lhs_dilation
+  // CHECK-NOT: precision_config
+
+  // CHECK-DAG-SAME: window_strides = dense<[4, 5]>
+  // CHECK-DAG-SAME: padding = dense<{{\[\[}}44, 45], [60, 60]]>
+  // CHECK-DAG-SAME: rhs_dilation = dense<[2, 3]>
+
+  // CHECK-DAG-SAME: dimension_numbers
+  // CHECK-DAG-SAME:   input_batch_dimension = 0
+  // CHECK-DAG-SAME:   input_feature_dimension = 3
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2]>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 2
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 3
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[0, 1]>
+  // CHECK-DAG-SAME:   output_batch_dimension = 0
+  // CHECK-DAG-SAME:   output_feature_dimension = 3
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[1, 2]>
+
+  // CHECK-DAG-SAME: feature_group_count = 2
+  // CHECK-DAG-SAME: batch_group_count = 1
+
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x6xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
+  return %0 : tensor<256x30x30x16xf32>
+}
+
+// CHECK-LABEL: conv_explicit_paddings
+func @conv_explicit_paddings(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+
+  // CHECK: "xla_hlo.conv"(%arg0, %arg1)
+  // CHECK-SAME: padding = dense<{{\[\[}}6, 0], [3, 3]]>
+
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "EXPLICIT", explicit_paddings = [0, 0, 6, 0, 3, 3, 0, 0], strides = [1, 4, 5, 1]} : (tensor<256x32x32x6xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
+}

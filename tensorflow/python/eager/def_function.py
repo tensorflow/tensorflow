@@ -64,12 +64,10 @@ class _CallCounter(object):
         break
 
   def called_without_tracing(self):
-    # TODO(kkimlabs): This is an unnecessary defensive check. Since this is last
-    # minute CL before 2.0 release, I've decided to be very defensive here to
-    # avoid a potential crash. Remove once we release 2.0.
+    # We don't count tracing when users load a concrete function dicretly or
+    # call get_concrete_function, so the first call can be not a tracing call.
     if not self._calls_per_tracings:
-      return
-
+      self._calls_per_tracings = [0]
     self._calls_per_tracings[-1] += 1
     self.call_count += 1
 

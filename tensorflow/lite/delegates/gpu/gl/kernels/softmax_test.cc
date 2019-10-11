@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
 
-#include <cmath>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -48,10 +47,9 @@ TEST(SoftmaxTest, Softmax) {
 
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.1, 0.2}));
   ASSERT_OK(model.Invoke(*NewSoftmaxNodeShader()));
-  EXPECT_THAT(model.GetOutput(0),
-              Pointwise(FloatNear(1e-6f), {1.0f, 1.0f, 1.0f, 1.0f}));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 1, 1, 1}));
 }
 
 TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
@@ -70,7 +68,7 @@ TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
 
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.3, 0.4}));
   EXPECT_FALSE(model.Invoke(*NewSoftmaxNodeShader()).ok());
 }
 
@@ -90,7 +88,7 @@ TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
 
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.3, 0.4}));
   EXPECT_FALSE(model.Invoke(*NewSoftmaxNodeShader()).ok());
 }
 
@@ -108,17 +106,17 @@ TEST(SoftmaxTest, Softmax1x1) {
   SoftmaxAttributes attr;
   attr.axis = Axis::CHANNELS;
 
-  const float sum =
-      std::exp(0.1f) + std::exp(0.2f) + std::exp(0.3f) + std::exp(0.4f);
+  const double sum =
+      std::exp(0.1) + std::exp(0.2) + std::exp(0.3) + std::exp(0.4);
 
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.3, 0.4}));
   ASSERT_OK(model.Invoke(*NewSoftmaxNodeShader()));
-  EXPECT_THAT(model.GetOutput(0),
-              Pointwise(FloatNear(1e-6f),
-                        {std::exp(0.1f) / sum, std::exp(0.2f) / sum,
-                         std::exp(0.3f) / sum, std::exp(0.4f) / sum}));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {std::exp(0.1) / sum, std::exp(0.2) / sum,
+                                  std::exp(0.3) / sum, std::exp(0.4) / sum}));
 }
 
 }  // namespace

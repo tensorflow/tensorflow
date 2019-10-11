@@ -622,7 +622,7 @@ class FuncGraph(ops.Graph):
     return tensor
 
   def _capture_helper(self, tensor, name, shape=None):
-    capture = self._captures.get(ops.tensor_id(tensor))
+    capture = self._captures.get(id(tensor))
     if capture is None:
       placeholder = _create_substitute_placeholder(
           tensor, name=name, dtype=tensor.dtype, shape=shape)
@@ -646,18 +646,22 @@ class FuncGraph(ops.Graph):
       tensor: Tensor to captures.
       placeholder: Provided placeholder for the tensor.
     """
-    self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+    self._captures[id(tensor)] = (tensor, placeholder)
     self.inputs.append(placeholder)
+
+  def replace_capture(self, tensor, placeholder):
+    """Replace already existing capture."""
+    self._captures[id(tensor)] = (tensor, placeholder)
 
   def reset_captures(self, capture_list):
     """Set the captures with the provided list of captures & placeholder."""
     self._captures = py_collections.OrderedDict()
     for tensor, placeholder in capture_list:
-      self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+      self._captures[id(tensor)] = (tensor, placeholder)
 
   def pop_capture(self, tensor):
     """Remove the capture and return the generated placeholder."""
-    capture = self._captures.pop(ops.tensor_id(tensor), None)
+    capture = self._captures.pop(id(tensor), None)
     if capture is None:
       return None
 
@@ -675,13 +679,13 @@ class FuncGraph(ops.Graph):
 
   def capture_distributed_variable(self, variable, placeholder):
     """Add given distributed variable to captures with given placeholder."""
-    self._captures[ops.tensor_id(variable)] = (variable, placeholder)
+    self._captures[id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
                           backward_function=lambda x: [x],
                           forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
-    capture = self._captures.get(ops.tensor_id(tensor))
+    capture = self._captures.get(id(tensor))
     if capture is None:
       # We clear all control dependencies and place the Const op on the same
       # device as the source tensor. The device placement may be relaxed at
@@ -696,6 +700,10 @@ class FuncGraph(ops.Graph):
                           backward_function=lambda x: [x],
                           forward_function=lambda x: [x])
     return graph_const
+
+  def captured(self, tensor):
+    """Check if the specified tensor has been captured."""
+    return id(tensor) in self._captures
 
   @property
   def external_captures(self):
@@ -719,11 +727,11 @@ class FuncGraph(ops.Graph):
 
   @property
   def variable_captures(self):
-    """Map of tensor ids of variable handles to variables which are captured."""
+    """Map of python object ids of variables to variables which are captured."""
     return {
-        ops.tensor_id(self._captures[ops.tensor_id(v.handle)][1]): v
+        id(self._captures[id(v)][1]): v
         for v in self.variables
-        if ops.tensor_id(v.handle) in self._captures
+        if id(v) in self._captures
     }
 
   def mark_as_unsaveable(self, error_message):

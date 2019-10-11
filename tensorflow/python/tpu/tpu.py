@@ -587,6 +587,37 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._pivot
 
 
+class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
+  """The context for outside compilation in Tensorflow 2.0.
+
+  Every op added in this context will be assigned an _xla_outside_compilation
+  attribute.
+  """
+
+  def __init__(self, name):
+    control_flow_ops.ControlFlowContext.__init__(self)
+    self._name = name
+
+  def AddOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def AddInnerOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    raise NotImplementedError("to_control_flow_context_def not implemented")
+
+
 @tf_export(v1=["tpu.outside_compilation"])
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
@@ -602,6 +633,25 @@ def outside_compilation(computation, *args, **kwargs):
   """
   args = [] if args is None else args
   graph = ops.get_default_graph()
+
+  # If we are in TF 2 functions (control flow V2 functions, or tf.function()),
+  # we need to attach _xla_outside_compilation attribute directly because we are
+  # not in TPUReplicateContext.
+  if isinstance(graph, func_graph.FuncGraph):
+    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    # pylint: disable=protected-access
+    outside_compilation_name = str(tpu_context._outside_compilation_counter)
+    tpu_context._outside_compilation_counter = (
+        tpu_context._outside_compilation_counter + 1)
+    # pylint: enable=protected-access
+
+    outside_compilation_context = OutsideCompilationV2Context(
+        outside_compilation_name)
+    outside_compilation_context.Enter()
+    args = [] if args is None else args
+    retval = computation(*args, **kwargs)
+    outside_compilation_context.Exit()
+    return retval
 
   # If we are in a TPUReplicateContext, signal that we are now
   # outside_compilation

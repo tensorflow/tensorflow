@@ -72,6 +72,27 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let hasFolder = 1;
 }
 
+// Base class for unary ops. Requires single operand and result. Individual
+// classes will have `operand` accessor.
+class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<Std_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+  let results = (outs AnyType);
+  let printer = [{
+    return printStandardUnaryOp(this->getOperation(), p);
+  }];
+}
+
+class UnaryOpSameOperandAndResultType<string mnemonic, list<OpTrait> traits = []> :
+    UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
+  let parser = [{
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
+  }];
+}
+
+class FloatUnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    UnaryOpSameOperandAndResultType<mnemonic, traits>,
+    Arguments<(ins FloatLike:$operand)>;
+
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
@@ -595,6 +616,10 @@ def DivISOp : IntArithmeticOp<"divis"> {
 def DivIUOp : IntArithmeticOp<"diviu"> {
   let summary = "unsigned integer division operation";
   let hasFolder = 1;
+}
+
+def ExpOp : FloatUnaryOp<"exp"> {
+  let summary = "base-e exponential of the specified value";
 }
 
 def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {

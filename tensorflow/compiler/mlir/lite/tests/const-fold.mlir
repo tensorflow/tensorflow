@@ -226,11 +226,8 @@ func @add_dense_dense_int_mixing_1_n() -> tensor<2x2xi32> {
   %0 = "tfl.add"(%cst_0, %cst_1) {fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
 
   return %0 : tensor<2x2xi32>
-
-// We don't support this case yet.
-// %cst = constant dense<{{\[\[}}4, 5], [5, 6]]> : tensor<2x2xi32>
-// CHECK:  %0 = "tfl.add"
-// CHECK:  return %0
+// CHECK: %cst = constant dense<{{\[\[}}4, 5], [5, 6]]> : tensor<2x2xi32>
+// CHECK:  return %cst
 }
 
 // CHECK-LABEL: @add_dense_splat_float
@@ -299,9 +296,8 @@ func @add_dense_dense_float_mixfng_1_n() -> tensor<2x2xf32> {
 
   return %0 : tensor<2x2xf32>
 
-// We don't support this case yet.
-// CHECK:  %0 = "tfl.add"
-// CHECK:  return %0
+// CHECK: %cst = constant dense<{{\[\[}}-1.500000e+00, -5.500000e+00], [5.500000e+00, 1.500000e+00]]> : tensor<2x2xf32>
+// CHECK:  return %cst
 }
 
 // CHECK-LABEL: @rank
@@ -554,4 +550,30 @@ func @concatConstantTensorsLastDim() -> tensor<1x2x6xi32> {
   // CHECK-NOT: constant-dense
   // CHECK-NOT: "tfl.concatenation"
   // CHECK: return [[cst]]
+}
+
+// CHECK-LABEL: @div_dense_dense_float_mixfng_1_n
+func @div_dense_dense_float_mixfng_1_n() -> tensor<2x2xf32> {
+  %cst_0 = constant dense<[[1.5, -2.5]]> : tensor<1x2xf32>
+  %cst_1 = constant dense<[[-3.], [4.]]> : tensor<2x1xf32>
+
+  %0 = "tfl.div"(%cst_0, %cst_1) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<2x1xf32>) -> tensor<2x2xf32>
+
+  return %0 : tensor<2x2xf32>
+
+// CHECK: %cst = constant dense<{{\[\[}}-5.000000e-01, 0.833333313], [3.750000e-01, -6.250000e-01]]> : tensor<2x2xf32>
+// CHECK:  return %cst
+}
+
+// CHECK-LABEL: @div_dense_different_rank
+func @div_dense_different_rank() -> tensor<1x2x2xf32> {
+  %cst_0 = constant dense<[[[1.0],[2.0]]]> : tensor<1x2x1xf32>
+  %cst_1 = constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+
+  %0 = "tfl.div"(%cst_0, %cst_1) {fused_activation_function = "NONE"} : (tensor<1x2x1xf32>, tensor<1x2xf32>) -> tensor<1x2x2xf32>
+
+  return %0 : tensor<1x2x2xf32>
+
+// CHECK: %cst = constant dense<[{{\[}}{{\[}}5.000000e-01, 0.333333343], [1.000000e+00, 0.666666686]]]> : tensor<1x2x2xf32>
+// CHECK:  return %cst
 }

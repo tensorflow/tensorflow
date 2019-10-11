@@ -1141,13 +1141,17 @@ private:
   Concept *impl;
 };
 
-// These functions are out-of-line implementations of the methods in BinaryOp,
-// which avoids them being template instantiated/duplicated.
+// These functions are out-of-line implementations of the methods in UnaryOp and
+// BinaryOp, which avoids them being template instantiated/duplicated.
 namespace impl {
+ParseResult parseOneResultOneOperandTypeOp(OpAsmParser &parser,
+                                           OperationState &result);
+
 void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result);
+
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.

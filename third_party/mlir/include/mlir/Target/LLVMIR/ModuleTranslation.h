@@ -51,7 +51,11 @@ class ModuleTranslation {
 public:
   template <typename T = ModuleTranslation>
   static std::unique_ptr<llvm::Module> translateModule(ModuleOp m) {
+    if (failed(checkSupportedModuleOps(m)))
+      return nullptr;
     auto llvmModule = prepareLLVMModule(m);
+    if (!llvmModule)
+      return nullptr;
 
     T translator(m);
     translator.llvmModule = std::move(llvmModule);
@@ -74,6 +78,9 @@ protected:
   static std::unique_ptr<llvm::Module> prepareLLVMModule(ModuleOp m);
 
 private:
+  /// Check whether the module contains only supported ops directly in its body.
+  static LogicalResult checkSupportedModuleOps(ModuleOp m);
+
   LogicalResult convertFunctions();
   void convertGlobals();
   LogicalResult convertOneFunction(LLVMFuncOp func);
