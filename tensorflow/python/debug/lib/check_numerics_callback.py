@@ -32,6 +32,33 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
+# Many ops have benign NaN outputs, and running them with check_numerics
+# on will create unwanted errors
+# TODO(b/142497024): Replace this whitelist with function decorators in the ops
+IGNORE_OP_OUTPUTS = (
+    # For FusedBatchNorm, if the input tensor is empty then batch_mean and
+    # batch_variance will be NaN. reserve_space holds intermediate values
+    # derived from batch_mean and batch_variance used for gradient calculation
+    (b"FusedBatchNorm", 1),  # batch_mean
+    (b"FusedBatchNorm", 2),  # batch_variance
+    (b"FusedBatchNorm", 3),  # reserve_space_1
+    (b"FusedBatchNorm", 4),  # reserve_space_2
+
+    # Same as above
+    (b"FusedBatchNormV2", 1),  # batch_mean
+    (b"FusedBatchNormV2", 2),  # batch_variance
+    (b"FusedBatchNormV2", 3),  # reserve_space_1
+    (b"FusedBatchNormV2", 4),  # reserve_space_2
+
+    # Same as above, but reserve_space_3 holds additional intermediate values
+    (b"FusedBatchNormV3", 1),  # batch_mean
+    (b"FusedBatchNormV3", 2),  # batch_variance
+    (b"FusedBatchNormV3", 3),  # reserve_space_1
+    (b"FusedBatchNormV3", 4),  # reserve_space_2
+    (b"FusedBatchNormV3", 5),  # reserve_space_3
+)
+
+
 def limit_string_length(string, max_len=50):
   """Limit the length of input string.
 
@@ -162,14 +189,15 @@ def _check_numerics_callback(op_type,
                              graph=None):
   """Eager-function unified callback for checking numerics."""
   del attrs, op_name  # Unused
-
-  if compat.as_bytes(op_type) in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
+  op_type_bytes = compat.as_bytes(op_type)
+  if op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
     return
   if graph:
     # Under graph mode. Insert check_numerics op.
     instrumented_outputs = []
     for slot, output in enumerate(outputs):
-      if output.dtype.is_floating:
+      if (output.dtype.is_floating and
+          (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
         checked_output = array_ops.check_numerics(
             output,
             get_check_numerics_error_message(
@@ -181,13 +209,14 @@ def _check_numerics_callback(op_type,
         instrumented_outputs.append(output)
     return instrumented_outputs
   else:
-    if compat.as_bytes(op_type) == b"CheckNumerics":
+    if op_type_bytes == b"CheckNumerics":
       # TODO(b/140334369): Remove this special casing logic once op_callback.
       # automatically prevents infinite recursion in eager mode.
       return
     # Under eager mode. Eagerly execute check_numerics op.
     for slot, output in enumerate(outputs):
-      if output.dtype.is_floating:
+      if (output.dtype.is_floating and
+          (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
         array_ops.check_numerics(
             output,
             get_check_numerics_error_message(
