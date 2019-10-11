@@ -203,6 +203,7 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
