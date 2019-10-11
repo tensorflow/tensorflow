@@ -57,6 +57,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -64,7 +65,7 @@ py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":xla_test",
     ],
@@ -1298,6 +1299,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
