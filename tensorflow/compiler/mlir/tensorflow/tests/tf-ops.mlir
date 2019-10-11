@@ -489,6 +489,45 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 
 // -----
 
+func @testMaxPoolGrad(%orig_input: tensor<f32>, %orig_output: tensor<10x12x12x64xf32>, %grad: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
+  // expected-error @+1 {{requires orig_input to be rank 4}}
+  %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<f32>, tensor<10x12x12x64xf32>, tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32>
+  return %result : tensor<10x24x24x64xf32>
+}
+
+// -----
+
+func @testMaxPoolGrad(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<12x12x64xf32>, %grad: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
+  // expected-error @+1 {{requires orig_output to be rank 4}}
+  %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<10x24x24x64xf32>, tensor<12x12x64xf32>, tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32>
+  return %result : tensor<10x24x24x64xf32>
+}
+
+// -----
+
+func @testMaxPoolGrad(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<10x12x12x64xf32>, %grad: tensor<12x12x64xf32>) -> tensor<10x24x24x64xf32> {
+  // expected-error @+1 {{requires grad to be rank 4}}
+  %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<12x12x64xf32>) -> tensor<10x24x24x64xf32>
+  return %result : tensor<10x24x24x64xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @testValidDepthwiseConv2dNative
 func @testValidDepthwiseConv2dNative(tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>) -> tensor<256x30x30x12xf32> {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x4xf32>) :

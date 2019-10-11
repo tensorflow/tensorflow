@@ -775,6 +775,23 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MaxPoolGradOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MaxPoolGradOp op) {
+  if (!IsOfRankOrUnranked(op.orig_input(), 4)) {
+    return op.emitOpError() << "requires orig_input to be rank 4";
+  }
+  if (!IsOfRankOrUnranked(op.orig_output(), 4)) {
+    return op.emitOpError() << "requires orig_output to be rank 4";
+  }
+  if (!IsOfRankOrUnranked(op.grad(), 4)) {
+    return op.emitOpError() << "requires grad to be rank 4";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NegOp
 //===----------------------------------------------------------------------===//
 
