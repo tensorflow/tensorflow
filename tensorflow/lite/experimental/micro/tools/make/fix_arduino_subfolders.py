@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +22,7 @@ from __future__ import print_function
 import argparse
 import glob
 import os
+import six
 
 
 def rename_example_subfolder_files(library_dir):
@@ -50,8 +52,9 @@ def move_person_data(library_dir):
     with open(new_person_data_path, 'r') as source_file:
       file_contents = source_file.read()
     file_contents = file_contents.replace(
-        '#include "tensorflow/lite/experimental/micro/examples/' +
-        'person_detection/person_detect_model_data.h"',
+        six.ensure_str(
+            '#include "tensorflow/lite/experimental/micro/examples/' +
+            'person_detection/person_detect_model_data.h"'),
         '#include "person_detect_model_data.h"')
     with open(new_person_data_path, 'w') as source_file:
       source_file.write(file_contents)

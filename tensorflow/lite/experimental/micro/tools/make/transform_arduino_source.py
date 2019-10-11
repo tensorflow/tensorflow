@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +22,7 @@ from __future__ import print_function
 import argparse
 import re
 import sys
+import six
 
 
 def replace_includes(line, supplied_headers_list):
@@ -29,10 +31,11 @@ def replace_includes(line, supplied_headers_list):
   if include_match:
     path = include_match.group(2)
     for supplied_header in supplied_headers_list:
-      if supplied_header.endswith(path):
+      if six.ensure_str(supplied_header).endswith(path):
         path = supplied_header
         break
-    line = include_match.group(1) + path + include_match.group(3)
+    line = include_match.group(1) + six.ensure_str(path) + include_match.group(
+        3)
   return line
 
 
@@ -70,8 +73,8 @@ def replace_example_includes(line, _):
   # their default locations into the top-level 'examples' folder in the Arduino
   # library, we have to update any include references to match.
   dir_path = 'tensorflow/lite/experimental/micro/examples/'
-  include_match = re.match(r'(.*#include.*")' + dir_path + r'([^/]+)/(.*")',
-                           line)
+  include_match = re.match(
+      r'(.*#include.*")' + six.ensure_str(dir_path) + r'([^/]+)/(.*")', line)
   if include_match:
     flattened_name = re.sub(r'/', '_', include_match.group(3))
     line = include_match.group(1) + flattened_name
@@ -82,7 +85,7 @@ def main(unused_args, flags):
   """Transforms the input source file to work when exported to Arduino."""
   input_file_lines = sys.stdin.read().split('\n')
 
-  supplied_headers_list = flags.third_party_headers.split(' ')
+  supplied_headers_list = six.ensure_str(flags.third_party_headers).split(' ')
 
   output_lines = []
   for line in input_file_lines:
