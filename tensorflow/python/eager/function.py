@@ -844,7 +844,7 @@ class _TapeGradientFunctions(object):
       if backprop_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
-        output = handles_to_variables.get(ops.tensor_id(output), output)
+        output = handles_to_variables.get(id(output), output)
         trainable_outputs.append(output)
         trainable_indices.append(index)
 
