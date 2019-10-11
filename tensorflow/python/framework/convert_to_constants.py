@@ -360,8 +360,8 @@ def _construct_concrete_function(func, output_graph_def,
   input_tensors = func.graph.internal_captures
   converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = object_identity.ObjectIdentitySet(
-      func.inputs).difference(converted_inputs)
+  not_converted_inputs = [
+      tensor for tensor in func.inputs if tensor not in converted_inputs]
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
