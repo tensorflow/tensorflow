@@ -421,6 +421,8 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   %12 = or %arg2, %arg3 : i32
 // CHECK-NEXT: %12 = llvm.xor %arg2, %arg3 : !llvm.i32
   %13 = xor %arg2, %arg3 : i32
+// CHECK-NEXT: %13 = "llvm.intr.exp"(%arg0) : (!llvm.float) -> !llvm.float
+  %14 = std.exp %arg0 : f32
 
   return %0, %4 : f32, i32
 }

@@ -351,6 +351,14 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64, f16) {
   // CHECK: = fptrunc {{.*}} : f32 to f16
   %95 = fptrunc %f : f32 to f16
 
+  // CHECK: %{{[0-9]+}} = exp %arg1 : f32
+  %96 = "std.exp"(%f) : (f32) -> f32
+
+  // CHECK: %{{[0-9]+}} = exp %arg1 : f32
+  %97 = exp %f : f32
+
+  // CHECK: %{{[0-9]+}} = exp %arg0 : tensor<4x4x?xf32>
+  %98 = exp %t : tensor<4x4x?xf32>
   return
 }
 

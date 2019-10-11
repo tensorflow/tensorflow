@@ -452,14 +452,37 @@ Example:
 tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
 ```
 
+## Unary Operations
+
+### 'exp' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `exp` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar natural exponential.
+%a = exp %b : f64
+
+// SIMD vector element-wise natural exponential.
+%f = exp %g : vector<4xf32>
+
+// Tensor element-wise natural exponential.
+%x = exp %y : tensor<4x?xf8>
+```
+
+The `exp` operation takes one operand and returns one result of the same type.
+This type may be a float scalar type, a vector whose element type is float, or a
+tensor of floats. It has no standard attributes.
+
 ## Arithmetic Operations
 
 Basic arithmetic in MLIR is specified by standard operations described in this
 section.
-
-TODO: "sub" etc. Let's not get excited about filling this out yet, we can define
-these on demand. We should be highly informed by and learn from the operations
-supported by HLO and LLVM.
 
 ### 'addi' operation
 
@@ -478,7 +501,7 @@ Examples:
 // SIMD vector element-wise addition, e.g. for Intel SSE.
 %f = addi %g, %h : vector<4xi32>
 
-// Tensor element-wise addition, analogous to HLO's add operation.
+// Tensor element-wise addition.
 %x = addi %y, %z : tensor<4x?xi8>
 ```
 
@@ -504,7 +527,7 @@ Examples:
 // SIMD vector addition, e.g. for Intel SSE.
 %f = addf %g, %h : vector<4xf32>
 
-// Tensor addition, analogous to HLO's add operation.
+// Tensor addition.
 %x = addf %y, %z : tensor<4x?xbf16>
 ```
 
@@ -757,7 +780,7 @@ Examples:
 // SIMD pointwise vector multiplication, e.g. for Intel SSE.
 %f = mulf %g, %h : vector<4xf32>
 
-// Tensor pointwise multiplication, analogous to HLO's pointwise multiply operation.
+// Tensor pointwise multiplication.
 %x = mulf %y, %z : tensor<4x?xbf16>
 ```
 
