@@ -138,6 +138,48 @@ func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
   return %0: tensor<1x2xi32>
 }
 
+// CHECK-LABEL: func @and
+func @and(%arg0: tensor<2xi1>) -> tensor<2xi1> {
+  // CHECK-NEXT:  xla_hlo.and
+  %0 = "tf.LogicalAnd"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
+// CHECK-LABEL: func @and_broadcast
+func @and_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: "xla_hlo.and"
+  %0 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @and_dynamic
+func @and_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
+  // CHECK-NEXT: "xla_hlo.and"
+  %0 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<?xi1>, tensor<1xi1>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @or
+func @or(%arg0: tensor<2xi1>) -> tensor<2xi1> {
+  // CHECK-NEXT:  xla_hlo.or
+  %0 = "tf.LogicalOr"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
+// CHECK-LABEL: func @or_broadcast
+func @or_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: xla_hlo.or
+  %0 = "tf.LogicalOr"(%arg0, %arg1) : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @or_dynamic
+func @or_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
+  // CHECK-NEXT: xla_hlo.or
+  %0 = "tf.LogicalOr"(%arg0, %arg1) : (tensor<?xi1>, tensor<1xi1>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
 //===----------------------------------------------------------------------===//
 // Equality op legalizations.
 //===----------------------------------------------------------------------===//
@@ -339,8 +381,8 @@ func @concat_v2_non_const_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>, %
 
 // CHECK-LABEL: func @concat_v2_unranked
 func @concat_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-
   %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  // CHECK: "tf.ConcatV2"
   %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<i64>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
@@ -452,6 +494,17 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: "xla_hlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
+}
+
+// CHECK-LABEL: func @relu_grad
+// CHECK-SAME: (%[[GRADIENTS:.*]]: tensor<4x8xf32>, %[[FEATURES:.*]]: tensor<4x8xf32>)
+func @relu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tensor<4x8xf32> {
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<4x8xf32>
+  // CHECK: %[[PRED:.*]] = "xla_hlo.compare"(%[[FEATURES]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xi1>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.select"(%[[PRED]], %[[GRADIENTS]], %[[ZERO]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK: return %[[RESULT]] : tensor<4x8xf32>
+  %2 = "tf.ReluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+  return %2 : tensor<4x8xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -890,6 +943,57 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
   return %0 : tensor<1x2xf32>
 }
 
+// CHECK-LABEL: slice_constant_start
+func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
+  // CHECK: %[[START:.*]] = xla_hlo.constant dense<1> : tensor<1xi64>
+  // CHECK: %[[RESULT:.*]] =  "xla_hlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<1xi64>) -> tensor<2xi32>
+  // CHECK: return %[[RESULT]] : tensor<2xi32>
+  %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
+  %sizes = "tf.Const"() {value = dense<[2]> : tensor<1xi64>} : () -> (tensor<1xi64>)
+  %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: slice_constant_start_negative_one_size
+func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi32> {
+  // CHECK: %[[START:.*]] = xla_hlo.constant dense<1> : tensor<1xi64>
+  // CHECK: %[[RESULT:.*]] =  "xla_hlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<1xi64>) -> tensor<3xi32>
+  // CHECK: return %[[RESULT]] : tensor<3xi32>
+  %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
+  %sizes = "tf.Const"() {value = dense<[-1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
+  %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// CHECK-LABEL: slice_constant_start_dynamic_shape
+func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
+  // CHECK: %[[START:.*]] = xla_hlo.constant dense<[1, 0]> : tensor<2xi64>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<?x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  // CHECK: return %[[RESULT]] : tensor<1x4xi32>
+  %starts = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  %sizes = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<?x4xi32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// CHECK-LABEL: slice_variable_start
+func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  // CHECK: return %[[RESULT]] : tensor<1x4xi32>
+  %sizes = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// CHECK-LABEL: slice_variable_start_negative_one_size
+func @slice_variable_start_negative_one_size(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
+  // CHECK: %[[RESULT:.*]] = "tf.Slice"
+  // CHECK: return %[[RESULT]] : tensor<1x4xi32>
+  %sizes = "tf.Const"() {value = dense<[1, -1]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
 // CHECK-LABEL: simple_strided_slice
 func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -1141,4 +1245,60 @@ func @argmax_dynamic_shape_input(%arg0: tensor<3x?xi32>) -> tensor<3xi32> {
   %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %0 = "tf.ArgMax"(%arg0, %axis) : (tensor<3x?xi32>, tensor<i32>) -> tensor<3xi32>
   return %0 : tensor<3xi32>
+}
+
+// CHECK-LABEL: func @rng_uniform
+func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x12x64xf32> {
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[ONE:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[CONV:.*]] = "xla_hlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
+  // CHECK: %[[F32:.*]] = "xla_hlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x12x64xf32>
+  %0 = "tf.RandomUniform"(%arg0) {T = "tfdtype$DT_INT32", dtype = "tfdtype$DT_FLOAT", seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<12x12x64xf32>
+  // CHECK: return %[[F32]] : tensor<12x12x64xf32>
+  return %0 : tensor<12x12x64xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// Conv op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: conv_simple
+func @conv_simple(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+
+  // CHECK: "xla_hlo.conv"(%arg0, %arg1)
+
+  // Default attributes
+  // CHECK-NOT: lhs_dilation
+  // CHECK-NOT: precision_config
+
+  // CHECK-DAG-SAME: window_strides = dense<[4, 5]>
+  // CHECK-DAG-SAME: padding = dense<{{\[\[}}44, 45], [60, 60]]>
+  // CHECK-DAG-SAME: rhs_dilation = dense<[2, 3]>
+
+  // CHECK-DAG-SAME: dimension_numbers
+  // CHECK-DAG-SAME:   input_batch_dimension = 0
+  // CHECK-DAG-SAME:   input_feature_dimension = 3
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2]>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 2
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 3
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[0, 1]>
+  // CHECK-DAG-SAME:   output_batch_dimension = 0
+  // CHECK-DAG-SAME:   output_feature_dimension = 3
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[1, 2]>
+
+  // CHECK-DAG-SAME: feature_group_count = 2
+  // CHECK-DAG-SAME: batch_group_count = 1
+
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x6xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
+  return %0 : tensor<256x30x30x16xf32>
+}
+
+// CHECK-LABEL: conv_explicit_paddings
+func @conv_explicit_paddings(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+
+  // CHECK: "xla_hlo.conv"(%arg0, %arg1)
+  // CHECK-SAME: padding = dense<{{\[\[}}6, 0], [3, 3]]>
+
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "EXPLICIT", explicit_paddings = [0, 0, 6, 0, 3, 3, 0, 0], strides = [1, 4, 5, 1]} : (tensor<256x32x32x6xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }

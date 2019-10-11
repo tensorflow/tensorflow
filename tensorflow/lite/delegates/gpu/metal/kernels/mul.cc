@@ -69,11 +69,9 @@ std::vector<ComputeTaskDescriptorPtr> Multiply(
          }},
     };
   } else {
-    auto coeffs = options.storage_precision == RuntimeOptions::Precision::FP32
-                      ? GetByteBuffer(mul_buffer->data)
-                      : VectorFloatToHalf(mul_buffer->data);
     desc->immutable_buffers = {
-        {"device FLT4* const", coeffs},
+        {"device FLT4* const",
+         GetByteBufferConverted(mul_buffer->data, options.storage_precision)},
     };
   }
   return {desc};

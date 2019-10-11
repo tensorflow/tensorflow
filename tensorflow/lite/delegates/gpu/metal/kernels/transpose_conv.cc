@@ -950,9 +950,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? GetByteBuffer(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
   desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"device FLT4* const biases",
@@ -1044,14 +1043,10 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? GetByteBuffer(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto resized_bias = params.bias.data;
-  resized_bias.resize(params.weights.shape.o, 0.0f);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(resized_bias)
-                    : VectorFloatToHalf(resized_bias);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  auto biases = GetByteBufferConvertedResized(
+      params.bias.data, options.storage_precision, params.weights.shape.o);
   border_desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"constant FLT4* const biases", biases},
@@ -1139,8 +1134,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
       }};
 
   desc->immutable_buffers = {
-      {"device FilterStripe* const filters", GetByteBuffer(filters)},
-      {"constant FLT4* const biases", GetByteBuffer(biases)},
+      {"device FilterStripe* const filters", filters},
+      {"constant FLT4* const biases", biases},
   };
 
   desc->uniform_buffers = {

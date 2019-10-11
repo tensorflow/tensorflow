@@ -292,6 +292,7 @@ class Model(network.Network):
         'experimental_run_tf_function', True)
 
     # Prepare Session arguments (legacy).
+    kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:
@@ -2791,6 +2792,10 @@ class Model(network.Network):
       else:
         input_shape = (None,) + tuple(inputs.shape[1:])
       self._build_input_shape = input_shape
+
+    # Cast inputs to the compute dtype. This is primarily used
+    # when saving to determine the correct dtype in the input signature.
+    inputs = self._maybe_cast_inputs(inputs)
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).

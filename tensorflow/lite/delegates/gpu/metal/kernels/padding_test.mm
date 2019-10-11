@@ -78,9 +78,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors(expected, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)runPrepending:(const HWC&)prepend

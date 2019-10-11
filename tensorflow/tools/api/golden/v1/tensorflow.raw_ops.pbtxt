@@ -789,6 +789,14 @@ tf_module {
     argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
+    name: "Copy"
+    argspec: "args=[\'input\', \'tensor_name\', \'debug_ops_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "CopyHost"
+    argspec: "args=[\'input\', \'tensor_name\', \'debug_ops_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'None\'], "
+  }
+  member_method {
     name: "Cos"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -902,7 +910,7 @@ tf_module {
   }
   member_method {
     name: "DatasetToGraph"
-    argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "DatasetToSingleElement"
@@ -919,6 +927,22 @@ tf_module {
   member_method {
     name: "DebugGradientRefIdentity"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DebugIdentity"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "DebugIdentityV2"
+    argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "DebugNanCount"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "DebugNumericSummary"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'lower_bound\', \'upper_bound\', \'mute_if_healthy\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'-inf\', \'inf\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "DecodeAndCropJpeg"
@@ -4282,7 +4306,7 @@ tf_module {
   }
   member_method {
     name: "TPUPartitionedCall"
-    argspec: "args=[\'args\', \'device_ordinal\', \'Tout\', \'f\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'args\', \'device_ordinal\', \'Tout\', \'f\', \'autotuner_thresh\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "TPUReplicateMetadata"

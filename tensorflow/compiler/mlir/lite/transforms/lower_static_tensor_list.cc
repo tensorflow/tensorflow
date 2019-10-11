@@ -676,27 +676,42 @@ struct ConvertIdentity : public ConversionPattern {
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
 static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
-  SmallVector<Type, 8> unranked_argument_types;
-  for (const auto &operand : op.getOperands()) {
-    unranked_argument_types.push_back(
-        UnrankedTensorType::get(getElementTypeOrSelf(operand->getType())));
-  }
-
   auto module = op.getParentOfType<ModuleOp>();
   auto *context = module.getContext();
 
   for (StringRef func_name : {op.cond(), op.body()}) {
     FuncOp func = module.lookupSymbol<FuncOp>(func_name);
     if (!func) continue;
-    auto num_results = func.getType().getNumResults();
 
+    FunctionType func_type = func.getType();
+    int num_inputs = func_type.getNumInputs();
+    int num_results = func_type.getNumResults();
+
+    // For each argument type in function's arguments, change it to uranked
+    // tensor type if it's a variant type.
+    SmallVector<Type, 8> updated_argument_types;
+    updated_argument_types.reserve(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      Type arg_type = func_type.getInput(i);
+      if (getElementTypeOrSelf(arg_type).isa<TF::VariantType>()) {
+        arg_type = UnrankedTensorType::get(
+            getElementTypeOrSelf(op.getOperand(i)->getType()));
+      }
+      updated_argument_types.push_back(arg_type);
+    }
+
+    // For each result type in function's results, change it to unranked tensor
+    // type if it's a variant type.
     SmallVector<Type, 8> updated_result_types;
     updated_result_types.reserve(num_results);
     for (int i = 0; i < num_results; ++i) {
-      Type result_type = func.getType().getResult(i);
+      Type result_type = func_type.getResult(i);
       if (getElementTypeOrSelf(result_type).isa<TF::VariantType>()) {
-        // For variant type, use the corresponding unranked type.
-        result_type = unranked_argument_types[i];
+        // Here update the variant type with the unranked tensor type derived
+        // from the corresponding input operand. This is correct because while
+        // body's inputs and results have the same type.
+        result_type = UnrankedTensorType::get(
+            getElementTypeOrSelf(op.getOperand(i)->getType()));
       }
       updated_result_types.push_back(result_type);
     }
@@ -704,13 +719,13 @@ static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
     // Change `func`'s argument type to `unranked_argument_types`. If it
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
-    func.setType(FunctionType::get(unranked_argument_types,
-                                   updated_result_types, context));
+    func.setType(FunctionType::get(updated_argument_types, updated_result_types,
+                                   context));
 
     // Change the argument type for the first block.
     Block &body_first_bb = func.front();
     for (int i = 0; i < body_first_bb.getNumArguments(); ++i) {
-      body_first_bb.getArgument(i)->setType(unranked_argument_types[i]);
+      body_first_bb.getArgument(i)->setType(updated_argument_types[i]);
     }
   }
   return success();

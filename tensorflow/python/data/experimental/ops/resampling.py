@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -182,7 +181,7 @@ def _estimate_initial_dist_ds(
   initial_dist_ds = (class_values_ds.batch(dist_estimation_batch_size)
                      .apply(scan_ops.scan(initial_examples_per_class_seen,
                                           update_estimate_and_tile))
-                     .apply(batching.unbatch()))
+                     .unbatch())
 
   return initial_dist_ds
 

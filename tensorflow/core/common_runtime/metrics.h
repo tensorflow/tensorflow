@@ -37,6 +37,13 @@ void RecordTFDataBytesRead(const string& name, int64 num_bytes);
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 void RecordTFDataElements(const string& name, int64 num_elements);
 
+// Records the number of times each tf.data fingerprint is used
+// to measure duplicate pre-processing.
+//
+// The `name` argument identifies the Dataset graph fingerprint,
+// created using GraphHash().
+void RecordTFDataFingerprint(const string& name);
+
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //

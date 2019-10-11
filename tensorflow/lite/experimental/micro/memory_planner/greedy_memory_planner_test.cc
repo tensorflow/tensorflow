@@ -151,8 +151,9 @@ TF_LITE_MICRO_TEST(TestGreedyMedium) {
       kTfLiteOk, planner.GetOffsetForBuffer(error_reporter, 4, &offset));
   TF_LITE_MICRO_EXPECT_EQ(0, offset);
 
+  #ifndef XCORE
   planner.PrintMemoryPlan(error_reporter);
-
+  #endif // XCORE
   TF_LITE_MICRO_EXPECT_EQ(false, planner.DoAnyBuffersOverlap(error_reporter));
 
   TF_LITE_MICRO_EXPECT_EQ(90, planner.GetMaximumMemorySize());
@@ -226,7 +227,9 @@ TF_LITE_MICRO_TEST(TestPersonDetectionModel) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           planner.AddBuffer(error_reporter, 18432, 0, 1));
 
+  #ifndef XCORE
   planner.PrintMemoryPlan(error_reporter);
+  #endif // XCORE
 
   TF_LITE_MICRO_EXPECT_EQ(false, planner.DoAnyBuffersOverlap(error_reporter));
 
@@ -247,8 +250,10 @@ TF_LITE_MICRO_TEST(TestOverlapCase) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           planner.AddBuffer(error_reporter, 20, 1, 2));
 
+  #ifndef XCORE
   planner.PrintMemoryPlan(error_reporter);
-
+  #endif // XCORE
+  
   TF_LITE_MICRO_EXPECT_EQ(false, planner.DoAnyBuffersOverlap(error_reporter));
 
   TF_LITE_MICRO_EXPECT_EQ(120, planner.GetMaximumMemorySize());

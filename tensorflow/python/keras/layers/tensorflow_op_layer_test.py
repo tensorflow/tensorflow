@@ -29,9 +29,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -332,7 +332,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_json_serialization(self):
     inputs = keras.Input(shape=(4,), dtype='uint8')
     outputs = math_ops.cast(inputs, 'float32') / 4.
-    model = saving.model_from_json(keras.Model(inputs, outputs).to_json())
+    model = model_config.model_from_json(keras.Model(inputs, outputs).to_json())
     self.assertAllEqual(
         self.evaluate(model(np.array([0, 64, 128, 192], np.uint8))),
         [0., 16., 32., 48.])

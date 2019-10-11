@@ -306,7 +306,7 @@ static void printCallOp(OpAsmPrinter &p, CallOp &op) {
   // callee (first operand) otherwise.
   p << op.getOperationName() << ' ';
   if (isDirect)
-    p << '@' << callee.getValue();
+    p.printSymbolName(callee.getValue());
   else
     p << *op.getOperand(0);
 
@@ -881,7 +881,8 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   p << op.getOperationName() << ' ';
   if (op.constant())
     p << "constant ";
-  p << '@' << op.sym_name() << '(';
+  p.printSymbolName(op.sym_name());
+  p << '(';
   if (auto value = op.getValueOrNull())
     p.printAttribute(value);
   p << ')';
@@ -1135,6 +1136,33 @@ static LogicalResult verify(LLVMFuncOp op) {
              << i << " does not match the function signature";
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Printing, parsing and verification for LLVM::NullOp.
+//===----------------------------------------------------------------------===//
+
+static void printNullOp(OpAsmPrinter &p, LLVM::NullOp op) {
+  p << NullOp::getOperationName();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : ";
+  p.printType(op.getType());
+}
+
+// <operation> = `llvm.mlir.null` : type
+static ParseResult parseNullOp(OpAsmParser &parser, OperationState &result) {
+  Type type;
+  return failure(parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+// Only LLVM pointer types are supported.
+static LogicalResult verify(LLVM::NullOp op) {
+  auto llvmType = op.getType().dyn_cast<LLVM::LLVMType>();
+  if (!llvmType || !llvmType.isPointerTy())
+    return op.emitOpError("expected LLVM IR pointer type");
   return success();
 }
 

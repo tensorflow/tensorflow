@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
+#include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -83,6 +84,24 @@ ShapedType DropRefType(ShapedType type) {
 
 namespace {
 
+struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Override the inlining hook to determine if 'src' can be inlined into
+  // 'dest'.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &value_mapping) const final {
+    // Allow inlining into tf.island regions if the incoming region has a single
+    // block.
+    return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
+           std::next(src->begin()) == src->end();
+  }
+};
+
 struct TensorFlowExecutorOpFolderDialectInterface
     : public OpFolderDialectInterface {
   using OpFolderDialectInterface::OpFolderDialectInterface;
@@ -106,7 +125,8 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
 
-  addInterfaces<TensorFlowExecutorOpFolderDialectInterface>();
+  addInterfaces<TensorFlowExecutorInlinerInterface,
+                TensorFlowExecutorOpFolderDialectInterface>();
 
   addTypes<ControlType, TokenType>();
 }

@@ -61,11 +61,9 @@ std::vector<ComputeTaskDescriptorPtr> PReLU(int id, ValueId input_id,
   }
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
-  auto alphas = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(alpha_buffer->data)
-                    : VectorFloatToHalf(alpha_buffer->data);
   desc->immutable_buffers = {
-      {"device FLT4* const", alphas},
+      {"device FLT4* const",
+       GetByteBufferConverted(alpha_buffer->data, options.storage_precision)},
   };
   if (attr.clip != 0) {
     desc->uniform_buffers = {
@@ -106,11 +104,9 @@ std::vector<ComputeTaskDescriptorPtr> PReLUFull(int id, ValueId input_id,
   }
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
-  auto alphas = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(ConvertToPHWC4(*alpha))
-                    : VectorFloatToHalf(ConvertToPHWC4(*alpha));
   desc->immutable_buffers = {
-      {"device FLT4* const", alphas},
+      {"device FLT4* const", GetByteBufferConverted(ConvertToPHWC4(*alpha),
+                                                    options.storage_precision)},
   };
   if (attr.clip != 0) {
     desc->uniform_buffers = {

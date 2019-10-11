@@ -79,14 +79,13 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 4);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 3}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4, 12, 16}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO2H1W1I1Strides2x2Dilation1x1 {
@@ -119,14 +118,13 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 2, 2, 2);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 3, 1, 3, 1, 3, 1, 3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO2H2W2I1Strides1x1Dilation2x2 {
@@ -159,14 +157,13 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 2);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({10, 26}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

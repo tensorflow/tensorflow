@@ -47,8 +47,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
+#include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
 namespace TF {
@@ -321,8 +323,9 @@ void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ConcatOp and ConcatV2Op
 //===----------------------------------------------------------------------===//
 
-template <typename OpT, typename = typename std::enable_if_t<
-                            llvm::is_one_of<OpT, ConcatOp, ConcatV2Op>::value>>
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, ConcatOp, ConcatV2Op>::value>::type * = nullptr>
 static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
@@ -401,6 +404,99 @@ void ConstOp::build(Builder *builder, OperationState &result, Type type,
   // Otherwise, default to the attribute builder.
   ConstOp::build(builder, result, value);
   assert(type == result.types[0] && "type mismatch in construction");
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DOp and Conv3DOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+// * Ranks of operands and result are valid
+// * Number of input channels is divisible by the number of filter input
+//   channels
+// * Length of explicit_paddings attribute is valid and has non negative
+//   elements
+// * strides and dilations attributes have positive elements
+template <typename OpT, typename std::enable_if<llvm::is_one_of<
+                            OpT, Conv2DOp, Conv3DOp>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
+  int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
+  int num_dims = 2 + num_spatial_dims;
+  if (!IsOfRankOrUnranked(op.input(), num_dims) ||
+      !IsOfRankOrUnranked(op.filter(), num_dims))
+    return op.emitOpError()
+           << "requires operands to be " << num_dims << "D tensor";
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
+
+  int64_t input_channels = -1;
+  if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
+    std::string data_format = op.data_format().str();
+    tensorflow::TensorFormat format;
+    auto is_valid = FormatFromString(data_format, &format);
+    DCHECK(is_valid) << data_format;
+    int idx = tensorflow::GetTensorFeatureDimIndex(num_dims, format);
+    input_channels = ty.getDimSize(idx);
+  }
+
+  int64_t filter_channels = -1;
+  if (auto ty = op.filter()->getType().template dyn_cast<RankedTensorType>()) {
+    int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
+        num_dims, tensorflow::FORMAT_HWIO);
+    filter_channels = ty.getDimSize(idx);
+  }
+
+  if (input_channels != -1 && filter_channels != -1 &&
+      input_channels % filter_channels != 0)
+    return op.emitOpError()
+           << "requires the number of input channels to be divisible by the "
+              "number of filter input channels; found "
+           << input_channels << " and " << filter_channels << ", respectively";
+
+  // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
+  // So, fetch attribute by string instead of the op.explicit_paddings()
+  // attribute getter.
+  if (op.padding() == "EXPLICIT") {
+    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
+    if (!paddings)
+      return op.emitOpError() << "requires attribute 'explicit_paddings' with "
+                                 "'EXPLICIT' padding mode";
+
+    int64_t paddings_size = paddings.size();
+    int64_t expected_size = 2 * num_dims;
+
+    if (paddings_size != expected_size)
+      return op.emitOpError()
+             << "requires explicit_paddings attribute length to be "
+             << expected_size << "; actual length " << paddings_size;
+
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(paddings.getValue(), is_negative))
+      return op.emitOpError("requires non negative explicit paddings");
+  }
+
+  auto is_not_positive = [](Attribute val) {
+    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
+  };
+
+  int64_t strides_size = op.strides().size();
+  if (strides_size != num_dims)
+    return op.emitOpError() << "requires strides attribute length to be "
+                            << num_dims << "; actual length " << strides_size;
+  if (llvm::any_of(op.strides().getValue(), is_not_positive))
+    return op.emitOpError("requires positive strides");
+
+  int64_t dilations_size = op.strides().size();
+  if (op.dilations().size() != num_dims)
+    return op.emitOpError() << "requires dilations attribute length to be "
+                            << num_dims << "; actual length " << dilations_size;
+  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
+    return op.emitOpError("requires positive dilations");
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -679,6 +775,23 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MaxPoolGradOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MaxPoolGradOp op) {
+  if (!IsOfRankOrUnranked(op.orig_input(), 4)) {
+    return op.emitOpError() << "requires orig_input to be rank 4";
+  }
+  if (!IsOfRankOrUnranked(op.orig_output(), 4)) {
+    return op.emitOpError() << "requires orig_output to be rank 4";
+  }
+  if (!IsOfRankOrUnranked(op.grad(), 4)) {
+    return op.emitOpError() << "requires grad to be rank 4";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NegOp
 //===----------------------------------------------------------------------===//
 
@@ -931,7 +1044,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
       const_shape.push_back(val);
     }
 
-    // Compute the value of the uknown dimension.
+    // Compute the value of the unknown dimension.
     if (flatten) {
       // Compute number of elements in tensor shape.
       auto tshape = ttype.getShape();
@@ -1326,6 +1439,47 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
+// TF Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TFInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlining TF operations.
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    // TODO(riverriddle) For now, enable inlining all operations. This isn't
+    // correct in the face of operations that cannot be duplicated, but this
+    // requires more intricate side-effect modeling.
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Attempts to materialize a conversion for a type mismatch between a call
+  // from this dialect, and a callable region. This method should generate an
+  // operation that takes 'input' as the only operand, and produces a single
+  // result of 'resultType'. If a conversion can not be generated, nullptr
+  // should be returned.
+  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+                                       Type result_type,
+                                       Location conversion_loc) const final {
+    if (!result_type.isa<TensorType>() || !input->getType().isa<TensorType>())
+      return nullptr;
+    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
+                                      /*truncate=*/builder.getBoolAttr(false));
+  }
+};
+}  // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
 // TF Dialect
 //===----------------------------------------------------------------------===//
 
@@ -1340,6 +1494,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
+  addInterfaces<TFInlinerInterface>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.

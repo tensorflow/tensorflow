@@ -1973,7 +1973,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     // If there is an input control node, and one of:
     // a) the node has no data or control inputs, or
     // b) the node is a function call (including SymbolicGradient),
-    // then add a control edge from the input control node to the clone.
+    //    then add a control edge from the input control node to the clone (only
+    //    if it does not already have a control input).
     //
     // We must not execute any nodes if the original function call would not
     // have executed. This is especially critical when the function call is
@@ -1986,9 +1987,21 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     // This edge is required to transfer execution frame down to all function
     // body nodes of inlined nested function calls.
     if (input_control_node) {
-      bool has_inputs = absl::c_any_of(
-          n->in_edges(), [](const Edge* e) { return !e->src()->IsSource(); });
-      if (!has_inputs || IsFunctionCall(flib_def, *n)) {
+      const auto is_input_edge = [](const Edge* e) -> bool {
+        return !e->src()->IsSource();
+      };
+      const auto is_control_edge = [](const Edge* e) -> bool {
+        return !e->src()->IsSource() && e->IsControlEdge();
+      };
+
+      const bool forward_control_frame =
+          // a) the node has not data or control inputs
+          absl::c_none_of(n->in_edges(), is_input_edge) ||
+          // b) the node is a function call without control inputs
+          (n->IsFunctionCall() &&
+           absl::c_none_of(n->in_edges(), is_control_edge));
+
+      if (forward_control_frame) {
         VLOG(4) << "Add control edge from input control node to: "
                 << clone->name();
         g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);
@@ -2160,9 +2173,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
 bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
                     const Node& node) {
-  return node.IsPartitionedCall() ||
-         node.type_string() == FunctionLibraryDefinition::kGradientOp ||
-         lib_def.Find(node.type_string()) != nullptr;
+  return node.IsFunctionCall();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,

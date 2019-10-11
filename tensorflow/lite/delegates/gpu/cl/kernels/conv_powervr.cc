@@ -31,13 +31,21 @@ namespace cl {
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         const ConvParams& conv_params)
+                         const CLDevice& device)
     : GPUOperation(definition),
       stride_padding_(attr.strides.w, attr.strides.h, -attr.padding.prepended.w,
                       -attr.padding.prepended.h),
       kernel_dilation_(attr.weights.shape.w, attr.weights.shape.h,
                        attr.dilations.w, attr.dilations.h),
-      conv_params_(conv_params) {}
+      conv_params_(GuessBestParams(device, definition, attr)) {}
+
+ConvPowerVR::ConvPowerVR(const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
+                         const CLDevice& device)
+    : GPUOperation(definition),
+      stride_padding_(1, 1, 0, 0),
+      kernel_dilation_(1, 1, 1, 1),
+      conv_params_(GuessBestParams(device, definition, attr)) {}
 
 ConvPowerVR::ConvPowerVR(ConvPowerVR&& operation)
     : GPUOperation(std::move(operation)),
@@ -397,17 +405,15 @@ std::string GenerateConvPowerVR1x1(
   return c;
 }
 
-ConvPowerVR::ConvParams GuessBestParams(const CLDevice& device,
-                                        const OperationDef& definition,
-                                        const Convolution2DAttributes& attr) {
-  ConvPowerVR::ConvParams conv_params;
+ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
+    const CLDevice& device, const OperationDef& definition, int src_depth,
+    int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1) const {
+  ConvParams conv_params;
   conv_params.block_size = int3(1, 1, 4);
   conv_params.work_group_size = int3(8, 4, 1);
   conv_params.work_group_launch_order = int3(2, 0, 1);
   conv_params.src_depth_loop_size = 1;
   conv_params.explicit_sync = !device.IsPowerVR();
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   if (dst_depth % 8 == 0 || dst_depth >= 32) {
     conv_params.block_size.z = 8;
   } else if (dst_depth % 4 == 0 || dst_depth >= 8) {
@@ -443,37 +449,54 @@ ConvPowerVR::ConvParams GuessBestParams(const CLDevice& device,
     conv_params.work_group_size = int3(4, 8, 1);
   }
 
-  conv_params.x_kernel_is_1 = attr.weights.shape.w == 1 &&
-                              attr.strides.w == 1 && attr.dilations.w == 1 &&
-                              attr.padding.prepended.w == 0 &&
-                              attr.padding.appended.w == 0;
-  conv_params.y_kernel_is_1 = attr.weights.shape.h == 1 &&
-                              attr.strides.h == 1 && attr.dilations.h == 1 &&
-                              attr.padding.prepended.h == 0 &&
-                              attr.padding.appended.h == 0;
+  conv_params.x_kernel_is_1 = x_kernel_is_1;
+  conv_params.y_kernel_is_1 = y_kernel_is_1;
 
   return conv_params;
+}
+
+ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
+    const CLDevice& device, const OperationDef& definition,
+    const Convolution2DAttributes& attr) const {
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
+                             attr.dilations.w == 1 &&
+                             attr.padding.prepended.w == 0 &&
+                             attr.padding.appended.w == 0;
+  const bool y_kernel_is_1 = attr.weights.shape.h == 1 && attr.strides.h == 1 &&
+                             attr.dilations.h == 1 &&
+                             attr.padding.prepended.h == 0 &&
+                             attr.padding.appended.h == 0;
+  return GuessBestParams(device, definition, src_depth, dst_depth,
+                         x_kernel_is_1, y_kernel_is_1);
+}
+
+ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
+    const CLDevice& device, const OperationDef& definition,
+    const FullyConnectedAttributes& attr) const {
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  ConvPowerVR::ConvParams params =
+      GuessBestParams(device, definition, src_depth, dst_depth, true, true);
+  params.work_group_size = int3(32, 1, 1);
+  return params;
 }
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
                          ConvPowerVR* result) {
-  *result =
-      ConvPowerVR(definition, attr,
-                  GuessBestParams(*creation_context.device, definition, attr));
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition.precision == CalculationsPrecision::F16
-                              ? DataType::FLOAT16
-                              : DataType::FLOAT32;
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+  *result = ConvPowerVR(definition, attr, *creation_context.device);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
 
-  return OkStatus();
+Status CreateConvPowerVR(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
+                         ConvPowerVR* result) {
+  *result = ConvPowerVR(definition, attr, *creation_context.device);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 }  // namespace cl

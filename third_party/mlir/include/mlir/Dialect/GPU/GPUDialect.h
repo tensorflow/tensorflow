@@ -36,7 +36,9 @@ namespace gpu {
 class GPUDialect : public Dialect {
 public:
   /// Create the dialect in the given `context`.
-  GPUDialect(MLIRContext *context);
+  explicit GPUDialect(MLIRContext *context);
+  /// Get dialect namespace.
+  static StringRef getDialectNamespace() { return "gpu"; }
 
   /// Get the name of the attribute used to annotate the modules that contain
   /// kernel modules.
@@ -55,7 +57,7 @@ public:
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
-  static bool isKernel(FuncOp function);
+  static bool isKernel(Operation *op);
 
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;

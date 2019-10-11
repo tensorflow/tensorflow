@@ -233,8 +233,9 @@ message Execution {
 // `GraphExecutionTrace`, depending on whether the instrumented tensor values
 // are summarized in an aggregated or separate fashion.
 message GraphExecutionTrace {
-  // Unique ID of the graph.
-  string graph_id = 1;
+  // Unique ID of the context that the executed op(s) belong to (e.g., a
+  // compiled concrete tf.function).
+  string tfdbg_context_id = 1;
 
   // Name of the op (applicable only in the case of the `FULL_TENSOR` trace
   // level).

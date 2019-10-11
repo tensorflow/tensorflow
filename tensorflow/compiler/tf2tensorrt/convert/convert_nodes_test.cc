@@ -655,9 +655,10 @@ class ConverterTest : public ::testing::Test {
 
   void Reset() {
     builder_.reset(nvinfer1::createInferBuilder(logger_));
-    network_.reset(builder_->createNetwork());
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
-                                   /*use_calibration=*/false, &logger_));
+    converter_ =
+        std::move(Converter::Create(builder_.get(), TrtPrecisionMode::FP32,
+                                    /*use_calibration=*/false, &logger_)
+                      .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
 
@@ -702,9 +703,8 @@ class ConverterTest : public ::testing::Test {
  private:
   Logger logger_;
   // These members are ordered in a way such that the destruction order is:
-  // converter_ -> network_ -> builder_
+  // converter_ -> builder_
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
-  TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -996,16 +996,19 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   FakeITensor input, infer_1, infer_2, infer_3;
   FakeITensor not_infer;
   Logger logger;
-  Converter int8_converter(/*trt_network=*/nullptr, TrtPrecisionMode::INT8,
-                           /*use_calibration=*/true, &logger);
-  int8_converter.ProvideQuantizationRange(&input, -5.0f, 5.0f);
-  int8_converter.ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
-  int8_converter.MarkQuantizationRangesAsInferrable(&input, &infer_1);
-  int8_converter.MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
-  int8_converter.MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
+  TrtUniquePtrType<nvinfer1::IBuilder> builder(
+      nvinfer1::createInferBuilder(logger));
+  auto int8_converter = Converter::Create(builder.get(), TrtPrecisionMode::INT8,
+                                          /*use_calibration=*/true, &logger)
+                            .ValueOrDie();
+  int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
+  int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
+  int8_converter->MarkQuantizationRangesAsInferrable(&input, &infer_1);
+  int8_converter->MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
+  int8_converter->MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
 
   // Input range should be inferred along the chain and applied to tensors.
-  int8_converter.MaybeApplyQuantizationRanges();
+  int8_converter->MaybeApplyQuantizationRanges();
 #if IS_TRT_VERSION_GE(5, 0, 0, 0)
   EXPECT_EQ(input.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
@@ -1247,18 +1250,19 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void Reset() {
+    // Destroy existing TRT objects in a proper order.
     converter_.reset(nullptr);
-
-    // Reset the INetworkDefinition.
     engine_.reset(nullptr);
-    network_.reset(nullptr);
+
+    // Re-create them in proper order.
     builder_.reset(nvinfer1::createInferBuilder(logger_));
-    network_.reset(builder_->createNetwork());
     builder_->setMaxWorkspaceSize(1 << 26);
 
     // Reset the converter.
-    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
-                                   /*use_calibration=*/false, &logger_));
+    converter_ =
+        std::move(Converter::Create(builder_.get(), precision_mode_to_test_,
+                                    /*use_calibration=*/false, &logger_)
+                      .ValueOrDie());
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();
@@ -1301,7 +1305,7 @@ class OpConverterTest : public ::testing::Test {
     }
     ASSERT_EQ(nullptr, engine_.get());
     builder_->setMaxBatchSize(batch_size);
-    engine_.reset(builder_->buildCudaEngine(*converter_->network()));
+    TF_ASSERT_OK(converter_->BuildCudaEngine(&engine_));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
@@ -1470,7 +1474,6 @@ class OpConverterTest : public ::testing::Test {
  private:
   Logger logger_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
-  TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   // Used to create placeholders with shape and data type information. The

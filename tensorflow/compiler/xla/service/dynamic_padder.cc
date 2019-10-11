@@ -20,10 +20,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -587,6 +589,102 @@ StatusOr<bool> RewriteDynamicReshape(
   return changed;
 }
 
+// For all dynamic outputs that live out of the computation, add unpad
+// operations.
+Status InsertUnpadsForModuleOutputs(
+    const DynamicDimensionInference& dynamic_dimension_inference,
+    HloModule* module) {
+  auto root = module->entry_computation()->root_instruction();
+  absl::flat_hash_set<ShapeIndex> dynamic_outputs;
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          bool has_dynamic_output = false;
+          for (int64 dim = 0; dim < subshape.rank(); ++dim) {
+            if (dynamic_dimension_inference.GetDynamicSize(root, index, dim) !=
+                nullptr) {
+              CHECK_LE(index.size(), 1) << "XLA doesn't support nested output "
+                                           "dimensions that has dynamic size";
+              has_dynamic_output = true;
+            }
+          }
+          if (has_dynamic_output) {
+            dynamic_outputs.insert(index);
+          }
+        }
+      });
+  int64 dynamic_index = 0;
+  if (!dynamic_outputs.empty()) {
+    if (root->shape().IsTuple()) {
+      std::vector<HloInstruction*> new_root_operands;
+      ShapeUtil::ForEachSubshape(root->shape(), [&](const Shape& subshape,
+                                                    const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        auto gte = module->entry_computation()->AddInstruction(
+            HloInstruction::CreateGetTupleElement(subshape, root, index[0]));
+
+        if (dynamic_outputs.contains(index)) {
+          CHECK_EQ(index.size(), 1)
+              << "XLA only support 1 layer nested output tuple";
+          // For dynamic outputs, creates an unpad operation.
+          std::vector<HloInstruction*> unpad_operands;
+          // First operand is the original input. Rest are dimension values.
+          unpad_operands.push_back(gte);
+          for (int64 dim = 0; dim < subshape.rank(); ++dim) {
+            HloInstruction* dynamic_size =
+                dynamic_dimension_inference.GetDynamicSize(root, index, dim);
+            if (dynamic_size != nullptr) {
+              unpad_operands.push_back(dynamic_size);
+            } else {
+              auto const_size = HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32>(subshape.dimensions(dim)));
+              unpad_operands.push_back(
+                  module->entry_computation()->AddInstruction(
+                      std::move(const_size)));
+            }
+          }
+          // This is a dynamic output, add unpad operation.
+          auto unpad = HloInstruction::CreateCustomCall(
+              subshape, unpad_operands, "Unpad",
+              absl::StrFormat("%i", dynamic_index++));
+          new_root_operands.push_back(
+              module->entry_computation()->AddInstruction(std::move(unpad)));
+        } else {
+          new_root_operands.push_back(gte);
+        }
+      });
+
+      auto new_root = module->entry_computation()->AddInstruction(
+          HloInstruction::CreateTuple(new_root_operands));
+      module->entry_computation()->set_root_instruction(new_root);
+    } else {
+      std::vector<HloInstruction*> unpad_operands;
+      // First operand is the original input. Rest are dimension values.
+      unpad_operands.push_back(root);
+      for (int64 dim = 0; dim < root->shape().rank(); ++dim) {
+        HloInstruction* dynamic_size =
+            dynamic_dimension_inference.GetDynamicSize(root, {}, dim);
+        if (dynamic_size != nullptr) {
+          unpad_operands.push_back(dynamic_size);
+        } else {
+          auto const_size = HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int32>(root->shape().dimensions(dim)));
+          unpad_operands.push_back(module->entry_computation()->AddInstruction(
+              std::move(const_size)));
+        }
+        // This is a dynamic output, add unpad operation.
+        auto unpad = module->entry_computation()->AddInstruction(
+            HloInstruction::CreateCustomCall(root->shape(), unpad_operands,
+                                             "Unpad", "0"));
+        module->entry_computation()->set_root_instruction(unpad);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<bool> DynamicPadder::Run(HloModule* module) {
@@ -642,8 +740,12 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     }
   }
 
+  TF_RETURN_IF_ERROR(
+      InsertUnpadsForModuleOutputs(dynamic_dimension_inference, module));
+
   HloDCE dce;
   TF_ASSIGN_OR_RETURN(changed, dce.Run(module));
+
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
 

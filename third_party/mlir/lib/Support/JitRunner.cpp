@@ -177,7 +177,7 @@ compileAndExecute(ModuleOp module, StringRef entryPoint,
 static Error compileAndExecuteVoidFunction(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
+  auto mainFunction = module.lookupSymbol<LLVM::LLVMFuncOp>(entryPoint);
   if (!mainFunction || mainFunction.getBlocks().empty())
     return make_string_error("entry point not found");
   void *empty = nullptr;
@@ -187,22 +187,14 @@ static Error compileAndExecuteVoidFunction(
 static Error compileAndExecuteSingleFloatReturnFunction(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
-  if (!mainFunction || mainFunction.isExternal()) {
+  auto mainFunction = module.lookupSymbol<LLVM::LLVMFuncOp>(entryPoint);
+  if (!mainFunction || mainFunction.isExternal())
     return make_string_error("entry point not found");
-  }
 
-  if (!mainFunction.getType().getInputs().empty())
+  if (mainFunction.getType().getFunctionNumParams() != 0)
     return make_string_error("function inputs not supported");
 
-  if (mainFunction.getType().getResults().size() != 1)
-    return make_string_error("only single f32 function result supported");
-
-  auto t = mainFunction.getType().getResults()[0].dyn_cast<LLVM::LLVMType>();
-  if (!t)
-    return make_string_error("only single llvm.f32 function result supported");
-  auto *llvmTy = t.getUnderlyingType();
-  if (llvmTy != llvmTy->getFloatTy(llvmTy->getContext()))
+  if (!mainFunction.getType().getFunctionResultType().isFloatTy())
     return make_string_error("only single llvm.f32 function result supported");
 
   float res;

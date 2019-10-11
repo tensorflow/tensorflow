@@ -120,7 +120,7 @@ android {
 
                 // Android TensorFlow wrappers, etc.
                 java {
-                    srcDir '../../contrib/android/java'
+                    srcDir '../../tools/android/inference_interface/java'
                 }
             }
             // Android demo app sources.

@@ -138,10 +138,10 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   // type.
   bool is_weight_buffer = is_constant && (storage_type.getWidth() == 8);
 
-  int64_t storage_min = QuantizedType::getDefaultMininumForInteger(
+  int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
                         is_weight_buffer;
-  int64_t storage_max = QuantizedType::getDefaultMaxinumForInteger(
+  int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
@@ -402,6 +402,15 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
   return {};
 }
 
+// Returns true if this is a basic LSTM op.
+bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
+  if (const auto* op = op_union.AsLSTMOptions()) {
+    return op->kernel_type == tflite::LSTMKernelType_BASIC;
+  } else {
+    return false;
+  }
+}
+
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value*> vals_map,
@@ -417,7 +426,9 @@ StatusOr<Operation*> ConvertOp(
     return emitError(loc, err.ToString()), err;
   }
 
-  const std::string& op_name = op_names.at(op.opcode_index);
+  const bool is_basic_lstm = IsBasicLSTMOp(op.builtin_options);
+  const std::string& op_name =
+      is_basic_lstm ? "tfl.basic_lstm" : op_names.at(op.opcode_index);
   OperationState op_state(loc, op_name);
 
   for (auto input_num : op.inputs) {

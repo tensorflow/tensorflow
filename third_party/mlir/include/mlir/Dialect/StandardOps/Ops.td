@@ -72,6 +72,27 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let hasFolder = 1;
 }
 
+// Base class for unary ops. Requires single operand and result. Individual
+// classes will have `operand` accessor.
+class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<Std_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+  let results = (outs AnyType);
+  let printer = [{
+    return printStandardUnaryOp(this->getOperation(), p);
+  }];
+}
+
+class UnaryOpSameOperandAndResultType<string mnemonic, list<OpTrait> traits = []> :
+    UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
+  let parser = [{
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
+  }];
+}
+
+class FloatUnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    UnaryOpSameOperandAndResultType<mnemonic, traits>,
+    Arguments<(ins FloatLike:$operand)>;
+
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
@@ -94,7 +115,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 // tensors thereof.  This operation takes two operands and returns one result,
 // each of these is required to be of the same type.  This type may be an
 // integer scalar type, a vector whose element type is an integer type, or an
-// integer tensor.  The custom assembly form of the operaton is as follows
+// integer tensor.  The custom assembly form of the operation is as follows
 //
 //     <op>i %0, %1 : i32
 class IntArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
@@ -597,6 +618,10 @@ def DivIUOp : IntArithmeticOp<"diviu"> {
   let hasFolder = 1;
 }
 
+def ExpOp : FloatUnaryOp<"exp"> {
+  let summary = "base-e exponential of the specified value";
+}
+
 def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let summary = "element extract operation";
   let description = [{
@@ -773,7 +798,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
 }
 
 def MulFOp : FloatArithmeticOp<"mulf"> {
-  let summary = "foating point multiplication operation";
+  let summary = "floating point multiplication operation";
   let hasFolder = 1;
 }
 
@@ -1076,7 +1101,7 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
     The integer truncation operation takes an integer input of
     width M and an integer destination type of width N. The destination
     bit-width must be smaller than the input bit-width (N < M).
-    The top-most (N - M) bits of the input are discareded.
+    The top-most (N - M) bits of the input are discarded.
 
       %1 = constant 21 : i5           // %1 is 0b10101
       %2 = trunci %1 : i5 to i4       // %2 is 0b0101

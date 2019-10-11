@@ -34,6 +34,7 @@ py_library(
         ":grpc_debug_test_server",
         ":hooks",
         ":local_cli_wrapper",
+        "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:util",
     ],
 )
@@ -606,6 +607,9 @@ py_test(
     srcs = ["lib/debug_events_writer_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # b/142475891
+    ],
     deps = [
         ":debug_events_writer",
         "//tensorflow/core:protos_all_py",
@@ -652,6 +656,21 @@ cuda_py_test(
         ":check_numerics_callback",
         "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "debug_v2_ops_test",
+    size = "medium",
+    srcs = ["lib/debug_v2_ops_test.py"],
+    additional_deps = [
+        ":debug_events_writer",
+        "//third_party/py/numpy",
+        "//tensorflow/python:debug_ops_gen",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
@@ -659,6 +678,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras",
+    ],
+    tags = [
+        "no_windows",  # b/142475891
     ],
 )
 
