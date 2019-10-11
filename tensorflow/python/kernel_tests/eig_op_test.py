@@ -91,11 +91,15 @@ class EigTest(test.TestCase):
                           np.matmul(np.matmul(v, np.diag(e)), v.transpose()))
 
 
+def SortEigenValues(e):
+  perm = np.argsort(e.real+e.imag, -1)
+  return np.take(e, perm, -1)
+
 def SortEigenDecomposition(e, v):
   if v.ndim < 2:
     return e, v
   else:
-    perm = np.argsort(e, -1)
+    perm = np.argsort(e.real+e.imag, -1)
     return np.take(e, perm, -1), np.take(v, perm, -1)
 
 
@@ -158,11 +162,10 @@ def _GetEigTest(dtype_, shape_, compute_v_):
       if compute_v_:
         tf_e, tf_v = linalg_ops.eig(constant_op.constant(a))
 
-        # Check that V*diag(E)*V^T is close to A.
+        # Check that V*diag(E)*V^(-1) is close to A.
         a_ev = math_ops.matmul(
             math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
-            tf_v,
-            adjoint_b=True)
+            linalg_ops.matrix_inverse(tf_v))
         self.assertAllClose(self.evaluate(a_ev), a, atol=atol)
 
         # Compare to numpy.linalg.eig.
@@ -171,7 +174,8 @@ def _GetEigTest(dtype_, shape_, compute_v_):
       else:
         tf_e = linalg_ops.eigvals(constant_op.constant(a))
         self.assertAllClose(
-            np.sort(np_e, -1), np.sort(self.evaluate(tf_e), -1), atol=atol)
+            SortEigenValues(np_e), SortEigenValues(self.evaluate(tf_e)),
+            atol=atol)
 
   return Test
 
