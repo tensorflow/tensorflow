@@ -26,6 +26,14 @@ using namespace mlir;
 namespace {
 struct PassManagerOptions {
   //===--------------------------------------------------------------------===//
+  // Crash Reproducer Generator
+  //===--------------------------------------------------------------------===//
+  llvm::cl::opt<std::string> reproducerFile{
+      "pass-pipeline-crash-reproducer",
+      llvm::cl::desc("Generate a .mlir reproducer file at the given output path"
+                     " if the pass manager crashes or fails")};
+
+  //===--------------------------------------------------------------------===//
   // Multi-threading
   //===--------------------------------------------------------------------===//
   llvm::cl::opt<bool> disableThreads{
@@ -130,6 +138,10 @@ void mlir::registerPassManagerCLOptions() {
 }
 
 void mlir::applyPassManagerCLOptions(PassManager &pm) {
+  // Generate a reproducer on crash/failure.
+  if ((*options)->reproducerFile.getNumOccurrences())
+    pm.enableCrashReproducerGeneration((*options)->reproducerFile);
+
   // Disable multi-threading.
   if ((*options)->disableThreads)
     pm.disableMultithreading();

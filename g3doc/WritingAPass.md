@@ -694,3 +694,26 @@ func @simple_constant() -> (i32, i32) {
   return %c1_i32, %c1_i32 : i32, i32
 }
 ```
+
+## Crash and Failure Reproduction
+
+The [pass manager](#pass-manager) in MLIR contains a builtin mechanism to
+generate reproducibles in the even of a crash, or a
+[pass failure](#pass-failure). This functionality can be enabled via
+`PassManager::enableCrashReproducerGeneration` or via the command line flag
+`pass-pipeline-crash-reproducer`. In either case, an argument is provided that
+corresponds to the output `.mlir` file name that the reproducible should be
+written to. The reproducible contains the configuration of the pass manager that
+was executing, as well as the initial IR before any passes were run. A potential
+reproducible may have the form:
+
+```mlir
+// configuration: -pass-pipeline='func(cse, canonicalize), inline'
+// note: verifyPasses=false
+
+module {
+  func @foo() {
+    ...
+  }
+}
+```
