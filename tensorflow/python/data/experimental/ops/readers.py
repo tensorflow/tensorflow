@@ -532,10 +532,14 @@ def make_csv_dataset_v2(
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
-    dataset = dataset.apply(
-        interleave_ops._parallel_interleave(
-            filename_to_dataset, cycle_length=num_parallel_reads,
-            sloppy=sloppy))
+    dataset = core_readers.ParallelInterleaveDataset(
+        dataset,
+        filename_to_dataset,
+        cycle_length=num_parallel_reads,
+        block_length=1,
+        sloppy=sloppy,
+        buffer_output_elements=None,
+        prefetch_input_elements=None)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -881,11 +885,14 @@ def make_batched_features_dataset_v2(file_pattern,
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel
-    dataset = dataset.apply(
-        interleave_ops._parallel_interleave(
-            lambda filename: reader(filename, *reader_args),
-            cycle_length=reader_num_threads,
-            sloppy=sloppy_ordering))
+    dataset = core_readers.ParallelInterleaveDataset(
+        dataset,
+        filename_to_dataset,
+        cycle_length=num_parallel_reads,
+        block_length=1,
+        sloppy=sloppy,
+        buffer_output_elements=None,
+        prefetch_input_elements=None)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
