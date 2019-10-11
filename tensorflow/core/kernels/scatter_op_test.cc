@@ -210,7 +210,6 @@ TEST_F(ScatterSubOpTest, StressIndexTest) {
   AddInputFromArray<int32>(TensorShape({kRows}), values);
   AddInputFromArray<int32>(TensorShape({kNumUpdates}), indices);
   AddInputFromArray<int32>(TensorShape({kNumUpdates}), updates);
-  testing::ItemsProcessed((static_cast<int64>(kNumUpdates)));
   Status s = RunOpKernel();
   Tensor params_tensor = *mutable_input(0).tensor;
   Tensor expected(allocator(), DT_INT32, TensorShape({1}));
