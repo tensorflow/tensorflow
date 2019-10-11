@@ -306,7 +306,7 @@ static void printCallOp(OpAsmPrinter &p, CallOp &op) {
   // callee (first operand) otherwise.
   p << op.getOperationName() << ' ';
   if (isDirect)
-    p << '@' << callee.getValue();
+    p.printSymbolName(callee.getValue());
   else
     p << *op.getOperand(0);
 
@@ -881,7 +881,8 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   p << op.getOperationName() << ' ';
   if (op.constant())
     p << "constant ";
-  p << '@' << op.sym_name() << '(';
+  p.printSymbolName(op.sym_name());
+  p << '(';
   if (auto value = op.getValueOrNull())
     p.printAttribute(value);
   p << ')';

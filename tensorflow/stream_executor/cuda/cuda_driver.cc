@@ -658,34 +658,24 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint8(GpuContext* context,
-                                                     CUdeviceptr location,
-                                                     uint8 value,
-                                                     size_t uint32_count,
-                                                     CUstream stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
+    GpuContext* context, CUdeviceptr location, uint8 value, size_t uint32_count,
+    CUstream stream) {
   ScopedActivateContext activation(context);
-  CUresult res = cuMemsetD8Async(location, value, uint32_count, stream);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
-  VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(
+      cuMemsetD8Async(location, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint32(GpuContext* context,
-                                                      CUdeviceptr location,
-                                                      uint32 value,
-                                                      size_t uint32_count,
-                                                      CUstream stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
+    GpuContext* context, CUdeviceptr location, uint32 value,
+    size_t uint32_count, CUstream stream) {
   ScopedActivateContext activation(context);
-  CUresult res = cuMemsetD32Async(location, value, uint32_count, stream);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
-  VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(
+      cuMemsetD32Async(location, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::AddStreamCallback(GpuContext* context,

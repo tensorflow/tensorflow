@@ -73,10 +73,8 @@ std::string GetMaxUnoolingKernelCode(
     c += "  FLT4 src = (FLT4)(0.0f);\n";
     c += "  int4 ind = (int4)(0);\n";
     c += "  if (!outside) {\n";
-    c += "    src = " + src.Read("src_adr", TextureAddressMode::DONT_CARE) +
-         ";\n";
-    c += "    ind = convert_int4(" +
-         src_ind.Read("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
+    c += "    src = " + src.Read("src_adr") + ";\n";
+    c += "    ind = convert_int4(" + src_ind.Read("src_adr") + ");\n";
     c += "  }\n";
   } else {
     c += "  FLT4 src = " + src.Read("src_adr", address_mode) + ";\n";

@@ -182,7 +182,7 @@ public:
 /// remappings for the entry arguments to the region. 'resultsToReplace'
 /// corresponds to any results that should be replaced by terminators within the
 /// inlined region. 'inlineLoc' is an optional Location that, if provided, will
-/// be used to update the inlined operations's location information.
+/// be used to update the inlined operations' location information.
 /// 'shouldCloneInlinedRegion' corresponds to whether the source region should
 /// be cloned into the 'inlinePoint' or spliced directly.
 LogicalResult inlineRegion(InlinerInterface &interface, Region *src,

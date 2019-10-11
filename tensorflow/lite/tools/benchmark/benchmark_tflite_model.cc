@@ -128,14 +128,6 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
   return results;
 }
 
-template <typename T>
-void FillRandomValue(T* ptr, int num_elements,
-                     const std::function<T()>& random_func) {
-  for (int i = 0; i < num_elements; ++i) {
-    *ptr++ = random_func();
-  }
-}
-
 void FillRandomString(tflite::DynamicBuffer* buffer,
                       const std::vector<int>& sizes,
                       const std::function<std::string()>& random_func) {
@@ -364,7 +356,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     if (t->type == kTfLiteFloat32) {
       t_data.bytes = sizeof(float) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<float>(t_data.data.f, num_elements, []() {
+      std::generate_n(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
     } else if (t->type == kTfLiteFloat16) {
@@ -373,13 +365,12 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      FillRandomValue<TfLiteFloat16>(
-          t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
-            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-            TfLiteFloat16 f16_placeholder_value;
-            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-            return f16_placeholder_value;
-          });
+      std::generate_n(t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
+        __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+        TfLiteFloat16 f16_placeholder_value;
+        memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+        return f16_placeholder_value;
+      });
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
@@ -387,35 +378,30 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteInt64) {
       t_data.bytes = sizeof(int64_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int64_t>(t_data.data.i64, num_elements, []() {
-        return static_cast<int64_t>(rand()) % 100;
-      });
+      std::generate_n(t_data.data.i64, num_elements,
+                      []() { return static_cast<int64_t>(rand()) % 100; });
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
       // for speech models. Generalize if necessary.
       t_data.bytes = sizeof(int32_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int32_t>(t_data.data.i32, num_elements, []() {
-        return static_cast<int32_t>(rand()) % 100;
-      });
+      std::generate_n(t_data.data.i32, num_elements,
+                      []() { return static_cast<int32_t>(rand()) % 100; });
     } else if (t->type == kTfLiteInt16) {
       t_data.bytes = sizeof(int16_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int16_t>(t_data.data.i16, num_elements, []() {
-        return static_cast<int16_t>(rand()) % 100;
-      });
+      std::generate_n(t_data.data.i16, num_elements,
+                      []() { return static_cast<int16_t>(rand()) % 100; });
     } else if (t->type == kTfLiteUInt8) {
       t_data.bytes = sizeof(uint8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<uint8_t>(t_data.data.uint8, num_elements, []() {
-        return static_cast<uint8_t>(rand()) % 255;
-      });
+      std::generate_n(t_data.data.uint8, num_elements,
+                      []() { return static_cast<uint8_t>(rand()) % 255; });
     } else if (t->type == kTfLiteInt8) {
       t_data.bytes = sizeof(int8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int8_t>(t_data.data.int8, num_elements, []() {
-        return static_cast<int8_t>(rand()) % 255 - 127;
-      });
+      std::generate_n(t_data.data.int8, num_elements,
+                      []() { return static_cast<int8_t>(rand()) % 255 - 127; });
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {

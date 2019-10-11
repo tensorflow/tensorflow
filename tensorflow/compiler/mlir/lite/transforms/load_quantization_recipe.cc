@@ -75,13 +75,13 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   Type int8_storage_type = builder->getIntegerType(8);
   Type int16_storage_type = builder->getIntegerType(16);
   auto flag = quant::QuantizationFlags::FlagValue::Signed;
-  int64_t int8_min = quant::QuantizedType::getDefaultMininumForInteger(
+  int64_t int8_min = quant::QuantizedType::getDefaultMinimumForInteger(
       flag, /*integralWidth=*/8);
-  int64_t int8_max = quant::QuantizedType::getDefaultMaxinumForInteger(
+  int64_t int8_max = quant::QuantizedType::getDefaultMaximumForInteger(
       flag, /*integralWidth=*/8);
-  int64_t int16_min = quant::QuantizedType::getDefaultMininumForInteger(
+  int64_t int16_min = quant::QuantizedType::getDefaultMinimumForInteger(
       flag, /*integralWidth=*/16);
-  int64_t int16_max = quant::QuantizedType::getDefaultMaxinumForInteger(
+  int64_t int16_max = quant::QuantizedType::getDefaultMaximumForInteger(
       flag, /*integralWidth=*/16);
   auto any_int8 = quant::AnyQuantizedType::get(
       flag, int8_storage_type, expressed_type, int8_min, int8_max);

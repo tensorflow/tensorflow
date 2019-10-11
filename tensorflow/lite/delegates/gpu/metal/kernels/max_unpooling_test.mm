@@ -72,10 +72,10 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   XCTAssertTrue(model.PopulateTensor(1, {0, 0, 0, 0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status =
       CompareVectors({1, 0, 2, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

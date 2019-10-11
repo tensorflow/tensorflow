@@ -172,7 +172,9 @@ class Sharding(object):
 #   tensor = xla_sharding.replicate(tensor)
 
 
-def replicate(tensor, assign_tuple_sharding=False):
+def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
   Sharding.replicate().apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding)

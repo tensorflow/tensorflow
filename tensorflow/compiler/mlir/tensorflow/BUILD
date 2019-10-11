@@ -22,6 +22,7 @@ filegroup(
         "ir/tf_op_base.td",
         "ir/tf_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
     ],
 )
 
@@ -160,6 +161,8 @@ cc_library(
         "ir/tf_types.h",
         "transforms/bridge.h",
         "transforms/passes.h",
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.h",
+        "@local_config_mlir//:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
@@ -170,11 +173,12 @@ cc_library(
         ":tensorflow_executor_inc_gen",
         ":tensorflow_ops_inc_gen",
         ":tf_saved_model_inc_gen",
-        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:CallOpInterfacesIncGen",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
@@ -295,6 +299,7 @@ cc_library(
         ":tensorflow_passes",
         "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
+        "//tensorflow/compiler/mlir:op_name_mapper",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -713,6 +718,7 @@ tf_native_cc_binary(
 genrule(
     name = "derived_attr_populator_inc",
     srcs = [
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
@@ -758,6 +764,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":error_util",
+        ":tensorflow_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
@@ -770,6 +777,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
+        "@local_config_mlir//:StandardOps",
     ],
 )
 
@@ -784,6 +792,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
     ],
@@ -832,12 +841,9 @@ cc_library(
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
     ],
 )
 
@@ -847,11 +853,38 @@ tf_cc_test(
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
         ":tpu_rewrite_device_util",
-        "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
+    name = "device_util",
+    srcs = ["utils/device_util.cc"],
+    hdrs = ["utils/device_util.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "device_util_test",
+    size = "small",
+    srcs = ["utils/device_util_test.cc"],
+    deps = [
+        ":device_util",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",

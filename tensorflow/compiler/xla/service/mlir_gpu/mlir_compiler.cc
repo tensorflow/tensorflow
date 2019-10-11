@@ -35,11 +35,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace mlir_gpu {
@@ -149,32 +149,36 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
                           /*must_not_live_out=*/{}, &CanShareBufferHint));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
-  MLIRContext mlir_context;
+  EmissionContext emission_context(std::move(module));
+  if (error_handler_) {
+    emission_context.setErrorHandler(error_handler_);
+  }
+
   OwningModuleRef mlir_module =
-      ModuleOp::create(UnknownLoc::get(&mlir_context));
-  LhloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
+      ModuleOp::create(UnknownLoc::get(emission_context.getContext()));
+  LhloDialectEmitter lhlo_emitter(&emission_context, *buffer_assignment,
                                   stream_exec->platform(), *mlir_module);
 
-  TF_RETURN_IF_ERROR(
-      lhlo_emitter.EmitComputation(*module->entry_computation()));
+  TF_RETURN_IF_ERROR(lhlo_emitter.EmitComputation(
+      *emission_context.getHloModule()->entry_computation()));
 
   if (module_hook_.callback &&
       module_hook_.stage == IRHook::LoweringStage::LHLO) {
-    module_hook_.callback(*mlir_module);
+    TF_RETURN_IF_ERROR(module_hook_.callback(*mlir_module));
   }
 
   TF_RETURN_IF_ERROR(LowerLHLOToGPU(*mlir_module));
 
   if (module_hook_.callback &&
       module_hook_.stage == IRHook::LoweringStage::GPU) {
-    module_hook_.callback(*mlir_module);
+    TF_RETURN_IF_ERROR(module_hook_.callback(*mlir_module));
   }
 
   TF_RETURN_IF_ERROR(LowerKernelBodiesToNVVM(*mlir_module));
 
   if (module_hook_.callback &&
       module_hook_.stage == IRHook::LoweringStage::LLVM) {
-    module_hook_.callback(*mlir_module);
+    TF_RETURN_IF_ERROR(module_hook_.callback(*mlir_module));
   }
 
   // TODO(b/137624192): Emit function per hlo and turn into ptx string and blob.
@@ -185,15 +189,16 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
       lhlo_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
 
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+  if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
+    DumpToFileInDirOrStdout(*emission_context.getHloModule(), "thunk_schedule",
                             thunk_schedule->ToString());
   }
 
   // TODO(b/137624192): Add profiling support.
   return {absl::make_unique<GpuExecutable>(
       ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
-      std::move(module), std::move(buffer_assignment), nullptr, nullptr)};
+      emission_context.releaseHloModule(), std::move(buffer_assignment),
+      nullptr, nullptr)};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompiler::Compile(
@@ -215,6 +220,10 @@ void MlirCompiler::SetModuleHook(IRHook module_hook) {
 
 void MlirCompiler::RemoveModuleHook() {
   module_hook_ = {nullptr, IRHook::LoweringStage::LHLO};
+}
+
+void MlirCompiler::SetErrorHandler(ErrorHandler error_handler) {
+  error_handler_ = error_handler;
 }
 
 }  // namespace mlir_gpu

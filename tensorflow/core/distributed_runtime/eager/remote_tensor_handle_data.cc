@@ -37,8 +37,9 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
   eager::EagerClient* eager_client;
   Status status = ctx->GetClient(remote_task, &eager_client);
   if (!status.ok()) {
-    LOG(INFO) << "Unable to destroy remote tensor handle because the target "
-              << remote_task << " is no longer available.";
+    LOG_EVERY_N_SEC(INFO, 60)
+        << "Unable to destroy remote tensor handle because the target "
+        << remote_task << " is no longer available.";
     return;
   }
 
@@ -57,8 +58,8 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to destroy remote tensor handles: "
-                 << status.error_message();
+      LOG_EVERY_N_SEC(ERROR, 60) << "Unable to destroy remote tensor handles: "
+                                 << status.error_message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -68,8 +69,9 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
       Status status =
           ctx->Executor().AddOrExecute(absl::WrapUnique(released_node));
       if (!status.ok()) {
-        LOG(ERROR) << "Unable to destroy remote tensor handles: "
-                   << status.error_message();
+        LOG_EVERY_N_SEC(ERROR, 60)
+            << "Unable to destroy remote tensor handles: "
+            << status.error_message();
       }
     });
   }

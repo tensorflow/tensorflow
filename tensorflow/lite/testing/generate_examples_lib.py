@@ -453,6 +453,15 @@ def make_zip_of_tests(options,
   if options.make_edgetpu_tests:
     extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
     extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+    # Only count parameters when fully_quantize is True.
+    parameter_count = 0
+    for parameters in test_parameters:
+      if True in parameters.get("fully_quantize", []):
+        parameter_count += functools.reduce(operator.mul, [
+            len(values)
+            for key, values in parameters.items()
+            if key != "fully_quantize"
+        ])
 
   label_base_path = zip_path
   if options.multi_gen_state:

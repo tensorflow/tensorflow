@@ -20,22 +20,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-
-constexpr char kDevicesAttr[] = "tf.devices";
-
-// Collects devices as DeviceNameUtils::ParsedName from an op `tf.devices`
-// attribute. A failure will be returned if the attribute is not an
-// ArrayAttr<StringAttr> or the devices are invalid.
-mlir::LogicalResult GetDevicesFromAttribute(
-    mlir::Operation* op,
-    llvm::SmallVectorImpl<DeviceNameUtils::ParsedName>* devices);
-
 // Finds the TPU compilation device and execution devices from `devices` for a
 // replicated TPU computation subgraph. Compilation device is determined from
 // looking up all TPU_SYSTEM:0 devices and choosing the CPU device associated

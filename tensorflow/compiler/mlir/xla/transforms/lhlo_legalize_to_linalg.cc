@@ -126,25 +126,6 @@ Operation* GetLinalgBodyOp<xla_lhlo::AndOp>(Location loc, Type element_type,
              : nullptr;
 }
 
-// Converts LHLO ops to Linalg generic.
-// Sample result for xla_lhlo::AddOp.
-//
-// "xla_lhlo.add"(%arg1, %arg2, %out) :
-//      (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//
-// will be converted to
-//
-// #map0 = (d0, d1) -> (d0, d1)
-// "linalg.generic"(%arg1, %arg2, %out) ( {
-//   ^bb0(%arg4: f32, %arg5: f32):
-//     %0 = addf %arg4, %arg5 : f32
-//     "linalg.yield"(%0) : (f32) -> ()
-//   }) {
-//     indexing_maps = [#map0, #map0, #map0],
-//     n_loop_types = [2, 0, 0],
-//     n_views = [3, 1]
-//   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-// }
 template <typename LhloOp>
 class LhloToLinalgOpConverter : public ConversionPattern {
  public:
@@ -168,7 +149,6 @@ class LhloToLinalgOpConverter : public ConversionPattern {
     // Construct the indexing maps needed for linalg.generic ops.
     SmallVector<Attribute, 2> indexing_maps;
     SmallVector<Type, 4> body_arg_types, body_result_types;
-    SmallVector<Value*, 4> block_args;
     unsigned nloops = 0;
     for (const auto& arg : llvm::enumerate(args)) {
       auto memref_type = arg.value()->getType().dyn_cast<MemRefType>();
@@ -193,8 +173,8 @@ class LhloToLinalgOpConverter : public ConversionPattern {
         rewriter.getI64IntegerAttr(0)};
     // Define the number of input memref/output memrefs.
     const SmallVector<Attribute, 2> nmemrefs{
-        rewriter.getI64IntegerAttr(lhlo_op->getNumOperands()),
-        rewriter.getI64IntegerAttr(1)};
+        rewriter.getI64IntegerAttr(body_arg_types.size()),
+        rewriter.getI64IntegerAttr(body_result_types.size())};
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, args, rewriter.getArrayAttr(indexing_maps),
@@ -205,13 +185,16 @@ class LhloToLinalgOpConverter : public ConversionPattern {
     auto* region = &linalg_op.region();
     auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(body_arg_types);
-    for (int i = 0, e = lhlo_op->getNumOperands() - 1; i < e; ++i) {
-      block_args.push_back(block->getArgument(i));
+    block->addArguments(body_result_types);
+
+    SmallVector<Value*, 4> body_args;
+    for (int i = 0, e = body_arg_types.size(); i < e; ++i) {
+      body_args.push_back(block->getArgument(i));
     }
 
     rewriter.setInsertionPointToEnd(block);
     Operation* op = GetLinalgBodyOp<LhloOp>(
-        loc, body_arg_types[0], body_result_types, block_args, rewriter);
+        loc, body_arg_types[0], body_result_types, body_args, rewriter);
     rewriter.create<linalg::YieldOp>(loc, llvm::to_vector<1>(op->getResults()));
     rewriter.replaceOp(lhlo_op, {});
     return matchSuccess();
@@ -229,6 +212,25 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    LhloToLinalgOpConverter<xla_lhlo::SubOp>>(context);
 }
 
+// Converts LHLO ops to Linalg generic.
+// Sample result for xla_lhlo::AddOp.
+//
+// "xla_lhlo.add"(%arg1, %arg2, %out) :
+//      (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+//
+// will be converted to
+//
+// #map0 = (d0, d1) -> (d0, d1)
+// "linalg.generic"(%arg1, %arg2, %out) ( {
+//   ^bb0(%arg4: f32, %arg5: f32):
+//     %0 = addf %arg4, %arg5 : f32
+//     "linalg.yield"(%0) : (f32) -> ()
+//   }) {
+//     indexing_maps = [#map0, #map0, #map0],
+//     n_loop_types = [2, 0, 0],
+//     n_views = [2, 1]
+//   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+// }
 struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;

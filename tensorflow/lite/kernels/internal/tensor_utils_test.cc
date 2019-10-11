@@ -53,7 +53,8 @@ TEST(uKernels, VectorScalarMultiply) {
                    0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
 }
 
-TEST(uKernels, IsZeroTest) {
+// Test if a float array if full of zero values.
+TEST(uKernels, IsZeroFloatTest) {
   constexpr int kVectorSize = 21;
   static float zeros[kVectorSize] = {0.0};
   EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
@@ -63,6 +64,17 @@ TEST(uKernels, IsZeroTest) {
       1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
       1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
   EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+}
+
+// Test if an int8 array if full of zero values.
+TEST(uKernels, IsZeroInt8Test) {
+  constexpr int kVectorSize = 43;
+  static int8_t zeros[kVectorSize] = {0};
+  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
+
+  static int8_t non_zeros[kVectorSize] = {0};
+  non_zeros[33] = 3;
+  EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
 }
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {

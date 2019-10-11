@@ -525,11 +525,15 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "LLVMType type, ArrayRef<NamedAttribute> attrs, "
+              "LLVMType type, ArrayRef<NamedAttribute> attrs = {}, "
               "ArrayRef<NamedAttributeList> argAttrs = {}">
   ];
 
   let extraClassDeclaration = [{
+    // Add an entry block to an empty function, and set up the block arguments
+    // to match the signature of the function.
+    Block *addEntryBlock();
+
     LLVMType getType() {
       return getAttrOfType<TypeAttr>(getTypeAttrName())
           .getValue().cast<LLVMType>();
@@ -575,7 +579,7 @@ def LLVM_ConstantOp
 // operations and intrinsics. However, we systematically prefix them with
 // "intr." to avoid potential name clashes.
 
-def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
+def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
@@ -587,4 +591,14 @@ def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
   }];
 }
 
+def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::exp, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
 #endif // LLVMIR_OPS

@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
 
     auto module = tensorflow::SavedModelToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names),
-        debug_info_file, &context);
+        &context);
     if (!module) return 1;
 
     module->print(output->os());

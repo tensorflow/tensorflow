@@ -41,6 +41,12 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
 LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
                                       int64_t max_iteration = 10);
 
+// Given a list of refined shapes matching the function arguments of op, run
+// shape inference over the function to propagate this updated information.
+LogicalResult InferShapeForFunction(FuncOp op,
+                                    ArrayRef<ArrayRef<int64_t>> arg_shapes,
+                                    int64_t graph_version);
+
 }  // namespace TF
 
 }  // namespace mlir

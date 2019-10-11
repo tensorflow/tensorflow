@@ -352,6 +352,18 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual(results, range(10))
 
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheV2ConcurrentIterators(self):
+
+    dataset = dataset_ops.Dataset.range(10).cache()
+
+    it1 = iter(dataset)
+    it2 = iter(dataset)
+
+    for i in range(10):
+      self.assertEqual(next(it1), i)
+      self.assertEqual(next(it2), i)
+
 
 if __name__ == "__main__":
   test.main()

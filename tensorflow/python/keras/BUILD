@@ -51,6 +51,7 @@ py_library(
         "preprocessing/text.py",
         "testing_utils.py",
         "utils/__init__.py",
+        "utils/all_utils.py",
         "utils/multi_gpu_utils.py",
         "utils/np_utils.py",
         "utils/vis_utils.py",
@@ -477,6 +478,7 @@ py_library(
         "layers/cudnn_recurrent.py",
         "layers/dense_attention.py",
         "layers/embeddings.py",
+        "layers/image_preprocessing.py",
         "layers/kernelized.py",
         "layers/local.py",
         "layers/merge.py",
@@ -799,6 +801,19 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+)
+
+cuda_py_test(
+    name = "image_preprocessing_test",
+    size = "medium",
+    srcs = ["layers/image_preprocessing_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -1146,6 +1161,8 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_concat_ops",
     ],
     shard_count = 6,
     tags = [
@@ -1836,6 +1853,7 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/distribute:mirrored_strategy",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],

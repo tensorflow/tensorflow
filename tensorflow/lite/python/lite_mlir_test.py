@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
+from six.moves import zip
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
@@ -454,10 +457,13 @@ class FromConcreteFunctionTest(TFLiteMLIRTest):
     np.testing.assert_almost_equal(expected_value, actual_value)
 
 
-class FromKerasModelTest(TFLiteMLIRTest):
+class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
 
+  @parameterized.named_parameters(('LSTM', keras.layers.LSTM),
+                                  ('SimpleRNN', keras.layers.SimpleRNN),
+                                  ('GRU', keras.layers.GRU))
   @test_util.run_v2_only
-  def testKerasLSTM(self):
+  def testKerasRNN(self, rnn_layer):
     # This test case is similar to `FromConcreteFunctionTest.testKerasLSTM`
     # above, but it's more concise to pass the Keras model directly.
     # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
@@ -465,8 +471,7 @@ class FromKerasModelTest(TFLiteMLIRTest):
     input_data = constant_op.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
 
-    model = keras.models.Sequential(
-        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+    model = keras.models.Sequential([rnn_layer(units=10, input_shape=(10, 10))])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -477,7 +482,7 @@ class FromKerasModelTest(TFLiteMLIRTest):
     # Check values from converted model.
     expected_value = model.predict(input_data)
 
-    np.testing.assert_almost_equal(expected_value, actual_value)
+    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
 
 
 class TestFlexMode(TFLiteMLIRTest):

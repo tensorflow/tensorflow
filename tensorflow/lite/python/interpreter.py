@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +21,10 @@ from __future__ import print_function
 import ctypes
 import platform
 import sys
+
 import numpy as np
+import six
+from six.moves import range
 
 # pylint: disable=g-import-not-at-top
 if not __file__.endswith('tflite_runtime/interpreter.py'):
@@ -107,7 +111,7 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        self.message += x if isinstance(x, str) else x.decode('utf-8')
+        self.message += x if isinstance(x, str) else six.ensure_text(x, 'utf-8')
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)

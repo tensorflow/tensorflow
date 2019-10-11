@@ -45,44 +45,6 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
-//
-// Example fusion with HLO ops.
-//
-// func @fusion(%arg0: memref<2x2xf32>,
-//              %arg1: memref<2x2xf32>,
-//              %arg2: memref<2x2xf32>,
-//              %arg3: memref<2x2xf32>) {
-//   "xla_lhlo.fusion"() ({
-//     %0 = tensor_load %arg1 : memref<2x2xf32>
-//     %1 = tensor_load %arg2 : memref<2x2xf32>
-//     %2 = "xla_hlo.add"(%0, %1) {name = "add"} :
-//         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-//     %3 = tensor_load %arg0 : memref<2x2xf32>
-//     %4 = "xla_hlo.mul"(%2, %3) {name = "multiply"} :
-//         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-//     tensor_store %4, %arg3 : memref<2x2xf32>
-//     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
-//   return
-// }
-//
-// Transformed fusion with LHLO ops.
-// func @fusion(%arg0: memref<2x2xf32>,
-//              %arg1: memref<2x2xf32>,
-//              %arg2: memref<2x2xf32>,
-//              %arg3: memref<2x2xf32>) {
-//   "xla_lhlo.fusion"() ( {
-//     %0 = alloc() {temp = true} : memref<2x2xf32>
-//     "xla_lhlo.add"(%arg1, %arg2, %0) :
-//         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//     "xla_lhlo.mul"(%0, %arg0, %arg3) :
-//         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//     dealloc %0 : memref<2x2xf32>
-//     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
-//   return
-//  }
-// }
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
 
 }  // namespace xla_hlo
@@ -92,6 +54,10 @@ namespace xla_lhlo {
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

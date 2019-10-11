@@ -68,7 +68,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 
 // Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration pipeline(
+static mlir::PassPipelineRegistration<> pipeline(
     "tf-standard-pipeline",
     "Run all the passes involved in transforming/optimizing the graph after "
     "importing into MLIR, without any target specialization.",

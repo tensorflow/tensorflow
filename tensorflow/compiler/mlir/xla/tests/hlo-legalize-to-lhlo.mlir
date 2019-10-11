@@ -15,3 +15,12 @@ func @fusion(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>, %arg2: memref<2x2xf
   // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
   "xla_lhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @exp
+func @exp(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
+  %0 = tensor_load %arg0 : memref<2x2xf32>
+  %1 = "xla_hlo.exp"(%0) {name = "exp"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.exp"(%{{.*}}, %{{.*}})
+  tensor_store %1, %arg1 : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}

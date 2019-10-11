@@ -178,7 +178,23 @@ def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
-def HLO_AndOp: HLO_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BASE_HLO_AndOp;
+
+//===----------------------------------------------------------------------===//
+// XLA binary elementwise op definitions.
+//===----------------------------------------------------------------------===//
+
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
+class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
+        HLO_BinaryElementwiseOp<mnemonic, [Commutative, NoSideEffect]> {
+  let arguments = (ins
+    HLO_PredTensor:$lhs,
+    HLO_PredTensor:$rhs,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+}
+
+def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
+def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
@@ -241,6 +257,8 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let results = (outs HLO_TensorOrTuple);
 
+  let hasFolder = 1;
+
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
@@ -262,6 +280,18 @@ def HLO_CompareOp: HLO_Op<"compare",
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+  >];
+
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes.
+    static Type InferOutputTypes(Builder *builder, Value *lhs, Value *rhs,
+                                 DenseIntElementsAttr broadcast_dimensions,
+                                 StringAttr comparison_direction);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -298,6 +328,20 @@ def HLO_SliceOp: HLO_Op<
 
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$start_indices,
+    I64ElementsAttr:$slice_sizes
+  );
+
+  let results = (outs HLO_Tensor:$result);
+
   let hasCustomHLOConverter = 1;
 }
 
@@ -387,16 +431,43 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCustomHLOConverter = 1;
 }
 
+// TODO(hinsu): Make this struct dialect independent so that it can be shared
+// between HLO and LHLO dialect.
+def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
+  StructFieldAttr<"input_batch_dimension",I64Attr>,
+  StructFieldAttr<"input_feature_dimension", I64Attr>,
+  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"output_batch_dimension", I64Attr>,
+  StructFieldAttr<"output_feature_dimension", I64Attr>,
+  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
+
+  let description = "Structure of dimension information for conv op";
+}
+
 def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
-    HLO_Tensor:$rhs
+    HLO_Tensor:$rhs,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
   );
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Needs additional work to handle attributes.
-  // Conv has custom handling because its other args are passed as attributes
+  // TODO(b/129422361): Conv Op has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
@@ -579,6 +650,24 @@ def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
   let hasCustomHLOConverter = 1;
 
   // TODO(hinsu): Implement custom printer and parser.
+}
+
+//===----------------------------------------------------------------------===//
+// XLA RngUniform Operator.
+//===----------------------------------------------------------------------===//
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
+  let arguments = (ins
+    HLO_Tensor:$a,
+    HLO_Tensor:$b,
+    I64Tensor:$shape
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(bgogul): Disable conversion operator for `RngUniform` as
+  // the default constructor for `xla::RngUniform` takes `Shape` as
+  // the last argument and the default converter does not deal with it.
+  let hasCustomHLOConverter = 1;
 }
 
 #endif // HLO_OPS
