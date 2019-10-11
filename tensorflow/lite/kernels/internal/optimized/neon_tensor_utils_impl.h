@@ -149,6 +149,9 @@ void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 // Check if all entries of a vector are zero.
 bool NeonIsZeroVector(const float* vector, int v_size);
 
+// Check if all entries of a vector are zero.
+bool NeonIsZeroVector(const int8_t* vector, int v_size);
+
 // Symmetric quantizer.
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
