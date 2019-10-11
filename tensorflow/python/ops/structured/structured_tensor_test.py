@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -92,6 +93,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
               "r": ragged_factory_ops.constant_value(
                   [[[1, 2], [3]], [[4, 5, 6], [7], [8, 9]]]),
           },
+          "expected_ragged_rank": 1,
       },
       {
           # Note: fields must have identical row_splits.
@@ -100,6 +102,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
               "a": ragged_factory_ops.constant_value([[1, 2], [3]]),
               "b": ragged_factory_ops.constant_value([[4, 5], [6]]),
           },
+          "expected_ragged_rank": 1,
       },
       {
           # Note: fields must have identical outer row_splits.
@@ -110,15 +113,18 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
               "b": ragged_factory_ops.constant_value(
                   [[[1], []], [[2, 3], [4, 5, 6], [7, 8]]]),
           },
+          "expected_ragged_rank": 1,
       },
   ])  # pyformat: disable
-  def testConstructor(self, shape, fields, expected_shape=None):
+  def testConstructor(self, shape, fields, expected_shape=None,
+                      expected_ragged_rank=0):
     struct = structured_tensor.StructuredTensor(shape, fields)
     if expected_shape is None:
       expected_shape = shape
     self.assertEqual(struct.shape.as_list(), expected_shape)
     self.assertLen(expected_shape, struct.rank)
     self.assertEqual(struct.field_names(), tuple(fields.keys()))
+    self.assertEqual(struct.ragged_rank, expected_ragged_rank)
     for field, value in fields.items():
       self.assertIsInstance(
           struct.field_value(field),
@@ -156,6 +162,18 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
        r"Shapes \([01],\) and \([01],\) are not compatible"),
       ([], {"": 5}, ValueError, "Field name '' is not currently allowed."),
       ([], {"_": 5}, ValueError, "Field name '_' is not currently allowed."),
+      {
+          # Note: fields must have identical outer row_splits.
+          "shape": [2, None],
+          "fields": {
+              "r1": ragged_factory_ops.constant_value(
+                  [[1, 2], [3]]),
+              "r2": ragged_factory_ops.constant_value(
+                  [[1, 2, 3], [4]]),
+          },
+          "err": errors.InvalidArgumentError,
+          "msg": r"Inputs must have identical ragged splits"
+      },
   ])  # pyformat: disable
   def testConstructorErrors(self, shape, fields, err, msg=None):
     with self.assertRaisesRegexp(err, msg):

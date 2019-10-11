@@ -26,7 +26,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_util
 
 
 class StructuredTensor(composite_tensor.CompositeTensor):
@@ -133,8 +135,43 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     if rank > 0:
       for value in self._fields.values():
         self._static_shape = self._static_shape.merge_with(value.shape[:rank])
-    # TODO(edloper): For RaggedTensor fields, check that the outer `rank`
-    # dimensions are all uniform.  (Only need to check if rank>1.)
+
+    self._nested_row_splits = []
+    if rank > 1:
+      # If any fields are ragged, then check that all row-splits match.
+      shared_row_splits = []
+      for field in self._fields.values():
+        # TODO(edloper): A field shouldn't count as ragged if it has
+        # uniform_row_length defined for all the dimensions in question.
+        if isinstance(field, ragged_tensor.RaggedTensor):
+          shared_row_splits.append(field.nested_row_splits[:rank - 1])
+        elif isinstance(field, StructuredTensor) and field.ragged_rank > 0:
+          shared_row_splits.append(field.nested_row_splits[:rank - 1])
+      if shared_row_splits:
+        if len(shared_row_splits) != len(self._fields):
+          raise ValueError('Ragged StructuredTensor contains non-ragged fields')
+
+        # Check if the splits are identical.  This should be the common case.
+        identical_splits = True
+        for splits in shared_row_splits[1:]:
+          if len(splits) != len(shared_row_splits[0]):
+            raise ValueError('Fields have inconsistent ragged_rank')
+          for (s1, s2) in zip(splits, shared_row_splits[0]):
+            if s1 is not s2:
+              identical_splits = False
+
+        if identical_splits:
+          self._nested_row_splits = shared_row_splits[0]
+        else:
+          # If splits aren't identical, then add assertions to check that they
+          # match.
+          with ops.control_dependencies(
+              ragged_util.assert_splits_match(shared_row_splits)):
+            self._nested_row_splits = [array_ops.identity(splits)
+                                       for splits in shared_row_splits[0]]
+
+          # TODO(edloper): Rebuild all fields to ensure that they use the
+          # identical row_splits tensor.
 
   @classmethod
   def from_row_splits(cls, values, row_splits, validate=True):
@@ -204,6 +241,29 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       `tf.TensorShape`
     """
     return self._static_shape
+
+  @property
+  def nested_row_splits(self):
+    """A tuple containing the row_splits for all ragged dimensions.
+
+    If non-empty, then every `field` in this StructuredTensor is ragged, and
+    has these `nested_row_splits` as their outermost row-splits tensors.
+
+    Returns:
+      A `tuple` of 1-D integer `Tensor`s.  The length of this tuple will
+      always be less than `self.rank`.
+    """
+    return self._nested_row_splits
+
+  @property
+  def ragged_rank(self):
+    """The number of ragged dimensions in this StructuredTensor.
+
+    Returns:
+      A Python `int` indicating the number of ragged dimensions in this ragged
+      tensor.  The outermost dimension is not considered ragged.
+    """
+    return len(self._nested_row_splits)
 
   #=============================================================================
   # Encoding
