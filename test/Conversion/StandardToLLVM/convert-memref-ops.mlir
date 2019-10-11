@@ -22,8 +22,11 @@ func @check_static_return(%static : memref<32x18xf32>) -> memref<32x18xf32> {
 // CHECK-LABEL: func @zero_d_alloc() -> !llvm<"{ float*, i64 }"> {
 func @zero_d_alloc() -> memref<f32> {
 // CHECK-NEXT:  llvm.mlir.constant(1 : index) : !llvm.i64
-// CHECK-NEXT:  llvm.mlir.constant(4 : index) : !llvm.i64
-// CHECK-NEXT:  llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
+// CHECK-NEXT:  %[[null:.*]] = llvm.mlir.null : !llvm<"float*">
+// CHECK-NEXT:  %[[one:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+// CHECK-NEXT:  %[[gep:.*]] = llvm.getelementptr %[[null]][%[[one]]] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+// CHECK-NEXT:  %[[sizeof:.*]] = llvm.ptrtoint %[[gep]] : !llvm<"float*"> to !llvm.i64
+// CHECK-NEXT:  llvm.mul %{{.*}}, %[[sizeof]] : !llvm.i64
 // CHECK-NEXT:  llvm.call @malloc(%{{.*}}) : (!llvm.i64) -> !llvm<"i8*">
 // CHECK-NEXT:  %[[ptr:.*]] = llvm.bitcast %{{.*}} : !llvm<"i8*"> to !llvm<"float*">
 // CHECK-NEXT:  llvm.mlir.undef : !llvm<"{ float*, i64 }">
@@ -50,8 +53,11 @@ func @mixed_alloc(%arg0: index, %arg1: index) -> memref<?x42x?xf32> {
 //  CHECK-NEXT:  %[[c42:.*]] = llvm.mlir.constant(42 : index) : !llvm.i64
 //  CHECK-NEXT:  llvm.mul %[[M]], %[[c42]] : !llvm.i64
 //  CHECK-NEXT:  %[[sz:.*]] = llvm.mul %{{.*}}, %[[N]] : !llvm.i64
-//  CHECK-NEXT:  llvm.mlir.constant(4 : index) : !llvm.i64
-//  CHECK-NEXT:  %[[sz_bytes:.*]] = llvm.mul %[[sz]], %{{.*}} : !llvm.i64
+//  CHECK-NEXT:  %[[null:.*]] = llvm.mlir.null : !llvm<"float*">
+//  CHECK-NEXT:  %[[one:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:  %[[gep:.*]] = llvm.getelementptr %[[null]][%[[one]]] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+//  CHECK-NEXT:  %[[sizeof:.*]] = llvm.ptrtoint %[[gep]] : !llvm<"float*"> to !llvm.i64
+//  CHECK-NEXT:  %[[sz_bytes:.*]] = llvm.mul %[[sz]], %[[sizeof]] : !llvm.i64
 //  CHECK-NEXT:  llvm.call @malloc(%[[sz_bytes]]) : (!llvm.i64) -> !llvm<"i8*">
 //  CHECK-NEXT:  llvm.bitcast %{{.*}} : !llvm<"i8*"> to !llvm<"float*">
 //  CHECK-NEXT:  llvm.mlir.undef : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
@@ -87,8 +93,11 @@ func @mixed_dealloc(%arg0: memref<?x42x?xf32>) {
 //       CHECK:   %[[M:.*]]: !llvm.i64, %[[N:.*]]: !llvm.i64) -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> {
 func @dynamic_alloc(%arg0: index, %arg1: index) -> memref<?x?xf32> {
 //  CHECK-NEXT:  %[[sz:.*]] = llvm.mul %[[M]], %[[N]] : !llvm.i64
-//  CHECK-NEXT:  llvm.mlir.constant(4 : index) : !llvm.i64
-//  CHECK-NEXT:  %[[sz_bytes:.*]] = llvm.mul %[[sz]], %{{.*}} : !llvm.i64
+//  CHECK-NEXT:  %[[null:.*]] = llvm.mlir.null : !llvm<"float*">
+//  CHECK-NEXT:  %[[one:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:  %[[gep:.*]] = llvm.getelementptr %[[null]][%[[one]]] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+//  CHECK-NEXT:  %[[sizeof:.*]] = llvm.ptrtoint %[[gep]] : !llvm<"float*"> to !llvm.i64
+//  CHECK-NEXT:  %[[sz_bytes:.*]] = llvm.mul %[[sz]], %[[sizeof]] : !llvm.i64
 //  CHECK-NEXT:  llvm.call @malloc(%[[sz_bytes]]) : (!llvm.i64) -> !llvm<"i8*">
 //  CHECK-NEXT:  llvm.bitcast %{{.*}} : !llvm<"i8*"> to !llvm<"float*">
 //  CHECK-NEXT:  llvm.mlir.undef : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
@@ -118,13 +127,16 @@ func @dynamic_dealloc(%arg0: memref<?x?xf32>) {
 
 // CHECK-LABEL: func @static_alloc() -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> {
 func @static_alloc() -> memref<32x18xf32> {
-// CHECK-NEXT:  %0 = llvm.mlir.constant(32 : index) : !llvm.i64
-// CHECK-NEXT:  %1 = llvm.mlir.constant(18 : index) : !llvm.i64
-// CHECK-NEXT:  %2 = llvm.mul %0, %1 : !llvm.i64
-// CHECK-NEXT:  %3 = llvm.mlir.constant(4 : index) : !llvm.i64
-// CHECK-NEXT:  %4 = llvm.mul %2, %3 : !llvm.i64
-// CHECK-NEXT:  %5 = llvm.call @malloc(%4) : (!llvm.i64) -> !llvm<"i8*">
-// CHECK-NEXT:  %6 = llvm.bitcast %5 : !llvm<"i8*"> to !llvm<"float*">
+// CHECK-NEXT:  %[[sz1:.*]] = llvm.mlir.constant(32 : index) : !llvm.i64
+// CHECK-NEXT:  %[[sz2:.*]] = llvm.mlir.constant(18 : index) : !llvm.i64
+// CHECK-NEXT:  %[[num_elems:.*]] = llvm.mul %0, %1 : !llvm.i64
+// CHECK-NEXT:  %[[null:.*]] = llvm.mlir.null : !llvm<"float*">
+// CHECK-NEXT:  %[[one:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+// CHECK-NEXT:  %[[gep:.*]] = llvm.getelementptr %[[null]][%[[one]]] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+//  CHECK-NEXT:  %[[sizeof:.*]] = llvm.ptrtoint %[[gep]] : !llvm<"float*"> to !llvm.i64
+// CHECK-NEXT:  %[[bytes:.*]] = llvm.mul %[[num_elems]], %[[sizeof]] : !llvm.i64
+// CHECK-NEXT:  %[[allocated:.*]] = llvm.call @malloc(%[[bytes]]) : (!llvm.i64) -> !llvm<"i8*">
+// CHECK-NEXT:  llvm.bitcast %[[allocated]] : !llvm<"i8*"> to !llvm<"float*">
  %0 = alloc() : memref<32x18xf32>
  return %0 : memref<32x18xf32>
 }
