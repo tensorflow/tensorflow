@@ -28,7 +28,6 @@ struct TestModulePass : public ModulePass<TestModulePass> {
 struct TestFunctionPass : public FunctionPass<TestFunctionPass> {
   void runOnFunction() final {}
 };
-
 class TestOptionsPass : public FunctionPass<TestOptionsPass> {
 public:
   struct Options : public PassOptions<Options> {
@@ -69,7 +68,13 @@ public:
   SmallVector<std::string, 4> stringListOption;
   std::string stringOption;
 };
-} // namespace
+
+/// A test pass that always aborts to enable testing the crash recovery
+/// mechanism of the pass manager.
+class TestCrashRecoveryPass : public OperationPass<TestCrashRecoveryPass> {
+  void runOnOperation() final { abort(); }
+};
+} // end anonymous namespace
 
 static void testNestedPipeline(OpPassManager &pm) {
   // Nest a module pipeline that contains:
@@ -96,6 +101,10 @@ static PassRegistration<TestModulePass>
     unusedMP("test-module-pass", "Test a module pass in the pass manager");
 static PassRegistration<TestFunctionPass>
     unusedFP("test-function-pass", "Test a function pass in the pass manager");
+
+static PassRegistration<TestCrashRecoveryPass>
+    unusedCrashP("test-pass-crash",
+                 "Test a pass in the pass manager that always crashes");
 
 static PassPipelineRegistration<>
     unused("test-pm-nested-pipeline",

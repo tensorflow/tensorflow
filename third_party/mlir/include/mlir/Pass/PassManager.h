@@ -19,6 +19,7 @@
 #define MLIR_PASS_PASSMANAGER_H
 
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace llvm {
@@ -127,6 +128,11 @@ public:
   /// Disable support for multi-threading within the pass manager.
   void disableMultithreading(bool disable = true);
 
+  /// Enable support for the pass manager to generate a reproducer on the event
+  /// of a crash or a pass failure. `outputFile` is a .mlir filename used to
+  /// write the generated reproducer.
+  void enableCrashReproducerGeneration(StringRef outputFile);
+
   //===--------------------------------------------------------------------===//
   // Instrumentations
   //===--------------------------------------------------------------------===//
@@ -159,6 +165,9 @@ private:
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;
+
+  /// An optional filename to use when generating a crash reproducer if valid.
+  Optional<std::string> crashReproducerFileName;
 };
 
 /// Register a set of useful command-line options that can be used to configure
