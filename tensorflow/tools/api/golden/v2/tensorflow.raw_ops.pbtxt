@@ -3658,7 +3658,7 @@ tf_module {
   }
   member_method {
     name: "Eig"
-    argspec: "args=[\'input\', \'compute_v\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input\', \'Tout\', \'compute_v\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "SelfAdjointEigV2"

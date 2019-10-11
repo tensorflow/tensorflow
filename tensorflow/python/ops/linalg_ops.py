@@ -306,7 +306,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
-@tf_export('eig','linalg.eig', v1=[])
+@tf_export('eig', 'linalg.eig', v1=[])
 def eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of matrices. The eigenvalues
   and eigenvectors for a non-Hermitian matrix in general are complex. The
@@ -327,14 +327,14 @@ def eig(tensor, name=None):
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
   if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-      out_dtype = dtypes.complex64
+    out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-      out_dtype = dtypes.complex128
+    out_dtype = dtypes.complex128
   e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
   return e, v
 
 
-@tf_export('eigvals','linalg.eigvals', v1=[])
+@tf_export('eigvals', 'linalg.eigvals', v1=[])
 def eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more matrices.
 
@@ -353,10 +353,10 @@ def eigvals(tensor, name=None):
       eigenvalues of `tensor[..., :, :]`.
   """
   if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-      out_dtype = dtypes.complex64
+    out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-      out_dtype = dtypes.complex128
-  e, _ = gen_linalg_ops._eig(tensor, Tout=out_dtype, compute_v=False, name=name)
+    out_dtype = dtypes.complex128
+  e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
   return e
 
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
