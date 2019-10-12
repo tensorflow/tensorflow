@@ -869,10 +869,7 @@ class _EagerTensorBase(Tensor):
     return float(self._numpy())
 
   def __index__(self):
-    maybe_arr = self._numpy()
-    if isinstance(maybe_arr, np.ndarray):
-      return maybe_arr.__index__()
-    return int(maybe_arr)  # Must be a NumPy scalar.
+    return self._numpy().__index__()
 
   def __bool__(self):
     return bool(self._numpy())
