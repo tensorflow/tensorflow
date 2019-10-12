@@ -376,7 +376,7 @@ class ProcessFunctionLibraryRuntime {
           local_handle_(local_handle),
           function_key_(function_key) {}
 
-    string target_device() { return target_device_; }
+    const string& target_device() { return target_device_; }
     const string& function_key() { return function_key_; }
 
     FunctionLibraryRuntime::LocalHandle local_handle() {
