@@ -46,9 +46,9 @@ class Visitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
   HloComputation* computation_;
   HloInstruction* AddConvert(HloInstruction* hlo, PrimitiveType elem_type) {
-    const Shape& shape_ = ShapeUtil::ChangeElementType(hlo->shape(), elem_type);
+    Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), elem_type);
     return this->computation_->AddInstruction(
-        HloInstruction::CreateConvert(shape_, hlo));
+        HloInstruction::CreateConvert(shape, hlo));
   }
 };
 
@@ -92,8 +92,10 @@ Status Visitor::HandleBatchNormInference(HloInstruction* batch_norm) {
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
 
+  bool is_batchnorm_with_fp16_inputs = false;
   if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
     operands[0] = AddConvert(batch_norm->mutable_operand(0), F16);
+    is_batchnorm_with_fp16_inputs = true;
   }
   operands.push_back(epsilon);
   operands.push_back(feature_index);
@@ -103,7 +105,7 @@ Status Visitor::HandleBatchNormInference(HloInstruction* batch_norm) {
 
   auto batchnorm_inference_result = HloInstruction::CreateCustomCall(
       batch_norm_shape, operands, kCudnnBatchNormForwardInferenceCallTarget);
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  if (is_batchnorm_with_fp16_inputs) {
     HloInstruction* libcall =
         computation_->AddInstruction(std::move(batchnorm_inference_result));
     Shape shape_f32 = ShapeUtil::ChangeElementType(libcall->shape(), F32);
@@ -142,9 +144,10 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
 
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
-
+  bool is_batchnorm_with_fp16_inputs = false;
   if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
     operands[0] = AddConvert(batch_norm->mutable_operand(0), F16);
+    is_batchnorm_with_fp16_inputs = true;
   }
   operands.push_back(epsilon);
   operands.push_back(feature_index);
@@ -185,20 +188,11 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
           computation_->AddInstruction(HloInstruction::CreateBroadcast(
               variance_plus_epsilon->shape(), epsilon, {}))));
 
-  HloInstruction* new_tuple =
-      computation_->AddInstruction(HloInstruction::CreateTuple({
-          computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-              libcall->shape().tuple_shapes(0), libcall, 0)),
-          computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-              libcall->shape().tuple_shapes(1), libcall, 1)),
-          variance,
-      }));
-
   HloInstruction* new_gte =
       computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-          new_tuple->shape().tuple_shapes(0), new_tuple, 0));
+          libcall->shape().tuple_shapes(0), libcall, 0));
 
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
   // Repackage the results. Athough this tuple is redundant when convert is not
@@ -206,9 +200,8 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
   std::unique_ptr<HloInstruction> replacing_tuple = HloInstruction::CreateTuple(
       {new_gte,
        computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-           new_tuple->shape().tuple_shapes(1), new_tuple, 1)),
-       computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-           new_tuple->shape().tuple_shapes(1), new_tuple, 2))});
+           libcall->shape().tuple_shapes(1), libcall, 1)),
+       variance});
 
   TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
       batch_norm, std::move(replacing_tuple)));
@@ -253,6 +246,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
 
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
+  bool is_batchnorm_with_fp16_inputs = false;
   if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
     HloInstruction* operand_0_convert = batch_norm->mutable_operand(0);
     operands[0] = AddConvert(operand_0_convert, F16);
@@ -265,6 +259,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
         operands[index] = AddConvert(batch_norm->mutable_operand(index), F16);
       }
     }
+    is_batchnorm_with_fp16_inputs = true;
   }
   operands[3] = inverse_stddev;
   operands.push_back(epsilon);
@@ -287,7 +282,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
       computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
           libcall->shape().tuple_shapes(0), libcall, 0));
 
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
   // Repackage the results. Athough this tuple is redundant when convert is not
@@ -297,7 +292,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
        computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
            libcall->shape().tuple_shapes(1), libcall, 1)),
        computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-           libcall->shape().tuple_shapes(1), libcall, 2))});
+           libcall->shape().tuple_shapes(2), libcall, 2))});
 
   TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
       batch_norm, std::move(replacing_tuple)));
