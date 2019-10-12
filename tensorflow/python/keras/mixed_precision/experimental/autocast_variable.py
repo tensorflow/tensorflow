@@ -113,17 +113,15 @@ class AutoCastVariable(variables.Variable):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts this variable to a tensor."""
     if not self._should_cast():
-      return ops.internal_convert_to_tensor(self._variable, dtype, name,
-                                            as_ref)
+      return ops.convert_to_tensor(self._variable, dtype, name, as_ref)
     # TODO(reedwm): Support as_ref?
     assert not as_ref
     if dtype is not None and not dtype.is_compatible_with(self.dtype):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.internal_convert_to_tensor(self._variable,
-                                         self._variable.dtype, name,
-                                         as_ref=False)
+    val = ops.convert_to_tensor(
+        self._variable, self._variable.dtype, name, as_ref=False)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):

@@ -1162,7 +1162,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
     # Try to avoid assignments to and other mutations of MirroredVariable
     # state except through a DistributionStrategy.extended.update() call.
     assert not as_ref
-    return ops.internal_convert_to_tensor(
+    return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
   def _clone_with_new_values(self, new_values):
@@ -1180,7 +1180,7 @@ ops.register_tensor_conversion_function(MirroredVariable,
                                         _tensor_conversion_mirrored)
 
 def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
-  return ops.internal_convert_to_tensor(
+  return ops.convert_to_tensor(
       value.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 ops.register_tensor_conversion_function(Mirrored,
@@ -1362,7 +1362,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
-    return ops.internal_convert_to_tensor(
+    return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
   def _clone_with_new_values(self, new_values):
@@ -1768,8 +1768,7 @@ class AggregatingVariable(variables_lib.Variable):
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return ops.internal_convert_to_tensor(
-      var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return ops.convert_to_tensor(var.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 ops.register_tensor_conversion_function(
