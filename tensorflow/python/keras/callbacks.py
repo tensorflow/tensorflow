@@ -1446,6 +1446,12 @@ class TensorBoard(Callback):
           https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
         about metadata files format. In case if the same metadata file is
         used for all embedding layers, string can be passed.
+      embeddings_image_path: a dictionary which maps layer name to a file name in
+        which a sprite image for this embedding layer is saved. The sprite should
+        be square with a max size of 8192px by 8192px.
+      embeddings_image_size: a dictionary which maps layer name to a tuple of
+        `(width, height)` which specifies the size of a single sprite frame.
+        for this embedding layer is saved.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1462,6 +1468,8 @@ class TensorBoard(Callback):
                profile_batch=2,
                embeddings_freq=0,
                embeddings_metadata=None,
+               embeddings_image_path=None,
+               embeddings_image_size=None,
                **kwargs):
     super(TensorBoard, self).__init__()
     self._validate_kwargs(kwargs)
@@ -1476,6 +1484,8 @@ class TensorBoard(Callback):
       self.update_freq = update_freq
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
+    self.embeddings_image_path = embeddings_image_path
+    self.embeddings_image_size = embeddings_image_size
 
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
@@ -1558,23 +1568,50 @@ class TensorBoard(Callback):
     except ImportError:
       raise ImportError('Failed to import TensorBoard. Please make sure that '
                         'TensorBoard integration is complete."')
+
+    layers = [
+      layer for layer in self.model.layers
+      if isinstance(layer, embeddings.Embedding)
+    ]
+
+    _coerce_to_layer_dict = lambda params: (
+      {layer.name: params for layer in layers}
+      if not isinstance(params, dict) else dict(params)
+    )
+
+    embeddings_metadata = _coerce_to_layer_dict(self.embeddings_metadata)
+    embeddings_image_path = _coerce_to_layer_dict(self.embeddings_image_path)
+    embeddings_image_size = _coerce_to_layer_dict(self.embeddings_image_size)
+
     config = projector.ProjectorConfig()
-    for layer in self.model.layers:
-      if isinstance(layer, embeddings.Embedding):
-        embedding = config.embeddings.add()
-        embedding.tensor_name = layer.embeddings.name
+    for layer in layers:
+      embedding = config.embeddings.add()
+      embedding.tensor_name = layer.embeddings.name
+      metadata = embeddings_metadata.pop(layer.name, None)
+      image_path = embeddings_image_path.pop(layer.name, None)
+      image_size = embeddings_image_size.pop(layer.name, None)
 
-        if self.embeddings_metadata is not None:
-          if isinstance(self.embeddings_metadata, str):
-            embedding.metadata_path = self.embeddings_metadata
-          else:
-            if layer.name in embedding.metadata_path:
-              embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
+      if metadata is not None:
+        embedding.metadata_path = metadata
+      
+      if image_path is not None and image_size is not None:
+        embedding.sprite.image_path = image_path
+        embedding.sprite.single_image_dim.extend(image_size)
 
-    if self.embeddings_metadata:
+    if embeddings_metadata:
       raise ValueError('Unrecognized `Embedding` layer names passed to '
                        '`keras.callbacks.TensorBoard` `embeddings_metadata` '
-                       'argument: ' + str(self.embeddings_metadata.keys()))
+                       'argument: ' + str(embeddings_metadata.keys()))
+
+    if embeddings_image_path:
+      raise ValueError('Unrecognized `Embedding` layer names passed to '
+                       '`keras.callbacks.TensorBoard` `embeddings_image_path` '
+                       'argument: ' + str(embeddings_image_path.keys()))
+
+    if embeddings_image_size:
+      raise ValueError('Unrecognized `Embedding` layer names passed to '
+                       '`keras.callbacks.TensorBoard` `embeddings_image_size` '
+                       'argument: ' + str(embeddings_image_size.keys()))
 
     class DummyWriter(object):
       """Dummy writer to conform to `Projector` API."""
