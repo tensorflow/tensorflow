@@ -5,7 +5,7 @@ tensorflow-rocm compatibility table
 =====================================
 
 | tensorflow-rocm |  ROCm base  |  Installation Instruction  | 
-| ------ | ------ |  -------- |  -------- |
+| ------ | ------ |  -------- | 
 |   2.0.0  | ROCm2.9  | https://pypi.org/project/tensorflow-rocm/2.0.0 |
 |   2.0.0b3    |   ROCm2.7     | https://pypi.org/project/tensorflow-rocm/2.0.0b3 |
 |   2.0.0b2    |   ROCm2.6     | https://pypi.org/project/tensorflow-rocm/2.0.0b2 |
