@@ -19,16 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import numpy as np
 
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util import nest
 
 
 class StructuredTensor(composite_tensor.CompositeTensor):
@@ -259,11 +263,19 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   def ragged_rank(self):
     """The number of ragged dimensions in this StructuredTensor.
 
+    See `tf.RaggedTensor` for more information about ragged dimensions and
+    `ragged_rank`.
+
     Returns:
       A Python `int` indicating the number of ragged dimensions in this ragged
       tensor.  The outermost dimension is not considered ragged.
     """
     return len(self._nested_row_splits)
+
+  def _is_eager(self):
+    """True if all fields are composed of eager tensors."""
+    tensors = nest.flatten(self, expand_composites=True)
+    return all(isinstance(t, ops.EagerTensor) for t in tensors)
 
   #=============================================================================
   # Encoding
@@ -302,7 +314,184 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     return self._fields[field_name]
 
   def __repr__(self):
-    return 'StructuredTensor(%s, %r)' % (self._static_shape, self._fields)
+    if self._is_eager() and False:
+      return '<StructuredTensor %s>' % self.to_pyval()
+    else:
+      return 'StructuredTensor(%s, %r)' % (self._static_shape, self._fields)
+
+  #=============================================================================
+  # Conversion
+  #=============================================================================
+
+  def to_pyval(self):
+    """Returns this StructuredTensor as a nested Python dict or list of dicts.
+
+    Converts this `StructuredTensor` to a nested python value:
+
+    * `StructTensors` with `rank=0` are converted into a dictionary, with an
+      entry for each field.  Field names are used as keys and field values are
+      converted to python values.  In particular:
+
+      * Scalar Tensor fields are converted to simple values (such as
+        `int` or `float` or `string`)
+      * Non-scalar Tensor fields and RaggedTensor fields are converted to
+        nested lists of simple values.
+      * StructuredTensor fields are converted recursively using `to_pyval`.
+
+    * `StructTensors` with `rank>0` are converted to nested python `list`s,
+      containing one dictionary for each structure (where each structure's
+      dictionary is defined as described above).
+
+    Requires that all fields are Eager tensors.
+
+    >>> print(StructuredTensor([3], {'a': [1, 2, 3]}).to_pyval())
+    [{b'a': 1}, {b'a': 2}, {b'a': 3}]
+
+    Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
+
+    Returns:
+      A nested Python dict or list of dicts.
+    """
+    if not self._is_eager():
+      raise ValueError(
+          'StructuredTensor.to_pyval() is only supported in eager mode.')
+
+    # Convert each field value to a nested list.
+    result = {}
+    for (key, value) in self._fields.items():
+      if isinstance(value, ops.EagerTensor):
+        value = value.numpy()
+      if isinstance(value, np.ndarray):
+        value = value.tolist()
+      elif isinstance(value, ragged_tensor.RaggedTensor):
+        value = value.to_list()
+      elif isinstance(value, StructuredTensor):
+        value = value.to_pyval()
+      # TODO(edloper): Throw an excpetion if value is an unexpected type.
+      result[key] = value
+
+    # If rank>0, then re-group each value from dict-of-list to list-of-dict.
+    if len(self._static_shape) > 0:  # pylint: disable=g-explicit-length-test
+      return _pyval_field_major_to_node_major(list(result.keys()),
+                                              list(result.values()),
+                                              self._static_shape.as_list())
+    else:
+      return result
+
+  @classmethod
+  def from_pyval(cls, pyval, typespec=None):
+    """Constructs a StructuredTensor from a nested Python structure.
+
+    >>> print StructuredTensor.from_pyval(
+    ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
+    <StructuredTensor {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]}>
+
+    Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
+
+    Args:
+      pyval: The nested Python structure that should be used to create the new
+        `StructuredTensor`.
+      typespec: A `StructuredTensorSpec` specifying the expected type for each
+        field. If not specified, then all nested dictionaries are turned into
+        StructuredTensors, and all nested lists are turned into Tensors (if
+        rank<2) or RaggedTensors (if rank>=2).
+
+    Returns:
+      A `StructuredTensor`.
+    """
+    if isinstance(pyval, dict):
+      return cls._from_pydict(pyval, typespec)
+    elif isinstance(pyval, (list, tuple)):
+      keys = set()
+      rank = _pyval_find_struct_keys_and_depth(pyval, keys)
+      if rank is not None:
+        return cls._from_pylist_of_dict(pyval, keys, rank, typespec)
+      else:
+        return cls._from_pylist_of_value(pyval, typespec)
+    else:
+      return cls._from_pyscalar(pyval, typespec)
+
+  @classmethod
+  def _from_pydict(cls, pyval, typespec):
+    """Converts python dictionary `pyval` to a StructuredTensor with rank=0."""
+    if typespec is None:
+      fields = dict((k, cls.from_pyval(v)) for (k, v) in pyval.items())
+    else:
+      spec_shape = typespec._shape  # pylint: disable=protected-access
+      field_specs = typespec._field_specs  # pylint: disable=protected-access
+      if not (isinstance(typespec, StructuredTensorSpec) and
+              spec_shape.ndims == 0 and set(pyval) == set(field_specs)):
+        raise ValueError('Value does not match typespec: %r vs %r' %
+                         (pyval, typespec))
+      fields = dict(
+          (k, cls.from_pyval(v, field_specs[k])) for (k, v) in pyval.items())
+    return StructuredTensor(shape=(), fields=fields)
+
+  @classmethod
+  def _from_pylist_of_dict(cls, pyval, keys, rank, typespec):
+    """Converts python list `pyval` to a StructuredTensor with rank>1."""
+    fields = dict((key, []) for key in keys)
+    for child in pyval:
+      _pyval_update_fields(child, fields, 1)
+    if typespec is None:
+      shape = tensor_shape.TensorShape([None] * rank)
+      for (key, target) in fields.items():
+        fields[key] = cls.from_pyval(target)
+    else:
+      field_specs = typespec._field_specs  # pylint: disable=protected-access
+      if ((not isinstance(typespec, StructuredTensorSpec)) or
+          (set(fields) - set(field_specs))):
+        raise ValueError('Value does not match typespec: %r vs %r' %
+                         (pyval, typespec))
+      shape = typespec._shape
+      if shape.rank < rank:
+        raise ValueError('Value does not match typespec (rank mismatch): '
+                         '%r vs %r' % (pyval, typespec))
+      for (key, spec) in field_specs.items():
+        fields[key] = cls.from_pyval(fields.get(key, []), spec)
+        if not spec.is_compatible_with(fields[key]):
+          raise ValueError('Value does not match typespec: %r vs %r' %
+                           (spec, fields[key]))
+    return StructuredTensor(shape=shape, fields=fields)
+
+  @classmethod
+  def _from_pylist_of_value(cls, pyval, typespec):
+    """Converts python list `pyval` to a Tensor or RaggedTensor with rank>1."""
+    if typespec is None:
+      return ragged_factory_ops.constant(pyval)
+    elif isinstance(typespec, tensor_spec.TensorSpec):
+      # TODO(edloper): Check that typespec.shape matches.
+      return constant_op.constant(pyval, typespec.dtype)
+    elif isinstance(typespec, ragged_tensor.RaggedTensorSpec):
+      # pylint: disable=protected-access
+      return ragged_factory_ops.constant(
+          pyval,
+          dtype=typespec._dtype,
+          ragged_rank=typespec._ragged_rank,
+          row_splits_dtype=typespec._row_splits_dtype,
+          inner_shape=typespec._shape[typespec._ragged_rank + 1:])
+    elif isinstance(typespec, StructuredTensorSpec):
+      empty_rank = _pyval_empty_list_depth(pyval)
+      if empty_rank is None:
+        raise ValueError('Value does not match typespec: %r vs %r' %
+                         (typespec, pyval))
+      else:
+        return cls._from_pylist_of_dict(pyval, set(), empty_rank, typespec)
+    else:
+      raise ValueError('Value does not match typespec: %r vs %r' %
+                       (typespec, pyval))
+
+  @classmethod
+  def _from_pyscalar(cls, pyval, typespec):
+    """Converts python scalar value `pyval` to a Tensor."""
+    if typespec is None:
+      return constant_op.constant(pyval)
+    else:
+      if not (isinstance(typespec, tensor_spec.TensorSpec) and
+              typespec.shape.ndims == 0):
+        raise ValueError('Value does not match typespec.')
+      # TODO(edloper): Check that typespec.shape matches.
+      return constant_op.constant(pyval, typespec.dtype)
 
   #=============================================================================
   # Composite Tensor
@@ -385,3 +574,113 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
 # Note: we plan to relax (or possibly eliminate) this in the future; you
 # should not rely on the fact that some field names are currently disallowed.
 _FIELD_NAME_RE = re.compile('^[a-zA-Z][a-zA-Z0-9_]*$')
+
+
+def _pyval_field_major_to_node_major(keys, values, shape):
+  """Regroup each field (k, v) from dict-of-list to list-of-dict.
+
+  Given a "field-major" encoding of the StructuredTensor (which maps each key to
+  a single nested list containing the values for all structs), return a
+  corresponding "node-major" encoding, consisting of a nested list of dicts.
+  `shape` is used to determine how far to recurse; and if `keys` is empty
+  it is used to determine the sizes for empty lists.
+
+  Args:
+    keys: The field names (list of string).
+    values: The field values (list of python values).  Must have the same length
+      as `keys`.
+    shape: A tuple specifying the shape of the `StructuredTensor`.
+
+  Returns:
+    A nested list of dict.
+  """
+  if not shape:
+    return dict(zip(keys, values))
+  elif not keys:
+    if shape[0] in (0, None):
+      return []
+    else:
+      return [_pyval_field_major_to_node_major((), (), shape[1:])] * shape[0]
+  else:
+    nvals = len(values[0])
+    assert all(nvals == len(values[i]) for i in range(1, len(values)))
+    return [
+        _pyval_field_major_to_node_major(keys, value_slice, shape[1:])
+        for value_slice in zip(*values)
+    ]
+
+
+def _pyval_find_struct_keys_and_depth(pyval, keys):
+  """Finds the keys & depth of nested dictionaries in `pyval`.
+
+  Args:
+    pyval: A nested structure of lists, tuples, and dictionaries.
+    keys: (output parameter) A set, which will be updated with any keys that are
+      found in the nested dictionaries.
+
+  Returns:
+    The nesting depth of dictionaries in `pyval`, or `None` if `pyval` does
+    not contain any dictionaries.
+  Raises:
+    ValueError: If dictionaries have inconsistent depth.
+  """
+  if isinstance(pyval, dict):
+    keys.update(pyval.keys())
+    return 0
+  elif isinstance(pyval, (list, tuple)):
+    depth = None
+    for child in pyval:
+      child_depth = _pyval_find_struct_keys_and_depth(child, keys)
+      if child_depth is not None:
+        if depth is None:
+          depth = child_depth + 1
+        elif depth != child_depth + 1:
+          raise ValueError('Inconsistent depth of dictionaries')
+    return depth
+  else:
+    return None
+
+
+def _pyval_update_fields(pyval, fields, depth):
+  """Append the field values from `pyval` to `fields`.
+
+  Args:
+    pyval: A python `dict`, or nested list/tuple of `dict`, whose value(s)
+      should be appended to `fields`.
+    fields: A dictionary mapping string keys to field values.  Field values
+      extracted from `pyval` are appended to this dictionary's values.
+    depth: The depth at which `pyval` should be appended to the field values.
+  """
+  if not isinstance(pyval, (dict, list, tuple)):
+    raise ValueError('Expected dict or nested list/tuple of dict')
+
+  for (key, target) in fields.items():
+    for _ in range(1, depth):
+      target = target[-1]
+    target.append(pyval[key] if isinstance(pyval, dict) else [])
+
+  if isinstance(pyval, (list, tuple)):
+    for child in pyval:
+      _pyval_update_fields(child, fields, depth + 1)
+
+
+def _pyval_empty_list_depth(pyval):
+  """Find the max depth for nested empty lists.
+
+  Args:
+    pyval: A nested python list.
+
+  Returns:
+    The maximum depth of empty lists in `pyval`, or None if `pyval` contains
+    anything other than nested empty lists.
+  """
+  if isinstance(pyval, list):
+    if not pyval:
+      return 1
+    depths = [_pyval_empty_list_depth(v) for v in pyval]
+    if any(depth is None for depth in depths):
+      return None
+    else:
+      return max(depths) + 1
+  else:
+    return None
