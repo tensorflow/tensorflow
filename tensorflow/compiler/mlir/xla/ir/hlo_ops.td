@@ -556,6 +556,24 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   let results = (outs HLO_Tensor);
 }
 
+def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
+      [NoSideEffect]>, BASE_HLO_SelectAndScatterOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$source,
+    HLO_Tensor:$init_value,
+    OptionalAttr<I64ElementsAttr>:$window_dimensions,
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$select, SizedRegion<1>:$scatter);
+
+  let results = (outs HLO_Tensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReverseOp: HLO_Op<"reverse",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ReverseOp {
   let arguments = (ins

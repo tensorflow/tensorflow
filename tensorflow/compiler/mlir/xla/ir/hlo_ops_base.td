@@ -552,6 +552,21 @@ class BASE_HLO_SelectOp {
   }];
 }
 
+class BASE_HLO_SelectAndScatterOp {
+  string summary = "SelectAndScatter operator";
+
+  string description = [{
+    Runs a windowed selection `select` function over `operand` with shape
+    `window_dimensions` and stride `window_strides`. This will produce an amount
+    of selected locations whose shape matches `source`. These are then scattered
+    to the output which is initialized with `init_value`.
+    Multiple scattered elements which land in the same output location are
+    combined using the `scatter` function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
 class BASE_HLO_ReverseOp {
   string summary = "Reverse operator";
 

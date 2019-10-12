@@ -74,6 +74,15 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
       .cast<DenseIntElementsAttr>();
 }
 
+// Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
+static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
+  RankedTensorType ty =
+      RankedTensorType::get(static_cast<int64_t>(attr.size()),
+                            IntegerType::get(64, attr.getContext()));
+  return DenseElementsAttr::get(ty, attr.getValue())
+      .cast<DenseIntElementsAttr>();
+}
+
 static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
                                         Builder *b) {
   SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);
@@ -604,16 +613,9 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
     Location loc = op.getLoc();
     xla_hlo::ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
-    auto get_elements_attr = [&](ArrayAttr attr) {
-      RankedTensorType ty = rewriter.getTensorType(
-          static_cast<int64_t>(attr.size()), rewriter.getIntegerType(64));
-      return DenseElementsAttr::get(ty, attr.getValue())
-          .cast<DenseIntElementsAttr>();
-    };
-
     auto reduce = rewriter.create<xla_hlo::ReduceWindowOp>(
         loc, op.getType(), op.input(), init.getResult(),
-        get_elements_attr(op.ksize()), get_elements_attr(op.strides()),
+        GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(),
         /*paddings=*/DenseIntElementsAttr());
@@ -1233,6 +1235,51 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
   }
 };
 
+class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::MaxPoolGradOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(parkers): Support 'SAME' padding mode.
+    if (op.padding() != "VALID") return matchFailure();
+
+    Location loc = op.getLoc();
+
+    Type element_type =
+        op.orig_input()->getType().cast<TensorType>().getElementType();
+
+    auto result = rewriter.create<xla_hlo::SelectAndScatterOp>(
+        loc, op.getType(), op.orig_input(), op.grad(),
+        GetScalarForType(element_type, loc, 0, &rewriter),
+        GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
+        nullptr);
+
+    BuildReduceBody<xla_hlo::AddOp>(element_type, &result.scatter(), &rewriter);
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      Block *block = rewriter.createBlock(&result.select());
+
+      // Block arguments are scalars of the given element type.
+      Type type = rewriter.getTensorType(/*shape=*/{}, element_type);
+      block->addArguments({type, type});
+
+      Type pred_type =
+          rewriter.getTensorType(/*shape=*/{}, rewriter.getI1Type());
+
+      auto reducer = rewriter.create<xla_hlo::CompareOp>(
+          loc, pred_type, block->getArgument(0), block->getArgument(1),
+          /*broadcast_dimensions=*/nullptr,
+          StringAttr::get("GE", rewriter.getContext()));
+      rewriter.create<xla_hlo::ReturnOp>(loc, reducer.getResult());
+    }
+
+    rewriter.replaceOp(op, {result}, {op.orig_output()});
+
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
@@ -1255,7 +1302,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
                   mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
-                  mlir::xla::ConvertTileOp>(op->getContext());
+                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp>(
+      op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
