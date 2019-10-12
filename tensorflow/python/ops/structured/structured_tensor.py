@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
@@ -312,6 +313,92 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         value = value.field_value(f)
       return value
     return self._fields[field_name]
+
+  #=============================================================================
+  # Operators
+  #=============================================================================
+
+  # TODO(edloper): Add support for ellipsis and/or newaxis?
+  def __getitem__(self, key):
+    """Returns the specified piece of this StructuredTensor.
+
+    * If `struct_tensor` is scalar (i.e., a single structure), then
+      `struct_tensor[f]` returns the value of field `f` (where `f` must be a
+      string).
+
+    * If `struct_tensor` is non-scalar (i.e., a vector or higher-dimensional
+      tensor of structures), `struct_tensor[i]` selects an element or slice of
+      the tensor using standard Python semantics (e.g., negative values index
+      from the end).  `i` may have any of the following types:
+
+      * `int` constant
+      * `string` constant
+      * scalar integer `Tensor`
+      * `slice` containing integer constants and/or scalar integer
+        `Tensor`s
+
+    #### Multidimensional indexing
+
+    `StructuredTensor` supports multidimensional indexing.  I.e., `key` may be a
+    `tuple` of values, indexing or slicing multiple dimensions at once.  For
+    example, if `people` is a vector of structures, each of which has a vector-
+    valued `names` field, then `people[3, 'names', 0]` is equivalent to
+    `people[3]['names'][0]`; and `people[:, 'names', :]` will return a (possibly
+    ragged) matrix of names, with shape `[num_people, num_names_per_person]`.
+
+    Args:
+      key: Indicates which piece of the StructuredTensor to return.
+    Returns:
+      A `Tensor`, `StructuredTensor`, or `RaggedTensor`.
+    """
+    if isinstance(key, list):
+      key = tuple(key)
+    elif not isinstance(key, tuple):
+      key = (key,)
+    if not key:
+      return self
+
+    if self._static_shape.ndims == 0:
+      return self._scalar_getitem(key)
+    else:
+      return self._tensor_getitem(key)
+
+  def _scalar_getitem(self, key):
+    if (isinstance(key[0], slice) and slice.start is None and
+        slice.stop is None and slice.step is None):
+      fields = dict((field_name, field_value.__getitem__(key[1:]))
+                    for (field_name, field_value) in self._fields.items())
+      return StructuredTensor(self._static_shape[1:], fields)
+
+    elif not isinstance(key[0], compat.bytes_or_text_types):
+      raise ValueError('Key for indexing a StructuredTensor must be a '
+                       "string or a full slice (':')")
+
+    return self._fields[key[0]].__getitem__(key[1:])
+
+  def _tensor_getitem(self, key):
+    rank = self._static_shape.ndims
+    if len(key) <= rank:
+      new_fields = dict((field_name, field_value.__getitem__(key))
+                        for (field_name, field_value) in self._fields.items())
+      result_shape = self.shape.as_list()
+      for d, k in enumerate(key):
+        if isinstance(k, slice):
+          if not (k.start is None and k.stop is None and k.step is None):
+            # TODO(edloper): Better static shape analysis here.
+            result_shape[d] = None
+        elif isinstance(k, (int, ops.Tensor)):
+          result_shape[d] = -1  # mark for deletion
+        else:
+          # Ellipsis, tf.newaxis:
+          raise ValueError('Slicing not supported for %r' % k)
+      result_shape = [d for d in result_shape if d != -1]
+      return StructuredTensor(result_shape, new_fields)
+
+    else:
+      if not isinstance(key[rank], compat.bytes_or_text_types):
+        raise ValueError('Key for indexing a StructuredTensor must be a string')
+      return self._fields[key[rank]].__getitem__(key[:rank] + key[rank + 1:])
 
   def __repr__(self):
     if self._is_eager() and False:
