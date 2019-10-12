@@ -1635,12 +1635,7 @@ class MklQuantizedConv2DOp
   }
 
   bool is_scales_valid(std::vector<float> scales) {
-    for (size_t i = 0; i < scales.size(); i++) {
-      if (scales[i] != scales_[i]) {
-        return false;
-      }
-    }
-    return true;
+    return scales == scales_;
   }
   bool is_bias_const_;
   PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(bias_cache_mu_);
