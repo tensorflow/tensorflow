@@ -188,12 +188,7 @@ class Conv(Layer):
 
     if self.use_bias:
       if self.data_format == 'channels_first':
-        if self.rank == 1:
-          # nn.bias_add does not accept a 1D input tensor.
-          bias = array_ops.reshape(self.bias, (1, self.filters, 1))
-          outputs += bias
-        else:
-          outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
+        outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
       else:
         outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
