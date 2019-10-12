@@ -154,7 +154,7 @@ modified  to set `num_threads` to 1.
       <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/model_zoo/upload_20180427/squeezenet_2018_04_27.tgz">SqueezeNet</a>
     </td>
     <td>iPhone 8 </td>
-    <td>44.3</td>
+    <td>44.3 ms</td>
   </tr>
   <tr>
     <td>
