@@ -472,13 +472,7 @@ class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
     # model will fail if resizing the input to non-1 batch size.
     input_data = constant_op.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
-
-    # We need to instruct keras to not use `cudnn` kernels explicitly here.
-    # Otherwise the frozen graph will contain ops that we can't convert (e.g.
-    # `StatefulPartitionedCall`, `CudnnRNN`).
-    # TODO(b/142360481): Remove this when the freezing issue is resolved.
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
-    rnn_obj.could_use_cudnn = False
     model = keras.models.Sequential([rnn_obj])
 
     # Convert model.
