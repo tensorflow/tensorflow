@@ -328,6 +328,49 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
             xla::ShapeUtil::MakeTupleShape({transposed}));
 }
 
+// Tests that the compiler can correctly propagate fast mem attribute for input
+// resource variable.
+TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForFastMemVar) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), var, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kResource;
+  args[0].resource_kind = XlaResource::kVariable;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 3});
+  args[0].fast_mem = true;
+
+  auto options = DefaultOptions();
+  int fast_mem_arg_count = 0;
+  options.shape_representation_fn =
+      [&fast_mem_arg_count](const TensorShape& shape, DataType dt,
+                            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+    xla::Shape xla_shape;
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
+    *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
+    if (use_fast_memory) {
+      fast_mem_arg_count++;
+    }
+    return xla_shape;
+  };
+  // Compiles the graph.
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompilationResult result;
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.return_updated_values_for_all_resources = true;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args,
+                                     /*user_aliases=*/{}, &result));
+  EXPECT_EQ(fast_mem_arg_count, 1);
+}
+
 // Tests that the compiler can correctly propagate the layout assigned by
 // shape_representation_fn_ to return types.
 TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
@@ -1500,6 +1543,8 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
   side_effecting_op.set_op("DummySideEffectingOp");
   AddNodeAttr(kXlaTokenInputNodesAttrName,
               std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+  AddNodeAttr(kXlaOriginalOutsideCompilationNodeName, side_effecting_op.name(),
+              &side_effecting_op);
   Status status;
   graph->AddNode(side_effecting_op, &status);
   TF_ASSERT_OK(status);
@@ -1788,6 +1833,63 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
       tuple_shape, std::vector<xla::HloSharding>{sharding});
   EXPECT_EQ(root_instruction_proto->sharding().SerializeAsString(),
             tuple_sharding.ToProto().SerializeAsString());
+}
+
+TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
+  // When we have a dynamic shape input followed by a Shape op, the Shape op
+  // should return dynamic size:
+  //
+  // [2, b] // b's static size is 3 and dynamic size is 2
+  //   |
+  //  Size // should return 2, 2
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto shape = ops::Shape(scope.WithOpName("shape"), a);
+  (void)ops::_Retval(scope.WithOpName("retval"), shape, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 3});
+  // Indicates that first dimension is dynamic, and arg 1 holds the runtime
+  // value of it.
+  args[0].dynamic_dim_to_arg_num_map.insert({1, 1});
+
+  // Arg 1 holds the dynamic size.
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  auto options = XlaCompiler::CompileOptions();
+  options.resolve_compile_time_constants = false;
+  TF_ASSERT_OK(compiler.CompileGraph(options, "test", std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
+
+  xla::Literal literal0 =
+      xla::LiteralUtil::CreateR2<int32>({{0, 1, 2}, {3, 4, 5}});
+  xla::Literal literal1 = xla::LiteralUtil::CreateR0<int32>(2);
+  std::unique_ptr<xla::GlobalData> data0 =
+      client_->TransferToServer(literal0).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> data1 =
+      client_->TransferToServer(literal1).ConsumeValueOrDie();
+
+  // Prepare arguments.
+  std::unique_ptr<xla::GlobalData> actual =
+      client_->Execute(*result.computation, {data0.get(), data1.get()})
+          .ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
+  // The dynamic size of the op is <2, 2> instead of static size <2, 3>
+  xla::Literal expected = xla::LiteralUtil::CreateR1<int32>({2, 2});
+  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 }  // namespace

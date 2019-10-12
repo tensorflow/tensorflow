@@ -36,9 +36,13 @@ def model_to_estimator(
     checkpoint_format='saver'):
   """Constructs an `Estimator` instance from given keras model.
 
+  If you use infrastructure or other tooling that relies on Estimators, you can
+  still build a Keras model and use model_to_estimator to convert the Keras
+  model to an Estimator for use with downstream systems.
+
   For usage example, please see:
   [Creating estimators from Keras
-  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
+  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
 
   __Sample Weights__
   Estimators returned by `model_to_estimator` are configured to handle sample
@@ -117,9 +121,13 @@ def model_to_estimator_v2(
     checkpoint_format='checkpoint'):
   """Constructs an `Estimator` instance from given keras model.
 
+  If you use infrastructure or other tooling that relies on Estimators, you can
+  still build a Keras model and use model_to_estimator to convert the Keras
+  model to an Estimator for use with downstream systems.
+
   For usage example, please see:
   [Creating estimators from Keras
-  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
+  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
 
   __Sample Weights__
   Estimators returned by `model_to_estimator` are configured to handle sample

@@ -73,7 +73,6 @@ static unsigned getTagMemRefPos(Operation &dmaInst) {
 static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp.getBody();
   OpBuilder bInner(forBody, forBody->begin());
-  bInner.setInsertionPoint(forBody, forBody->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
   auto doubleShape = [&](MemRefType oldMemRefType) -> MemRefType {
@@ -130,8 +129,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
     return false;
   }
   // Insert the dealloc op right after the for loop.
-  bOuter.setInsertionPoint(forInst->getBlock(),
-                           std::next(Block::iterator(forInst)));
+  bOuter.setInsertionPointAfter(forInst);
   bOuter.create<DeallocOp>(forInst->getLoc(), newMemRef);
 
   return true;

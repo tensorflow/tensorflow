@@ -32,12 +32,12 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 

@@ -44,9 +44,9 @@ TEST_F(OpenCLOperationTest, StridedSlice) {
                      half(21.1f), half(21.2f), half(21.3f), half(21.4)};
 
   SliceAttributes attr;
-  attr.starts = HWC(1, 0, 1);
-  attr.ends = HWC(2, 2, 3);
-  attr.strides = HWC(1, 2, 2);
+  attr.starts = BHWC(0, 1, 0, 1);
+  attr.ends = BHWC(src_tensor.shape.b, 2, 2, 3);
+  attr.strides = BHWC(1, 1, 2, 2);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {

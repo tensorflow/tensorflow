@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -95,6 +96,44 @@ Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
                            calculate(lhs.getValue(), rhs.getValue()));
 }
 
+// Returns new shape with rank 'new_dims' with padded ones on the
+// left if needed.
+inline std::vector<int64_t> GetPaddedShape(ArrayRef<int64_t> old_shape,
+                                           int new_dims) {
+  std::vector<int64_t> new_shape(new_dims, 1);
+  std::copy_backward(old_shape.begin(), old_shape.end(), new_shape.end());
+  return new_shape;
+}
+
+// Helper method that given and 'current_index' representing
+// index in broadcasted tensor, get the index in the flat original tensor.
+// 'shape' is the original shape with padding to match result shape.
+int64_t GetElementIndex(const std::vector<int64_t> &shape,
+                        const std::vector<int64_t> &current_index) {
+  int64_t ind = 0;
+  int64_t mul = 1;
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    ind += (current_index[i] % shape[i]) * mul;
+    mul *= shape[i];
+  }
+  return ind;
+}
+
+// Helper method that increment index represented in 'current_index_ptr'
+// in the shape of 'result_shape'.
+void IncrementIndex(ArrayRef<int64_t> result_shape,
+                    std::vector<int64_t> *current_index_ptr) {
+  std::vector<int64_t> &current_index = *current_index_ptr;
+  for (int i = result_shape.size() - 1; i >= 0; --i) {
+    current_index[i]++;
+    if (current_index[i] == result_shape[i]) {
+      current_index[i] = 0;
+    } else {
+      break;
+    }
+  }
+}
+
 /// Performs const folding `calculate` with broadcast behavior on the two
 /// attributes `operand1` and `operand2` and returns the result if possible.
 /// This function assumes the both operands are verified to have value
@@ -106,23 +145,10 @@ template <class AttrElementT,
 Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
                                       DenseElementsAttr rhs,
                                       const CalculationT &calculate) {
-  auto type = result_type.cast<ShapedType>();
-
-  if (lhs.getType() != rhs.getType()) {
-    // We only support the case that one of the operand's dimensions are
-    // a perfect suffix of the other.
-    // TODO: support the general broadcast behavior.
-    auto lhs_shape = lhs.getType().getShape();
-    auto rhs_shape = rhs.getType().getShape();
-    if (IsTrailingDimensions(lhs_shape, rhs_shape)) {
-      if (!type.hasStaticShape()) type = rhs.getType();
-    } else if (IsTrailingDimensions(rhs_shape, lhs_shape)) {
-      if (!type.hasStaticShape()) type = lhs.getType();
-    } else {
-      return {};
-    }
-  } else if (!type.hasStaticShape()) {
-    type = lhs.getType();
+  auto type = OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType())
+                  .dyn_cast_or_null<ShapedType>();
+  if (!type) {
+    return {};
   }
 
   const bool rhs_is_splat = rhs.isSplat();
@@ -138,14 +164,7 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
     return DenseElementsAttr::get(type, element_result);
   }
 
-  auto lhs_num_elements = lhs.getType().getNumElements();
-  auto rhs_num_elements = rhs.getType().getNumElements();
-  auto num_elements = std::max(lhs_num_elements, rhs_num_elements);
-
-  // We assume the arguments have broadcast-compatible types. Make sure again.
-  assert(std::max(lhs_num_elements, rhs_num_elements) == num_elements);
-  assert(num_elements % std::min(lhs_num_elements, rhs_num_elements) == 0);
-
+  auto num_elements = type.getNumElements();
   SmallVector<ElementValueT, 16> lhs_old_values;
   SmallVector<ElementValueT, 16> rhs_old_values;
   if (lhs_is_splat)
@@ -156,31 +175,32 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
     rhs_old_values.push_back(rhs.getSplatValue<ElementValueT>());
   else
     rhs_old_values = llvm::to_vector<16>(rhs.getValues<ElementValueT>());
-
   SmallVector<ElementValueT, 16> new_values;
   new_values.reserve(num_elements);
+  const auto result_shape = type.getShape();
+  std::vector<int64_t> current_index(type.getRank(), 0);
+  // Create the new shape with ones padded to the left.
+  std::vector<int64_t> lhs_new_shape =
+      GetPaddedShape(lhs.getType().getShape(), type.getRank());
+  std::vector<int64_t> rhs_new_shape =
+      GetPaddedShape(rhs.getType().getShape(), type.getRank());
 
   // Add each pair of the corresponding values in the dense elements
   // attributes.
-  for (int i = 0; i < num_elements; ++i) {
-    // We only support a degenerated case here: the dimensions in one operand's
-    // shape is a perfect suffix to the other operand. Then conceptually it's
-    // similar to broadcasting a scalar to a 1-D vector.
-    // TODO: support the general broadcast behavior.
-    // We are tiling the operand with less elements an integral times to match
-    // the operand with more elements. We don't care which operand has less
-    // elements here because we are iterating its elements in circles, which can
-    // be achieved using the result index modulo the element count. For the
-    // operand with more elements, since the result has the same number of
-    // elements, we are only going over its elements once. The modulo operation
-    // also works for that.
-    int lhs_index = lhs_is_splat ? 0 : (i % lhs_num_elements);
-    int rhs_index = rhs_is_splat ? 0 : (i % rhs_num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    // current_index represents the index
+    // in the N-dimension tensor. GetElementIndex returns
+    // the index in the flat representation of the original tensor
+    // to use.
+    int64_t lhs_index =
+        lhs_is_splat ? 0 : GetElementIndex(lhs_new_shape, current_index);
+    int64_t rhs_index =
+        rhs_is_splat ? 0 : GetElementIndex(rhs_new_shape, current_index);
 
     new_values.push_back(
         calculate(lhs_old_values[lhs_index], rhs_old_values[rhs_index]));
+    IncrementIndex(result_shape, &current_index);
   }
-
   return DenseElementsAttr::get(type, new_values);
 }
 
@@ -265,39 +285,39 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
   return {};
 }
 
-void buildComparisonBinOp(Builder *builder, OperationState *result, Value *lhs,
+void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
                           Value *rhs) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
-  result->addOperands({lhs, rhs});
+  result.addOperands({lhs, rhs});
   // Comparison binary ops always return i1 tensor.
-  if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
-    auto resultShape = shaped_type.getShape();
-    result->types.push_back(
-        builder->getTensorType(resultShape, builder->getI1Type()));
+  if (auto shaped_type = result_type.dyn_cast<RankedTensorType>()) {
+    auto result_shape = shaped_type.getShape();
+    result.types.push_back(
+        builder->getTensorType(result_shape, builder->getI1Type()));
   } else {
-    result->types.push_back(builder->getTensorType(builder->getI1Type()));
+    result.types.push_back(builder->getTensorType(builder->getI1Type()));
   }
 }
 
-void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,
+void buildFusedBroadcastableBinOp(Builder *builder, OperationState &result,
                                   Value *lhs, Value *rhs,
                                   StringAttr fused_activation_function) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
 
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
 
-  result->addOperands({lhs, rhs});
-  result->addAttribute("fused_activation_function", fused_activation_function);
-  result->types.push_back(result_type);
+  result.addOperands({lhs, rhs});
+  result.addAttribute("fused_activation_function", fused_activation_function);
+  result.types.push_back(result_type);
 }
 
 }  // end anonymous namespace
@@ -307,7 +327,7 @@ void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
-  // Skip fused ops for now.
+  // TODO(b/142478136): Handle fused ops.
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a + b; },
@@ -519,10 +539,60 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// FullyConnectedOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(FullyConnectedOp op) {
+  ShapedType input_type = op.input()->getType().cast<ShapedType>();
+  ShapedType filter_type = op.filter()->getType().cast<ShapedType>();
+  if (filter_type.hasRank() && filter_type.getRank() != 2) {
+    return op.emitOpError("expect 2d filter, got ") << filter_type;
+  }
+
+  if (!input_type.hasStaticShape() || !filter_type.hasStaticShape()) {
+    return mlir::success();
+  }
+
+  // Input's element size must be multiple of parameter's z_in dimension.
+  const int z_in = filter_type.getDimSize(1);
+  const int num_input_elements = input_type.getNumElements();
+  if (num_input_elements % z_in != 0) {
+    return op.emitOpError(llvm::formatv(
+               "expect 'input' num_elements % {0} == 0, got input type ", z_in))
+           << input_type;
+  }
+
+  // TODO(jpienaar): Include more shape verification for SHUFFLED4x16INT8
+  // format.
+  if (op.weights_format() == "DEFAULT") {
+    ShapedType output_type =
+        (*op.output().begin())->getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return mlir::success();
+    }
+
+    const int num_output_elements = output_type.getNumElements();
+    const int z_out = filter_type.getDimSize(0);
+    if (num_output_elements % z_out != 0) {
+      return op.emitOpError(llvm::formatv(
+                 "expect 'output' num_elements % {0} == 0, got ", z_out))
+             << output_type;
+    }
+
+    if (num_input_elements / z_in != num_output_elements / z_out) {
+      return op.emitOpError(
+          "num_input_elements / z_in != num_output_elements / z_out");
+    }
+  }
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState *result,
+static void BuildGatherOp(Builder *builder, OperationState &result,
                           Value *params, Value *indices, IntegerAttr axis) {
   auto params_type = params->getType().cast<TensorType>();
   auto indices_type = indices->getType().cast<TensorType>();
@@ -549,7 +619,7 @@ static void BuildGatherOp(Builder *builder, OperationState *result,
 
   // params must be atleast rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result->location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be atleast rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -585,11 +655,24 @@ static void BuildGatherOp(Builder *builder, OperationState *result,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
-  // Skip fused ops for now.
+  // TODO(b/142478136): Handle fused ops.
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a * b; },
       [](APInt a, APInt b) { return a * b; }, getOperation()->isCommutative());
+}
+
+//===----------------------------------------------------------------------===//
+// DivOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
+  // TODO(b/142478136): Handle fused ops.
+  if (fused_activation_function() != "NONE") return {};
+  return ConstFoldBinaryOp(
+      getType(), operands, [](APFloat a, APFloat b) { return a / b; },
+      [](APInt a, APInt b) { return a.sdiv(b); },
+      getOperation()->isCommutative());
 }
 
 //===----------------------------------------------------------------------===//
@@ -622,6 +705,46 @@ static LogicalResult Verify(PackOp op) {
       return op.emitOpError("operands should be of the same type");
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PReluOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(PReluOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto alpha_type = op.alpha()->getType().cast<ShapedType>();
+  auto output_type = op.output()->getType().cast<ShapedType>();
+
+  if (input_type.hasStaticShape() && alpha_type.hasStaticShape()) {
+    if (input_type.getRank() != alpha_type.getRank() + 1) {
+      return op.emitOpError("'alpha' should have one less rank than 'input'.");
+    }
+
+    // Check if alpha is broadcastable
+    for (int i = 0; i < alpha_type.getRank(); i++) {
+      if (alpha_type.getDimSize(i) != input_type.getDimSize(i + 1) &&
+          alpha_type.getDimSize(i) != 1) {
+        return op.emitOpError(
+            llvm::formatv("'alpha' is not broadcastable at dimension {0}.", i));
+      }
+    }
+  }
+
+  if (input_type.hasStaticShape() && output_type.hasStaticShape()) {
+    if (input_type.getRank() != output_type.getRank()) {
+      return op.emitOpError("'input' and 'output' should have the same rank.");
+    }
+
+    // Check if input and output shapes are same
+    for (int i = 0; i < input_type.getRank(); i++) {
+      if (input_type.getDimSize(i) != output_type.getDimSize(i)) {
+        return op.emitOpError(
+            "'input' and 'output' should have the same shape.");
+      }
+    }
+  }
   return success();
 }
 
@@ -697,6 +820,68 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// PackOp
+//===----------------------------------------------------------------------===//
+
+// Remove redundant unpack pack op.
+// If a unpack op is followed by a pack op, we can remove the pack op, if the
+// unpack op is only consumed by the pack op, it will be removed as well.
+// An example illustration is:
+//                  Unpack [5, 8, 9], axis = 1
+//                /       \
+//            value  ...  value [5, 9], 8 values in total
+//              \           /
+//                 pack,   axis = 1
+//                   |
+//               value   [5, 8, 9]
+//
+//   This can actually be simplified into just:
+//
+//           =>   Value [5, 8, 9]
+// TODO(b/133341698): Move to tablegen when variadic is supported.
+struct RemoveRedunantUnpackPack : public RewritePattern {
+  explicit RemoveRedunantUnpackPack(MLIRContext *context)
+      : RewritePattern(PackOp::getOperationName(), 2, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    TFL::PackOp pack_op = cast<TFL::PackOp>(op);
+    Operation *first_input = pack_op.getOperand(0)->getDefiningOp();
+    if (!first_input) return matchFailure();
+    auto input_unpack_op = dyn_cast_or_null<TFL::UnpackOp>(first_input);
+    if (!input_unpack_op) return matchFailure();
+
+    // The unpack & pack should have the same axis & num inputs/outputs.
+    if (pack_op.axis() != input_unpack_op.axis() ||
+        pack_op.values_count() != input_unpack_op.num())
+      return matchFailure();
+
+    const int total_pack_inputs = pack_op.getNumOperands();
+    if (total_pack_inputs != input_unpack_op.getNumResults())
+      return matchFailure();
+    for (auto input_output :
+         llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
+      Value *pack_input = std::get<0>(input_output);
+      Value *unpack_output = std::get<1>(input_output);
+      // Make sure the ordering is the same for the pack op & unpack op.
+      if (pack_input != unpack_output) return matchFailure();
+    }
+
+    // Replace the pack's output to the unpack's input.
+    rewriter.replaceOp(pack_op, input_unpack_op.getOperand());
+    // At this point, we don't manually remove the redundant pack op & unpack op
+    // (we cannot actually), but trust the PatterRewriter to garbage collect
+    // these two ops.
+    return matchSuccess();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<RemoveRedunantUnpackPack>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
@@ -769,7 +954,7 @@ static LogicalResult Verify(SliceOp op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
-  // Skip fused ops for now.
+  // TODO(b/142478136): Handle fused ops.
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
@@ -780,7 +965,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState *result, Value *input,
+static void BuildTopKOp(Builder *builder, OperationState &result, Value *input,
                         Value *k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
@@ -1309,6 +1494,43 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeConvOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TransposeConvOp op) {
+  ShapedType output_type = op.output()->getType().cast<ShapedType>();
+  ShapedType output_shape_type =
+      op.output_shape()->getType().cast<ShapedType>();
+  if (output_type.hasRank() && output_shape_type.hasStaticShape()) {
+    if (output_type.getRank() != output_shape_type.getDimSize(0)) {
+      return op.emitOpError(llvm::formatv(
+          "expect output type has rank = {0}, got output type {1}",
+          output_shape_type.getDimSize(0), output_type));
+    }
+  }
+
+  DenseIntElementsAttr output_shape_elements;
+  if (!matchPattern(op.output_shape(), m_Constant(&output_shape_elements))) {
+    return success();
+  }
+
+  llvm::SmallVector<int64_t, 4> output_shape;
+  output_shape.reserve(output_shape_elements.getNumElements());
+  for (auto dim : output_shape_elements.getValues<int>()) {
+    output_shape.push_back(dim);
+  }
+
+  auto expected_output_type =
+      RankedTensorType::get(output_shape, output_type.getElementType());
+  if (output_type != expected_output_type) {
+    return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
+                                        expected_output_type, output_type));
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

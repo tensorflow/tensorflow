@@ -54,6 +54,7 @@ cc_test(
         "//tensorflow/lite:testdata/empty_model.bin",
         "//tensorflow/lite:testdata/test_model.bin",
         "//tensorflow/lite:testdata/test_model_broken.bin",
+        "//tensorflow/lite:testdata/test_model_versioned_ops.bin",
     ],
     tags = [
         "tflite_not_portable_android",

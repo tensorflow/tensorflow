@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -153,7 +154,8 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
         "reuse": self._reuse,
     }
     base_config = super(TfLiteRNNCell, self).get_config()
-    return dict(itertools.chain(base_config.items(), config.items()))
+    return dict(
+        itertools.chain(list(base_config.items()), list(config.items())))
 
 
 @tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])

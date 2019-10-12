@@ -30,34 +30,20 @@ class CacheDatasetParams : public DatasetParams {
                      string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        filename_(CreateTensor<tstring>(TensorShape({}), {filename})) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+        filename_(filename) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size());
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&filename_));
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    Tensor filename_tensor =
+        CreateTensor<tstring>(TensorShape({}), {filename_});
+    return {filename_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {CacheDatasetOp::kInputDataset,
-                          CacheDatasetOp::kFileName};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return Status::OK();
   }
 
@@ -69,17 +55,18 @@ class CacheDatasetParams : public DatasetParams {
 
   string op_name() const override { return CacheDatasetOp::kDatasetType; }
 
+  string filename() const { return filename_; }
+
  private:
-  Tensor filename_;
+  string filename_;
 };
 
 class CacheDatasetOpTest : public DatasetOpsTestBaseV2 {
  public:
-  Status Initialize(DatasetParams& dataset_params) override {
+  Status Initialize(const DatasetParams& dataset_params) {
     TF_RETURN_IF_ERROR(DatasetOpsTestBaseV2::Initialize(dataset_params));
-    gtl::InlinedVector<TensorValue, 4> inputs;
-    TF_RETURN_IF_ERROR(dataset_params.GetInputs(&inputs));
-    cache_filename_ = inputs[1].tensor->scalar<tstring>()();
+    auto params = static_cast<const CacheDatasetParams&>(dataset_params);
+    cache_filename_ = params.filename();
     return Status::OK();
   }
 
@@ -188,7 +175,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 
   // Test the read mode.
   TF_ASSERT_OK(dataset_->MakeIterator(
@@ -203,7 +190,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(CacheDatasetOpTest, ParameterizedGetNextTest,
@@ -294,20 +281,20 @@ TEST_F(CacheDatasetOpTest, IteratorPrefix) {
 std::vector<IteratorSaveAndRestoreTestCase<CacheDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/CacheDatasetParams1(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams2(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/CacheDatasetParams3(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams4(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}}};
 }
 

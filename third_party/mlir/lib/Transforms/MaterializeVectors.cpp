@@ -721,7 +721,7 @@ static bool materialize(FuncOp f, const SetVector<Operation *> &terminators,
     if (fail) {
       return true;
     }
-    LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
+    LLVM_DEBUG(dbgs() << "\nFunction is now\n");
     LLVM_DEBUG(f.print(dbgs()));
   }
   return false;

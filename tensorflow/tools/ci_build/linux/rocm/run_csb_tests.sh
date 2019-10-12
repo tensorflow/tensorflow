@@ -19,7 +19,7 @@ set -e
 set -x
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-N_GPUS=$(lspci|grep 'VGA'|grep 'AMD/ATI'|wc -l)
+N_GPUS=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
 
 echo ""
 echo "Bazel will use ${N_JOBS} concurrent build job(s) and ${N_GPUS} concurrent test job(s)."
@@ -48,10 +48,8 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-      -//tensorflow/contrib/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
-# Run tests requiring more than one GPU separately.
 && bazel test \
       --config=rocm \
       -k \
@@ -64,7 +62,6 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-      -//tensorflow/contrib/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
 

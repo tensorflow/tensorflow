@@ -53,6 +53,7 @@ from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -69,6 +70,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1131,7 +1133,7 @@ def shape(x):
   >>> val = np.array([[1, 2], [3, 4]])
   >>> kvar = tf.keras.backend.variable(value=val)
   >>> tf.keras.backend.shape(kvar)
-  <tf.Tensor: id=327, shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
   >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> tf.keras.backend.shape(input)
   <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
@@ -2401,7 +2403,7 @@ def maximum(x, y):
   >>> y = tf.Variable([[2, 1], [0, -1]])
   >>> m = tf.keras.backend.maximum(x, y)
   >>> m
-  <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[2, 2],
          [3, 4]], dtype=int32)>
 
@@ -2659,7 +2661,7 @@ def concatenate(tensors, axis=-1):
       >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
       >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
       >>> tf.keras.backend.concatenate((a, b), axis=-1)
-      <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
+      <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
       array([[ 1,  2,  3, 10, 20, 30],
              [ 4,  5,  6, 40, 50, 60],
              [ 7,  8,  9, 70, 80, 90]], dtype=int32)>
@@ -2674,6 +2676,8 @@ def concatenate(tensors, axis=-1):
 
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
+  elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
+    return ragged_concat_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
@@ -2693,13 +2697,13 @@ def reshape(x, shape):
 
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=32, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.reshape(a, shape=(2, 6))
-    <tf.Tensor: id=35, shape=(2, 6), dtype=int32, numpy=
+    <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
     array([[ 1,  2,  3,  4,  5,  6],
            [ 7,  8,  9, 10, 11, 12]], dtype=int32)>
 
@@ -2723,13 +2727,13 @@ def permute_dimensions(x, pattern):
 
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=49, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.permute_dimensions(a, pattern=(1, 0))
-    <tf.Tensor: id=52, shape=(3, 4), dtype=int32, numpy=
+    <tf.Tensor: shape=(3, 4), dtype=int32, numpy=
     array([[ 1,  4,  7, 10],
            [ 2,  5,  8, 11],
            [ 3,  6,  9, 12]], dtype=int32)>
@@ -2852,7 +2856,7 @@ def repeat_elements(x, rep, axis):
 
       >>> b = tf.constant([1, 2, 3])
       >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
-      <tf.Tensor: id=70, shape=(6,), dtype=int32,
+      <tf.Tensor: shape=(6,), dtype=int32,
           numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
 
   """
@@ -2912,11 +2916,11 @@ def repeat(x, n):
 
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=78, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.repeat(b, n=2)
-      <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[1, 2],
               [1, 2]],
              [[3, 4],
@@ -2952,7 +2956,7 @@ def arange(start, stop=None, step=1, dtype='int32'):
   Example:
 
       >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
-      <tf.Tensor: id=96, shape=(7,), dtype=float32,
+      <tf.Tensor: shape=(7,), dtype=float32,
           numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
 
 
@@ -2998,11 +3002,11 @@ def flatten(x):
 
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=102, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.flatten(b)
-      <tf.Tensor: id=105, shape=(4,), dtype=int32,
+      <tf.Tensor: shape=(4,), dtype=int32,
           numpy=array([1, 2, 3, 4], dtype=int32)>
 
   """
@@ -3170,7 +3174,7 @@ def stack(x, axis=0):
       >>> a = tf.constant([[1, 2],[3, 4]])
       >>> b = tf.constant([[10, 20],[30, 40]])
       >>> tf.keras.backend.stack((a, b))
-      <tf.Tensor: id=146, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[ 1,  2],
               [ 3,  4]],
              [[10, 20],
@@ -3354,7 +3358,7 @@ def print_tensor(x, message=''):
 
   >>> x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
   >>> tf.keras.backend.print_tensor(x)
-  <tf.Tensor: id=6064, shape=(2, 2), dtype=float32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
     array([[1., 2.],
            [3., 4.]], dtype=float32)>
 
@@ -3839,7 +3843,9 @@ def rnn(step_function,
           with a zero for every element that is masked.
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
-      input_length: If specified, assume time dimension is of this length.
+      input_length: An integer or a 1-D Tensor, depending on whether
+          the time dimension is fixed-length or not. In case of variable length
+          input, it is used for masking in case there's no mask specified.
       time_major: Boolean. If true, the inputs and outputs will be in shape
           `(timesteps, batch, ...)`, whereas in the False case, it will be
           `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
@@ -3850,6 +3856,7 @@ def rnn(step_function,
       zero_output_for_mask: Boolean. If True, the output for masked timestep
           will be zeros, whereas in the False case, output from previous
           timestep is returned.
+
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
           last_output: the latest output of the rnn, of shape `(samples, ...)`
@@ -3902,8 +3909,10 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    assert not nest.is_sequence(mask_t)
-    assert not nest.is_sequence(input_t)
+    if nest.is_sequence(mask_t):
+      raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
+    if nest.is_sequence(input_t):
+      raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
       mask_t = array_ops.expand_dims(mask_t, -1)
@@ -3956,13 +3965,14 @@ def rnn(step_function,
 
         output = array_ops.where_v2(tiled_mask_t, output, prev_output)
 
-        return_states = []
-        for state, new_state in zip(states, new_states):
-          # (see earlier comment for tile explanation)
-          tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(
-              array_ops.where_v2(tiled_mask_t, new_state, state))
-        states = return_states
+        flat_states = nest.flatten(states)
+        flat_new_states = nest.flatten(new_states)
+        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_states)
+        flat_final_states = tuple(
+            array_ops.where_v2(m, s, ps)
+            for m, s, ps in zip(tiled_mask_t, flat_new_states, flat_states))
+        states = nest.pack_sequence_as(states, flat_final_states)
+
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -3977,7 +3987,7 @@ def rnn(step_function,
             _expand_mask(mask, outputs, fixed_dim=2), outputs,
             zeros_like(outputs))
 
-    else:
+    else:  # mask is None
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         output, states = step_function(inp, tuple(states) + tuple(constants))
@@ -3987,7 +3997,7 @@ def rnn(step_function,
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
 
-  else:
+  else:  # Unroll == False
     states = tuple(initial_states)
 
     # Create input tensor array, if the inputs is nested tensors, then it will
@@ -4023,21 +4033,21 @@ def rnn(step_function,
 
     time = constant_op.constant(0, dtype='int32', name='time')
 
+    # We only specify the 'maximum_iterations' when building for XLA since that
+    # causes slowdowns on GPU in TF.
+    if (not context.executing_eagerly() and
+        control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())):
+      max_iterations = math_ops.reduce_max(input_length)
+    else:
+      max_iterations = None
+
     while_loop_kwargs = {
         'cond': lambda time, *_: time < time_steps_t,
-        'maximum_iterations': input_length,
+        'maximum_iterations': max_iterations,
         'parallel_iterations': 32,
         'swap_memory': True,
     }
-
     if mask is not None:
-      if not states:
-        raise ValueError('No initial states provided! '
-                         'When using masking in an RNN, you should '
-                         'provide initial states '
-                         '(and your step function should return '
-                         'as its first state at time `t` '
-                         'the output at time `t-1`).')
       if go_backwards:
         mask = reverse(mask, 0)
 
@@ -4047,6 +4057,36 @@ def rnn(step_function,
           tensor_array_name='mask_ta')
       mask_ta = mask_ta.unstack(mask)
 
+      def masking_fn(time):
+        return mask_ta.read(time)
+
+      def compute_masked_output(mask_t, flat_out, flat_mask):
+        tiled_mask_t = tuple(
+            _expand_mask(mask_t, o, fixed_dim=len(mask_t.shape))
+            for o in flat_out)
+        return tuple(
+            array_ops.where_v2(m, o, fm)
+            for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))
+    elif isinstance(input_length, ops.Tensor):
+      if go_backwards:
+        max_len = math_ops.reduce_max(input_length, axis=0)
+        rev_input_length = math_ops.subtract(max_len - 1, input_length)
+
+        def masking_fn(time):
+          return math_ops.less(rev_input_length, time)
+      else:
+
+        def masking_fn(time):
+          return math_ops.greater(input_length, time)
+
+      def compute_masked_output(mask_t, flat_out, flat_mask):
+        return tuple(
+            array_ops.where(mask_t, o, zo)
+            for (o, zo) in zip(flat_out, flat_mask))
+    else:
+      masking_fn = None
+
+    if masking_fn is not None:
       # Mask for the T output will be base on the output of T - 1. In the case
       # T = 0, a zero filled tensor will be used.
       flat_zero_output = tuple(array_ops.zeros_like(o)
@@ -4066,17 +4106,15 @@ def rnn(step_function,
         current_input = tuple(ta.read(time) for ta in input_ta)
         # maybe set shape.
         current_input = nest.pack_sequence_as(inputs, current_input)
-        mask_t = mask_ta.read(time)
+        mask_t = masking_fn(time)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         # mask output
         flat_output = nest.flatten(output)
         flat_mask_output = (flat_zero_output if zero_output_for_mask
                             else nest.flatten(prev_output))
-        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
-        flat_new_output = tuple(
-            array_ops.where_v2(m, o, zo)
-            for m, o, zo in zip(tiled_mask_t, flat_output, flat_mask_output))
+        flat_new_output = compute_masked_output(mask_t, flat_output,
+                                                flat_mask_output)
 
         # mask states
         flat_state = nest.flatten(states)
@@ -4084,10 +4122,8 @@ def rnn(step_function,
         for state, new_state in zip(flat_state, flat_new_state):
           if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
-        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
-        flat_final_state = tuple(
-            array_ops.where_v2(m, s, ps)
-            for m, s, ps in zip(tiled_mask_t, flat_new_state, flat_state))
+        flat_final_state = compute_masked_output(mask_t, flat_new_state,
+                                                 flat_state)
         new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
         output_ta_t = tuple(

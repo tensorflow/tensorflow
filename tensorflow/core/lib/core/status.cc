@@ -21,11 +21,11 @@ limitations under the License.
 #include <map>
 
 #include "absl/base/call_once.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -285,7 +285,14 @@ Status StatusGroup::as_summary_status() const {
                                   nonderived_statuses.size()));
 
     int index = 0;
+    auto code = tensorflow::error::CANCELLED;
     for (auto& s : nonderived_statuses) {
+      // NOTE: Avoid using CANCELLED as the code of summary status if the group
+      // contains other error code.
+      if (code == tensorflow::error::CANCELLED &&
+          s.code() != tensorflow::error::CANCELLED) {
+        code = s.code();
+      }
       fmt.emplace_back(strings::StrCat("  (", index, ") ", s.ToString()));
       ++index;
     }
@@ -298,8 +305,7 @@ Status StatusGroup::as_summary_status() const {
     std::string error_msg =
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
 
-    return Status(nonderived_statuses[0].code(),
-                  strings::StrCat(error_msg, get_recent_logs()));
+    return Status(code, strings::StrCat(error_msg, get_recent_logs()));
   } else {
     // All statuses are derived. Pick the first available status to return.
     return children_[0];

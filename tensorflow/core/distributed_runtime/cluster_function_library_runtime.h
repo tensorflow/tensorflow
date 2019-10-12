@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 // ClusterFunctionLibraryRuntime contains methods to Instantiate and Run
 // functions across processes by making RPCs.

@@ -53,7 +53,8 @@ TEST(uKernels, VectorScalarMultiply) {
                    0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
 }
 
-TEST(uKernels, IsZeroTest) {
+// Test if a float array if full of zero values.
+TEST(uKernels, IsZeroFloatTest) {
   constexpr int kVectorSize = 21;
   static float zeros[kVectorSize] = {0.0};
   EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
@@ -63,6 +64,17 @@ TEST(uKernels, IsZeroTest) {
       1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
       1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
   EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+}
+
+// Test if an int8 array if full of zero values.
+TEST(uKernels, IsZeroInt8Test) {
+  constexpr int kVectorSize = 43;
+  static int8_t zeros[kVectorSize] = {0};
+  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
+
+  static int8_t non_zeros[kVectorSize] = {0};
+  non_zeros[33] = 3;
+  EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
 }
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
@@ -237,6 +249,39 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,
       -19, 2,  11, -5,  9,  -2,  10,  -38, -22,
+  };
+
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized matmul with 9 * 30 matrix.
+TEST(uKernels, MatrixScalarMultiplyAccumulateTest) {
+  std::vector<int32_t> output = {
+      -620, -170, -395, 715, -1220, -1080, 1130, -260, -470,
+  };
+  const std::vector<int8_t> weight = {
+      -10, -4,  -8,  16,  4,   -16, -1,  11,  1,   2,   -25, 19,  7,   9,   2,
+      -24, -2,  10,  -7,  7,   -5,  -2,  3,   4,   3,   -4,  -7,  -11, -13, -18,
+      11,  10,  12,  -9,  17,  -15, -5,  20,  -6,  -11, 2,   -6,  -18, 15,  4,
+      4,   -9,  -2,  -3,  -9,  -13, 17,  -21, 5,   3,   -12, 0,   -4,  9,   -5,
+      10,  -2,  8,   1,   -10, -6,  1,   -9,  10,  11,  -1,  -5,  4,   -7,  -4,
+      -4,  4,   12,  -7,  -5,  -9,  -19, 6,   -4,  12,  -17, -22, 0,   9,   -4,
+      -5,  5,   -8,  8,   3,   15,  -18, -18, 5,   3,   -12, 5,   -10, 7,   7,
+      -9,  17,  2,   -11, -25, 3,   19,  -6,  7,   1,   7,   5,   -3,  11,  3,
+      0,   -8,  8,   -2,  -2,  -12, 14,  -5,  7,   8,   16,  20,  -16, -5,  -5,
+      1,   -10, -6,  14,  10,  -12, 10,  -6,  5,   0,   3,   8,   -9,  -13, -2,
+      4,   4,   -16, -17, -9,  16,  -5,  14,  -9,  -5,  -12, 0,   17,  6,   -1,
+      16,  -20, 1,   -11, -1,  -10, -21, 13,  4,   -12, -7,  0,   -14, -6,  3,
+      -4,  6,   -18, -3,  -1,  14,  -8,  -6,  -15, 5,   12,  -3,  -10, 4,   6,
+      -5,  -20, 0,   3,   -3,  -7,  1,   2,   -10, 7,   -3,  6,   1,   -12, 6,
+      4,   -12, 2,   6,   -20, 0,   5,   23,  15,  14,  9,   8,   20,  -2,  9,
+      -8,  -8,  -7,  -4,  -8,  -9,  7,   -12, -2,  2,   1,   -14, 31,  4,   -14,
+      3,   10,  -18, -17, -1,  18,  1,   12,  0,   7,   -3,  -5,  8,   -9,  18,
+      17,  7,   -15, 3,   20,  4,   -8,  16,  6,   -3,  -3,  9,   -4,  -6,  4,
+  };
+  MatrixScalarMultiplyAccumulate(weight.data(), 3, 9, 30, output.data());
+  const std::vector<int32_t> expected_output = {
+      -797, -227, -536, 739, -1187, -1314, 965, -140, -257,
   };
 
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));

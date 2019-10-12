@@ -127,11 +127,15 @@ class ShapeVerifier : public DfsHloVisitor {
  private:
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false) {
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false) {
     if (!layout_sensitive_) {
       return ShapeUtil::Compatible(a, b);
     }
     Shape::Equal equal;
+    if (ignore_memory_space) {
+      equal.IgnoreMemorySpaceInLayout();
+    }
     if (minor_to_major_only) {
       equal.MinorToMajorOnlyInLayout();
     }

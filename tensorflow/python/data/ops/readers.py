@@ -51,7 +51,11 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
-    filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
+    filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
+    if filenames.dtype != dtypes.string:
+      raise TypeError(
+          "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
+          " Got {}".format(filenames.dtype))
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
     filenames = dataset_ops.DatasetV2.from_tensor_slices(filenames)
 

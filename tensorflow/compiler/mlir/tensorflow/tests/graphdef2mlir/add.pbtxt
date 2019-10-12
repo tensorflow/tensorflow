@@ -37,7 +37,7 @@ versions {
 }
 
 # CHECK: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
-# CHECK: attributes {tf.entry_function = {inputs = "input0, input1", outputs = "Add"}} {
+# CHECK: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
 
 # CHECK:   %[[INPUT0:[0-9]+]]:2 = tf_executor.island wraps "tf.Placeholder.input"(%arg0)
 

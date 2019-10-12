@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -32,18 +33,15 @@ CreateTFExecutorToControlDialectConversion();
 
 namespace tensorflow {
 
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
+  if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
+    pass_manager->addPass(
+        mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
+            pass_config.quant_specs.serialized_quant_stats));
+  }
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
@@ -52,6 +50,21 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // handle constant ops that produce `TensorList`.
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  }
+
+  // The ophint extractions happen before lots of other passes:
+  // The assumption of ophint-extraction is each ophinted region is a black-box
+  // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
+  // black-box.
+  // Some passes may merge nodes together (such as const nodes), however, this
+  // will break the ophint-extraction assumption. (The nodes within the black
+  // box is not isolated anymore).
+  // So ophint extraction and legalization needs to happen before
+  // the canonicalization pass.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
+    // Convert composite op pass will happen after ophint extraction pass.
+    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
   }
 
   // TODO(jpienaar): Revise post dialect constants.
@@ -64,19 +77,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
-    // Convert composite op pass will happen after ophint extraction pass.
-    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
-
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (pass_config.run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
+    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
+      pass_manager->addPass(
+          mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
       pass_manager->addPass(mlir::TFL::CreateQuantizePass());
       pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
           pass_config.emit_quant_adaptor_ops));

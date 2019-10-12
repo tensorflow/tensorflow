@@ -141,6 +141,9 @@ class HloComputation {
       int64 param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
 
+  // Returns true if the computation contains this instruction.
+  bool ContainsInstruction(const HloInstruction* instruction) const;
+
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
@@ -315,7 +318,7 @@ class HloComputation {
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
   // If |new_instruction| doesn't have any sharding information it will
-  // recieve the sharding information of |old_instruction|.
+  // receive the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 

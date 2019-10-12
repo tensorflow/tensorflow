@@ -291,6 +291,22 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
+    # Prepare Session arguments (legacy).
+    kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
+    unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
+    if unknown_kwargs:
+      raise TypeError(
+          'Invalid keyword argument(s) in `compile`: %s' % (unknown_kwargs,))
+    self._function_kwargs = kwargs
+    if self._function_kwargs:
+      self._experimental_run_tf_function = False
+      if self.run_eagerly:
+        raise ValueError(
+            'Session keyword arguments are not supported '
+            'when `run_eagerly=True`. You passed the following '
+            'Session arguments: %s' % (self._function_kwargs,))
+
     self._set_optimizer(optimizer)
     is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                               for opt in nest.flatten(self.optimizer))
@@ -416,8 +432,6 @@ class Model(network.Network):
       # Functions for train, test and predict will
       # be compiled lazily when required.
       # This saves time when the user is not using all functions.
-      self._function_kwargs = kwargs
-
       self.train_function = None
       self.test_function = None
       self.predict_function = None
@@ -800,7 +814,7 @@ class Model(network.Network):
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
-            Do not specify the `batch_size` is your data is in the
+            Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
@@ -894,7 +908,7 @@ class Model(network.Network):
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
-            Do not specify the `batch_size` is your data is in the
+            Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
@@ -2779,6 +2793,10 @@ class Model(network.Network):
         input_shape = (None,) + tuple(inputs.shape[1:])
       self._build_input_shape = input_shape
 
+    # Cast inputs to the compute dtype. This is primarily used
+    # when saving to determine the correct dtype in the input signature.
+    inputs = self._maybe_cast_inputs(inputs)
+
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
     model_inputs = training_utils.ModelInputs(inputs)
@@ -2918,6 +2936,14 @@ class Model(network.Network):
 
   def _in_multi_worker_mode(self):
     """Method to infer if this `Model` is working in multi-worker settings.
+
+    Multi-worker training refers to the setup where the training is
+    distributed across multiple workers, as opposed to the case where
+    only a local process performs the training. This function is
+    used to infer for example whether or not a distribute coordinator
+    should be run, and thus TensorFlow servers should be started for
+    communication with other servers in the cluster, or whether or not
+    saving/restoring checkpoints is relevant for preemption fault tolerance.
 
     Experimental. Signature and implementation are subject to change.
 

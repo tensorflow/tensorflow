@@ -127,7 +127,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   # Dict element with 3 components
   d = {"a": (2, 2), "b": 3}
   # Element containing a dataset
-  e = tf.data.Dataset.from_element(10)
+  e = tf.data.Dataset.from_tensors(10)
   ```
   """
 
@@ -162,22 +162,32 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
-  def _as_serialized_graph(self, allow_stateful=None):
+  def _as_serialized_graph(self,
+                           allow_stateful=None,
+                           strip_device_assignment=None):
     """Produces serialized graph representation of the dataset.
 
     Args:
       allow_stateful: If true, we allow stateful ops to be present in the graph
       def. In that case, the state in these ops would be thrown away.
+      strip_device_assignment: If true, non-local (i.e. job and task) device
+      assignment is stripped from ops in the serialized graph.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 9, 16) or allow_stateful:
-      return gen_dataset_ops.dataset_to_graph(self._variant_tensor,
-                                              allow_stateful=allow_stateful)
+    if allow_stateful is None:
+      allow_stateful = False
+
+    if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
+      return gen_dataset_ops.dataset_to_graph(
+          self._variant_tensor,
+          allow_stateful=allow_stateful,
+          strip_device_assignment=strip_device_assignment)
     else:
-      return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
+      return gen_dataset_ops.dataset_to_graph(
+          self._variant_tensor, allow_stateful=allow_stateful)
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -365,6 +375,62 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
 
+  def as_numpy_iterator(self):
+    """Returns an iterator which converts all elements of the dataset to numpy.
+
+    Use `as_numpy_iterator` to inspect the content of your dataset. To see
+    element shapes and types, print dataset elements directly instead of using
+    `as_numpy_iterator`.
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> for element in dataset:
+    ...   print(element)
+    tf.Tensor(1, shape=(), dtype=int32)
+    tf.Tensor(2, shape=(), dtype=int32)
+    tf.Tensor(3, shape=(), dtype=int32)
+
+    This method requires that you are running in eager mode and the dataset's
+    element_spec contains only `TensorSpec` components.
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> for element in dataset.as_numpy_iterator():
+    ...   print(element)
+    1
+    2
+    3
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> print(list(dataset.as_numpy_iterator()))
+    [1, 2, 3]
+
+    `as_numpy_iterator()` will preserve the nested structure of dataset
+    elements.
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': ([1, 2], [3, 4]),
+    ...                                               'b': [5, 6]})
+    >>> print(list(dataset.as_numpy_iterator()) == [{'a': (1, 3), 'b': 5},
+    ...                                             {'a': (2, 4), 'b': 6}])
+    True
+
+    Returns:
+      An iterable over the elements of the dataset, with their tensors converted
+      to numpy arrays.
+
+    Raises:
+      TypeError: if an element contains a non-`Tensor` value.
+      RuntimeError: if eager execution is not enabled.
+    """
+    if not context.executing_eagerly():
+      raise RuntimeError("as_numpy_iterator() is not supported while tracing "
+                         "functions")
+    for component_spec in nest.flatten(self.element_spec):
+      if not isinstance(component_spec, tensor_spec.TensorSpec):
+        raise TypeError(
+            "Dataset.as_numpy_iterator() does not support datasets containing "
+            + component_spec.value_type)
+
+    return _NumpyIterator(self)
+
   @property
   def _flat_shapes(self):
     """Returns a list `tf.TensorShapes`s for the element tensor representation.
@@ -416,7 +482,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this
-    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element.
@@ -451,6 +517,27 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     # Dictionary structure is also preserved.
     Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
     # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
+
+    # Two tensors can be combined into one Dataset object.
+    features = tf.constant([[1, 3], [2, 1], [3, 3]]) # ==> 3x2 tensor
+    labels = tf.constant(['A', 'B', 'A']) # ==> 3x1 tensor
+    dataset = Dataset.from_tensor_slices((features, labels))
+
+    # Both the features and the labels tensors can be converted
+    # to a Dataset object separately and combined after.
+    features_dataset = Dataset.from_tensor_slices(features)
+    labels_dataset = Dataset.from_tensor_slices(labels)
+    dataset = Dataset.zip((features_dataset, labels_dataset))
+
+    # A batched feature and label set can be converted to a Dataset
+    # in similar fashion.
+    batched_features = tf.constant([[[1, 3], [2, 3]],
+                                    [[2, 1], [1, 2]],
+                                    [[3, 3], [3, 2]]], shape=(3, 2, 2))
+    batched_labels = tf.constant([['A', 'A'],
+                                  ['B', 'B'],
+                                  ['A', 'B']], shape=(3, 2, 1))
+    dataset = Dataset.from_tensor_slices((batched_features, batched_labels))
     ```
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
@@ -459,7 +546,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this guide](
-    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element, with each component having the same size in
@@ -1609,10 +1696,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
-    # TODO(b/141256846): Apply options once optimizing stateful input pipelines
-    # in tf.functions is supported.
-    # dataset = self._apply_options()
-    dataset = self
+    dataset = self._apply_options()
 
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(
@@ -1826,7 +1910,7 @@ class DatasetV1(DatasetV2):
     if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled.")
+          "execution is enabled. Use `for element in dataset` instead.")
     _ensure_same_dataset_graph(self)
     dataset = self._apply_options()
     if shared_name is None:
@@ -2074,6 +2158,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).window(
         size, shift, stride, drop_remainder))
 
+  @functools.wraps(DatasetV2.unbatch)
+  def unbatch(self):
+    return DatasetV1Adapter(super(DatasetV1, self).unbatch())
+
   @functools.wraps(DatasetV2.with_options)
   def with_options(self, options):
     return DatasetV1Adapter(super(DatasetV1, self).with_options(options))
@@ -2286,6 +2374,14 @@ class Options(options_lib.OptionsBase):
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
+
+  After constructing an `Options` object, use `dataset.with_options(options)` to
+  apply the options to a dataset.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> options = tf.data.Options()
+  >>> # Set options here.
+  >>> dataset = dataset.with_options(options)
   """
 
   experimental_deterministic = options_lib.create_option(
@@ -2561,7 +2657,14 @@ def to_variant(dataset):
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
 class DatasetSpec(type_spec.BatchableTypeSpec):
-  """Type specification for `tf.data.Dataset`."""
+  """Type specification for `tf.data.Dataset`.
+
+  See `tf.TypeSpec` for more information about TensorFlow type specifications.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> tf.data.DatasetSpec.from_value(dataset)
+  DatasetSpec(TensorSpec(shape=(), dtype=tf.int64, name=None), TensorShape([]))
+  """
 
   __slots__ = ["_element_spec", "_dataset_shape"]
 
@@ -2598,6 +2701,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @staticmethod
   def from_value(value):
+    """Creates a `DatasetSpec` for the given `tf.data.Dataset` value."""
     return DatasetSpec(value.element_spec)  # pylint: disable=protected-access
 
   def _batch(self, batch_size):
@@ -2705,6 +2809,10 @@ class StructuredFunctionWrapper(object):
     func_name = "_".join(
         [readable_transformation_name,
          function_utils.get_func_name(func)])
+    # Sanitize function name to remove symbols that interfere with graph
+    # construction.
+    for symbol in ["<", ">", "\\", "'", " "]:
+      func_name = func_name.replace(symbol, "")
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
@@ -2795,15 +2903,8 @@ class StructuredFunctionWrapper(object):
 
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
-        self._function = (
-            wrapper_fn._get_concrete_function_internal_garbage_collected())
-
-        # TODO(jsimsa): Garbage collecting functions containing PyFunc nodes
-        # triggers use-after-free. Figure out why and stop excluding functions
-        # with PyFunc nodes from garbage collection.
-        for node in self._function.function_def.node_def:
-          if node.op in ("PyFunc", "PyFuncStateless", "EagerPyFunc"):
-            self._function._garbage_collector.release()
+        # TODO(b/141462134): Switch to using garbage collection.
+        self._function = wrapper_fn._get_concrete_function_internal()
 
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
@@ -3283,6 +3384,22 @@ class BatchDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._structure
+
+
+class _NumpyIterator(object):
+  """Iterator over a dataset with elements converted to numpy."""
+
+  def __init__(self, dataset):
+    self._iterator = iter(dataset)
+
+  def __iter__(self):
+    return self
+
+  def next(self):
+    return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
+
+  def __next__(self):
+    return self.next()
 
 
 class _VariantTracker(tracking.CapturableResource):

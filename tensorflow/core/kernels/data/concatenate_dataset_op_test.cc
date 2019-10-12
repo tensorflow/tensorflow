@@ -31,38 +31,21 @@ class ConcatenateDatasetParams : public DatasetParams {
                            string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)) {
-    auto input_dataset_params_ptr_0 =
-        std::make_shared<T>(std::move(input_dataset_params_0));
-    auto input_dataset_params_ptr_1 =
-        std::make_shared<P>(std::move(input_dataset_params_1));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr_0), Tensor()));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr_1), Tensor()));
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_0));
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_1));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params_0.op_name(),
                                    input_dataset_params_0.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size());
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    return Status::OK();
-  }
+  std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(2);
-    input_placeholder->emplace_back(ConcatenateDatasetOp::kInputDataset);
-    input_placeholder->emplace_back(ConcatenateDatasetOp::kAnotherDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(2);
+    input_names->emplace_back(ConcatenateDatasetOp::kInputDataset);
+    input_names->emplace_back(ConcatenateDatasetOp::kAnotherDataset);
     return Status::OK();
   }
 

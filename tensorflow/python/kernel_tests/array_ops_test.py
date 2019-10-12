@@ -1431,7 +1431,6 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_xla("b/140109958")
 class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
 
   # Generates a tensor of the specified `shape` using values from `values`

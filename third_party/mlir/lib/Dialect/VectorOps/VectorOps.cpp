@@ -49,34 +49,33 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, ExtractElementOp op) {
-  *p << op.getOperationName() << " " << *op.vector() << op.position();
-  p->printOptionalAttrDict(op.getAttrs(), {"position"});
-  *p << " : " << op.vector()->getType();
+static void print(OpAsmPrinter &p, ExtractElementOp op) {
+  p << op.getOperationName() << " " << *op.vector() << op.position();
+  p.printOptionalAttrDict(op.getAttrs(), {"position"});
+  p << " : " << op.vector()->getType();
 }
 
-static ParseResult parseExtractElementOp(OpAsmParser *parser,
-                                         OperationState *result) {
+static ParseResult parseExtractElementOp(OpAsmParser &parser,
+                                         OperationState &result) {
   llvm::SMLoc attributeLoc, typeLoc;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType vector;
   Type type;
   Attribute attr;
-  if (parser->parseOperand(vector) ||
-      parser->getCurrentLocation(&attributeLoc) ||
-      parser->parseAttribute(attr, "position", attrs) ||
-      parser->parseOptionalAttributeDict(attrs) ||
-      parser->getCurrentLocation(&typeLoc) || parser->parseColonType(type))
+  if (parser.parseOperand(vector) || parser.getCurrentLocation(&attributeLoc) ||
+      parser.parseAttribute(attr, "position", attrs) ||
+      parser.parseOptionalAttributeDict(attrs) ||
+      parser.getCurrentLocation(&typeLoc) || parser.parseColonType(type))
     return failure();
 
   auto vectorType = type.dyn_cast<VectorType>();
   if (!vectorType)
-    return parser->emitError(typeLoc, "expected vector type");
+    return parser.emitError(typeLoc, "expected vector type");
 
   auto positionAttr = attr.dyn_cast<ArrayAttr>();
   if (!positionAttr ||
       static_cast<int64_t>(positionAttr.size()) > vectorType.getRank())
-    return parser->emitError(
+    return parser.emitError(
         attributeLoc,
         "expected position attribute of rank smaller than vector");
 
@@ -87,9 +86,9 @@ static ParseResult parseExtractElementOp(OpAsmParser *parser,
                 vectorType.getShape().drop_front(positionAttr.size()),
                 vectorType.getElementType());
 
-  result->attributes = attrs;
-  return failure(parser->resolveOperand(vector, type, result->operands) ||
-                 parser->addTypeToList(resType, result->types));
+  result.attributes = attrs;
+  return failure(parser.resolveOperand(vector, type, result.operands) ||
+                 parser.addTypeToList(resType, result.types));
 }
 
 static LogicalResult verify(ExtractElementOp op) {
@@ -114,35 +113,35 @@ static LogicalResult verify(ExtractElementOp op) {
 // OuterProductOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, OuterProductOp op) {
-  *p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+static void print(OpAsmPrinter &p, OuterProductOp op) {
+  p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
   if (llvm::size(op.acc()) > 0)
-    *p << ", " << **op.acc().begin();
-  *p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
+    p << ", " << **op.acc().begin();
+  p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
 }
 
-static ParseResult parseOuterProductOp(OpAsmParser *parser,
-                                       OperationState *result) {
+static ParseResult parseOuterProductOp(OpAsmParser &parser,
+                                       OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> operandsInfo;
   Type tLHS, tRHS;
-  if (parser->parseOperandList(operandsInfo) || parser->parseColonType(tLHS) ||
-      parser->parseComma() || parser->parseType(tRHS))
+  if (parser.parseOperandList(operandsInfo) || parser.parseColonType(tLHS) ||
+      parser.parseComma() || parser.parseType(tRHS))
     return failure();
   if (operandsInfo.size() < 2)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected at least 2 operands");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected at least 2 operands");
   VectorType vLHS = tLHS.dyn_cast<VectorType>();
   VectorType vRHS = tRHS.dyn_cast<VectorType>();
   if (!vLHS || !vRHS)
-    return parser->emitError(parser->getNameLoc(), "expected 2 vector types");
+    return parser.emitError(parser.getNameLoc(), "expected 2 vector types");
   VectorType resType = VectorType::get({vLHS.getDimSize(0), vRHS.getDimSize(0)},
                                        vLHS.getElementType());
   return failure(
-      parser->resolveOperand(operandsInfo[0], tLHS, result->operands) ||
-      parser->resolveOperand(operandsInfo[1], tRHS, result->operands) ||
+      parser.resolveOperand(operandsInfo[0], tLHS, result.operands) ||
+      parser.resolveOperand(operandsInfo[1], tRHS, result.operands) ||
       (operandsInfo.size() > 2 &&
-       parser->resolveOperand(operandsInfo[2], resType, result->operands)) ||
-      parser->addTypeToList(resType, result->types));
+       parser.resolveOperand(operandsInfo[2], resType, result.operands)) ||
+      parser.addTypeToList(resType, result.types));
 }
 
 static LogicalResult verify(OuterProductOp op) {
@@ -196,19 +195,19 @@ static LogicalResult verifyPermutationMap(AffineMap permutationMap,
   return success();
 }
 
-void VectorTransferReadOp::build(Builder *builder, OperationState *result,
+void VectorTransferReadOp::build(Builder *builder, OperationState &result,
                                  VectorType vectorType, Value *srcMemRef,
                                  ArrayRef<Value *> srcIndices,
                                  AffineMap permutationMap,
                                  Optional<Value *> paddingValue) {
-  result->addOperands(srcMemRef);
-  result->addOperands(srcIndices);
+  result.addOperands(srcMemRef);
+  result.addOperands(srcIndices);
   if (paddingValue) {
-    result->addOperands({*paddingValue});
+    result.addOperands({*paddingValue});
   }
-  result->addAttribute(getPermutationMapAttrName(),
-                       builder->getAffineMapAttr(permutationMap));
-  result->addTypes(vectorType);
+  result.addAttribute(getPermutationMapAttrName(),
+                      builder->getAffineMapAttr(permutationMap));
+  result.addTypes(vectorType);
 }
 
 auto VectorTransferReadOp::getIndices() -> operand_range {
@@ -229,71 +228,71 @@ AffineMap VectorTransferReadOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferReadOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " ";
-  p->printOperand(getMemRef());
-  *p << "[";
-  p->printOperands(getIndices());
-  *p << "]";
+void VectorTransferReadOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " ";
+  p.printOperand(getMemRef());
+  p << "[";
+  p.printOperands(getIndices());
+  p << "]";
   auto optionalPaddingValue = getPaddingValue();
   if (optionalPaddingValue) {
-    *p << ", (";
-    p->printOperand(*optionalPaddingValue);
-    *p << ")";
+    p << ", (";
+    p.printOperand(*optionalPaddingValue);
+    p << ")";
   }
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getMemRefType();
-  *p << ", " << getResultType();
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getMemRefType();
+  p << ", " << getResultType();
 }
 
-ParseResult VectorTransferReadOp::parse(OpAsmParser *parser,
-                                        OperationState *result) {
+ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
+                                        OperationState &result) {
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexInfo;
   SmallVector<OpAsmParser::OperandType, 8> paddingInfo;
   SmallVector<Type, 2> types;
 
   // Parsing with support for optional paddingValue.
-  if (parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseTrailingOperandList(paddingInfo,
-                                       OpAsmParser::Delimiter::Paren) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
+  if (parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseTrailingOperandList(paddingInfo,
+                                      OpAsmParser::Delimiter::Paren) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonTypeList(types))
     return failure();
 
   // Resolution.
   if (types.size() != 2)
-    return parser->emitError(parser->getNameLoc(), "expected 2 types");
+    return parser.emitError(parser.getNameLoc(), "expected 2 types");
   MemRefType memrefType = types[0].dyn_cast<MemRefType>();
   if (!memrefType)
-    return parser->emitError(parser->getNameLoc(), "memRef type expected");
+    return parser.emitError(parser.getNameLoc(), "memRef type expected");
   VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
-    return parser->emitError(parser->getNameLoc(), "vector type expected");
+    return parser.emitError(parser.getNameLoc(), "vector type expected");
 
   // Extract optional paddingValue.
   // At this point, indexInfo may contain the optional paddingValue, pop it
   // out.
   if (static_cast<int64_t>(indexInfo.size()) != memrefType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected " + Twine(memrefType.getRank()) +
-                                 " indices to the memref");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected " + Twine(memrefType.getRank()) +
+                                " indices to the memref");
   if (paddingInfo.size() > 1)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected at most one padding value");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected at most one padding value");
   Type paddingType;
   bool hasOptionalPaddingValue = !paddingInfo.empty();
   if (hasOptionalPaddingValue) {
     paddingType = vectorType.getElementType();
   }
-  auto indexType = parser->getBuilder().getIndexType();
+  auto indexType = parser.getBuilder().getIndexType();
   return failure(
-      parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
-      parser->resolveOperands(indexInfo, indexType, result->operands) ||
+      parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(indexInfo, indexType, result.operands) ||
       (hasOptionalPaddingValue &&
-       parser->resolveOperand(paddingInfo[0], paddingType, result->operands)) ||
-      parser->addTypeToList(vectorType, result->types));
+       parser.resolveOperand(paddingInfo[0], paddingType, result.operands)) ||
+      parser.addTypeToList(vectorType, result.types));
 }
 
 LogicalResult VectorTransferReadOp::verify() {
@@ -377,14 +376,14 @@ LogicalResult VectorTransferReadOp::verify() {
 //===----------------------------------------------------------------------===//
 // VectorTransferWriteOp
 //===----------------------------------------------------------------------===//
-void VectorTransferWriteOp::build(Builder *builder, OperationState *result,
+void VectorTransferWriteOp::build(Builder *builder, OperationState &result,
                                   Value *srcVector, Value *dstMemRef,
                                   ArrayRef<Value *> dstIndices,
                                   AffineMap permutationMap) {
-  result->addOperands({srcVector, dstMemRef});
-  result->addOperands(dstIndices);
-  result->addAttribute(getPermutationMapAttrName(),
-                       builder->getAffineMapAttr(permutationMap));
+  result.addOperands({srcVector, dstMemRef});
+  result.addOperands(dstIndices);
+  result.addAttribute(getPermutationMapAttrName(),
+                      builder->getAffineMapAttr(permutationMap));
 }
 
 auto VectorTransferWriteOp::getIndices() -> operand_range {
@@ -397,47 +396,47 @@ AffineMap VectorTransferWriteOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferWriteOp::print(OpAsmPrinter *p) {
-  *p << getOperationName();
-  *p << " " << *getVector();
-  *p << ", " << *getMemRef();
-  *p << "[";
-  p->printOperands(getIndices());
-  *p << "]";
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : ";
-  p->printType(getVectorType());
-  *p << ", ";
-  p->printType(getMemRefType());
+void VectorTransferWriteOp::print(OpAsmPrinter &p) {
+  p << getOperationName();
+  p << " " << *getVector();
+  p << ", " << *getMemRef();
+  p << "[";
+  p.printOperands(getIndices());
+  p << "]";
+  p.printOptionalAttrDict(getAttrs());
+  p << " : ";
+  p.printType(getVectorType());
+  p << ", ";
+  p.printType(getMemRefType());
 }
 
-ParseResult VectorTransferWriteOp::parse(OpAsmParser *parser,
-                                         OperationState *result) {
+ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
+                                         OperationState &result) {
   OpAsmParser::OperandType storeValueInfo;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   SmallVector<Type, 2> types;
-  auto indexType = parser->getBuilder().getIndexType();
-  if (parser->parseOperand(storeValueInfo) || parser->parseComma() ||
-      parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
+  auto indexType = parser.getBuilder().getIndexType();
+  if (parser.parseOperand(storeValueInfo) || parser.parseComma() ||
+      parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonTypeList(types))
     return failure();
 
   if (types.size() != 2)
-    return parser->emitError(parser->getNameLoc(), "expected 2 types");
+    return parser.emitError(parser.getNameLoc(), "expected 2 types");
   VectorType vectorType = types[Offsets::VectorOffset].dyn_cast<VectorType>();
   if (!vectorType)
-    return parser->emitError(parser->getNameLoc(), "vector type expected");
+    return parser.emitError(parser.getNameLoc(), "vector type expected");
   MemRefType memrefType = types[Offsets::MemRefOffset].dyn_cast<MemRefType>();
   if (!memrefType)
-    return parser->emitError(parser->getNameLoc(), "memRef type expected");
+    return parser.emitError(parser.getNameLoc(), "memRef type expected");
 
   return failure(
-      parser->resolveOperands(storeValueInfo, vectorType, result->operands) ||
-      parser->resolveOperands(memrefInfo, memrefType, result->operands) ||
-      parser->resolveOperands(indexInfo, indexType, result->operands));
+      parser.resolveOperands(storeValueInfo, vectorType, result.operands) ||
+      parser.resolveOperands(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(indexInfo, indexType, result.operands));
 }
 
 LogicalResult VectorTransferWriteOp::verify() {
@@ -507,27 +506,27 @@ LogicalResult VectorTransferWriteOp::verify() {
 //===----------------------------------------------------------------------===//
 // VectorTypeCastOp
 //===----------------------------------------------------------------------===//
-void VectorTypeCastOp::build(Builder *builder, OperationState *result,
+void VectorTypeCastOp::build(Builder *builder, OperationState &result,
                              Value *srcVector, Type dstType) {
-  result->addOperands(srcVector);
-  result->addTypes(dstType);
+  result.addOperands(srcVector);
+  result.addTypes(dstType);
 }
 
-ParseResult VectorTypeCastOp::parse(OpAsmParser *parser,
-                                    OperationState *result) {
+ParseResult VectorTypeCastOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
   OpAsmParser::OperandType operand;
   Type srcType, dstType;
-  return failure(parser->parseOperand(operand) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(srcType) || parser->parseComma() ||
-                 parser->parseType(dstType) ||
-                 parser->addTypeToList(dstType, result->types) ||
-                 parser->resolveOperand(operand, srcType, result->operands));
+  return failure(parser.parseOperand(operand) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(srcType) || parser.parseComma() ||
+                 parser.parseType(dstType) ||
+                 parser.addTypeToList(dstType, result.types) ||
+                 parser.resolveOperand(operand, srcType, result.operands));
 }
 
-void VectorTypeCastOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << ' ' << *getOperand() << " : "
-     << getOperand()->getType() << ", " << getType();
+void VectorTypeCastOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << ' ' << *getOperand() << " : "
+    << getOperand()->getType() << ", " << getType();
 }
 
 LogicalResult VectorTypeCastOp::verify() {

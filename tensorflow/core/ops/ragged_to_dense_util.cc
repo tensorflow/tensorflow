@@ -91,10 +91,11 @@ tensorflow::Status CombineRaggedTensorToTensorShapes(
   }
   // At this point, value_shape and output_shape have known ranks.
   if (ragged_rank + value_shape.dim_size() != output_shape->dim_size()) {
-    return InvalidArgument("Value shape (", value_shape.DebugString(),
-                           "), ragged_rank(", ragged_rank, ") and shape(",
-                           shape.DebugString(),
-                           ") do not have a consistent number of dimensions");
+    return InvalidArgument(
+        "rt_input.shape and shape=", TensorShape::DebugString(shape),
+        " are incompatible: rt_input.rank = ",
+        ragged_rank + value_shape.dim_size(),
+        " but shape.rank = ", output_shape->dim_size());
   }
 
   for (int i = 1; i < value_shape.dim_size(); ++i) {
@@ -105,7 +106,11 @@ tensorflow::Status CombineRaggedTensorToTensorShapes(
     if (value_dim.size() >= 0) {
       if (output_shape_dim->size() >= 0) {
         if (output_shape_dim->size() != value_dim.size()) {
-          return InvalidArgument("Value and shape dimension are inconsistent.");
+          return InvalidArgument(
+              "rt_input.shape and shape=", TensorShape::DebugString(shape),
+              " are incompatible: rt_input.shape[", i + ragged_rank,
+              "] = ", value_dim.size(), " but shape[", i + ragged_rank,
+              "] = ", output_shape_dim->size());
         }
       } else {
         output_shape_dim->set_size(value_dim.size());
@@ -132,28 +137,29 @@ tensorflow::Status ValidateDefaultValueShape(
     return tensorflow::Status::OK();
   }
 
-  if (default_value_shape.dim_size() > value_shape.dim_size()) {
-    // TODO(martinz): This constraint is unnecessary. The
-    // default value could have as many dimensions as shape. If there is a
-    // discrepancy, it will be picked up when we broadcast the default value.
-    // For now, I'll relax the constraint only slightly.
+  int default_ndims = default_value_shape.dim_size();
+  int values_ndims = value_shape.dim_size();
+  if (default_ndims >= values_ndims) {
     return InvalidArgument(
-        "default_value_shape must have no more dimensions than the value. "
-        "default_value_shape: ",
-        default_value_shape.DebugString(),
-        " default_value_shape.dim_size(): ", default_value_shape.dim_size(),
-        " value_shape: ", value_shape.DebugString(),
-        " value_shape.dim_size(): ", value_shape.dim_size());
+        "default_value.shape=", TensorShape::DebugString(default_value_shape),
+        " and rt_input.flat_values.shape=",
+        TensorShape::DebugString(value_shape),
+        " are incompatible: default_value.rank = ", default_ndims,
+        "  must be less than rt_input.flat_values.rank = ", values_ndims);
   }
-  for (int i = 0;
-       i < std::min(default_value_shape.dim_size(), value_shape.dim_size() - 1);
-       ++i) {
-    if (default_value_shape.dim(i).size() >= 0 &&
-        value_shape.dim(i + 1).size() >= 0 &&
-        default_value_shape.dim(i).size() != 1 &&
-        default_value_shape.dim(i).size() != value_shape.dim(i + 1).size()) {
+  for (int i = 0; i < std::min(default_ndims, values_ndims - 1); ++i) {
+    int default_dim = default_value_shape.dim(i).size();
+    int value_dim = value_shape.dim(i + 1).size();
+    if (default_dim >= 0 && value_dim >= 0 && default_dim != 1 &&
+        default_dim != value_dim) {
       return InvalidArgument(
-          "default_value_shape and value_shape do not match on dimension ", i);
+          "default_value.shape=", TensorShape::DebugString(default_value_shape),
+          " and rt_input.flat_values.shape=",
+          TensorShape::DebugString(value_shape),
+          " are incompatible: default_value.shape[",
+          i - default_value_shape.dim_size(), "] = ", default_dim,
+          " but rt_input.flat_values.shape[",
+          i - default_value_shape.dim_size(), "] = ", value_dim);
     }
   }
   return tensorflow::Status::OK();

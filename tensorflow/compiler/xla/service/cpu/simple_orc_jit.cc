@@ -56,24 +56,13 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
       if (feature.second) {
-        llvm::StringRef feature_name = feature.first();
-        // Skip avx512 for now, it isn't quite ready in LLVM.
-        if (feature_name.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(feature_name);
+        result.push_back(feature.first());
       }
     }
   }
   return result;
 }
 
-llvm::StringRef GetHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 for now, it isn't quite ready in LLVM.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
 }  // namespace
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
@@ -86,7 +75,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/GetHostCpuName(),
+              /*MCPU=*/llvm::sys::getHostCPUName(),
               /*MAttrs=*/DetectMachineAttributes()));
   CHECK(target_machine != nullptr);
   return target_machine;

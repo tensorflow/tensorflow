@@ -162,6 +162,7 @@ enum Kind {
   FileLineColLocation,
   FusedLocation,
   NameLocation,
+  OpaqueLocation,
   UnknownLocation,
 
   // Represents a location as a 'void*' pointer to a front-end's opaque
@@ -507,7 +508,7 @@ public:
   }
 
 protected:
-  /// Returns the 1 dimenional flattened row-major index from the given
+  /// Returns the 1 dimensional flattened row-major index from the given
   /// multi-dimensional index.
   uint64_t getFlattenedIndex(ArrayRef<uint64_t> index) const;
 };
@@ -920,7 +921,7 @@ public:
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor
-/// constant with opaque content. This respresentation is for tensor constants
+/// constant with opaque content. This representation is for tensor constants
 /// which the compiler may not need to interpret. This attribute is always
 /// associated with a particular dialect, which provides a method to convert
 /// tensor representation to a non-opaque format.
@@ -1304,7 +1305,6 @@ template <> struct DenseMapInfo<mlir::Attribute> {
 
 /// Allow LLVM to steal the low bits of Attributes.
 template <> struct PointerLikeTypeTraits<mlir::Attribute> {
-public:
   static inline void *getAsVoidPointer(mlir::Attribute attr) {
     return const_cast<void *>(attr.getAsOpaquePointer());
   }
@@ -1312,6 +1312,15 @@ public:
     return mlir::Attribute::getFromOpaquePointer(ptr);
   }
   enum { NumLowBitsAvailable = 3 };
+};
+
+template <>
+struct PointerLikeTypeTraits<mlir::SymbolRefAttr>
+    : public PointerLikeTypeTraits<mlir::Attribute> {
+  static inline mlir::SymbolRefAttr getFromVoidPointer(void *ptr) {
+    return PointerLikeTypeTraits<mlir::Attribute>::getFromVoidPointer(ptr)
+        .cast<mlir::SymbolRefAttr>();
+  }
 };
 
 } // namespace llvm

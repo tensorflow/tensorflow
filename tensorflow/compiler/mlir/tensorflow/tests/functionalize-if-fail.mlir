@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowPass 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowForXlaPass 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
 
 // CHECK:       FunctionalizeControlFlowPass: Graph contains node with inputs predicated on incompatible predicates: {s(Cond:0,then)} and {s(Cond:0,else)}
 // CHECK-NEXT:  for node {{[{][{]node Add[}][}]}}

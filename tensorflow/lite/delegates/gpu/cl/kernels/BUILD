@@ -217,7 +217,8 @@ cc_test(
     deps = [
         ":cl_test",
         ":conv_powervr",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
@@ -246,6 +247,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -652,6 +654,20 @@ cc_test(
 )
 
 cc_library(
+    name = "lstm",
+    srcs = ["lstm.cc"],
+    hdrs = ["lstm.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
     hdrs = ["max_unpooling.h"],
@@ -1051,6 +1067,37 @@ cc_test(
 )
 
 cc_library(
+    name = "transpose",
+    srcs = ["transpose.cc"],
+    hdrs = ["transpose.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":transpose",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tuning_parameters",
     hdrs = ["tuning_parameters.h"],
     deps = [
@@ -1191,6 +1238,7 @@ test_suite(
         "softmax1x1_test",
         "softmax_test",
         "strided_slice_test",
+        "transpose_test",
         "upsample_test",
     ],
 )

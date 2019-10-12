@@ -455,7 +455,8 @@ class CSRSparseMatrix {
           dense_shape.SummarizeValue(5));
     }
     auto dense_shape_t = dense_shape.vec<int64>();
-    int batch_size = (rank == 2) ? 1 : dense_shape_t(0);
+    const int64 batch_size = (rank == 2) ? 1 : dense_shape_t(0);
+    const int64 num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
 
     if (batch_pointers.dtype() != DT_INT32) {
       return errors::InvalidArgument(
@@ -480,12 +481,20 @@ class CSRSparseMatrix {
 
     if (row_pointers.dtype() != DT_INT32) {
       return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: row_indices.dtype() = ",
+          "CSRSparseMatrix::Validate: row_pointers.dtype() = ",
           DataTypeString(row_pointers.dtype()), " != int32");
     }
     if (row_pointers.dims() != 1) {
       return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: row_indices is not a vector, saw shape: ",
+          "CSRSparseMatrix::Validate: row_pointers is not a vector, saw "
+          "shape: ",
+          row_pointers.shape().DebugString());
+    }
+    if (row_pointers.dim_size(0) != batch_size * (num_rows + 1)) {
+      return errors::InvalidArgument(
+          "CSRSparseMatrix::Validate: row_pointers should have size batch_size "
+          "* (num_rows + 1), saw shapes: ",
+          dense_shape.DebugString(), " vs. ",
           row_pointers.shape().DebugString());
     }
     if (col_indices.dtype() != DT_INT32) {

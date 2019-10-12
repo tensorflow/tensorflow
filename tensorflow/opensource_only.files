@@ -4,6 +4,7 @@ tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/core/public/version.h
 tensorflow/python/autograph/core/config.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
@@ -11,6 +12,7 @@ tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/python/tpu/profiler/pip_package/setup.py
+tensorflow/python/tpu/tpu.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
@@ -27,6 +29,7 @@ tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/com_google_absl.BUILD
+tensorflow/third_party/com_google_absl_fix_mac_build.patch
 tensorflow/third_party/common.bzl
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD

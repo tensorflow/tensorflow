@@ -102,6 +102,14 @@ class BufferedInputStream : public InputStreamInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
 };
 
+// Explicit instantiations defined in buffered_inputstream.cc.
+#ifndef SWIG
+extern template Status BufferedInputStream::ReadAll<string>(string* result);
+#ifdef USE_TSTRING
+extern template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
+#endif  // USE_TSTRING
+#endif  // SWIG
+
 }  // namespace io
 }  // namespace tensorflow
 

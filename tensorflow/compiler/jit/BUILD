@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -284,8 +284,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -340,9 +338,10 @@ cc_library(
         ":compilation_passes",
         ":xla_activity_logging_listener",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
         "//tensorflow/core:core_cpu_internal",
-    ] + tf_jit_compilation_passes_extra_deps(),
+    ] + tf_jit_compilation_passes_extra_deps() + if_mlir([
+        "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
+    ]),
     alwayslink = 1,
 )
 
@@ -629,15 +628,17 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -734,6 +735,9 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
+    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
+    # error.
+    tags = ["nomsan"],
     deps = [
         ":common",
         ":compilation_passes",
@@ -741,6 +745,7 @@ tf_cc_test(
         ":encapsulate_util",
         ":flags",
         ":node_matchers",
+        ":test_util",
         ":xla_cluster_util",
         ":xla_cpu_device",
         ":xla_gpu_device",
@@ -789,12 +794,14 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

@@ -25,10 +25,14 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Support/FileUtilities.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Parallel.h"
 #include "llvm/Support/Threading.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -40,6 +44,23 @@ using namespace mlir::detail;
 /// Out of line virtual method to ensure vtables and metadata are emitted to a
 /// single .o file.
 void Pass::anchor() {}
+
+/// Prints out the pass in the textual representation of pipelines. If this is
+/// an adaptor pass, print with the op_name(sub_pass,...) format.
+void Pass::printAsTextualPipeline(raw_ostream &os) {
+  // Special case for adaptors to use the 'op_name(sub_passes)' format.
+  if (auto *adaptor = getAdaptorPassBase(this)) {
+    interleaveComma(adaptor->getPassManagers(), os, [&](OpPassManager &pm) {
+      os << pm.getOpName() << "(";
+      pm.printAsTextualPipeline(os);
+      os << ")";
+    });
+  } else if (const PassInfo *info = lookupPassInfo()) {
+    os << info->getPassArgument();
+  } else {
+    os << getName();
+  }
+}
 
 /// Forwarding function to execute this pass.
 LogicalResult Pass::run(Operation *op, AnalysisManager am) {
@@ -253,6 +274,19 @@ MLIRContext *OpPassManager::getContext() const {
 /// Return the operation name that this pass manager operates on.
 const OperationName &OpPassManager::getOpName() const { return impl->name; }
 
+/// Prints out the passes of the pass mangager as the textual representation
+/// of pipelines.
+void OpPassManager::printAsTextualPipeline(raw_ostream &os) {
+  // Filter out passes that are not part of the public pipeline.
+  auto filteredPasses = llvm::make_filter_range(
+      impl->passes, [](const std::unique_ptr<Pass> &pass) {
+        return !isa<VerifierPass>(pass);
+      });
+  interleaveComma(filteredPasses, os, [&](const std::unique_ptr<Pass> &pass) {
+    pass->printAsTextualPipeline(os);
+  });
+}
+
 //===----------------------------------------------------------------------===//
 // OpToOpPassAdaptor
 //===----------------------------------------------------------------------===//
@@ -313,7 +347,8 @@ OpToOpPassAdaptor::OpToOpPassAdaptor(OpPassManager &&mgr)
 /// Run the held pipeline over all nested operations.
 void OpToOpPassAdaptor::runOnOperation() {
   auto am = getAnalysisManager();
-  auto currentThreadID = llvm::get_threadid();
+  PassInstrumentation::PipelineParentInfo parentInfo = {llvm::get_threadid(),
+                                                        this};
   auto *instrumentor = am.getPassInstrumentor();
   for (auto &region : getOperation()->getRegions()) {
     for (auto &block : region) {
@@ -324,10 +359,10 @@ void OpToOpPassAdaptor::runOnOperation() {
 
         // Run the held pipeline over the current operation.
         if (instrumentor)
-          instrumentor->runBeforePipeline(mgr->getOpName(), currentThreadID);
+          instrumentor->runBeforePipeline(mgr->getOpName(), parentInfo);
         auto result = runPipeline(*mgr, &op, am.slice(&op));
         if (instrumentor)
-          instrumentor->runAfterPipeline(mgr->getOpName(), currentThreadID);
+          instrumentor->runAfterPipeline(mgr->getOpName(), parentInfo);
 
         if (failed(result))
           return signalPassFailure();
@@ -379,7 +414,8 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
   std::atomic<unsigned> opIt(0);
 
   // Get the current thread for this adaptor.
-  auto parentThreadID = llvm::get_threadid();
+  PassInstrumentation::PipelineParentInfo parentInfo = {llvm::get_threadid(),
+                                                        this};
   auto *instrumentor = am.getPassInstrumentor();
 
   // An atomic failure variable for the async executors.
@@ -404,10 +440,10 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
           assert(pm && "expected valid pass manager for operation");
 
           if (instrumentor)
-            instrumentor->runBeforePipeline(pm->getOpName(), parentThreadID);
+            instrumentor->runBeforePipeline(pm->getOpName(), parentInfo);
           auto pipelineResult = runPipeline(*pm, it.first, it.second);
           if (instrumentor)
-            instrumentor->runAfterPipeline(pm->getOpName(), parentThreadID);
+            instrumentor->runAfterPipeline(pm->getOpName(), parentInfo);
 
           // Drop this thread from being tracked by the diagnostic handler.
           // After this task has finished, the thread may be used outside of
@@ -439,6 +475,70 @@ OpToOpPassAdaptorBase *mlir::detail::getAdaptorPassBase(Pass *pass) {
 }
 
 //===----------------------------------------------------------------------===//
+// PassCrashReproducer
+//===----------------------------------------------------------------------===//
+
+/// Safely run the pass manager over the given module, creating a reproducible
+/// on failure or crash.
+static LogicalResult runWithCrashRecovery(OpPassManager &pm,
+                                          ModuleAnalysisManager &am,
+                                          ModuleOp module,
+                                          StringRef crashReproducerFileName) {
+  /// Enable crash recovery.
+  llvm::CrashRecoveryContext::Enable();
+
+  // Grab the textual pipeline executing within the pass manager first, just in
+  // case the pass manager becomes compromised.
+  std::string pipeline;
+  {
+    llvm::raw_string_ostream pipelineOS(pipeline);
+    pm.printAsTextualPipeline(pipelineOS);
+  }
+
+  // Clone the initial module before running it through the pass pipeline.
+  OwningModuleRef reproducerModule = module.clone();
+
+  // Safely invoke the pass manager within a recovery context.
+  LogicalResult passManagerResult = failure();
+  llvm::CrashRecoveryContext recoveryContext;
+  recoveryContext.RunSafelyOnThread(
+      [&] { passManagerResult = pm.run(module, am); });
+
+  /// Disable crash recovery.
+  llvm::CrashRecoveryContext::Disable();
+  if (succeeded(passManagerResult))
+    return success();
+
+  // The conversion failed, so generate a reproducible.
+  std::string error;
+  std::unique_ptr<llvm::ToolOutputFile> outputFile =
+      mlir::openOutputFile(crashReproducerFileName, &error);
+  if (!outputFile)
+    return emitError(UnknownLoc::get(pm.getContext()),
+                     "<MLIR-PassManager-Crash-Reproducer>: ")
+           << error;
+  auto &outputOS = outputFile->os();
+
+  // Output the current pass manager configuration.
+  outputOS << "// configuration: -pass-pipeline='" << pipeline << "'";
+  if (pm.getImpl().disableThreads)
+    outputOS << " -disable-pass-threading";
+
+  // TODO(riverriddle) Should this also be configured with a pass manager flag?
+  outputOS << "\n// note: verifyPasses="
+           << (pm.getImpl().verifyPasses ? "true" : "false") << "\n";
+
+  // Output the .mlir module.
+  reproducerModule->print(outputOS);
+  outputFile->keep();
+
+  return reproducerModule->emitError()
+         << "A crash has been detected while processing the MLIR module, a "
+            "reproducer has been generated in '"
+         << crashReproducerFileName << "'";
+}
+
+//===----------------------------------------------------------------------===//
 // PassManager
 //===----------------------------------------------------------------------===//
 
@@ -455,8 +555,13 @@ LogicalResult PassManager::run(ModuleOp module) {
   // pipeline.
   getImpl().coalesceAdjacentAdaptorPasses();
 
-  // Construct an analysis manager for the pipeline and run it.
+  // Construct an analysis manager for the pipeline.
   ModuleAnalysisManager am(module, instrumentor.get());
+
+  // If reproducer generation is enabled, run the pass manager with crash
+  // handling enabled.
+  if (crashReproducerFileName)
+    return runWithCrashRecovery(*this, am, module, *crashReproducerFileName);
   return OpPassManager::run(module, am);
 }
 
@@ -465,10 +570,17 @@ void PassManager::disableMultithreading(bool disable) {
   getImpl().disableThreads = disable;
 }
 
+/// Enable support for the pass manager to generate a reproducer on the event
+/// of a crash or a pass failure. `outputFile` is a .mlir filename used to write
+/// the generated reproducer.
+void PassManager::enableCrashReproducerGeneration(StringRef outputFile) {
+  crashReproducerFileName = outputFile;
+}
+
 /// Add the provided instrumentation to the pass manager.
 void PassManager::addInstrumentation(std::unique_ptr<PassInstrumentation> pi) {
   if (!instrumentor)
-    instrumentor.reset(new PassInstrumentor());
+    instrumentor = std::make_unique<PassInstrumentor>();
 
   instrumentor->addInstrumentation(std::move(pi));
 }
@@ -552,19 +664,21 @@ PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
 PassInstrumentor::~PassInstrumentor() {}
 
 /// See PassInstrumentation::runBeforePipeline for details.
-void PassInstrumentor::runBeforePipeline(const OperationName &name,
-                                         uint64_t parentThreadID) {
+void PassInstrumentor::runBeforePipeline(
+    const OperationName &name,
+    const PassInstrumentation::PipelineParentInfo &parentInfo) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforePipeline(name, parentThreadID);
+    instr->runBeforePipeline(name, parentInfo);
 }
 
 /// See PassInstrumentation::runAfterPipeline for details.
-void PassInstrumentor::runAfterPipeline(const OperationName &name,
-                                        uint64_t parentThreadID) {
+void PassInstrumentor::runAfterPipeline(
+    const OperationName &name,
+    const PassInstrumentation::PipelineParentInfo &parentInfo) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
-  for (auto &instr : impl->instrumentations)
-    instr->runAfterPipeline(name, parentThreadID);
+  for (auto &instr : llvm::reverse(impl->instrumentations))
+    instr->runAfterPipeline(name, parentInfo);
 }
 
 /// See PassInstrumentation::runBeforePass for details.

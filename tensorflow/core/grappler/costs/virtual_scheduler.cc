@@ -92,20 +92,21 @@ struct RecvNodeDescriptorEqual {
 void UpdateDeviceAnnotationState(const NodeDef* node,
                                  const NodeState& node_state,
                                  DeviceState* device) {
-  bool annotated = node->attr().count(kExecutionCount) > 0;
-  int64 execution_count = annotated ? node->attr().at(kExecutionCount).i() : 1;
+  if (node->attr().count(kOutputShapes) == 0) return;
 
-  if (annotated) {
-    auto& shape_annotation_stats = device->shape_annotation_stats;
-    shape_annotation_stats.num_ops_annotated += 1;
-    shape_annotation_stats.num_ops_executed += execution_count;
-    shape_annotation_stats.num_ops_executed_more_than_once +=
-        execution_count > 1 ? 1 : 0;
-    shape_annotation_stats.num_ops_with_incompatible_shapes +=
-        node_state.shape_incompatible ? 1 : 0;
-    shape_annotation_stats.num_ops_with_dynamic_shapes +=
-        (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
-  }
+  int64 execution_count = node->attr().count(kExecutionCount) == 0
+                              ? 1
+                              : node->attr().at(kExecutionCount).i();
+
+  auto& shape_annotation_stats = device->shape_annotation_stats;
+  shape_annotation_stats.num_ops_annotated += 1;
+  shape_annotation_stats.num_ops_executed += execution_count;
+  shape_annotation_stats.num_ops_executed_more_than_once +=
+      execution_count > 1 ? 1 : 0;
+  shape_annotation_stats.num_ops_with_incompatible_shapes +=
+      node_state.shape_incompatible ? 1 : 0;
+  shape_annotation_stats.num_ops_with_dynamic_shapes +=
+      (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
 }
 
 }  // namespace

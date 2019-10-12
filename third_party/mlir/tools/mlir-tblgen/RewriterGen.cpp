@@ -163,7 +163,7 @@ private:
 
   raw_ostream &os;
 
-  // Format contexts containing placeholder substitutations.
+  // Format contexts containing placeholder substitutions.
   FmtContext fmtCtx;
 
   // Number of op processed.
@@ -313,7 +313,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
                       << ";\n";
   } else if (attr.isOptional()) {
     // For a missing attribute that is optional according to definition, we
-    // should just capature a mlir::Attribute() to signal the missing state.
+    // should just capture a mlir::Attribute() to signal the missing state.
     // That is precisely what getAttr() returns on missing attributes.
   } else {
     os.indent(indent) << "if (!tblgen_attr) return matchFailure();\n";
@@ -417,7 +417,13 @@ void PatternEmitter::emit(StringRef rewriteName) {
   {0}(MLIRContext *context)
       : RewritePattern("{1}", {{)",
                 rewriteName, rootName);
-  interleaveComma(resultOps, os, [&](const Operator *op) {
+  // Sort result operators by name.
+  llvm::SmallVector<const Operator *, 4> sortedResultOps(resultOps.begin(),
+                                                         resultOps.end());
+  llvm::sort(sortedResultOps, [&](const Operator *lhs, const Operator *rhs) {
+    return lhs->getOperationName() < rhs->getOperationName();
+  });
+  interleaveComma(sortedResultOps, os, [&](const Operator *op) {
     os << '"' << op->getOperationName() << '"';
   });
   os << formatv(R"(}, {0}, context) {{})", pattern.getBenefit()) << "\n";

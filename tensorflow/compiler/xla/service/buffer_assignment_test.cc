@@ -2432,50 +2432,6 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 1}));
 }
 
-TEST_F(BufferAssignmentTest, ProcessingOrderTest) {
-  const char* hlo_text = R"(
-HloModule nested_convolution
-
-ENTRY %nested_convolution (param: f32[200,32,32,1]) -> f32[200,32,32,1] {
-  %param = f32[200,32,32,1]{3,2,1,0} parameter(0)
-  %bitcast = f32[200,32,32,1]{2,1,3,0} bitcast(f32[200,32,32,1]{3,2,1,0} %param)
-  %one = f32[] constant(1)
-  %conv_window = f32[3,3,1,1]{1,0,2,3} broadcast(f32[] %one), dimensions={}
-  %conv0 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %bitcast, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.6 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv0), index=0
-  %conv1 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.6, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.7 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv1), index=0
-  %conv2 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.7, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.8 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv2), index=0
-  %conv3 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.8, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.9 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv3), index=0
-  %conv4 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.9, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.10 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv4), index=0
-  %conv5 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.10, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.11 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv5), index=0
-  ROOT %bitcast.1 = f32[200,32,32,1]{3,2,1,0} bitcast(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.11)
-}
-)";
-
-  HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsFromFlags());
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-
-  std::unique_ptr<BufferAssignment> buffers = RunBufferAssignment(m.get());
-
-  // We should occupy strictly less size than 4 * size of the buffer required
-  // for convolution.
-  int64 conv_size_bytes = 200 * 32 * 32 * 4;
-  EXPECT_LT(buffers->GetStats().total_allocation_bytes, conv_size_bytes * 4);
-}
-
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());

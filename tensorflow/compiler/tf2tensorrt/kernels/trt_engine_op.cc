@@ -731,7 +731,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
-              << " input shapes: "
+              << " with input shapes: "
               << TensorShapeUtils::ShapeListString(engine_input_shapes);
 
     // Convert to partial shapes
@@ -809,8 +809,8 @@ Status TRTEngineOp::AllocateCalibrationResources(
                                     cache_res]() {
     core::ScopedUnref sc(cache_res);
 
-    LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
-              << ", Calibration Resource @ " << cres;
+    VLOG(1) << "Starting calibration thread on device " << platform_gpu_id
+            << ", Calibration Resource @ " << cres;
     auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.

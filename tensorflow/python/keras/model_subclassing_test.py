@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 import numpy as np
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import data_structures
 
@@ -683,6 +685,34 @@ class CustomCallSignatureTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  r'Models passed to `predict_on_batch`'):
       m.predict_on_batch(x)
+
+  def test_deepcopy(self):
+    with context.eager_mode():
+
+      class MyModel(keras.Model):
+
+        def __init__(self):
+          super(MyModel, self).__init__()
+          self.my_variable = variables_lib.Variable(0.0, trainable=False)
+          self.layer = keras.layers.Dense(4)
+
+        def call(self, obs):
+          return self.layer(obs)
+
+      model = MyModel()
+      model.my_variable.assign_add(1.0)
+
+      new_model = copy.deepcopy(model)
+      self.assertEqual(model.my_variable.numpy(), 1.0)
+      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+
+      model.my_variable.assign_add(1.0)
+      self.assertEqual(model.my_variable.numpy(), 2.0)
+      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+
+      # Check that Trackable logic still works.
+      self.assertLen(new_model.variables, 1)
+      self.assertLen(new_model.layers, 1)
 
 
 if __name__ == '__main__':

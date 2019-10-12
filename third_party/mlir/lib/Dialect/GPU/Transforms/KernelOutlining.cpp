@@ -144,33 +144,62 @@ class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
-    auto context = getModule().getContext();
-    Builder builder(context);
+    bool modified = false;
     for (auto func : getModule().getOps<FuncOp>()) {
       // Insert just after the function.
       Block::iterator insertPt(func.getOperation()->getNextNode());
       func.walk([&](gpu::LaunchOp op) {
-        // TODO(b/141098412): Handle called functions and globals.
         FuncOp outlinedFunc = outlineKernelFunc(op);
 
-        // Potentially renames outlinedFunc to make symbol unique.
-        moduleManager.insert(insertPt, outlinedFunc);
+        // Create nested module and insert outlinedFunc. The module will
+        // originally get the same name as the function, but may be renamed on
+        // insertion into the parent module.
+        auto kernelModule = createKernelModule(outlinedFunc, moduleManager);
+        moduleManager.insert(insertPt, kernelModule);
 
         // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
-
-        // Create clone and move body from outlinedFunc.
-        auto kernelFunc = outlinedFunc.cloneWithoutRegions();
-        kernelFunc.getBody().takeBody(outlinedFunc.getBody());
-
-        // Create nested module and insert kernelFunc.
-        auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
-        kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
-                             builder.getUnitAttr());
-        kernelModule.push_back(kernelFunc);
-        getModule().insert(insertPt, kernelModule);
+        modified = true;
       });
     }
+
+    // If any new module was inserted in this module, annotate this module as
+    // a container module.
+    if (modified)
+      getModule().setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
+                          UnitAttr::get(&getContext()));
+  }
+
+private:
+  // Returns a module containing kernelFunc and all callees (recursive).
+  ModuleOp createKernelModule(FuncOp kernelFunc,
+                              const ModuleManager &parentModuleManager) {
+    auto context = getModule().getContext();
+    Builder builder(context);
+    auto kernelModule =
+        ModuleOp::create(builder.getUnknownLoc(), kernelFunc.getName());
+    kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
+                         builder.getUnitAttr());
+    ModuleManager moduleManager(kernelModule);
+
+    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
+    while (!funcsToInsert.empty()) {
+      FuncOp func = funcsToInsert.pop_back_val();
+      moduleManager.insert(func);
+
+      // TODO(b/141098412): Support any op with a callable interface.
+      func.walk([&](CallOp call) {
+        auto callee = call.callee();
+        if (moduleManager.lookupSymbol<FuncOp>(callee))
+          return;
+
+        auto calleeFromParent =
+            parentModuleManager.lookupSymbol<FuncOp>(callee);
+        funcsToInsert.push_back(calleeFromParent.clone());
+      });
+    }
+
+    return kernelModule;
   }
 };
 

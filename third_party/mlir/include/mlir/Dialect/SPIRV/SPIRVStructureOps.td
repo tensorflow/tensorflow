@@ -67,6 +67,9 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let hasOpcode = 0;
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::GlobalVariableOp var}]>];
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
@@ -86,7 +89,7 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     more tedious. Therefore, we use a single `spv.constant` op to represent
     them all. Note that conversion between those SPIR-V constant instructions
     and this op is purely mechanical; so it can be scoped to the binary
-    (de)serialzation process.
+    (de)serialization process.
 
     ### Custom assembly form
 
@@ -174,12 +177,17 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
     SymbolRefAttr:$fn,
-    OptionalAttr<SymbolRefArrayAttr>:$interface
+    SymbolRefArrayAttr:$interface
   );
 
   let results = (outs);
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::ExecutionModel executionModel,
+                              FuncOp function,
+                              ArrayRef<Attribute> interfaceVars}]>];
 }
 
 
@@ -234,6 +242,14 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
     OptionalAttr<SymbolRefAttr>:$initializer
   );
 
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addAttribute("type", type);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
+
   let results = (outs);
 
   let hasOpcode = 0;
@@ -259,7 +275,7 @@ def SPV_ModuleOp : SPV_Op<"module",
 
     Using an op with a region to define a SPIR-V module enables "embedding"
     SPIR-V modules in other dialects in a clean manner: this op guarantees
-    the validaty and serializability of a SPIR-V module and thus serves as
+    the validity and serializability of a SPIR-V module and thus serves as
     a clear-cut boundary.
 
     This op takes no operands and generates no results. This op should not
@@ -306,8 +322,8 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">,
-                  OpBuilder<[{Builder *, OperationState *state,
+  let builders = [OpBuilder<"Builder *, OperationState &state">,
+                  OpBuilder<[{Builder *, OperationState &state,
                               IntegerAttr addressing_model,
                               IntegerAttr memory_model,
                               /*optional*/ArrayAttr capabilities = nullptr,
@@ -419,7 +435,7 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
     spv.specConstant @spec_const2 = 42 : i32
     ```
 
-    TODO(antiagainst): support composite spec cosntants with another op
+    TODO(antiagainst): support composite spec constants with another op
   }];
 
   let arguments = (ins

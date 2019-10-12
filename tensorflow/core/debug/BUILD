@@ -72,6 +72,9 @@ cc_library(
         ":debugger_state_impl",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:debug_ops_op_lib",
+        # Depends on grpc and hence should stay out of
+        # //third_party/tensorflow/core.
+        "//tensorflow/core/kernels:debug_ops",
     ],
     alwayslink = 1,
 )

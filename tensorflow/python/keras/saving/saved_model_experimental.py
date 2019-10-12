@@ -25,7 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.saving import model_from_json
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
@@ -417,7 +417,8 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json, custom_objects=custom_objects)
+  model = model_config.model_from_json(
+      model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(

@@ -46,6 +46,12 @@ constexpr uint32_t kGeneratorNumber = 22;
 /// Appends a SPRI-V module header to `header` with the given `idBound`.
 void appendModuleHeader(SmallVectorImpl<uint32_t> &header, uint32_t idBound);
 
+/// Returns the word-count-prefixed opcode for an SPIR-V instruction.
+uint32_t getPrefixedOpcode(uint32_t wordCount, spirv::Opcode opcode);
+
+/// Encodes an SPIR-V `literal` string into the given `binary` vector.
+LogicalResult encodeStringLiteralInto(SmallVectorImpl<uint32_t> &binary,
+                                      StringRef literal);
 } // end namespace spirv
 } // end namespace mlir
 

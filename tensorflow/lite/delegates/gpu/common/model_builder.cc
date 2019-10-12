@@ -95,13 +95,12 @@ Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
                                    float* tensor_data) {
   switch (tensor.type) {
     case kTfLiteFloat32:
-      std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
+      std::memcpy(tensor_data, tensor.data.f, tensor.bytes);
       break;
     case kTfLiteFloat16:
       ConvertFloat16ToFloat32(
           NumElements(&tensor),
-          reinterpret_cast<uint16_t const*>(tensor.data.raw_const),
-          tensor_data);
+          reinterpret_cast<uint16_t const*>(tensor.data.f16), tensor_data);
       break;
     default:
       return InvalidArgumentError("Unsupported data type for float32 tensor");
@@ -1807,11 +1806,17 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(
           ReadAttribsWithBatch(reader, tf_options, input->tensor.shape, &attr));
     }
-    if (attr.strides.h == 0 || attr.strides.w == 0 || attr.strides.c == 0) {
+    if (attr.strides.b == 0 || attr.strides.h == 0 || attr.strides.w == 0 ||
+        attr.strides.c == 0) {
       return InvalidArgumentError("stride values must be non-zero");
     }
-    if (attr.strides.h < 0 || attr.strides.w < 0 || attr.strides.c < 0) {
+    if (attr.strides.b < 0 || attr.strides.h < 0 || attr.strides.w < 0 ||
+        attr.strides.c < 0) {
       return UnimplementedError("Reverse slices are not supported.");
+    }
+    if ((attr.ends.b - attr.starts.b + attr.strides.b - 1) / attr.strides.b !=
+        out_shape.b) {
+      return UnimplementedError("Output batch don't match");
     }
     if ((attr.ends.h - attr.starts.h + attr.strides.h - 1) / attr.strides.h !=
         out_shape.h) {
@@ -1831,8 +1836,8 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
 
  private:
   Status UpdateWithMask(const TfLiteStridedSliceParams* tf_options,
-                        const BHWC& input_shape, int ignore_h, int ignore_w,
-                        int ignore_c, SliceAttributes* attr) {
+                        const BHWC& input_shape, int ignore_b, int ignore_h,
+                        int ignore_w, int ignore_c, SliceAttributes* attr) {
     if (tf_options->begin_mask & ignore_h) {
       attr->starts.h = 0;
     }
@@ -1841,6 +1846,9 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     }
     if (tf_options->begin_mask & ignore_c) {
       attr->starts.c = 0;
+    }
+    if (tf_options->begin_mask & ignore_b) {
+      attr->starts.b = 0;
     }
 
     if (tf_options->end_mask & ignore_h) {
@@ -1851,6 +1859,9 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     }
     if (tf_options->end_mask & ignore_c) {
       attr->ends.c = input_shape.c;
+    }
+    if (tf_options->end_mask & ignore_b) {
+      attr->ends.b = input_shape.b;
     }
     return OkStatus();
   }
@@ -1865,29 +1876,27 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     if (attr->ends.c < 0) {
       attr->ends.c = input_shape.c + attr->ends.c;
     }
+    if (attr->ends.b < 0) {
+      attr->ends.b = input_shape.b + attr->ends.b;
+    }
     return OkStatus();
   }
 
   Status ReadAttribsWithBatch(const ObjectReader* reader,
                               const TfLiteStridedSliceParams* tf_options,
                               const BHWC& input_shape, SliceAttributes* attr) {
-    auto read_hwc = [&](int tensor_index, HWC* hwc) -> Status {
+    auto read_bhwc = [&](int tensor_index, BHWC* bhwc) -> Status {
       Tensor<Linear, DataType::INT32> t;
       RETURN_IF_ERROR(reader->ReadTensor(tensor_index, &t));
-      if (t.data[0] != 1 && t.data[0] != 0) {
-        return UnimplementedError(
-            "Slicing for BATCH channel is not supported. If you use batch it "
-            "should be 0 or 1");
-      }
-      *hwc = HWC(t.data[1], t.data[2], t.data[3]);
+      *bhwc = BHWC(t.data[0], t.data[1], t.data[2], t.data[3]);
       return OkStatus();
     };
 
-    RETURN_IF_ERROR(read_hwc(1, &attr->starts));
-    RETURN_IF_ERROR(read_hwc(2, &attr->ends));
-    RETURN_IF_ERROR(read_hwc(3, &attr->strides));
+    RETURN_IF_ERROR(read_bhwc(1, &attr->starts));
+    RETURN_IF_ERROR(read_bhwc(2, &attr->ends));
+    RETURN_IF_ERROR(read_bhwc(3, &attr->strides));
     RETURN_IF_ERROR(UpdateIfNegative(input_shape, attr));
-    RETURN_IF_ERROR(UpdateWithMask(tf_options, input_shape, 2, 4, 8, attr));
+    RETURN_IF_ERROR(UpdateWithMask(tf_options, input_shape, 1, 2, 4, 8, attr));
     return OkStatus();
   }
 
@@ -1895,10 +1904,10 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
                                  const TfLiteStridedSliceParams* tf_options,
                                  const BHWC& input_shape,
                                  SliceAttributes* attr) {
-    auto read_hwc = [&](int tensor_index, HWC* hwc) -> Status {
+    auto read_hwc = [&](int tensor_index, BHWC* bhwc) -> Status {
       Tensor<Linear, DataType::INT32> t;
       RETURN_IF_ERROR(reader->ReadTensor(tensor_index, &t));
-      *hwc = HWC(t.data[0], t.data[1], t.data[2]);
+      *bhwc = BHWC(0, t.data[0], t.data[1], t.data[2]);
       return OkStatus();
     };
 
@@ -1906,7 +1915,10 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(read_hwc(2, &attr->ends));
     RETURN_IF_ERROR(read_hwc(3, &attr->strides));
     RETURN_IF_ERROR(UpdateIfNegative(input_shape, attr));
-    RETURN_IF_ERROR(UpdateWithMask(tf_options, input_shape, 1, 2, 4, attr));
+    RETURN_IF_ERROR(UpdateWithMask(tf_options, input_shape, 0, 1, 2, 4, attr));
+    attr->starts.b = 0;
+    attr->ends.b = input_shape.b;
+    attr->strides.b = 1;
     return OkStatus();
   }
   Status CheckOptionsSupport(const TfLiteStridedSliceParams* tf_options) {

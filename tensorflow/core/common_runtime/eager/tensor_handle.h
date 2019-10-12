@@ -26,6 +26,7 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -122,7 +123,7 @@ class TensorHandle : public core::RefCounted {
   // Symbolic tensor constructor.
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
-  ~TensorHandle() override { VLOG(3) << "Deleting TensorHandle " << this; }
+  ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
 
   Status Tensor(const tensorflow::Tensor** t);
 
@@ -175,6 +176,8 @@ class TensorHandle : public core::RefCounted {
   // on a non-ready tensor.
   void Poison(Status status);
 
+  bool IsReady();
+
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
 
@@ -215,7 +218,7 @@ class TensorHandle : public core::RefCounted {
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
-  Status WaitReady();
+  Status WaitReady(const char* caller);
 
   // TODO(b/136608821): device_ == nullptr iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
@@ -288,8 +291,7 @@ class TensorHandle : public core::RefCounted {
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
 
-  int inference_num_dims_ = shape_inference::InferenceContext::kUnknownRank;
-  gtl::InlinedVector<int64, 4> inference_dims_;
+  PartialTensorShape inference_shape_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

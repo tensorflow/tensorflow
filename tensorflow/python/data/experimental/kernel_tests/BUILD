@@ -60,7 +60,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -117,6 +116,22 @@ py_test(
 )
 
 py_test(
+    name = "dense_to_ragged_batch_test",
+    srcs = ["dense_to_ragged_batch_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "directed_interleave_dataset_test",
     size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
@@ -146,6 +161,7 @@ py_test(
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -477,7 +493,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -533,6 +548,7 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -588,7 +604,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     tags = ["no_pip"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -797,5 +812,4 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )

@@ -37,7 +37,7 @@ LogicalResult ConstantFoldFallbackHook(
   // Note: Sharing the context is fine as ops are side-effect free.
   auto initialize = []() {
     TF_Status* status = TF_NewStatus();
-    // The TFE_Context is created without an accompanyning delete due to current
+    // The TFE_Context is created without an accompanying delete due to current
     // lifetime. This does not result in memory leaks reported (see totw/110).
     TFE_ContextOptions* opts = TFE_NewContextOptions();
     auto ctx = TFE_NewContext(opts, status);

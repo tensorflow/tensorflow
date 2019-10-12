@@ -1,9 +1,12 @@
 add_llvm_library(MLIRTestTransforms
+  TestCallGraph.cpp
   TestConstantFold.cpp
   TestLoopFusion.cpp
   TestInlining.cpp
   TestLoopMapping.cpp
   TestLoopParametricTiling.cpp
+  TestOpaqueLoc.cpp
+  TestMemRefStrideCalculation.cpp
   TestVectorizationUtils.cpp
 
   ADDITIONAL_HEADER_DIRS

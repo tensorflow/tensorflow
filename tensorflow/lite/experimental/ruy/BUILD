@@ -21,7 +21,16 @@ cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     copts = ruy_copts_base(),
-    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
+)
+
+cc_test(
+    name = "check_macros_test",
+    srcs = ["check_macros_test.cc"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":check_macros",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -146,9 +155,20 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":path",
         ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_test(
+    name = "block_map_test",
+    srcs = ["block_map_test.cc"],
+    deps = [
+        ":block_map",
+        ":path",
+        "@com_google_googletest//:gtest",
     ],
 )
 

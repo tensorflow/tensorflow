@@ -149,7 +149,7 @@ def word2vec_basic(log_dir):
         buffer.append(data[data_index])
         data_index += 1
     # Backtrack a little bit to avoid skipping words in the end of a batch
-    data_index = (data_index + len(data) - span) % len(data)
+    data_index = (data_index - span) % len(data)
     return batch, labels
 
   batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)

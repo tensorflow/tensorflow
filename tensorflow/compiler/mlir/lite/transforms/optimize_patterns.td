@@ -80,13 +80,85 @@ def : Pat<(TFL_AddOp (TFL_DepthwiseConv2DOp $input, $filter,
                           $padding, $stride_h, $stride_w,
                           $multiplier)>;
 
-def BroadcastableElementsAttrs :
-    Constraint<CPred<"IsBroadcastableElementsAttrs($0, $1)">>;
-
-// If we see a mul op multiplying a constant value to a convolution op with
-// constant filter and bias, we can fuse the multiplication into the convolution
-// op by constant folding the filter/bias and the mul op's constant operand.
+// If we see an sub op adding a constant value to a convolution op with constant
+// bias, we can fuse the sub into the convolution op by constant folding the
+// bias and the sub op's constant operand.
 // The following pattern restricts to float constant values for now.
+def : Pat<(TFL_SubOp (TFL_Conv2DOp $input, $filter,
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_Conv2DOp $input, $filter,
+                        (TFL_SubOp (ConstantOp $bias),
+                                   (ConstantOp $value), TFL_AF_None),
+                        $h_factor, $w_factor, $act_fn,
+                        $padding, $stride_h, $stride_w)>;
+def : Pat<(TFL_SubOp (TFL_DepthwiseConv2DOp $input, $filter,
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_DepthwiseConv2DOp $input, $filter,
+                          (TFL_SubOp (ConstantOp $bias),
+                                     (ConstantOp $value),
+                                     TFL_AF_None),
+                          $h_factor, $w_factor, $act_fn,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier)>;
+
+class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
+  CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
+
+def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
+
+def ExpandTo4DForDepthwiseConv: NativeCodeCall<
+  "ExpandTo4DForDepthwiseConv($0)">;
+
+// If we see a div op multiplying a constant value to a convolution op with
+// constant filter and bias, we can fuse the division into the convolution
+// op by constant folding the filter/bias and the div op's constant operand.
+// The following pattern restricts to float constant values for now.
+// Note the Div pattern is similar to the Mul pattern.
+// TODO(karimnosseir): generalize pattern and avoid duplication.
+def : Pat<(TFL_DivOp (TFL_DepthwiseConv2DOp $input,
+                          (ConstantOp F32ElementsAttr:$filter),
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_DepthwiseConv2DOp $input,
+                          (TFL_DivOp (ConstantOp $filter),
+                                     (ConstantOp
+                                       (ExpandTo4DForDepthwiseConv $value)),
+                                     TFL_AF_None),
+                          (TFL_DivOp (ConstantOp $bias),
+                                     (ConstantOp $value),
+                                     TFL_AF_None),
+                          $h_factor, $w_factor, $act_fn,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier),
+          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
+
+def : Pat<(TFL_DivOp (TFL_Conv2DOp $input,
+                          (ConstantOp F32ElementsAttr:$filter),
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_Conv2DOp $input,
+                          (TFL_DivOp (ConstantOp $filter),
+                                     (ConstantOp (ExpandTo4DForConv $value)),
+                                     TFL_AF_None),
+                          (TFL_DivOp (ConstantOp $bias),
+                                     (ConstantOp $value),
+                                     TFL_AF_None),
+                          $h_factor, $w_factor, $act_fn,
+                          $padding, $stride_h, $stride_w),
+          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+
 def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
@@ -96,7 +168,8 @@ def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
                      (ConstantOp F32ElementsAttr:$value), $act_fn),
           (TFL_DepthwiseConv2DOp $input,
                           (TFL_MulOp (ConstantOp $filter),
-                                     (ConstantOp $value),
+                                     (ConstantOp (
+                                       ExpandTo4DForDepthwiseConv $value)),
                                      TFL_AF_None),
                           (TFL_MulOp (ConstantOp $bias),
                                      (ConstantOp $value),
@@ -104,19 +177,67 @@ def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
-          [(BroadcastableElementsAttrs $filter, $value)]>;
+          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
+
+def : Pat<(TFL_MulOp (TFL_Conv2DOp $input,
+                          (ConstantOp F32ElementsAttr:$filter),
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_Conv2DOp $input,
+                          (TFL_MulOp (ConstantOp $filter),
+                                     (ConstantOp (ExpandTo4DForConv $value)),
+                                     TFL_AF_None),
+                          (TFL_MulOp (ConstantOp $bias),
+                                     (ConstantOp $value),
+                                     TFL_AF_None),
+                          $h_factor, $w_factor, $act_fn,
+                          $padding, $stride_h, $stride_w),
+          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+
 
 // This pattern applies when the same quantize/dequantize have been used twice
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
 def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 
+
 // Constraint that makes sure both operands are the same operands.
 def EqualOperands : Constraint<CPred<"$0 == $1">>;
+
 
 // Checks if the operand has rank == n
 class OperandHasRank<int n> : Constraint<
   CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
+
+// Matching HardSwish
+def : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     $x, (TFL_AddOp
+          $y,
+          (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+          TFL_AF_Relu6),
+     TFL_AF_None),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
+
+def : Pat<
+  (TFL_MulOp
+    $x,
+    (TFL_MulOp
+     (TFL_AddOp
+      $y,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
 
 // This pattern constructs L2NormalizationOp from
 // Mul->Rsqrt->Sum->Square

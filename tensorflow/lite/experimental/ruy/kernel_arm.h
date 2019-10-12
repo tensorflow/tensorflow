@@ -41,6 +41,7 @@ namespace ruy {
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params);
 #elif RUY_PLATFORM(NEON_32)
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params);
+void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 2>& params);
 #endif
 void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
@@ -87,6 +88,10 @@ struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
+    if (dst->layout.cols == 1) {
+      Kernel8bitNeonOutOfOrder1Col(params);
+      return;
+    }
     Kernel8bitNeonOutOfOrder(params);
   }
 };

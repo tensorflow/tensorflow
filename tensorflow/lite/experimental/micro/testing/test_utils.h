@@ -16,82 +16,26 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_TEST_UTILS_H_
 
 #include <cmath>
-#include <cstdarg>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/experimental/micro/micro_utils.h"
+#include "tensorflow/lite/experimental/micro/test_helpers.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace tflite {
 namespace testing {
 
-// TODO(kreeger): Move to common code!
-inline void SignedSymmetricQuantizeFloats(const float* values, const int size,
-                                          float* min_value, float* max_value,
-                                          int8_t* quantized_values,
-                                          float* scaling_factor) {
-  // First, find min/max in values
-  *min_value = values[0];
-  *max_value = values[0];
-  for (int i = 1; i < size; ++i) {
-    if (values[i] < *min_value) {
-      *min_value = values[i];
-    }
-    if (values[i] > *max_value) {
-      *max_value = values[i];
-    }
-  }
-  const float range = fmaxf(fabsf(*min_value), fabsf(*max_value));
-  if (range == 0.0f) {
-    for (int i = 0; i < size; ++i) {
-      quantized_values[i] = 0;
-    }
-    *scaling_factor = 1;
-    return;
-  }
+// Note: These methods are deprecated, do not use.  See b/141332970.
 
-  const int kScale = 127;
-  *scaling_factor = range / kScale;
-  const float scaling_factor_inv = kScale / range;
-  for (int i = 0; i < size; ++i) {
-    const int32_t quantized_value =
-        static_cast<int32_t>(roundf(values[i] * scaling_factor_inv));
-    // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = fminf(kScale, fmaxf(-kScale, quantized_value));
-  }
-}
-
-inline void SymmetricQuantizeFloats(const float* values, const int size,
-                                    float* min_value, float* max_value,
-                                    uint8_t* quantized_values,
-                                    float* scaling_factor) {
-  SignedSymmetricQuantizeFloats(values, size, min_value, max_value,
-                                reinterpret_cast<int8_t*>(quantized_values),
-                                scaling_factor);
-}
-
-// How many elements are in the array with this shape.
-inline int ElementCount(const TfLiteIntArray& dims) {
-  int result = 1;
-  for (int i = 0; i < dims.size; ++i) {
-    result *= dims.data[i];
-  }
-  return result;
-}
-
-// Wrapper to forward kernel errors to the interpreter's error reporter.
-inline void ReportOpError(struct TfLiteContext* context, const char* format,
-                          ...) {
-  ErrorReporter* error_reporter = static_cast<ErrorReporter*>(context->impl_);
-  va_list args;
-  va_start(args, format);
-  error_reporter->Report(format, args);
-  va_end(args);
+// TODO(kreeger): Don't use this anymore in our tests. Optimized compiler
+// settings can play with pointer placement on the stack (b/140130236).
+inline TfLiteIntArray* IntArrayFromInitializer(
+    std::initializer_list<int> int_initializer) {
+  return IntArrayFromInts(int_initializer.begin());
 }
 
 // Derives the quantization range max from scaling factor and zero point.
@@ -151,6 +95,7 @@ inline int32_t F2Q32(const float value, const float scale) {
   return static_cast<int>(quantized);
 }
 
+// TODO(b/141330728): Move this method elsewhere as part clean up.
 inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                             TfLiteContext* context) {
   context->tensors_size = tensors_size;
@@ -168,68 +113,14 @@ inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
 
   for (int i = 0; i < tensors_size; ++i) {
     if (context->tensors[i].is_variable) {
-      tflite::ResetVariableTensor(&context->tensors[i]);
+      ResetVariableTensor(&context->tensors[i]);
     }
   }
 }
-
-inline TfLiteIntArray* IntArrayFromInts(const int* int_array) {
-  return const_cast<TfLiteIntArray*>(
-      reinterpret_cast<const TfLiteIntArray*>(int_array));
-}
-
-// TODO(kreeger): Don't use this anymore in our tests. Optimized compiler
-// settings can play with pointer placement on the stack (b/140130236).
-inline TfLiteIntArray* IntArrayFromInitializer(
-    std::initializer_list<int> int_initializer) {
-  return IntArrayFromInts(int_initializer.begin());
-}
-
-inline TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
-                                      const char* name,
-                                      bool is_variable = false) {
-  TfLiteTensor result;
-  result.type = kTfLiteFloat32;
-  result.data.f = const_cast<float*>(data);
-  result.dims = dims;
-  result.params = {};
-  result.allocation_type = kTfLiteMemNone;
-  result.bytes = ElementCount(*dims) * sizeof(float);
-  result.allocation = nullptr;
-  result.name = name;
-  result.is_variable = is_variable;
-  return result;
-}
-
 inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
                                       TfLiteIntArray* dims, const char* name,
                                       bool is_variable = false) {
   return CreateFloatTensor(data.begin(), dims, name, is_variable);
-}
-
-inline void PopulateFloatTensor(TfLiteTensor* tensor, float* begin,
-                                float* end) {
-  float* p = begin;
-  float* v = tensor->data.f;
-  while (p != end) {
-    *v++ = *p++;
-  }
-}
-
-inline TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                                     const char* name,
-                                     bool is_variable = false) {
-  TfLiteTensor result;
-  result.type = kTfLiteBool;
-  result.data.b = const_cast<bool*>(data);
-  result.dims = dims;
-  result.params = {};
-  result.allocation_type = kTfLiteMemNone;
-  result.bytes = ElementCount(*dims) * sizeof(bool);
-  result.allocation = nullptr;
-  result.name = name;
-  result.is_variable = is_variable;
-  return result;
 }
 
 inline TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
@@ -293,9 +184,7 @@ inline TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
                                           const char* name,
                                           bool is_variable = false) {
   TfLiteTensor result;
-  float min, max;
-  SymmetricQuantizeFloats(data, ElementCount(*dims), &min, &max, quantized_data,
-                          &result.params.scale);
+  SymmetricQuantize(data, dims, quantized_data, &result.params.scale);
   result.data.uint8 = quantized_data;
   result.type = kTfLiteUInt8;
   result.dims = dims;
@@ -313,9 +202,7 @@ inline TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
                                           const char* name,
                                           bool is_variable = false) {
   TfLiteTensor result;
-  float min, max;
-  SignedSymmetricQuantizeFloats(data, ElementCount(*dims), &min, &max,
-                                quantized_data, &result.params.scale);
+  SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);
   result.data.int8 = quantized_data;
   result.type = kTfLiteInt8;
   result.dims = dims;
@@ -378,19 +265,6 @@ inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
                                  bool is_variable = false) {
   return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name,
                                                      is_variable);
-}
-
-// Do a simple string comparison for testing purposes, without requiring the
-// standard C library.
-inline int TestStrcmp(const char* a, const char* b) {
-  if ((a == nullptr) || (b == nullptr)) {
-    return -1;
-  }
-  while ((*a != 0) && (*a == *b)) {
-    a++;
-    b++;
-  }
-  return *(const unsigned char*)a - *(const unsigned char*)b;
 }
 
 }  // namespace testing

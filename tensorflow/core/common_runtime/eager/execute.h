@@ -50,8 +50,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 Status EagerKernelExecute(EagerContext* ctx,
                           const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                           const core::RefCountPtr<KernelAndDevice>& kernel,
-                          NodeExecStats* maybe_stats,
-                          StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
                           CancellationManager* cancellation_manager,
                           absl::Span<TensorHandle*> retvals);
