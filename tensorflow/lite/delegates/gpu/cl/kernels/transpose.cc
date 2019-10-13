@@ -66,11 +66,16 @@ std::string GetTransposeCode(
   c += "  for (int i = 0; i < 4; ++i) {\n";
   c += "    int dst_channel = Z * 4 + i;\n";
   c += "    if (dst_channel < dst_channels) {;\n";
+  int remap[4];
+  remap[attr.perm.b] = 0;
+  remap[attr.perm.h] = 1;
+  remap[attr.perm.w] = 2;
+  remap[attr.perm.c] = 3;
   const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
-  std::string src_b = op_def.batch_support ? bhwc[attr.perm.b] : "";
-  c += "      int src_x = " + bhwc[attr.perm.w] + ";\n";
-  c += "      int src_y = " + bhwc[attr.perm.h] + ";\n";
-  c += "      int src_c = " + bhwc[attr.perm.c] + ";\n";
+  std::string src_b = op_def.batch_support ? bhwc[remap[0]] : "";
+  c += "      int src_y = " + bhwc[remap[1]] + ";\n";
+  c += "      int src_x = " + bhwc[remap[2]] + ";\n";
+  c += "      int src_c = " + bhwc[remap[3]] + ";\n";
   c += "      int src_z = src_c / 4;\n";
   c += "      int src_sub_ch = src_c % 4;\n";
   c += "      FLT4 t =" + src_tensor.Read4D("src_x", "src_y", "src_z", src_b) +
