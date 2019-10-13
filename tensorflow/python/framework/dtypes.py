@@ -517,16 +517,16 @@ _STRING_TO_TF["double_ref"] = float64_ref
 # quantized types.
 # TODO(mrry,keveman): Investigate Numpy type registration to replace this
 # hard-coding of names.
-_np_qint8 = np.dtype([("qint8", np.int8)])
-_np_quint8 = np.dtype([("quint8", np.uint8)])
-_np_qint16 = np.dtype([("qint16", np.int16)])
-_np_quint16 = np.dtype([("quint16", np.uint16)])
-_np_qint32 = np.dtype([("qint32", np.int32)])
+_np_qint8 = np.dtype([("qint8", "i1")])
+_np_quint8 = np.dtype([("quint8", "i1")])
+_np_qint16 = np.dtype([("qint16", "<i2")])
+_np_quint16 = np.dtype([("quint16", "<u2")])
+_np_qint32 = np.dtype([("qint32", "<i4")])
 
 # _np_bfloat16 is defined by a module import.
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
-np_resource = np.dtype([("resource", np.ubyte)])
+np_resource = np.dtype([('resource', 'u1')])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = {
