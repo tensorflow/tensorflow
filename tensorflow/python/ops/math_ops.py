@@ -125,26 +125,22 @@ def linspace_nd(start, stop, num, axis=0, name=None):
 
   `Start` and `stop` can be tensors of arbitrary size:
 
-  ```
   >>> tf.linspace_nd([0., 5.], [10., 40.], 5, axis=0)
-      <tf.Tensor: shape=(5, 2), dtype=float32, numpy=
-      array([[ 0.  ,  5.  ],
-             [ 2.5 , 13.75],
-             [ 5.  , 22.5 ],
-             [ 7.5 , 31.25],
-             [10.  , 40.  ]], dtype=float32)>
-  ```
+  <tf.Tensor: shape=(5, 2), dtype=float32, numpy=
+  array([[ 0.  ,  5.  ],
+         [ 2.5 , 13.75],
+         [ 5.  , 22.5 ],
+         [ 7.5 , 31.25],
+         [10.  , 40.  ]], dtype=float32)>
 
   `Axis` is where the values will be generated (the dimension in the
   returned tensor which corresponds to the axis will be equal to `num`)
 
-  ```
   >>> tf.linspace_nd([0., 5.], [10., 40.], 5, axis=-1)
-      <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
-      array([[ 0.  ,  2.5 ,  5.  ,  7.5 , 10.  ],
-             [ 5.  , 13.75, 22.5 , 31.25, 40.  ]], dtype=float32)>
+  <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
+  array([[ 0.  ,  2.5 ,  5.  ,  7.5 , 10.  ],
+         [ 5.  , 13.75, 22.5 , 31.25, 40.  ]], dtype=float32)>
 
-  ```
 
 
   Args:
