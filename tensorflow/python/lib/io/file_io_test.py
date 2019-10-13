@@ -617,7 +617,7 @@ class FileIoTest(test.TestCase):
     _ = [i for i in info.items()]
 
   def testCreateDirMode(self):
-    os.umask(0000)
+    oldmask = os.umask(0000)
 
     tf_dir = os.path.join(self._base_dir, "temp_dir_test1")
     os_dir = os.path.join(self._base_dir, "temp_dir_test2")
@@ -627,6 +627,8 @@ class FileIoTest(test.TestCase):
 
     os.mkdir(os_dir)
     os_mode = os.stat(os_dir).st_mode
+
+    os.umask(oldmask)
 
     self.assertEqual(tf_mode, os_mode)
 
