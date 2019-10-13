@@ -498,6 +498,18 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
             << ComputeOpKernelDebugString(*op_kernel, stream_id);
   }
 
+  auto memtypes = op_kernel->input_memory_types();
+  bool host_input = false;
+  for(auto x: memtypes)
+    if(x == HOST_MEMORY)
+      host_input = true;
+  if(host_input)  {
+    if(vlog_1)  {
+      VLOG(1) << "GpuDevice::Compute(): GPU op with hostmem inputs detected; synchronizing the stream";
+    }
+    stream->BlockHostUntilDone();
+  }
+
   if (kernel_tracker_.get()) {
     context->set_record_memory_consumption(true);
     if (pending_cap_ > 0) {
