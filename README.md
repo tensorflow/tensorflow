@@ -63,7 +63,6 @@ $ python
 
 ```python
 >>> import tensorflow as tf
->>> tf.enable_eager_execution()
 >>> tf.add(1, 2).numpy()
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
