@@ -383,7 +383,8 @@ def _tf_dataset_filter(function, iterable):
 def _py_filter(function, iterable):
   return filter(function, iterable)
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map, filter)
+SUPPORTED_BUILTINS = (
+    abs, float, int, len, print, range, enumerate, zip, map, filter)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
