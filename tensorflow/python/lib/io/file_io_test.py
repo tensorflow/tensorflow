@@ -616,6 +616,20 @@ class FileIoTest(test.TestCase):
       info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
 
+  def testCreateDirMode(self):
+    os.umask(0000)
+
+    tf_dir = os.path.join(self._base_dir, "temp_dir_test1")
+    os_dir = os.path.join(self._base_dir, "temp_dir_test2")
+
+    file_io.create_dir_v2(tf_dir)
+    tf_mode = os.stat(tf_dir).st_mode
+
+    os.mkdir(os_dir)
+    os_mode = os.stat(os_dir).st_mode
+
+    self.assertEqual(tf_mode, os_mode)
+
 
 if __name__ == "__main__":
   test.main()
