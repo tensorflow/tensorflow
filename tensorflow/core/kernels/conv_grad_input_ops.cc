@@ -1126,6 +1126,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
+#if TENSORFLOW_USE_ROCM
+  if (TestMIOpenBFloat16Support<T>()) {
+    dtype = DT_BFLOAT16;
+  }
+#endif
   ConvParameters conv_parameters = {
       dims.batch_size,                     // batch
       dims.in_depth,                       // in_depths
@@ -1202,41 +1207,72 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         CheckRedzones(rz_allocator, &result);
       }
     }
+#elif TENSORFLOW_USE_ROCM
+    std::vector<AlgorithmDesc> algorithms;
+    if (TestMIOpenBFloat16Support<T>()) {
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetMIOpenConvolveAlgorithms(
+                      se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
+                      se::dnn::ToDataType<bfloat16>::value, input_desc,
+                      filter_desc, conv_desc, output_desc, &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because MIOpen failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+    } else {
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetMIOpenConvolveAlgorithms(
+                      se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
+                      se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                      conv_desc, output_desc, &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because MIOpen failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+    }
+
+    std::vector<tensorflow::AutotuneResult> results;
+    for (auto profile_algorithm : algorithms) {
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                            ctx);
+      ProfileResult profile_result;
+      bool miopen_launch_status = true;
+      if (TestMIOpenBFloat16Support<T>()) {
+        miopen_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, bfloat16_filter_ptr, output_desc,
+                    bfloat16_out_backprop_ptr, conv_desc, input_desc,
+                    &bfloat16_in_backprop_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+      } else {
+        miopen_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+      }
+
+      if (miopen_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      }
+    }
+#endif
     LogConvAutotuneResults(
         se::dnn::ConvolutionKind::BACKWARD_DATA, se::dnn::ToDataType<T>::value,
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
-#elif TENSORFLOW_USE_ROCM
-    // MIOpen has its own Find and autotuner so use it here, passing
-    // default AlgorithmConfig to force a search
-    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
-    ProfileResult best_result;
-    bool miopen_find_status = true;
-    if (TestMIOpenBFloat16Support<T>()) {
-      miopen_find_status =
-          stream
-              ->ThenConvolveBackwardDataWithAlgorithm(
-                  filter_desc, bfloat16_filter_ptr, output_desc,
-                  bfloat16_out_backprop_ptr, conv_desc, input_desc,
-                  &bfloat16_in_backprop_ptr, &scratch_allocator,
-                  AlgorithmConfig(), &best_result)
-              .ok();
-    } else {
-      miopen_find_status =
-          stream
-              ->ThenConvolveBackwardDataWithAlgorithm(
-                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                  AlgorithmConfig(), &best_result)
-              .ok();
-    }
-    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
-                errors::NotFound("Failed to find backwards-data algorithm!"));
-
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_scratch_size(best_result.scratch_size());
-#endif
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }

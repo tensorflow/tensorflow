@@ -968,6 +968,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
+#if TENSORFLOW_USE_ROCM
+  if (TestMIOpenBFloat16Support<T>()) {
+    dtype = DT_BFLOAT16;
+  }
+#endif
   ConvParameters conv_parameters = {in_batch,             // batch
                                     in_depths,            // in_depths
                                     {{in_rows,            // in_rows
@@ -1047,38 +1052,76 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         CheckRedzones(rz_allocator, &result);
       }
     }
+
+#elif TENSORFLOW_USE_ROCM
+    std::vector<AlgorithmDesc> algorithms;
+    if (TestMIOpenBFloat16Support<T>()) {
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetMIOpenConvolveAlgorithms(
+                      se::dnn::ConvolutionKind::FORWARD, stream,
+                      se::dnn::ToDataType<bfloat16>::value, input_desc,
+                      filter_desc, conv_desc, output_desc, &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because MIOpen failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+    } else {
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetMIOpenConvolveAlgorithms(
+                      se::dnn::ConvolutionKind::FORWARD, stream,
+                      se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                      conv_desc, output_desc, &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because MIOpen failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+    }
+    se::DeviceMemory<T> output_tensor = output_ptr;
+
+    std::vector<tensorflow::AutotuneResult> results;
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      ProfileResult profile_result;
+      bool miopen_launch_status = false;
+      if (TestMIOpenBFloat16Support<T>()) {
+        miopen_launch_status =
+            stream
+                ->ThenConvolveWithAlgorithm(
+                    input_desc, bfloat16_input_ptr, filter_desc,
+                    bfloat16_filter_ptr, conv_desc, output_desc,
+                    &bfloat16_output_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+      } else {
+        miopen_launch_status =
+            stream
+                ->ThenConvolveWithAlgorithm(
+                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                    output_desc, &output_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+      }
+      if (miopen_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      }
+    }
+
+#endif
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
                            se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
                            output_tensor, input_desc, filter_desc, output_desc,
                            conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
-#elif TENSORFLOW_USE_ROCM
-    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-    ProfileResult best_result;
-    bool miopen_find_status = false;
-    if (TestMIOpenBFloat16Support<T>()) {
-      miopen_find_status = stream
-                               ->ThenConvolveWithAlgorithm(
-                                   input_desc, bfloat16_input_ptr, filter_desc,
-                                   bfloat16_filter_ptr, conv_desc, output_desc,
-                                   &bfloat16_output_ptr, &scratch_allocator,
-                                   AlgorithmConfig(), &best_result)
-                               .ok();
-    } else {
-      miopen_find_status =
-          stream
-              ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                          filter_ptr, conv_desc, output_desc,
-                                          &output_ptr, &scratch_allocator,
-                                          AlgorithmConfig(), &best_result)
-              .ok();
-    }
-    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
-                errors::NotFound("Failed to find conv algorithm!"));
-
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_scratch_size(best_result.scratch_size());
-#endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
