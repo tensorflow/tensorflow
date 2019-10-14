@@ -1168,7 +1168,7 @@ class SymbolicShapeRefiner {
     std::vector<ShapeHandle> input_tensors_as_shapes;
 
     node_ctx.inference_context.reset(new InferenceContext(
-        graph_def_version_, node, node_ctx.op_data->op_def, input_shapes,
+        graph_def_version_, *node, node_ctx.op_data->op_def, input_shapes,
         input_tensors, input_tensors_as_shapes,
         std::move(input_handle_shapes_and_types)));
     const Status s = node_ctx.inference_context->construction_status();

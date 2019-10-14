@@ -35,7 +35,7 @@ class TEST_Op<string mnemonic, list<OpTrait> traits = []> :
 // Test Types
 //===----------------------------------------------------------------------===//
 
-def AnyVectorOrTensor: AnyTypeOf<[AnyVector, AnyTensor]>;
+def AnyShaped: ShapedContainerType<[AnyType], IsShapedTypePred, "shaped">;
 
 def TupleOp : TEST_Op<"tuple_32_bit"> {
   let results = (outs TupleOf<[I32, F32]>);
@@ -247,69 +247,80 @@ def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_element
 }
 
 def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
-  let arguments = (ins Variadic<AnyVectorOrTensor>);
-  let results = (outs AnyVectorOrTensor);
+  let arguments = (ins Variadic<AnyShaped>);
 }
 
 def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
     [SameOperandsAndResultShape]> {
-  let arguments = (ins Variadic<AnyVectorOrTensor>);
-  let results = (outs Variadic<AnyVectorOrTensor>);
+  let arguments = (ins Variadic<AnyShaped>);
+  let results = (outs Variadic<AnyShaped>);
+}
+
+def SameOperandAndResultTypeOp : TEST_Op<"same_operand_and_result_type",
+    [SameOperandsAndResultType]> {
+  let arguments = (ins Variadic<AnyType>);
+  let results = (outs Variadic<AnyType>);
 }
 
 def ArgAndResHaveFixedElementTypesOp :
     TEST_Op<"arg_and_res_have_fixed_element_types",
       [PredOpTrait<"fixed type combination",
-         Or<[And<[ElementTypeIsPred<"x", I32>,
-                  ElementTypeIsPred<"y", F32>]>,
-             ElementTypeIsPred<"attr", I8>]>>,
+         And<[ElementTypeIsPred<"x", I32>,
+              ElementTypeIsPred<"y", F32>]>>,
       ElementTypeIs<"res", I16>]> {
   let arguments = (ins
-    AnyVectorOrTensor:$x, AnyVectorOrTensor:$y, AnyAttr:$attr);
-  let results = (outs AnyVectorOrTensor:$res);
+    AnyShaped:$x, AnyShaped:$y);
+  let results = (outs AnyShaped:$res);
 }
 
 def OperandsHaveSameElementType : TEST_Op<"operands_have_same_element_type", [
     AllElementTypesMatch<["x", "y"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let arguments = (ins AnyType:$x, AnyType:$y);
 }
 
-def OperandOneAndResultHaveSameElementType : TEST_Op<
-    "operand_one_and_result_have_same_element_type",
+def OperandZeroAndResultHaveSameElementType : TEST_Op<
+    "operand0_and_result_have_same_element_type",
     [AllElementTypesMatch<["x", "res"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
-  let results = (outs AnyTensor:$res);
+  let arguments = (ins AnyType:$x, AnyType:$y);
+  let results = (outs AnyType:$res);
 }
 
 def OperandsHaveSameType :
     TEST_Op<"operands_have_same_type", [AllTypesMatch<["x", "y"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let arguments = (ins AnyType:$x, AnyType:$y);
 }
 
-def OperandOneAndResultHaveSameType :
-    TEST_Op<"operand_one_and_result_have_same_type",
+def OperandZeroAndResultHaveSameType :
+    TEST_Op<"operand0_and_result_have_same_type",
             [AllTypesMatch<["x", "res"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
-  let results = (outs AnyTensor:$res);
+  let arguments = (ins AnyType:$x, AnyType:$y);
+  let results = (outs AnyType:$res);
 }
 
 def OperandsHaveSameRank :
     TEST_Op<"operands_have_same_rank", [AllRanksMatch<["x", "y"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let arguments = (ins AnyShaped:$x, AnyShaped:$y);
 }
 
-def Operand1AndResultHaveSameRank :
-    TEST_Op<"operand1_and_result_have_same_rank",
+def OperandZeroAndResultHaveSameRank :
+    TEST_Op<"operand0_and_result_have_same_rank",
             [AllRanksMatch<["x", "res"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
-  let results = (outs AnyTensor:$res);
+  let arguments = (ins AnyShaped:$x, AnyShaped:$y);
+  let results = (outs AnyShaped:$res);
 }
 
-def Operand1AndResultHaveSameElementCount :
-    TEST_Op<"operand1_and_result_have_same_element_count",
+def OperandZeroAndResultHaveSameShape :
+    TEST_Op<"operand0_and_result_have_same_shape",
+            [AllShapesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyShaped:$x, AnyShaped:$y);
+  let results = (outs AnyShaped:$res);
+}
+
+def OperandZeroAndResultHaveSameElementCount :
+    TEST_Op<"operand0_and_result_have_same_element_count",
             [AllElementCountsMatch<["x", "res"]>]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
-  let results = (outs AnyTensor:$res);
+  let arguments = (ins AnyShaped:$x, AnyShaped:$y);
+  let results = (outs AnyShaped:$res);
 }
 
 def FourEqualsFive :
@@ -319,8 +330,8 @@ def OperandRankEqualsResultSize :
     TEST_Op<"operand_rank_equals_result_size",
             [AllMatch<[Rank<"operand">.result, ElementCount<"result">.result],
                       "operand rank equals result size">]> {
-  let arguments = (ins AnyTensor:$operand);
-  let results = (outs AnyTensor:$result);
+  let arguments = (ins AnyShaped:$operand);
+  let results = (outs AnyShaped:$result);
 }
 
 def IfFirstOperandIsNoneThenSoIsSecond :
@@ -476,6 +487,12 @@ def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
   let arguments = (ins I32:$operand);
   let results = (outs I32);
   let regions = (region SizedRegion<1>:$region);
+  let hasFolder = 1;
+}
+
+def TestOpWithVariadicResultsAndFolder: TEST_Op<"op_with_variadic_results_and_folder"> {
+  let arguments = (ins Variadic<I32>:$operands);
+  let results = (outs Variadic<I32>);
   let hasFolder = 1;
 }
 

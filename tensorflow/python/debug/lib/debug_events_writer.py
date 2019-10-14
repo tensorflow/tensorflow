@@ -139,6 +139,10 @@ class DebugEventsWriter(object):
     """
     _pywrap_debug_events_writer.FlushExecutionFiles(self._dump_root)
 
+  def Close(self):
+    """Close the writer."""
+    _pywrap_debug_events_writer.Close(self._dump_root)
+
   @property
   def dump_root(self):
     return self._dump_root

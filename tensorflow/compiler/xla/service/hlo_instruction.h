@@ -91,7 +91,8 @@ class HloPrintOptions {
         canonicalize_instruction_names_(false),
         indent_amount_(0),
         is_in_nested_computation_(false),
-        print_ids_(true) {}
+        print_ids_(true),
+        canonicalize_computations_(false) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -124,7 +125,7 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_compact_operands(true)
@@ -134,7 +135,8 @@ class HloPrintOptions {
         .set_print_percent(false)
         .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true)
-        .set_print_ids(false);
+        .set_print_ids(false)
+        .set_canonicalize_computations(true);
   }
 
   // If true, large constants will be printed out.
@@ -218,6 +220,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, canonicalizes computations, sorting by computations' names.
+  HloPrintOptions& set_canonicalize_computations(bool value) {
+    canonicalize_computations_ = value;
+    return *this;
+  }
+
   // The indent of the hlo text block.
   HloPrintOptions& set_indent_amount(int value) {
     indent_amount_ = value;
@@ -250,6 +258,7 @@ class HloPrintOptions {
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
+  bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
 
@@ -269,6 +278,7 @@ class HloPrintOptions {
   int indent_amount_;
   bool is_in_nested_computation_;
   bool print_ids_;
+  bool canonicalize_computations_;
 };
 
 // For canonical string output, we need to have a canonical way to rename

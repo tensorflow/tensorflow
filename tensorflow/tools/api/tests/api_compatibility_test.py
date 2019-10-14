@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +34,7 @@ import re
 import sys
 
 import six
+from six.moves import range
 import tensorflow as tf
 
 from google.protobuf import message
@@ -109,7 +111,8 @@ def _KeyToFilePath(key, api_version):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
-  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
+  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash,
+                                six.ensure_str(key))
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
   return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
@@ -125,7 +128,7 @@ def _FileNameToKey(filename):
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
   api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
-                          base_filename_without_ext)
+                          six.ensure_str(base_filename_without_ext))
   return api_object_key
 
 
@@ -149,8 +152,8 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
   for f in golden_file_list:
     if any(
-        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes
-    ):
+        six.ensure_str(f).rsplit('/')[-1].startswith(pre)
+        for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list

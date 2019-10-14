@@ -43,24 +43,25 @@
 using namespace mlir;
 
 inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
-                            CUresult error, FuncOp &function) {
-  function.emitError(message.concat(" failed with error code ")
-                         .concat(llvm::Twine{error})
-                         .concat("[")
-                         .concat(buffer)
-                         .concat("]"));
+                            CUresult error, Location loc) {
+  emitError(loc, message.concat(" failed with error code ")
+                     .concat(llvm::Twine{error})
+                     .concat("[")
+                     .concat(buffer)
+                     .concat("]"));
 }
 
 #define RETURN_ON_CUDA_ERROR(expr, msg)                                        \
   {                                                                            \
     auto _cuda_error = (expr);                                                 \
     if (_cuda_error != CUDA_SUCCESS) {                                         \
-      emit_cuda_error(msg, jitErrorBuffer, _cuda_error, function);             \
+      emit_cuda_error(msg, jitErrorBuffer, _cuda_error, loc);                  \
       return {};                                                               \
     }                                                                          \
   }
 
-OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
+OwnedCubin compilePtxToCubin(const std::string ptx, Location loc,
+                             StringRef name) {
   char jitErrorBuffer[4096] = {0};
 
   RETURN_ON_CUDA_ERROR(cuInit(0), "cuInit");
@@ -86,10 +87,10 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   RETURN_ON_CUDA_ERROR(
       cuLinkAddData(linkState, CUjitInputType::CU_JIT_INPUT_PTX,
                     const_cast<void *>(static_cast<const void *>(ptx.c_str())),
-                    ptx.length(), function.getName().data(), /* kernel name */
-                    0,       /* number of jit options */
-                    nullptr, /* jit options */
-                    nullptr  /* jit option values */
+                    ptx.length(), name.data(), /* kernel name */
+                    0,                         /* number of jit options */
+                    nullptr,                   /* jit options */
+                    nullptr                    /* jit option values */
                     ),
       "cuLinkAddData");
 
@@ -117,7 +118,6 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   kernelPm.addPass(createLowerGpuOpsToNVVMOpsPass());
   kernelPm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
   pm.addPass(createLowerToLLVMPass());
-  pm.addPass(createGenerateCubinAccessorPass());
   pm.addPass(createConvertGpuLaunchFuncToCudaCallsPass());
 
   return pm.run(m);

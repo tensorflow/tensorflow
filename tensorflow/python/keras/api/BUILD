@@ -13,6 +13,10 @@ package(
 keras_packages = [
     "tensorflow.python",
     "tensorflow.python.keras",
+    "tensorflow.python.keras.activations",
+    "tensorflow.python.keras.saving.model_config",
+    "tensorflow.python.keras.saving.save",
+    "tensorflow.python.keras.saving.saved_model_experimental",
     "tensorflow.python.keras.utils.data_utils",
     "tensorflow.python.keras.utils.generic_utils",
     "tensorflow.python.keras.utils.io_utils",

@@ -8,6 +8,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
@@ -351,6 +352,11 @@ cc_library(
         ":platform",
         ":types",
     ] + tf_platform_helper_deps("platform_port_impl"),
+)
+
+build_test(
+    name = "platform_port_build_test",
+    targets = [":platform_port"],
 )
 
 cc_library(

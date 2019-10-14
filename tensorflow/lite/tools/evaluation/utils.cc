@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#if !defined(_WIN32)
 #include <dirent.h>
+#endif
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -50,6 +52,7 @@ bool ReadFileLines(const std::string& file_path,
   return true;
 }
 
+#if !defined(_WIN32)
 TfLiteStatus GetSortedFileNames(
     const std::string& directory, std::vector<std::string>* result,
     const std::unordered_set<std::string>& extensions) {
@@ -80,6 +83,7 @@ TfLiteStatus GetSortedFileNames(
   std::sort(result->begin(), result->end());
   return kTfLiteOk;
 }
+#endif
 
 // TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {

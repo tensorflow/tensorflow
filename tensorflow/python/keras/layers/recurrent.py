@@ -1285,7 +1285,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(SimpleRNNCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1716,7 +1716,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                implementation=1,
                reset_after=False,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(GRUCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -2269,7 +2269,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                implementation=1,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(LSTMCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)

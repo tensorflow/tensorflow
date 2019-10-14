@@ -152,6 +152,7 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
     case kTfLiteBuiltinExpandDims:
     case kTfLiteBuiltinGreater:
     case kTfLiteBuiltinGreaterEqual:
+    case kTfLiteBuiltinHardSwish:
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
@@ -439,6 +440,157 @@ class NNAPIOpBuilder {
         ann_tensor_index_out);
   }
 
+  // Add a constant tensor with a single element, intended for broadcast capable
+  // ops.
+  TfLiteStatus AddSingleValueConstantTensor(float value, bool is_quantized) {
+    if (!is_quantized) {
+      return AddVectorFloat32Operand(&value, 1);
+    } else {
+      // in the case that we need to add a quantized tensor, set the value to
+      // 64, zero_point to be 0 and adjust scale accordingly.
+      const uint8_t quant8_value = 64;
+      return AddVectorOperand<uint8_t>(&quant8_value, 1,
+                                       ANEURALNETWORKS_TENSOR_QUANT8_ASYMM,
+                                       value / quant8_value, 0);
+    }
+  }
+
+  // Calculate the scale and zero_point for 8-bit unsigned tensor, given float
+  // min and max. zero_point is clamped to [0, 255].
+  TfLiteStatus CalculateQuantizationParams(float min, float max, float* scale,
+                                           int* zero_point) {
+    if (max < min) return kTfLiteError;
+    *scale = (max - min) / 255.f;
+    if (min > 0.f) {
+      *zero_point = 0;
+    } else if (max < 0.f) {
+      *zero_point = 255;
+    } else {
+      *zero_point = (0.f - min) / (*scale);
+    }
+    return kTfLiteOk;
+  }
+
+  // Lower hardswish according to the following equation:
+  // hard_swish[x] = x (ReLU6(x + 3)) / 6 == x * (Relu_N1_to_1(x/3) * 3 + 3) / 6
+  // = 0.5x * Relu_N1_to_1(x/3) + 0.5x
+  TfLiteStatus AddHardSwish(int lite_input_index, int lite_output_index,
+                            bool need_int8_conversion) {
+    const TfLiteTensor& tensor = context_->tensors[lite_input_index];
+    float input_scale = tensor.params.scale;
+    int input_zero_point = tensor.params.zero_point;
+    float input_min = 0.f;
+    float input_max = 0.f;
+    int tensor_flags = 0;
+    if (need_int8_conversion) {
+      tensor_flags = tensor_flags | NN_TENSOR_FLAG_INT8_CONVERSION;
+      input_zero_point += 128;
+    }
+    bool is_quantized = false;
+    int nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+    if (tensor.type == kTfLiteInt8 || tensor.type == kTfLiteUInt8) {
+      is_quantized = true;
+      nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
+      input_min = (0 - input_zero_point) * input_scale;
+      input_max = (255 - input_zero_point) * input_scale;
+    }
+
+    // Stage1 : s1 = Relu1(x * 1/3)
+    float s1_output_min = 0.f;
+    float s1_output_max = 0.f;
+    int s1_out_ann_index = 0;
+    {
+      float s1_output_scale = 0.f;
+      int s1_output_zero_point = 0;
+      if (is_quantized) {
+        // clamp the output range to [-1, 1] if needed.
+        s1_output_min = input_min / 3.f < -1.f ? -1.f : input_min / 3.f;
+        s1_output_max = input_max / 3.f > 1.f ? 1.f : input_max / 3.f;
+        CalculateQuantizationParams(s1_output_min, s1_output_max,
+                                    &s1_output_scale, &s1_output_zero_point);
+      }
+      TF_LITE_ENSURE_OK(context_,
+                        AddTensorInput(lite_input_index, false, tensor_flags));
+      const float value3f = 1.f / 3.f;
+      TF_LITE_ENSURE_OK(context_,
+                        AddSingleValueConstantTensor(value3f, is_quantized));
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_RELU1));
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              tensor.dims->size, reinterpret_cast<uint32_t*>(tensor.dims->data),
+              nn_type, s1_output_scale, s1_output_zero_point,
+              &s1_out_ann_index));
+      TF_LITE_ENSURE_OK(context_, FinalizeAddOperation(ANEURALNETWORKS_MUL));
+    }
+
+    // Stage2 : s2 = x / 2
+    float s2_output_min = input_min / 2.f;
+    float s2_output_max = input_max / 2.f;
+    int s2_out_ann_index = 0;
+    {
+      float s2_output_scale = input_scale / 2.0f;
+      int s2_output_zero_point = input_zero_point;
+      TF_LITE_ENSURE_OK(context_,
+                        AddTensorInput(lite_input_index, false, tensor_flags));
+      const float value2f = 0.5f;
+      TF_LITE_ENSURE_OK(context_,
+                        AddSingleValueConstantTensor(value2f, is_quantized));
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              tensor.dims->size, reinterpret_cast<uint32_t*>(tensor.dims->data),
+              nn_type, s2_output_scale, s2_output_zero_point,
+              &s2_out_ann_index));
+      TF_LITE_ENSURE_OK(context_, FinalizeAddOperation(ANEURALNETWORKS_MUL));
+    }
+
+    // Stage 3 : s3 = s1 * s2
+    int s3_out_ann_index = 0;
+    {
+      augmented_inputs_.push_back(s1_out_ann_index);
+      augmented_inputs_.push_back(s2_out_ann_index);
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      float s3_output_scale = 0.f;
+      int s3_output_zero_point = 0;
+      if (is_quantized) {
+        // the min for stage 3 is always 0.0f.
+        float s3_output_min = 0.f;
+        // the max for stage 3 is max(s1_min * s2_min, s1_max * s3_max).
+        float s3_output_max =
+            s1_output_max * s2_output_max > s1_output_min * s2_output_min
+                ? s1_output_max * s2_output_max
+                : s1_output_min * s2_output_min;
+        CalculateQuantizationParams(s3_output_min, s3_output_max,
+                                    &s3_output_scale, &s3_output_zero_point);
+      }
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              tensor.dims->size, reinterpret_cast<uint32_t*>(tensor.dims->data),
+              nn_type, s3_output_scale, s3_output_zero_point,
+              &s3_out_ann_index));
+      TF_LITE_ENSURE_OK(context_, FinalizeAddOperation(ANEURALNETWORKS_MUL));
+    }
+
+    // Stage 4: y = s3 + s2
+    {
+      augmented_inputs_.push_back(s2_out_ann_index);
+      augmented_inputs_.push_back(s3_out_ann_index);
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(context_,
+                        AddTensorOutput(lite_output_index, tensor_flags));
+      TF_LITE_ENSURE_OK(context_, FinalizeAddOperation(ANEURALNETWORKS_ADD));
+    }
+
+    return kTfLiteOk;
+  }
+
   // Adds a Dequantize operator and replaces the input tensor index with the
   // dequantized version. If the dequantized version of the operator already
   // exists then it is not added again.
@@ -668,10 +820,22 @@ class NNAPIOpBuilder {
   TfLiteStatus AddFloat32OutputTensor(uint32_t dimension_count,
                                       const uint32_t* dimension_data,
                                       int* ann_index_out) {
+    return AddAdditionalOutputTensor(
+        dimension_count, dimension_data, ANEURALNETWORKS_TENSOR_FLOAT32,
+        /*scale=*/0.f, /*zero_point=*/0, ann_index_out);
+  }
+
+  TfLiteStatus AddAdditionalOutputTensor(uint32_t dimension_count,
+                                         const uint32_t* dimension_data,
+                                         int32_t nn_type, float scale,
+                                         int32_t zero_point,
+                                         int* ann_index_out) {
     ANeuralNetworksOperandType operand_type{
-        .type = ANEURALNETWORKS_TENSOR_FLOAT32,
+        .type = nn_type,
         .dimensionCount = dimension_count,
         .dimensions = dimension_data,
+        .scale = scale,
+        .zeroPoint = zero_point,
     };
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context_,
@@ -905,7 +1069,7 @@ class NNAPIOpBuilder {
 
   // Return status code of the latest NNAPI call.
   int* nnapi_errno_;
-};
+};  // namespace nnapi
 
 namespace {
 struct OpValidationContext {
@@ -1195,10 +1359,10 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
              &val_ctx);
     } break;
     case kTfLiteBuiltinHardSwish: {
-      // TODO(131260336): Add support for hardswish, at the very least
-      // we should deconstruct it into basic ops. Though for some nnapi
-      // accelerators using optimized tflite kernels might even be faster.
-      AddValidationFailure("kTfLiteBuiltinHardSwish not supported", &val_ctx);
+      // Add support for hardswish. For Pre-Q devices, deconstructing it into
+      // basic ops. Though for some nnapi accelerators using optimized tflite
+      // kernels might even be faster.
+      ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinSoftmax: {
       ExpectOpVersion(version, 2, &val_ctx);
@@ -2982,6 +3146,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
       input_tensor_flags |= NN_TENSOR_FLAG_SCALAR_AS_TENSOR;
     }
 
+    // h_swish will be lowered into supported NNAPI operations.
+    if (reg->builtin_code == kTfLiteBuiltinHardSwish) {
+      builder.AddHardSwish(node->inputs->data[0], node->outputs->data[0],
+                           need_int8_conversion);
+      continue;
+    }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
       const auto input_index = node->inputs->data[input_pos];

@@ -45,7 +45,7 @@ namespace mlir {
 namespace tblgen {
 
 // Wrapper class that contains a MLIR op's information (e.g., operands,
-// atributes) defined in TableGen and provides helper methods for
+// attributes) defined in TableGen and provides helper methods for
 // accessing them.
 class Operator {
 public:
@@ -96,7 +96,7 @@ public:
   // Returns the number of variadic results in this operation.
   unsigned getNumVariadicResults() const;
 
-  // Op attribute interators.
+  // Op attribute iterators.
   using attribute_iterator = const NamedAttribute *;
   attribute_iterator attribute_begin() const;
   attribute_iterator attribute_end() const;

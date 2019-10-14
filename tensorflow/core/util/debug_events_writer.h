@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
@@ -137,6 +138,25 @@ class DebugEventsWriter {
   // are written to the *.graph_execution_traces file.
   // Takes ownership of graph_execution_trace.
   void WriteGraphExecutionTrace(GraphExecutionTrace* graph_execution_trace);
+
+  // Write a graph execution trace without using a protocol buffer.
+  // Instead, pass the raw values related to the graph execution trace.
+  // Args:
+  //   tfdbg_context_id: A unique ID for the context of interest, e.g., a
+  //   concreted compiled tf.function that the op of interest belongs to.
+  //   op_name: Name of the op that this graph execution trace is concerned
+  //     with. Applicable only to the single-tensor trace case. For cases in
+  //     which the trace concerns multiple tensors, this is an empty string.
+  //   output_slot: Output slot index of the op that this trace is concerned
+  //     with.
+  //   tensor_debug_mode: An integer that represents the tensor-debug mode enum.
+  //   tensor_value: The value of the tensor that describes the tensor(s)
+  //     that this trace is concerned with. The sematics of this tensor value
+  //     depends on the value of `tensor_debug_mode`.
+  void WriteGraphExecutionTrace(const string& tfdbg_context_id,
+                                const string& op_name, int32 output_slot,
+                                int32 tensor_debug_mode,
+                                const Tensor& tensor_value);
 
   // Writes a serialized DebugEvent to one of the debug-events files
   // concerned with the non-execution events: the SOURCE_FILES, STACK_FRAMES

@@ -689,13 +689,14 @@ bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
                                                size);
 }
 
-bool StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                             uint64 size) {
+port::Status StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                     uint64 size) {
   return implementation_->MemZero(stream, location, size);
 }
 
-bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                              uint32 pattern, uint64 size) {
+port::Status StreamExecutor::Memset32(Stream *stream,
+                                      DeviceMemoryBase *location,
+                                      uint32 pattern, uint64 size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -898,7 +899,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 }
 
 port::StatusOr<StreamExecutor *>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
+StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
   if (device_ordinal < 0) {
     return tensorflow::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -915,6 +916,26 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
 
 bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
   return false;
+}
+
+port::StatusOr<Stream *> StreamExecutorMemoryAllocator::GetStream(
+    int device_ordinal) {
+  CHECK(!AllowsAsynchronousDeallocation())
+      << "The logic below only works for synchronous allocators";
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                      GetStreamExecutor(device_ordinal));
+  Stream *out = [&] {
+    absl::MutexLock lock(&mutex_);
+    if (!streams_.count(device_ordinal)) {
+      auto p = streams_.emplace(std::piecewise_construct,
+                                std::forward_as_tuple(device_ordinal),
+                                std::forward_as_tuple(executor));
+      p.first->second.Init();
+      return &p.first->second;
+    }
+    return &streams_.at(device_ordinal);
+  }();
+  return out;
 }
 
 }  // namespace stream_executor

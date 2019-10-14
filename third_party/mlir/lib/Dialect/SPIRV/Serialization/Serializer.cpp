@@ -127,6 +127,12 @@ private:
 
   LogicalResult processSpecConstantOp(spirv::SpecConstantOp op);
 
+  /// SPIR-V dialect supports OpUndef using spv.UndefOp that produces a SSA
+  /// value to use with other operations. The SPIR-V spec recommends that
+  /// OpUndef be generated at module level. The serialization generates an
+  /// OpUndef for each type needed at module level.
+  LogicalResult processUndefOp(spirv::UndefOp op);
+
   /// Emit OpName for the given `resultID`.
   LogicalResult processName(uint32_t resultID, StringRef name);
 
@@ -333,6 +339,9 @@ private:
   /// Map from blocks to their <id>s.
   DenseMap<Block *, uint32_t> blockIDMap;
 
+  /// Map from the Type to the <id> that represents undef value of that type.
+  DenseMap<Type, uint32_t> undefValIDMap;
+
   /// Map from results of normal operations to their <id>s.
   DenseMap<Value *, uint32_t> valueIDMap;
 
@@ -447,6 +456,22 @@ LogicalResult Serializer::processSpecConstantOp(spirv::SpecConstantOp op) {
     return processName(resultID, op.sym_name());
   }
   return failure();
+}
+
+LogicalResult Serializer::processUndefOp(spirv::UndefOp op) {
+  auto undefType = op.getType();
+  auto &id = undefValIDMap[undefType];
+  if (!id) {
+    id = getNextID();
+    uint32_t typeID = 0;
+    if (failed(processType(op.getLoc(), undefType, typeID)) ||
+        failed(encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpUndef,
+                                     {typeID, id}))) {
+      return failure();
+    }
+  }
+  valueIDMap[op.getResult()] = id;
+  return success();
 }
 
 LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
@@ -1502,6 +1527,9 @@ LogicalResult Serializer::processOperation(Operation *op) {
   }
   if (auto specConstOp = dyn_cast<spirv::SpecConstantOp>(op)) {
     return processSpecConstantOp(specConstOp);
+  }
+  if (auto undefOp = dyn_cast<spirv::UndefOp>(op)) {
+    return processUndefOp(undefOp);
   }
 
   // Then handle all the ops that directly mirror SPIR-V instructions with

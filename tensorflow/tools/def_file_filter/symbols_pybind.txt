@@ -60,7 +60,7 @@ tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
 
-[status]  # device_lib
+[lib_internal_impl]  # device_lib
 tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
@@ -74,3 +74,7 @@ tensorflow::SessionOptions::SessionOptions
 tensorflow::ConfigProto::ConfigProto
 tensorflow::ConfigProto::ParseFromString
 tensorflow::DeviceAttributes::SerializeToString
+
+[py_exception_registry] # py_exception_registry
+tensorflow::PyExceptionRegistry::Init
+tensorflow::PyExceptionRegistry::Lookup

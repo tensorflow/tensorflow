@@ -60,9 +60,9 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
   bool isSigned =
       (flags & QuantizationFlags::Signed) == QuantizationFlags::Signed;
   int64_t defaultIntegerMin =
-      getDefaultMininumForInteger(isSigned, integralWidth);
+      getDefaultMinimumForInteger(isSigned, integralWidth);
   int64_t defaultIntegerMax =
-      getDefaultMaxinumForInteger(isSigned, integralWidth);
+      getDefaultMaximumForInteger(isSigned, integralWidth);
   if (storageTypeMax - storageTypeMin <= 0 ||
       storageTypeMin < defaultIntegerMin ||
       storageTypeMax > defaultIntegerMax) {

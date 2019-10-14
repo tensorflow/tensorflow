@@ -64,10 +64,7 @@ std::string GetPaddingCode(
     c += "    int channel = start_channel + " + std::to_string(i) + ";\n";
     c += "    int s_z = channel - prepended.z;\n";
     c += "    if (s_z >= 0 && s_z < src_channels) {\n";
-    c += "      FLT4 t = " +
-         src_tensor.Read3D("s_x", "s_y", "s_z / 4",
-                           TextureAddressMode::DONT_CARE) +
-         ";\n";
+    c += "      FLT4 t = " + src_tensor.Read3D("s_x", "s_y", "s_z / 4") + ";\n";
     c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
     c += "      result" + s + " = t_ar[s_z % 4];\n";
     c += "    }\n";

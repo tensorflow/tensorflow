@@ -66,8 +66,10 @@ void ModuleOp::print(OpAsmPrinter &p) {
   p << "module";
 
   Optional<StringRef> name = getName();
-  if (name)
-    p << " @" << *name;
+  if (name) {
+    p << ' ';
+    p.printSymbolName(*name);
+  }
 
   // Print the module attributes.
   auto attrs = getAttrs();

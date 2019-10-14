@@ -8169,12 +8169,10 @@ op {
   name: "Copy"
   input_arg {
     name: "input"
-    description: "Input tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Output tensor, deep-copied from input."
     type_attr: "T"
   }
   attr {
@@ -8187,7 +8185,6 @@ op {
     default_value {
       s: ""
     }
-    description: "The name of the input tensor."
   }
   attr {
     name: "debug_ops_spec"
@@ -8196,22 +8193,17 @@ op {
       list {
       }
     }
-    description: "A list of debug op spec (op, url, gated_grpc) for attached debug\nops. Each element of the list has the format\n<debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented\nas 0/1. E.g., \"DebugIdentity;grpc://foo:3333;1\",\n\"DebugIdentity;file:///tmp/tfdbg_1;0\"."
   }
-  summary: "Copy Op."
-  description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\nN.B.: If the all downstream attached debug ops are disabled given the current\ngRPC gating status, the output will simply forward the input tensor without\ndeep-copying. See the documentation of Debug* ops for more details.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
   allows_uninitialized_input: true
 }
 op {
   name: "CopyHost"
   input_arg {
     name: "input"
-    description: "Input tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Output tensor, deep-copied from input."
     type_attr: "T"
   }
   attr {
@@ -8224,7 +8216,6 @@ op {
     default_value {
       s: ""
     }
-    description: "The name of the input tensor."
   }
   attr {
     name: "debug_ops_spec"
@@ -8233,10 +8224,7 @@ op {
       list {
       }
     }
-    description: "A list of debug op spec (op, url, gated_grpc) for attached debug\nops. Each element of the list has the format\n<debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented\nas 0/1. E.g., \"DebugIdentity;grpc://foo:3333;1\",\n\"DebugIdentity;file:///tmp/tfdbg_1;0\"."
   }
-  summary: "Copy Host Op."
-  description: "Performs CPU-to-CPU deep-copying of tensor.\nN.B.: If the all downstream attached debug ops are disabled given the current\ngRPC gating status, the output will simply forward the input tensor without\ndeep-copying. See the documentation of Debug* ops for more details.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
   allows_uninitialized_input: true
 }
 op {
@@ -10284,6 +10272,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "strip_device_assignment"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "DatasetToSingleElement"
@@ -10363,12 +10358,10 @@ op {
   name: "DebugIdentity"
   input_arg {
     name: "input"
-    description: "Input tensor, non-Reference type."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Output tensor that equals the input tensor."
     type_attr: "T"
   }
   attr {
@@ -10388,7 +10381,6 @@ op {
     default_value {
       s: ""
     }
-    description: "Name of the input tensor."
   }
   attr {
     name: "debug_urls"
@@ -10397,7 +10389,6 @@ op {
       list {
       }
     }
-    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
   }
   attr {
     name: "gated_grpc"
@@ -10405,22 +10396,69 @@ op {
     default_value {
       b: false
     }
-    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
   }
-  summary: "Debug Identity Op."
-  description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
   allows_uninitialized_input: true
+}
+op {
+  name: "DebugIdentityV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tfdbg_context_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "op_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "output_slot"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "DebugNanCount"
   input_arg {
     name: "input"
-    description: "Input tensor, non-Reference type."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "An integer output tensor that is the number of NaNs in the input."
     type: DT_INT64
   }
   attr {
@@ -10440,7 +10478,6 @@ op {
     default_value {
       s: ""
     }
-    description: "Name of the input tensor."
   }
   attr {
     name: "debug_urls"
@@ -10449,7 +10486,6 @@ op {
       list {
       }
     }
-    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011."
   }
   attr {
     name: "gated_grpc"
@@ -10457,22 +10493,17 @@ op {
     default_value {
       b: false
     }
-    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
   }
-  summary: "Debug NaN Value Counter Op"
-  description: "Counts number of NaNs in the input tensor, for debugging."
   allows_uninitialized_input: true
 }
 op {
   name: "DebugNumericSummary"
   input_arg {
     name: "input"
-    description: "Input tensor, non-Reference type, float or double."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [14 + nDimensions], where nDimensions is the\n  the number of dimensions of the tensor\'s shape. The elements of output are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [12]: Data type of the tensor encoded as an enum integer. See the DataType\n        proto for more details.\n  [13]: Number of dimensions of the tensor (ndims).\n  [14+]: Sizes of the dimensions."
     type: DT_DOUBLE
   }
   attr {
@@ -10492,7 +10523,6 @@ op {
     default_value {
       s: ""
     }
-    description: "Name of the input tensor."
   }
   attr {
     name: "debug_urls"
@@ -10501,7 +10531,6 @@ op {
       list {
       }
     }
-    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
   }
   attr {
     name: "lower_bound"
@@ -10509,7 +10538,6 @@ op {
     default_value {
       f: -inf
     }
-    description: "(float) The lower bound <= which values will be included in the\ngeneralized -inf count. Default: -inf."
   }
   attr {
     name: "upper_bound"
@@ -10517,7 +10545,6 @@ op {
     default_value {
       f: inf
     }
-    description: "(float) The upper bound >= which values will be included in the\ngeneralized +inf count. Default: +inf."
   }
   attr {
     name: "mute_if_healthy"
@@ -10525,7 +10552,6 @@ op {
     default_value {
       b: false
     }
-    description: "(bool) Do not send data to the debug URLs unless at least one\nof elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and\ninf counts) is non-zero."
   }
   attr {
     name: "gated_grpc"
@@ -10533,10 +10559,7 @@ op {
     default_value {
       b: false
     }
-    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
   }
-  summary: "Debug Numeric Summary Op."
-  description: "Provide a basic summary of numeric value types, range and distribution."
   allows_uninitialized_input: true
 }
 op {
@@ -46719,6 +46742,13 @@ op {
   attr {
     name: "f"
     type: "func"
+  }
+  attr {
+    name: "autotuner_thresh"
+    type: "int"
+    default_value {
+      i: 0
+    }
   }
 }
 op {

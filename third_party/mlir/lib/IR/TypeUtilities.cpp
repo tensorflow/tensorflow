@@ -61,6 +61,37 @@ bool mlir::isOpaqueTypeWithName(Type type, StringRef dialect,
   return false;
 }
 
+/// Returns success if the given two types have compatible shape. That is,
+/// they are both scalars (not shaped), or they are both shaped types and at
+/// least one is unranked or they have compatible dimensions. Dimensions are
+/// compatible if at least one is dynamic or both are equal. The element type
+/// does not matter.
+LogicalResult mlir::verifyCompatibleShape(Type type1, Type type2) {
+  auto sType1 = type1.dyn_cast<ShapedType>();
+  auto sType2 = type2.dyn_cast<ShapedType>();
+
+  // Either both or neither type should be shaped.
+  if (!sType1)
+    return success(!sType2);
+  if (!sType2)
+    return failure();
+
+  if (!sType1.hasRank() || !sType2.hasRank())
+    return success();
+
+  if (sType1.getRank() != sType2.getRank())
+    return failure();
+
+  for (const auto &dims : llvm::zip(sType1.getShape(), sType2.getShape())) {
+    int64_t dim1 = std::get<0>(dims);
+    int64_t dim2 = std::get<1>(dims);
+    if (!ShapedType::isDynamic(dim1) && !ShapedType::isDynamic(dim2) &&
+        dim1 != dim2)
+      return failure();
+  }
+  return success();
+}
+
 OperandElementTypeIterator::OperandElementTypeIterator(OperandIterator it)
     : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {}
 

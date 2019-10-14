@@ -241,7 +241,7 @@ def SPV_AnyStruct : Type<SPV_IsStructType, "any SPIR-V struct type">;
 
 def SPV_Numerical : AnyTypeOf<[SPV_Integer, SPV_Float]>;
 def SPV_Scalar : AnyTypeOf<[SPV_Numerical, SPV_Bool]>;
-def SPV_Aggregrate : AnyTypeOf<[SPV_AnyArray, SPV_AnyStruct]>;
+def SPV_Aggregate : AnyTypeOf<[SPV_AnyArray, SPV_AnyStruct]>;
 def SPV_Composite :
     AnyTypeOf<[SPV_Vector, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct]>;
 def SPV_Type : AnyTypeOf<[

@@ -300,12 +300,14 @@ bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
 bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
   // b/135640736: MatrixInverse performance issues.
+  // b/111271662: MatrixSolve performance issues.
   // https://github.com/tensorflow/tensorflow/pull/31012:
   //    ResizeNearestNeighbor, ResizeBilinear, and ResizeBilinearGrad sometimes
   //    create convolutions too large for CuDNN to handle.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
+         node.type_string() == "MatrixSolve" ||
          node.type_string() == "ResizeNearestNeighbor" ||
          node.type_string() == "ResizeBilinear" ||
          node.type_string() == "ResizeBilinearGrad";

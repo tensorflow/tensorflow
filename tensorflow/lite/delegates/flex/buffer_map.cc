@@ -94,9 +94,8 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
  public:
   explicit StringTfLiteTensorBuffer(const TfLiteTensor* tensor)
-      : StringTfLiteTensorBuffer(tensor, tensor->data.raw != nullptr
-                                             ? GetStringCount(tensor->data.raw)
-                                             : 0) {}
+      : StringTfLiteTensorBuffer(
+            tensor, tensor->data.raw != nullptr ? GetStringCount(tensor) : 0) {}
 
   ~StringTfLiteTensorBuffer() override {
     LogDeallocation();
@@ -123,7 +122,7 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
     if (data()) {
       tensorflow::tstring* p = static_cast<tensorflow::tstring*>(data());
       for (size_t i = 0; i < num_strings_; ++p, ++i) {
-        auto ref = GetString(tensor->data.raw, i);
+        auto ref = GetString(tensor, i);
         p->assign(ref.str, ref.len);
       }
     }

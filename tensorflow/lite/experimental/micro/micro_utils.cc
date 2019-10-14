@@ -56,9 +56,8 @@ uint8_t FloatToAsymmetricQuantizedUInt8(const float value, const float scale,
   return result;
 }
 
-uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale,
-                                       const int zero_point) {
-  int32_t result = round(value / scale) + zero_point;
+uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale) {
+  int32_t result = round(value / scale);
   if (result < kSymmetricUInt8Min) {
     result = kSymmetricUInt8Min;
   }
@@ -77,9 +76,7 @@ int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
 
 int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale,
                                      const int zero_point) {
-  return FloatToSymmetricQuantizedUInt8(value, scale,
-                                        zero_point - kAsymmetricInt8Min) +
-         kAsymmetricInt8Min;
+  return FloatToSymmetricQuantizedUInt8(value, scale) + kAsymmetricInt8Min;
 }
 
 int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale) {

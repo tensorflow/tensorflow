@@ -169,8 +169,15 @@ def main(_):
       control_dependencies):
     learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.compat.v1.train.GradientDescentOptimizer(
-        learning_rate_input).minimize(cross_entropy_mean)
+    if FLAGS.optimizer == 'gradient_descent':
+      train_step = tf.compat.v1.train.GradientDescentOptimizer(
+          learning_rate_input).minimize(cross_entropy_mean)
+    elif FLAGS.optimizer == 'momentum':
+      train_step = tf.compat.v1.train.MomentumOptimizer(
+          learning_rate_input, .9,
+          use_nesterov=True).minimize(cross_entropy_mean)
+    else:
+      raise Exception('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
@@ -491,6 +498,11 @@ if __name__ == '__main__':
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
       help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

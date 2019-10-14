@@ -692,6 +692,11 @@ PYBIND11_MODULE(pybind, m) {
                             falseArguments);
         return PythonValueHandle(nullptr);
       });
+  m.def("index_cast",
+        [](PythonValueHandle element, PythonType type) -> PythonValueHandle {
+          return ValueHandle::create<IndexCastOp>(
+              element.value, Type::getFromOpaquePointer(type.type));
+        });
   m.def("select",
         [](PythonValueHandle condition, PythonValueHandle trueValue,
            PythonValueHandle falseValue) -> PythonValueHandle {

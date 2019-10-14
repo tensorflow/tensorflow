@@ -33,7 +33,11 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.ops.array_ops import concat
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import object_identity
@@ -305,7 +309,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     class TestLayer(keras.layers.Layer):
 
       def call(self, inputs):
-        return concat([inputs, inputs], axis=-1)
+        return array_ops.concat([inputs, inputs], axis=-1)
 
       def compute_output_shape(self, input_shape):
         output_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -779,7 +783,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     class TestLayer(keras.layers.SimpleRNN):
 
       def call(self, inputs):
-        return concat([inputs, inputs], axis=-1)
+        return array_ops.concat([inputs, inputs], axis=-1)
 
       def compute_output_shape(self, input_shape):
         output_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -1037,6 +1041,49 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         np.random.random((batch, units)),
         epochs=1,
         batch_size=10)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_Bidirectional_ragged_input(self):
+    np.random.seed(100)
+    rnn = keras.layers.LSTM
+    units = 3
+    x = ragged_factory_ops.constant(
+        [[[1, 1, 1], [1, 1, 1]], [[1, 1, 1]],
+         [[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]],
+         [[1, 1, 1], [1, 1, 1], [1, 1, 1]]],
+        ragged_rank=1)
+    x = math_ops.cast(x, 'float32')
+
+    # pylint: disable=g-long-lambda
+    with self.cached_session():
+      for merge_mode in ['ave', 'concat', 'mul']:
+        if merge_mode == 'ave':
+          merge_func = lambda y, y_rev: (y + y_rev) / 2
+        elif merge_mode == 'concat':
+          merge_func = lambda y, y_rev: ragged_concat_ops.concat(
+              (y, y_rev), axis=-1)
+        elif merge_mode == 'mul':
+          merge_func = lambda y, y_rev: (y * y_rev)
+
+        inputs = keras.Input(
+            shape=(None, 3), batch_size=4, dtype='float32', ragged=True)
+        layer = keras.layers.Bidirectional(
+            rnn(units, return_sequences=True), merge_mode=merge_mode)
+        f_merged = keras.backend.function([inputs], layer(inputs))
+        f_forward = keras.backend.function([inputs],
+                                           layer.forward_layer(inputs))
+        f_backward = keras.backend.function(
+            [inputs],
+            array_ops.reverse(layer.backward_layer(inputs), axis=[1]))
+
+        y_merged = f_merged(x)
+        y_expected = merge_func(
+            ragged_tensor.convert_to_tensor_or_ragged_tensor(f_forward(x)),
+            ragged_tensor.convert_to_tensor_or_ragged_tensor(f_backward(x)))
+
+        y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
+        self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
+    # pylint: enable=g-long-lambda
 
 
 def _to_list(ls):

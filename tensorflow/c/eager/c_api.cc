@@ -216,6 +216,46 @@ void DifferentiateWorkerLists(const std::vector<string>* current_list,
   existing->resize(existing_it - existing->begin());
 }
 
+tensorflow::Status GetReplacedFromExistingWorkers(
+    const std::vector<string>* existing_workers, tensorflow::uint64 context_id,
+    tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
+    tensorflow::eager::EagerClientCache* client_cache,
+    std::vector<string>* replaced_workers) {
+  tensorflow::BlockingCounter counter(existing_workers->size());
+  std::vector<tensorflow::Status> statuses(existing_workers->size());
+  tensorflow::eager::KeepAliveRequest request;
+  request.set_context_id(context_id);
+  std::vector<tensorflow::eager::KeepAliveResponse> responses(
+      existing_workers->size());
+  for (int i = 0; i < existing_workers->size(); i++) {
+    tensorflow::eager::EagerClient* eager_client;
+    statuses[i] =
+        client_cache->GetClient(existing_workers->at(i), &eager_client);
+    if (!statuses[i].ok()) {
+      counter.DecrementCount();
+      continue;
+    }
+    eager_client->KeepAliveAsync(
+        &request, &responses[i],
+        [i, &statuses, &counter](const tensorflow::Status& s) {
+          statuses[i] = s;
+          counter.DecrementCount();
+        });
+  }
+  counter.Wait();
+  for (int i = 0; i < existing_workers->size(); i++) {
+    // If the RPC fails (indicating that the requested ID doesn't exist on
+    // remote), or the returned view ID is not equal to the local one
+    // (indicating that the remote worker has a stale view of cluster), treat
+    // the worker as replaced.
+    if (!statuses[i].ok() ||
+        responses[i].context_view_id() != context_view_id) {
+      replaced_workers->emplace_back(existing_workers->at(i));
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status CreateRemoteContexts(
     const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
@@ -383,13 +423,21 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         context_id, ctx->context));
   }
 
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  LOG_AND_RETURN_IF_ERROR(
+      grpc_server->master_env()->worker_cache->GetEagerClientCache(
+          &remote_eager_workers));
+
   // When updating an existing context, populate the following lists with:
   // * added_workers: set(remote_workers) - set(curr_remote_workers)
   // * removed_workers: set(curr_remote_workers) - set(remote_workers)
   // * existing_workers: set(curr_remote_workers) intersect set(remote_workers)
+  // * replaced_workers: workers with the same task names and potentially the
+  //     same `hostname:port`s, but replaced by different processes
   std::vector<string> added_workers;
   std::vector<string> removed_workers;
   std::vector<string> existing_workers;
+  std::vector<string> replaced_workers;
 
   std::unique_ptr<tensorflow::DynamicDeviceMgr> remote_device_mgr;
   if (reset_context) {
@@ -410,25 +458,35 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     DifferentiateWorkerLists(&curr_remote_workers, &remote_workers,
                              &added_workers, &removed_workers,
                              &existing_workers);
-    if (!added_workers.empty()) {
-      if (VLOG_IS_ON(1)) {
-        for (const string& w : added_workers) {
-          VLOG(1) << "Updating cluster with added worker " << w;
-        }
+    LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
+        &existing_workers, context_id, ctx->context->GetContextViewId(),
+        server_def, remote_eager_workers.get(), &replaced_workers));
+    if (!replaced_workers.empty()) {
+      // Also adding replaced workers so that we recreate remote devices and
+      // contexts, and re-register functions on those workers
+      added_workers.insert(added_workers.end(), replaced_workers.begin(),
+                           replaced_workers.end());
+      for (const string& w : replaced_workers) {
+        existing_workers.erase(
+            std::remove(existing_workers.begin(), existing_workers.end(), w),
+            existing_workers.end());
       }
-      LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
-          added_workers, grpc_server->master_env()->worker_cache,
-          remote_device_mgr.get()));
     }
-    if (!removed_workers.empty()) {
-      if (VLOG_IS_ON(1)) {
-        for (const string& w : removed_workers) {
-          VLOG(1) << "Updating cluster with removed worker " << w;
-        }
-      }
-      LOG_AND_RETURN_IF_ERROR(
-          RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "Updating cluster with following changes";
+      for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
+      for (const string& w : removed_workers)
+        VLOG(1) << "  Removed worker " << w;
+      for (const string& w : replaced_workers)
+        VLOG(1) << "  Replaced worker " << w;
     }
+    LOG_AND_RETURN_IF_ERROR(
+        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
+    LOG_AND_RETURN_IF_ERROR(
+        RemoveRemoteDevicesFromMgr(replaced_workers, remote_device_mgr.get()));
+    LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
+        added_workers, grpc_server->master_env()->worker_cache,
+        remote_device_mgr.get()));
   }
 
   std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
@@ -450,11 +508,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   base_request.mutable_server_def()
       ->mutable_default_session_config()
       ->MergeFrom(server_def.default_session_config());
-
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
-  LOG_AND_RETURN_IF_ERROR(
-      grpc_server->master_env()->worker_cache->GetEagerClientCache(
-          &remote_eager_workers));
 
   // Initialize remote eager workers.
   // TODO(b/138847548) Create remote eager contexts in async mode by default.

@@ -1046,7 +1046,7 @@ tf_gen_op_libs(
 
 tf_gen_op_libs(
     op_lib_names = ["debug_ops"],
-    deps = ["//tensorflow/core/kernels:debug_ops"],
+    deps = [":lib"],
 )
 
 tf_gen_op_libs(
@@ -1192,6 +1192,7 @@ cc_library(
         ":cudnn_rnn_ops_op_lib",
         ":data_flow_ops_op_lib",
         ":dataset_ops_op_lib",
+        ":debug_ops_op_lib",
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
@@ -2311,6 +2312,7 @@ cc_library(
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
                "//tensorflow/core/lib/bfloat16",
+               "//tensorflow/core/lib/math:math_util",
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",

@@ -95,11 +95,9 @@ std::vector<ComputeTaskDescriptorPtr> Add(int id,
       device FLT4* const broadcast) { return value + broadcast[gid.z]; })";
     desc->input_buffers = {{input_ids[0]}};
     desc->output_buffer = {output_id};
-    auto values = options.storage_precision == RuntimeOptions::Precision::FP32
-                      ? VectorToUint8Vector(broadcast->data)
-                      : VectorFloatToHalf(broadcast->data);
     desc->immutable_buffers = {
-        {"device FLT4* const", values},
+        {"device FLT4* const",
+         GetByteBufferConverted(broadcast->data, options.storage_precision)},
     };
     return {desc};
   }
@@ -123,7 +121,7 @@ std::vector<ComputeTaskDescriptorPtr> Add(int id,
        [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_ids[0])->second;
          std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

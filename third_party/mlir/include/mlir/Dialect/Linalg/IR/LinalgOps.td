@@ -290,16 +290,6 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         res.push_back(getRange(i));
       return res;
     }
-
-    // This requires `SubViewOp` to be declared, in the future it should be
-    // folded into the builders.
-    static void build(Builder *builder, OperationState &result, Value *view,
-        ArrayRef<SubViewOp::Range> ranges) {
-      result.addOperands(view);
-      for (auto r : ranges)
-        result.addOperands({r.min, r.max, r.step});
-      result.types.push_back(view->getType());
-    }
   }];
 }
 
@@ -352,7 +342,7 @@ def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
 
        %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
        %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-       %3 = linalg.view %1[%2, %2] : 
+       %3 = linalg.view %1[%2, %2] :
          memref<?x?xvector<4xf32>, stride_specification>
   }];
 

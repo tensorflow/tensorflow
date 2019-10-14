@@ -38,6 +38,20 @@ Window MakeWindow(absl::Span<const int64> sizes) {
   return window;
 }
 
+Window MakeWindow(absl::Span<const int64> sizes,
+                  absl::Span<const int64> strides) {
+  Window window;
+  CHECK_EQ(sizes.size(), strides.size());
+  for (auto nb = 0; nb < sizes.size(); ++nb) {
+    auto* dimension = window.add_dimensions();
+    dimension->set_size(sizes[nb]);
+    dimension->set_stride(strides[nb]);
+    dimension->set_base_dilation(1);
+    dimension->set_window_dilation(1);
+  }
+  return window;
+}
+
 PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
   for (int64 size : sizes) {
