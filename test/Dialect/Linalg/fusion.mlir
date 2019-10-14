@@ -6,30 +6,30 @@
 
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)
 
-func @f1(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, offset: 0, strides: [?, ?]>, %C: memref<?x?xf32, offset: 0, strides: [?, ?]>, %D: memref<?x?xf32, offset: 0, strides: [?, ?]>, %E: memref<?x?xf32, offset: 0, strides: [?, ?]>) -> memref<?x?xf32, offset: 0, strides: [?, ?]> {
+func @f1(%A: memref<?x?xf32, offset: 0, strides: [?, 1]>, %B: memref<?x?xf32, offset: 0, strides: [?, 1]>, %C: memref<?x?xf32, offset: 0, strides: [?, 1]>, %D: memref<?x?xf32, offset: 0, strides: [?, 1]>, %E: memref<?x?xf32, offset: 0, strides: [?, 1]>) -> memref<?x?xf32, offset: 0, strides: [?, 1]> {
   %c0 = constant 0 : index
   %c4 = constant 4 : index
   %c3 = constant 3 : index
   %c2 = constant 2 : index
-  %0 = dim %A, 0 : memref<?x?xf32, offset: 0, strides: [?, ?]>
-  %1 = dim %A, 1 : memref<?x?xf32, offset: 0, strides: [?, ?]>
-  %2 = dim %B, 1 : memref<?x?xf32, offset: 0, strides: [?, ?]>
-  linalg.matmul(%A, %B, %C) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+  %0 = dim %A, 0 : memref<?x?xf32, offset: 0, strides: [?, 1]>
+  %1 = dim %A, 1 : memref<?x?xf32, offset: 0, strides: [?, 1]>
+  %2 = dim %B, 1 : memref<?x?xf32, offset: 0, strides: [?, 1]>
+  linalg.matmul(%A, %B, %C) : memref<?x?xf32, offset: 0, strides: [?, 1]>, memref<?x?xf32, offset: 0, strides: [?, 1]>, memref<?x?xf32, offset: 0, strides: [?, 1]>
   %c1 = constant 1 : index
   loop.for %arg5 = %c0 to %0 step %c2 {
     loop.for %arg6 = %c0 to %2 step %c3 {
       loop.for %arg7 = %c0 to %1 step %c4 {
         %3 = affine.apply #map0(%arg5)
         %4 = affine.apply #map1(%arg7)
-        %5 = linalg.subview %A[%arg5, %3, %c1, %arg7, %4, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
+        %5 = linalg.subview %A[%arg5, %3, %c1, %arg7, %4, %c1] : memref<?x?xf32, offset: 0, strides: [?, 1]>
         %6 = affine.apply #map2(%arg6)
-        %7 = linalg.subview %B[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        %8 = linalg.subview %C[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        %7 = linalg.subview %B[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, 1]>
+        %8 = linalg.subview %C[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, 1]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
       }
     }
   }
-  return %E : memref<?x?xf32, offset: 0, strides: [?, ?]>
+  return %E : memref<?x?xf32, offset: 0, strides: [?, 1]>
 }
 // CHECK-LABEL: func @f1
 //       CHECK:   (%[[A:.*]]:{{.*}}, %[[B:.*]]:{{.*}}, %[[C:.*]]:{{.*}}, %[[D:.*]]:{{.*}}, %[[E:.*]]:{{.*}})
@@ -59,7 +59,7 @@ func @f2(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %D[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -95,7 +95,7 @@ func @f3(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %C[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -132,7 +132,7 @@ func @f4(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %D[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -171,7 +171,7 @@ func @f5(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %B[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -210,7 +210,7 @@ func @f6(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %D[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -250,7 +250,7 @@ func @f7(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %8 = affine.apply #map2(%arg6)
         %9 = linalg.subview %C[%arg7, %6, %c1, %arg6, %8, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %10 = linalg.subview %E[%arg5, %5, %c1, %arg6, %8, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%7, %9, %10) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%7, %9, %10) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -263,7 +263,7 @@ func @f7(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %8 = affine.apply #map2(%arg6)
         %9 = linalg.subview %D[%arg7, %6, %c1, %arg6, %8, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %10 = linalg.subview %E[%arg5, %5, %c1, %arg6, %8, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%7, %9, %10) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%7, %9, %10) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -308,7 +308,7 @@ func @f8(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?xf32, of
         %6 = affine.apply #map2(%arg6)
         %7 = linalg.subview %D[%arg7, %4, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
         %8 = linalg.subview %E[%arg5, %3, %c1, %arg6, %6, %c1] : memref<?x?xf32, offset: 0, strides: [?, ?]>
-        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+        linalg.matmul(%5, %7, %8) : memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
       }
     }
   }
@@ -353,7 +353,7 @@ func @pointwise(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?x
       ^bb0(%arg6: f32, %arg7: f32, %arg8: f32):       // no predecessors
         %7 = mulf %arg6, %arg7 : f32
         linalg.yield %7 : f32
-      }: memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>, memref<?x?xf32, offset: 0, strides: [?, ?]>
+      }: memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>, memref<?x?xf32, offset: ?, strides: [?, ?]>
     }
   }
   return
@@ -396,7 +396,7 @@ func @pointwise_no_view(%M: index, %N: index) {
       ^bb0(%arg6: f32, %arg7: f32, %arg8: f32):       // no predecessors
         %7 = mulf %arg6, %arg7 : f32
         linalg.yield %7 : f32
-      }: memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>
+      }: memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
     }
   }
   return
