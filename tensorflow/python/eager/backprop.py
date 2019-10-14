@@ -945,15 +945,16 @@ class GradientTape(object):
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
         target. Defaults to None.
-      unconnected_gradients: a value which can either hold 'none' or 'zero' and
+      unconnected_gradients: a value which can either hold 'NONE' or 'ZERO' and
         alters the value which will be returned if the target and sources are
         unconnected. The possible values and effects are detailed in
-        'UnconnectedGradients' and it defaults to 'none'.
+        'UnconnectedGradients' and it defaults to 'NONE'.
 
     Returns:
       a list or nested structure of Tensors (or IndexedSlices, or None),
       one for each element in `sources`. Returned structure is the same as
-      the structure of `sources`.
+      the structure of `sources`. If the provided elements in `sources`
+      are not being watched, the function returns None
 
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
