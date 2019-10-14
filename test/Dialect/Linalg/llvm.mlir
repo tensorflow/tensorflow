@@ -1,4 +1,5 @@
 // RUN: mlir-opt %s -linalg-convert-to-llvm | FileCheck %s
+// RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm | FileCheck %s --check-prefix=LLVM-LOOPS
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
   %c1 = constant 1 : index
@@ -229,3 +230,44 @@ func @copy_transpose(%arg0: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>, %a
 // Call external copy after promoting input and output structs to pointers
 // CHECK-COUNT-2:   llvm.mlir.constant(1 : index){{.*[[:space:]].*}}llvm.alloca{{.*[[:space:]].*}}llvm.store
 //         CHECK:   llvm.call @linalg_copy_viewsxsxsxf32_viewsxsxsxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()
+
+#matmul_accesses = [
+  (m, n, k) -> (m, k),
+  (m, n, k) -> (k, n),
+  (m, n, k) -> (m, n)
+]
+#matmul_trait = {
+  n_views = [2, 1],
+  n_loop_types = [2, 1, 0],
+  indexing_maps = #matmul_accesses,
+  library_call = "some_external_function_name_for_vector_outerproduct_matmul"
+}
+
+!vector_type_A = type vector<4xf32>
+!vector_type_B = type vector<4xf32>
+!vector_type_C = type vector<4x4xf32>
+
+!matrix_type_A = type memref<?x?x!vector_type_A>
+!matrix_type_B = type memref<?x?x!vector_type_B>
+!matrix_type_C = type memref<?x?x!vector_type_C>
+
+func @matmul_vec_impl(%A: !matrix_type_A, %B: !matrix_type_B, %C: !matrix_type_C) {
+  linalg.generic #matmul_trait %A, %B, %C {
+    ^bb0(%a: !vector_type_A, %b: !vector_type_B, %c: !vector_type_C):
+      %d = vector.outerproduct %a, %b, %c: !vector_type_A, !vector_type_B
+      linalg.yield %d: !vector_type_C
+  } : !matrix_type_A, !matrix_type_B, !matrix_type_C
+
+  return
+}
+// CHECK-LABEL: func @matmul_vec_impl(
+//   CHECK:  llvm.call @some_external_function_name_for_vector_outerproduct_matmul(%{{.*}}) : (!llvm<"{ <4 x float>*, i64, [2 x i64], [2 x i64] }*">, !llvm<"{ <4 x float>*, i64, [2 x i64], [2 x i64] }*">, !llvm<"{ [4 x <4 x float>]*, i64, [2 x i64], [2 x i64] }*">) -> ()
+
+// LLVM-LOOPS-LABEL: func @matmul_vec_impl(
+//   LLVM-LOOPS: llvm.shufflevector {{.*}} [0 : i32, 0 : i32, 0 : i32, 0 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+//   LLVM-LOOPS: llvm.shufflevector {{.*}} [1 : i32, 1 : i32, 1 : i32, 1 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+//   LLVM-LOOPS: llvm.shufflevector {{.*}} [2 : i32, 2 : i32, 2 : i32, 2 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+//   LLVM-LOOPS: llvm.shufflevector {{.*}} [3 : i32, 3 : i32, 3 : i32, 3 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+//   LLVM-LOOPS-NEXT: llvm.extractvalue {{.*}}[3] : !llvm<"[4 x <4 x float>]">
+//   LLVM-LOOPS-NEXT: "llvm.intr.fmuladd"({{.*}}) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
+//   LLVM-LOOPS-NEXT: llvm.insertvalue {{.*}}, {{.*}}[3] : !llvm<"[4 x <4 x float>]">
