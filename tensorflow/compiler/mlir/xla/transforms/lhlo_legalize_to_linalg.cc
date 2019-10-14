@@ -126,6 +126,17 @@ Operation* GetLinalgBodyOp<xla_lhlo::AndOp>(Location loc, Type element_type,
              : nullptr;
 }
 
+template <>
+Operation* GetLinalgBodyOp<xla_lhlo::ExpOp>(Location loc, Type element_type,
+                                            ArrayRef<Type> body_result_types,
+                                            ArrayRef<Value*> block_args,
+                                            OpBuilder b) {
+  return element_type.isa<FloatType>()
+             ? b.create<::mlir::ExpOp>(loc, body_result_types, block_args,
+                                       mlir::None)
+             : nullptr;
+}
+
 template <typename LhloOp>
 class LhloToLinalgOpConverter : public ConversionPattern {
  public:
@@ -150,6 +161,7 @@ class LhloToLinalgOpConverter : public ConversionPattern {
     SmallVector<Attribute, 2> indexing_maps;
     SmallVector<Type, 4> body_arg_types, body_result_types;
     unsigned nloops = 0;
+    const auto operandCount = args.size() - 1;
     for (const auto& arg : llvm::enumerate(args)) {
       auto memref_type = arg.value()->getType().dyn_cast<MemRefType>();
       if (!memref_type) {
@@ -162,7 +174,7 @@ class LhloToLinalgOpConverter : public ConversionPattern {
       indexing_maps.emplace_back(
           rewriter.getAffineMapAttr(rewriter.getMultiDimIdentityMap(nloops)));
       auto& result_or_body_arg =
-          arg.index() < 2 ? body_arg_types : body_result_types;
+          arg.index() < operandCount ? body_arg_types : body_result_types;
       result_or_body_arg.emplace_back(memref_type.getElementType());
     }
 
@@ -206,6 +218,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->insert<LhloToLinalgOpConverter<xla_lhlo::AddOp>,
                    LhloToLinalgOpConverter<xla_lhlo::AndOp>,
                    LhloToLinalgOpConverter<xla_lhlo::DivOp>,
+                   LhloToLinalgOpConverter<xla_lhlo::ExpOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MaxOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MinOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MulOp>,
