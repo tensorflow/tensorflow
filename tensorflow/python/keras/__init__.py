@@ -24,22 +24,11 @@ from __future__ import print_function
 from tensorflow.python import tf2
 
 from tensorflow.python.keras import applications
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import callbacks
-from tensorflow.python.keras import callbacks_v1
-from tensorflow.python.keras import constraints
 from tensorflow.python.keras import datasets
 from tensorflow.python.keras import estimator
-from tensorflow.python.keras import initializers
 from tensorflow.python.keras import layers
-from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics
-from tensorflow.python.keras import models
-from tensorflow.python.keras import ops
-from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import premade
 from tensorflow.python.keras import preprocessing
-from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential
