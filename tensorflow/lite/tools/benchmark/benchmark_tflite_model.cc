@@ -415,7 +415,16 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
-    const auto& input_info = inputs_[j];
+    bool has_value_range = false;
+    int low_range = 0;
+    int high_range = 0;
+    // For tflite files that are benchmarked without input layer parameters
+    // inputs_ is empty.
+    if (!inputs_.empty()) {
+      has_value_range = inputs_[j].has_value_range;
+      low_range = inputs_[j].low;
+      high_range = inputs_[j].high;
+    }
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
     for (int i = 0; i < sizes.size(); ++i) {
@@ -447,34 +456,34 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteInt64) {
       t_data.bytes = sizeof(int64_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
       FillRandomIntValues<int64_t>(t_data.data.i64, num_elements, low, high);
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
       // for speech models. Generalize if necessary.
       t_data.bytes = sizeof(int32_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
       FillRandomIntValues<int32_t>(t_data.data.i32, num_elements, low, high);
     } else if (t->type == kTfLiteInt16) {
       t_data.bytes = sizeof(int16_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
       FillRandomIntValues<int16_t>(t_data.data.i16, num_elements, low, high);
     } else if (t->type == kTfLiteUInt8) {
       t_data.bytes = sizeof(uint8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 254;
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 254;
       FillRandomIntValues<uint8_t>(t_data.data.uint8, num_elements, low, high);
     } else if (t->type == kTfLiteInt8) {
       t_data.bytes = sizeof(int8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : -127;
-      int high = input_info.has_value_range ? input_info.high : 127;
+      int low = has_value_range ? low_range : -127;
+      int high = has_value_range ? high_range : 127;
       FillRandomIntValues<int8_t>(t_data.data.int8, num_elements, low, high);
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
