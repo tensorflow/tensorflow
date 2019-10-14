@@ -498,6 +498,32 @@ func @concat_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*
 }
 
 //===----------------------------------------------------------------------===//
+// Pad op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @padv2_1D
+func @padv2_1D(%arg0: tensor<3xf32>, %arg1: tensor<f32>) -> tensor<6xf32> {
+  %padding = "tf.Const"() { value = dense<[[1, 2]]> : tensor<1x2xi64> } : () -> tensor<1x2xi64>
+  // CHECK: "xla_hlo.pad"(%arg0, %arg1) {
+  // CHECK-SAME: edge_padding_high = dense<2> : tensor<1xi64>,
+  // CHECK-SAME: edge_padding_low = dense<1> : tensor<1xi64>,
+  // CHECK-SAME: interior_padding = dense<0> : tensor<1xi64>
+  %1 = "tf.PadV2"(%arg0, %padding, %arg1) {N = 2 : i64} : (tensor<3xf32>, tensor<1x2xi64>, tensor<f32>) -> tensor<6xf32>
+  return %1 : tensor<6xf32>
+}
+
+// CHECK-LABEL: func @padv2_2D
+func @padv2_2D(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<6x9xf32> {
+  %padding = "tf.Const"() { value = dense<[[1,2],[3,4]]> : tensor<2x2xi64> } : () -> tensor<2x2xi64>
+  // CHECK: "xla_hlo.pad"(%arg0, %arg1) {
+  // CHECK-SAME:    edge_padding_high = dense<[2, 4]> : tensor<2xi64>,
+  // CHECK-SAME:    edge_padding_low = dense<[1, 3]> : tensor<2xi64>,
+  // CHECK-SAME:    interior_padding = dense<0> : tensor<2xi64>
+  %1 = "tf.PadV2"(%arg0, %padding, %arg1) {N = 2 : i64} : (tensor<3x2xf32>, tensor<2x2xi64>, tensor<f32>) -> tensor<6x9xf32>
+  return %1 : tensor<6x9xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Identity op legalizations.
 //===----------------------------------------------------------------------===//
 

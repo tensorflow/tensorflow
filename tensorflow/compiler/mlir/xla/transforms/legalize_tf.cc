@@ -15,12 +15,14 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -211,6 +213,33 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// Pad op utilities.
+//===----------------------------------------------------------------------===//
+
+static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
+    Builder *b, ElementsAttr input, int column) {
+  auto int_attr = input.cast<DenseIntElementsAttr>();
+  auto shaped_type = int_attr.getType();
+  auto element_type = shaped_type.getElementType();
+  auto shape = shaped_type.getShape();
+
+  if (shape.size() != 2) return DenseIntElementsAttr();
+
+  llvm::SmallVector<int64_t, 4> values;
+  values.reserve(shaped_type.getNumElements() / shape[1]);
+
+  for (auto it : llvm::enumerate(int_attr.getIntValues())) {
+    if (it.index() % shape[1] == column) {
+      values.push_back(it.value().getSExtValue());
+    }
+  }
+
+  return DenseIntElementsAttr::get<int64_t>(
+             b->getTensorType({shape[0]}, element_type), values)
+      .cast<DenseIntElementsAttr>();
+}
+
+//===----------------------------------------------------------------------===//
 // Binary op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -218,7 +247,7 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 template <typename T>
 static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
   auto valType = val->getType().cast<TensorType>();
-  auto valElementType = valType.getElementType();
+  auto valElementType = getElementTypeOrSelf(val->getType());
 
   // Handle integer elements.
   Attribute elementAttr;
@@ -228,7 +257,8 @@ static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
     elementAttr = b.getFloatAttr(valElementType, constant);
   else
     llvm_unreachable("unhandled element type");
-  return DenseElementsAttr::get(valType, elementAttr);
+
+  return DenseIntElementsAttr::get(valType, elementAttr);
 }
 
 // Returns whether the two values are guaranteed to be broadcastable to the
