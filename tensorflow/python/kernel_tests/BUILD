@@ -1376,7 +1376,6 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_py_test(
