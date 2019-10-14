@@ -244,6 +244,17 @@ class BASE_HLO_MulOp {
   }];
 }
 
+class BASE_HLO_RemOp {
+  string summary = "Remainder operator";
+
+  string description = [{
+    Returns `lhs % rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_SubOp {
   string summary = "Subtraction operator";
 

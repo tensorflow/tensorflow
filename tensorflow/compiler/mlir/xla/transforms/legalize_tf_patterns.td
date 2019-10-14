@@ -132,6 +132,29 @@ def : Pat<(TF_FloorDivOp IntegerTensor:$l, IntegerTensor:$r),
                      (BinBroadcastDimensions $l, $r))),
            (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs)))>;
 
+// Performs a substitution of FloorMod designed to correct for possibly negative
+// values. Pseudocode shown below:
+//
+//   T trunc_mod = std::fmod(x, y);
+//   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
+      (HLO_SelectOp
+       (HLO_AndOp
+        (HLO_CompareOp
+         (HLO_RemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
+         (HLO_ConstOp:$l_zeros (ConstantSplat<"0"> $l)),
+         (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE),
+        (HLO_CompareOp
+         (HLO_CompareOp:$r_cmp $r,
+          (HLO_ConstOp:$r_zeros (ConstantSplat<"0"> $r)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+         (HLO_CompareOp:$rem_cmp $rem, $r_zeros,
+          (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
+         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
+        (NullDenseIntElementsAttr)),
+        (HLO_AddOp $r,
+         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
+
 //===----------------------------------------------------------------------===//
 // Logical binary op patterns.
 //===----------------------------------------------------------------------===//
