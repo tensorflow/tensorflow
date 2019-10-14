@@ -109,6 +109,13 @@ class GatherOp : public OpKernel {
                   errors::InvalidArgument("batch_dims (", batch_dims_,
                                           ") must be less than or equal to ",
                                           "axis (", axis, ")."));
+      for (int i = 0; i < batch_dims_; ++i) {
+        OP_REQUIRES(c, params.dim_size(i) == indices.dim_size(i),
+                    errors::InvalidArgument(
+                        "params.shape[", i, "]: ", params.dim_size(i),
+                        " should be equal to indices.shape[", i,
+                        "]: ", indices.dim_size(i)));
+      }
     }
 
     // Check that we have enough index space
