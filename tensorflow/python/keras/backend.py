@@ -1251,7 +1251,11 @@ def eval(x):
          [3.,  4.]], dtype=float32)
 
   """
-  return get_value(to_dense(x))
+  try:
+      return get_value(to_dense(x))
+  except:
+      eval_fn = function([], [x])
+      return eval_fn([])[0]
 
 
 @keras_export('keras.backend.zeros')
