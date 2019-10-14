@@ -54,27 +54,30 @@ ARG TF_PACKAGE_VERSION=
 RUN ${PIP} install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 # install libnuma, openssh, wget
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+RUN ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
         libnuma-dev \
         openssh-server \
         openssh-client \
         wget && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* || \
-    yum -y update && yum -y install \
+    rm -rf /var/lib/apt/lists/* ) || \
+    ( yum -y update && yum -y install \
             numactl-devel \
             openssh-server \
             openssh-clients \
             wget && \
-    yum clean all || \
-    echo "Unsupported Linux distribution. Aborting!" && exit 1
+    yum clean all ) || \
+    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
 
 # Install Open MPI
+# download realese version from official website as openmpi github master is not always stable
+ARG OPENMPI_VERSION=openmpi-4.0.0
+ARG OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz
 RUN mkdir /tmp/openmpi && \
     cd /tmp/openmpi && \
-    wget https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz && \
-    tar zxf openmpi-4.0.0.tar.gz && \
-    cd openmpi-4.0.0 && \
+    wget ${OPENMPI_DOWNLOAD_URL} && \
+    tar zxf ${OPENMPI_VERSION}.tar.gz && \
+    cd ${OPENMPI_VERSION} && \
     ./configure --enable-orterun-prefix-by-default && \
     make -j $(nproc) all && \
     make install && \
@@ -99,7 +102,27 @@ RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_confi
     mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
 
 # Install Horovod
-RUN ${PIP} install --no-cache-dir horovod
+ARG HOROVOD_VERSION=0.16.4
+RUN ${PIP} install --no-cache-dir horovod==${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
+
+RUN ${PIP} install jupyter matplotlib
+RUN ${PIP} install jupyter_http_over_ws
+RUN jupyter serverextension enable --py jupyter_http_over_ws
+
+RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
+RUN mkdir /.local && chmod a+rwx /.local
+RUN apt-get install -y --no-install-recommends wget
+WORKDIR /tf/tensorflow-tutorials
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_text_classification.ipynb
+COPY readme-for-jupyter.md README.md
+RUN apt-get autoremove -y && apt-get remove -y wget
+WORKDIR /tf
+EXPOSE 8888
+
+RUN ${PYTHON} -m ipykernel.kernelspec
+
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

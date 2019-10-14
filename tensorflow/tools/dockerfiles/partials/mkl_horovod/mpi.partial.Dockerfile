@@ -1,25 +1,28 @@
 # install libnuma, openssh, wget
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+RUN ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
         libnuma-dev \
         openssh-server \
         openssh-client \
         wget && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* || \
-    yum -y update && yum -y install \
+    rm -rf /var/lib/apt/lists/* ) || \
+    ( yum -y update && yum -y install \
             numactl-devel \
             openssh-server \
             openssh-clients \
             wget && \
-    yum clean all || \
-    echo "Unsupported Linux distribution. Aborting!" && exit 1
+    yum clean all ) || \
+    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
 
 # Install Open MPI
+# download realese version from official website as openmpi github master is not always stable
+ARG OPENMPI_VERSION=openmpi-4.0.0
+ARG OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz
 RUN mkdir /tmp/openmpi && \
     cd /tmp/openmpi && \
-    wget https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz && \
-    tar zxf openmpi-4.0.0.tar.gz && \
-    cd openmpi-4.0.0 && \
+    wget ${OPENMPI_DOWNLOAD_URL} && \
+    tar zxf ${OPENMPI_VERSION}.tar.gz && \
+    cd ${OPENMPI_VERSION} && \
     ./configure --enable-orterun-prefix-by-default && \
     make -j $(nproc) all && \
     make install && \
