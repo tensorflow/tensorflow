@@ -48,16 +48,24 @@ class SquareLinearOperatorCompositionTest(
     # Cholesky not implemented.
     return ["cholesky"]
 
-  def operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
     num_operators = rng.randint(low=1, high=3)
-    matrices = [
-        linear_operator_test_util.random_positive_definite_matrix(
-            shape, dtype, force_well_conditioned=True)
-        for _ in range(num_operators)
-    ]
+    if ensure_self_adjoint_and_pd:
+      # The random PD matrices are also symmetric. Here we are computing
+      # A @ A ... @ A. Since A is symmetric and PD, so are any powers of it.
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)] * num_operators
+    else:
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)
+          for _ in range(num_operators)
+      ]
 
     lin_op_matrices = matrices
 
@@ -68,6 +76,8 @@ class SquareLinearOperatorCompositionTest(
 
     operator = linalg.LinearOperatorComposition(
         [linalg.LinearOperatorFullMatrix(l) for l in lin_op_matrices],
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
         is_square=True)
 
     matmul_order_list = list(reversed(matrices))

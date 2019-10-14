@@ -749,6 +749,9 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_square=is_square,
         name=name)
 
+  def _eigvals(self):
+    return ops.convert_to_tensor(self.spectrum)
+
 
 @tf_export("linalg.LinearOperatorCirculant2D")
 class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
