@@ -997,6 +997,14 @@ class LayerNormalization(Layer):
 
     if axis[-1] == ndims-1 and axis[-1] - axis[0] == len(axis) - 1:
       can_use_fused = True
+
+    # Fused layer norm may have numeric issues when epsilon < 1.001e-5 (see
+    # cudnn.h). Also, the gamma dtype needs to be float32 when using fused
+    # layer norm.
+    if self.epsilon < 1.001e-5 or (self.gamma is not None and
+                                   self.gamma.dtype == 'float16'):
+      can_use_fused = False 
+
     return can_use_fused 
 
   def build(self, input_shape):
@@ -1019,8 +1027,6 @@ class LayerNormalization(Layer):
         raise ValueError('Invalid axis: %d' % x)
     if len(self.axis) != len(set(self.axis)):
       raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
-
-    self._fused = self._fused_can_be_used(ndims)
 
     param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
@@ -1047,6 +1053,8 @@ class LayerNormalization(Layer):
     else:
       self.beta = None
 
+    self._fused = self._fused_can_be_used(ndims)
+
     self.built = True
 
   def call(self, inputs):
@@ -1065,7 +1073,8 @@ class LayerNormalization(Layer):
         return array_ops.reshape(v, broadcast_shape)
       return v
 
-    if not self._fused:
+    # Fused layer normalization doesn't support float64 yet.
+    if not self._fused or inputs.dtype == 'float64':
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
