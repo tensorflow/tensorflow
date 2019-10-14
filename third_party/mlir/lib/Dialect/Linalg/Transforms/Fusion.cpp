@@ -101,7 +101,14 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                         << "loopPos: " << loopPos << "\t" << viewRanges[d]);
     }
     // TODO(ntv): opportunities for folding/CSE here rather than build new IR.
-    clonedViews.push_back(b.create<SubViewOp>(loc, view, viewRanges));
+    SmallVector<Value *, 12> subViewOperands;
+    subViewOperands.reserve(viewRanges.size() * 3);
+    for (auto r : viewRanges) {
+      subViewOperands.push_back(r.min);
+      subViewOperands.push_back(r.max);
+      subViewOperands.push_back(r.step);
+    }
+    clonedViews.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
   }
   auto operands = getAssumedNonViewOperands(op);
   clonedViews.append(operands.begin(), operands.end());
