@@ -67,7 +67,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
 
   mlir::MLIRContext context;
   mlir::Location location = mlir::UnknownLoc::get(&context);
-  auto mlir_module = mlir::ModuleOp::create(location);
+  mlir::OwningModuleRef mlir_module(mlir::ModuleOp::create(location));
   mlir::OpBuilder builder(&context);
 
   xla::Shape input_shape = conv->operand(0)->shape();
@@ -80,7 +80,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
                                ShapeToMlirType(input_shape, &builder),
                                ShapeToMlirType(filter_shape, &builder)},
                               {builder.getNoneType()}));
-  mlir_module.push_back(function);
+  mlir_module->push_back(function);
 
   auto* entry_block = function.addEntryBlock();
   builder.setInsertionPointToStart(entry_block);
@@ -89,7 +89,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       conv, entry_block->getArgument(1), entry_block->getArgument(2),
       entry_block->getArgument(0), builder));
 
-  mlir_module.verify();
+  mlir_module->verify();
 
   std::string mlir_text;
   llvm::raw_string_ostream strstream(mlir_text);
@@ -98,7 +98,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
 }
 
 // TODO(timshen): integrate this with mlir_gpu's testing infrastructure.
-TEST(ConvEmtiterTest, TestDefault) {
+TEST(ConvEmitterTest, TestDefault) {
   std::string hlo_text = R"(HloModule TestModule
 ENTRY %TestComputation {
   %param_0 = f16[128,4,224,224]{1,3,2,0} parameter(0)
