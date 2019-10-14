@@ -1983,6 +1983,43 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
   }
 };
 
+class TransposeOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(
+        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::TRANSPOSE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    TransposeAttributes attr;
+    Tensor<Linear, DataType::INT32> perm;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &perm));
+    if (perm.data.size() == 4) {
+      attr.perm = BHWC(perm.data[0], perm.data[1], perm.data[0], perm.data[3]);
+    } else if (perm.data.size() == 3) {
+      attr.perm = BHWC(0, perm.data[0] + 1, perm.data[1] + 1, perm.data[2] + 1);
+    } else if (perm.data.size() == 2) {
+      attr.perm = BHWC(0, 1, perm.data[0] + 2, perm.data[1] + 2);
+    } else {
+      return InvalidArgumentError("Permutation for transpose is invalid.");
+    }
+
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
 class Unpooling2DOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2200,6 +2237,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SUB);
     case kTfLiteBuiltinTanh:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::TANH);
+    case kTfLiteBuiltinTranspose:
+      return absl::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
       return absl::make_unique<TransposeConvOperationParser>();
 

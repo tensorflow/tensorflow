@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:softmax",
         "//tensorflow/lite/delegates/gpu/cl/kernels:softmax1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:strided_slice",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:transpose",
         "//tensorflow/lite/delegates/gpu/cl/kernels:upsample",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
