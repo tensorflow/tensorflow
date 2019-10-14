@@ -11,6 +11,7 @@ Going forward, we'll also use it to build and test the upstream TensorFlow repo.
 # Build+test plan
 
 We will run three types of builds:
+
 - Continuous master branch build+test cycles:  watching for regressions in new commits
 - Nightly artifact builds:  building and testing WHL files every night
 - Release-specific artifact builds:  building and testing WHL files every release
@@ -22,10 +23,12 @@ Nightly WHL builds will be scheduled every night using Jenkins.  Release-specifi
 # Ongoing support
 
 The community supported builds for ROCm will be maintained by the following team members:  
+
 - Jeff Poznanovic (`parallelo`, <jeffrey.poznanovic@amd.com>)
 - Peng Sun (`sunway513`, <peng.sun@amd.com>)
 - Jack Chung (`whchung`, <whchung@amd.com>)
 
 Our installation docs can currently be found here:  
+
 - [ROCm details](https://rocm.github.io/ROCmInstall.html)
 - [TensorFlow details](https://github.com/ROCmSoftwarePlatform/tensorflow-upstream/blob/develop-upstream/rocm_docs/tensorflow-install-basic.md)

@@ -1,11 +1,13 @@
 # TensorFlow gRPC and Verbs Quick-Start
 
 ## Intro
+
 This document provides a starting point for the ROCm support of multi-host TensorFlow.  This includes the default of gRPC as well as the [community-contributed Verbs RDMA module](../tensorflow/contrib/verbs/README.md).
 
 This document assumes you understand the steps of the [Basic Installation](tensorflow-install-basic.md#install-rocm) as well as how to [Build From Source](tensorflow-build-from-source.md).  Distributed training using gRPC is supported by default and does not require any special build or installation steps; you can use our provided docker containers and/or wheel files.  If you would like to use the Verbs support, please see the next subsection.
 
 ### Building from Source (for Verbs only)
+
 When building TensorFlow from source, you enable the Verbs module by
 
 - adding `--config=verbs` to your bazel build command, and
@@ -64,9 +66,11 @@ You would run two instances of the benchmark on HostA (one for the `ps` process 
 The number of parameter servers to use will only impact performance; you must experiment until you find the ideal cluster spec for your particular model and input.  In general, efficient distributed training is an ongoing research problem.
 
 ### Server Protocol grpc+verbs
+
 The above cluster spec setup via the command-line will run using the default "grpc" Google RPC protocol.  To instead enable Verbs, specify the protocol using `--server_protocol=grpc+verbs`.  You must repeat all of these command-line settings, except for `job_name` and `task_index`, for each instance of the benchmark you run.  For example, if you specify a different server protocol from the default, but do not do so for all task invocations, this will result in an error or deadlock.
 
 ### Manually Killing Parameter Server Processes
+
 When running either using the default grpc or verbs protocol, the parameter server processes will not terminate on their own.  This is a known issue with the upstream benchmarks.  You will need to manually kill those processes.  If you ran them in their own terminal sessions, you can press `Ctrl+Z` to pause the server and then within the same terminal run `kill %1` to kill the last running background process (the server you just paused).
 
 [TF CNN Benchmarks]: https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks

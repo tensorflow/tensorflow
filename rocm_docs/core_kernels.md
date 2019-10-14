@@ -4,6 +4,7 @@ This file contains the porting status of CUDA kernels in
 tensorflow/core/kernels directory to ROCm platform.
 
 Legend:
+
 - O : ROCm ready
 - T : tuned with FIXME
 - X : NOT ROCm ready
