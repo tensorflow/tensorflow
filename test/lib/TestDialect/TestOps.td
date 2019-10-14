@@ -808,6 +808,7 @@ def ILLegalOpE : TEST_Op<"illegal_op_e">, Results<(outs I32)>;
 def ILLegalOpF : TEST_Op<"illegal_op_f">, Results<(outs I32)>;
 def LegalOpA : TEST_Op<"legal_op_a">,
   Arguments<(ins Test_LegalizerEnum:$status)>, Results<(outs I32)>;
+def LegalOpB : TEST_Op<"legal_op_b">, Results<(outs I32)>;
 
 // Check that smaller pattern depths are chosen, i.e. prioritize more direct
 // mappings.

@@ -19,6 +19,13 @@ func @dropped_region_with_illegal_ops() {
   }) : () -> ()
   "test.return"() : () -> ()
 }
+// CHECK-LABEL: func @replace_non_root_illegal_op
+func @replace_non_root_illegal_op() {
+  // CHECK-NEXT: "test.legal_op_b"
+  // CHECK-NEXT: test.return
+  %result = "test.replace_non_root"() : () -> (i32)
+  "test.return"() : () -> ()
+}
 
 // -----
 
