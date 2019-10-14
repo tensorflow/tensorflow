@@ -145,6 +145,7 @@ INFO:tensorflow:loss = 0.485584, step = 4001, precision = 0.898438
 ```
 
 ### Inception classification on ImageNet data
+
 Details can be found at this [link]( https://github.com/ROCmSoftwarePlatform/hiptensorflow/blob/hip-amd-nccl/tensorflow/g3doc/tutorials/image_recognition/index.md)
 
 Here's how to run the classification workload:  
@@ -162,6 +163,7 @@ earthstar (score = 0.00117)
 ```
 
 ### Tensorflow's tf_cnn_benchmarks
+
 Details on the tf_cnn_benchmarks can be found at this [link](https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/README.md).  
 
 Here are the basic instructions:
@@ -178,9 +180,11 @@ python3 ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_
 ## FAQs & tips
 
 ### Temp workaround:  Solutions when running out of memory
+
 As a temporary workaround, if your workload runs out of device memory, you can either reduce the batch size or set `config.gpu_options.allow_growth = True`.
 
 ### How do I test out the latest tensorflow-rocm commit?
+
 We build ROCm docker images for every tensorflow-rocm commit. Those docker images have latest tensorflow-rocm installed, and are aimed for testing.
 
 Docker image name: `rocm<version>-<commit hash>`
@@ -190,6 +194,7 @@ Latest docker image name: `rocm<version>-latest` and `latest`
 Pull instructions: `$ docker pull rocm/tensorflow-autobuilds:latest`
 
 ### How do I build latest tensorflow-rocm commit?
+
 We build dev builds for every dependency change. Those docker images that have latest dependencies for the purpose of building tensorflow-rocm, and are aimed for development.
 
 Docker image name: `dev-<commit hash>`

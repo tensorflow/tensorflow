@@ -1,39 +1,45 @@
 How to synchonize TensorFlow ROCm port with upstream TensorFlow
 ===============================================================
+
 This article shows the step to synchronize TensorFlow with upstream. The
 process is currently carried out manually but it could and should be automated.
 
 Useful github remote repositories (For reference)
 -------------------------------------------------
+
 git locations of repositories used in the merge process are:
 
 - TensorFlow ROCm port:
-  - URL: https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git
+  - URL: <https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git>
   - branch: develop-upstream
 - TensorFlow upstream:
-  - URL: https://github.com/tensorflow/tensorflow.git
+  - URL: <https://github.com/tensorflow/tensorflow.git>
   - branch: master
 
-Step-by-step Merge Process
+# Step-by-step Merge Process
 --------------------------
 
-### Get TensorFlow ROCm port
+## Get TensorFlow ROCm port
+
 ```
 git clone git@github.com:ROCmSoftwarePlatform/tensorflow-upstream.git
 git checkout develop-upstream
 git pull
 ```
-### Add remotes
+
+## Add remotes
 ```
 git remote add upstream https://github.com/tensorflow/tensorflow.git
 git fetch upstream
 ```
 
-### Create a working branch to track merge process
+## Create a working branch to track merge process
+
 ```
 git checkout -b develop-upstream-sync-YYMMDD
 git merge upstream/master --no-edit
 ```
+
 - Make first commit to record the merge state before resolving conflicts
   - Record all files with merge conflict locally
   - Mark all conflict files as resolved by staging them
@@ -44,7 +50,7 @@ git merge upstream/master --no-edit
   - When all merge conflict resolved, do a ```grep -rn "<<<<<<"``` to make sure
     no diff symbols exist in the source
 
-### Notice on common merge conflicts
+## Notice on common merge conflicts
 
 - bazel / terminology
   - Rename cuda_ to gpu_ . Python unit tests usually run into this issue.
@@ -79,18 +85,21 @@ git merge upstream/master --no-edit
     whitelist the failure and indicate it is an upstream failure so that it can
     be restored as soon as possible.
 
-### Build merged TensorFlow
+# Build merged TensorFlow
+
 - Build with either `build` or `build_python3` script. Make sure everything
   builds fine and Python PIP whl package can be built.
 
-### Push and Create Pull Request for TensorFlow ROCm port
+## Push and Create Pull Request for TensorFlow ROCm port
+
 - git push --set-upstream origin develop-upstream-sync-YYMMDD
 - Create a pull request to merge `develop-upstream-sync-YYMMDD` into
-  https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git on branch
+  <https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git> on branch
   `develop-upstream`.
 - Wait until the pull request has finished validation on Jenkins CI.
 
-### Update unit test whitelist if necessary
+## Update unit test whitelist if necessary
+
 - The first Jenkins CI job might result in failure due to additional failed
   unit tests introduced from new commits upstream. Examine the reason behind
   those failed cases.
@@ -125,20 +134,24 @@ git merge upstream/master --no-edit
 - Push to the working branch once again to let the pull request be tested
   again. Repeat the process until we see a green check mark on the PR.
 
-### Apply tags and merge
+# Apply tags and merge
+
 ```
 git checkout develop-upstream
 git tag merge-YYMMDD-prev
 git push --tags
 ```
+
 - Go to the pull request on github. Hit merge.
+
 ```
 git pull
 git tag merge-YYMMDD
 git push --tags
 ```
 
-### Sync the upstream branch
+## Sync the upstream branch
+
 ```
 git checkout upstream
 git merge upstream/master

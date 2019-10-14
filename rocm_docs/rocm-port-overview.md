@@ -7,6 +7,7 @@ This document serves as the overall document to explain what was changed to allo
 In this port efforts were made to try ensure logic for existing CUDA / NVPTX path stay as-is. Places where platform neutrality were broken are marked as **XXX**.
 
 ---
+
 ## Make system
 
 - **configure**:
@@ -31,6 +32,7 @@ In this port efforts were made to try ensure logic for existing CUDA / NVPTX pat
   - added logic to load ROCm-specific functions such as `if_rocm()` or `if_rocm_is_configured()`
 
 ---
+
 ## StreamExecutor
 
 An ROCm backend is added to implement StreamExecutor interface. Existing CUDA backend is completely retained.
@@ -43,6 +45,7 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
 - intergated with rocFFT for FFT operations.
 
 ---
+
 ## Common Runtime
 
 **XXX** Changes under **tensorflow/core/commmon_runtime/gpu** directory are largely ROCm-specific and drops CUDA platform due to its current design.
@@ -58,6 +61,7 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
   - added `DnnScratchAllocator` as a replacement for `CudnnScratchAllocator`
 
 ---
+
 ## GPU kernel implementation
 
 - renamed the following files under **tensorflow/core/kernels** as they can be shared between CUDA and ROCm platform
@@ -80,6 +84,7 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
 
 
 ---
+
 ## XLA
 
 XLA support for LLVM AMDGPU backend is still highly experimental at this point. MIOpen and rocBLAS kernels would be invoked as libcalls via StreamExecutor interface.
@@ -123,6 +128,7 @@ XLA support for LLVM AMDGPU backend is still highly experimental at this point. 
   - added logic to check ROCm platform ISA version
 
 ---
+
 ## Fusion Support
 
 This release introduces support for automatically "fusing" certain sequences of ops/nodes in the Tensorflow graph, into a single op/node. This is only done for ops/nodes that have been placed on the GPU partition by Tensorflow. This idea here is to improve performance because the optimized GPU kernel implementation for the single fused node will perform better than the plural GPU kernel implementations (one for each node/op) of the individual node/op sequence.
@@ -135,9 +141,11 @@ The ROCm Fusion feature is disabled by default, and can be enabled by the settin
 4. AddN + ReluGrad
 
 By default you will only see a single message durung runtime that indicates that ROCm Fusion is turned ON
+
 ```
 2018-11-14 23:03:09.721057: I tensorflow/core/graph/gpu_fusion_pass.cc:434] ROCm Fusion is enabled.
 ```
+
 Setting the env var `TF_CPP_MIN_VLOG_LEVEL` to `2` will enable the display of verbose ROCm fusion details.
 
 
@@ -151,6 +159,7 @@ When ROCm Fusion is enabled, the following env-vars can be used to disable indiv
 - set `TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD` to `1` to disable to AddN+ReluGrad fusion
 
 ---
+
 ## Verbs Support
 
 This release enables the [community-contributed Verbs module](../tensorflow/contrib/verbs/README.md) for ROCm platforms.  The Verbs module provides a new distributed TensorFlow server protocol for RDMA transfers of Tensors over high-speed infiniband interconnects.  When building TensorFlow from source, you enable the Verbs module by
@@ -168,5 +177,5 @@ server = tf.train.Server(cluster, job_name="local", task_index=0, protocol='grpc
 
 Additional details for running distributed TensorFlow applications can be found online:
 
-- https://github.com/tensorflow/examples/blob/master/community/en/docs/deploy/distributed.md
-- https://www.tensorflow.org/guide/distribute_strategy
+- <https://github.com/tensorflow/examples/blob/master/community/en/docs/deploy/distributed.md>
+- <https://www.tensorflow.org/guide/distribute_strategy>

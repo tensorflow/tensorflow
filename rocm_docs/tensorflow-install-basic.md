@@ -1,10 +1,12 @@
 # Tensorflow ROCm port: Basic installation
 
 ## Intro
+
 This instruction provides a starting point for TensorFlow ROCm port (mostly via deb packages).
 *Note*: it is recommended to start with a clean Ubuntu 16.04 system
 
 ## Install ROCm
+
 ```
 export ROCM_PATH=/opt/rocm
 export DEBIAN_FRONTEND noninteractive
@@ -105,8 +107,9 @@ sudo apt-get update && sudo apt-get install -y \
     sudo rm -rf /var/lib/apt/lists/*
 ```
 ## Install Tensorflow Community Supported Builds 
+
 Link to the upstream Tensorflow CSB doc:
-https://github.com/tensorflow/tensorflow#community-supported-builds
+<https://github.com/tensorflow/tensorflow#community-supported-builds>
 
 We provide nightly tensorflow-rocm whl packages for Python 2.7, 3.5, 3.6 and 3.7 based systems.
 After downloading the compatible whl package, you can use pip/pip3 to install.

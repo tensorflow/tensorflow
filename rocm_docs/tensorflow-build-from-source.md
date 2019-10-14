@@ -1,6 +1,7 @@
 # TensorFlow ROCm port: Building From Source
 
 ## Intro
+
 This instruction provides a starting point for build TensorFlow ROCm port from source.
 *Note*: it is recommended to start with a clean Ubuntu 16.04 system
 
@@ -46,6 +47,7 @@ sudo apt-get update && sudo apt-get install -y \
 ```
 
 ## Install bazel
+
 ```
 echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
 curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
@@ -55,6 +57,7 @@ sudo bash ~/bazel*.sh
 ```
 
 ## Build TensorFlow ROCm port
+
 ```
 # Clone it
 cd ~ && git clone -b r1.14-rocm https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git
