@@ -16,8 +16,12 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.lang.reflect.Array;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.Arrays;
 
 /**
@@ -117,18 +121,47 @@ public final class Tensor {
           "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
     }
     throwIfDataIsIncompatible(src);
-    if (isByteBuffer(src)) {
+    if (isBuffer(src)) {
+      setTo((Buffer) src);
+    } else {
+      writeMultiDimensionalArray(nativeHandle, src);
+    }
+  }
+
+  private void setTo(Buffer src) {
+    // Note that we attempt to use zero-copy optimization for direct, native-ordered buffers.
+    // There are no base Buffer#order() or Buffer#put() methods, so again we have to ugly cast.
+    if (src instanceof ByteBuffer) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
-      // For direct ByteBuffer instances we support zero-copy. Note that this assumes the caller
-      // retains ownership of the source buffer until inference has completed.
       if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
-        writeDirectBuffer(nativeHandle, srcBuffer);
+        writeDirectBuffer(nativeHandle, src);
       } else {
         buffer().put(srcBuffer);
       }
-      return;
+    } else if (src instanceof LongBuffer) {
+      LongBuffer srcBuffer = (LongBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asLongBuffer().put(srcBuffer);
+      }
+    } else if (src instanceof FloatBuffer) {
+      FloatBuffer srcBuffer = (FloatBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asFloatBuffer().put(srcBuffer);
+      }
+    } else if (src instanceof IntBuffer) {
+      IntBuffer srcBuffer = (IntBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asIntBuffer().put(srcBuffer);
+      }
+    } else {
+      throw new IllegalArgumentException("Unexpected input buffer type: " + src);
     }
-    writeMultiDimensionalArray(nativeHandle, src);
   }
 
   /**
@@ -148,13 +181,27 @@ public final class Tensor {
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
     }
     throwIfDataIsIncompatible(dst);
-    if (dst instanceof ByteBuffer) {
-      ByteBuffer dstByteBuffer = (ByteBuffer) dst;
-      dstByteBuffer.put(buffer());
-      return dst;
+    if (isBuffer(dst)) {
+      copyTo((Buffer) dst);
+    } else {
+      readMultiDimensionalArray(nativeHandle, dst);
     }
-    readMultiDimensionalArray(nativeHandle, dst);
     return dst;
+  }
+
+  private void copyTo(Buffer dst) {
+    // There is no base Buffer#put() method, so we have to ugly cast.
+    if (dst instanceof ByteBuffer) {
+      ((ByteBuffer) dst).put(buffer());
+    } else if (dst instanceof FloatBuffer) {
+      ((FloatBuffer) dst).put(buffer().asFloatBuffer());
+    } else if (dst instanceof LongBuffer) {
+      ((LongBuffer) dst).put(buffer().asLongBuffer());
+    } else if (dst instanceof IntBuffer) {
+      ((IntBuffer) dst).put(buffer().asIntBuffer());
+    } else {
+      throw new IllegalArgumentException("Unexpected output buffer type: " + dst);
+    }
   }
 
   /** Returns the provided buffer's shape if specified and different from this Tensor's shape. */
@@ -164,8 +211,8 @@ public final class Tensor {
       return null;
     }
     // Implicit resizes based on ByteBuffer capacity isn't supported, so short-circuit that path.
-    // The ByteBuffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
-    if (isByteBuffer(input)) {
+    // The Buffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
+    if (isBuffer(input)) {
       return null;
     }
     throwIfTypeIsIncompatible(input);
@@ -192,13 +239,13 @@ public final class Tensor {
       while (c.isArray()) {
         c = c.getComponentType();
       }
-      if (float.class.equals(c)) {
+      if (float.class.equals(c) || o instanceof FloatBuffer) {
         return DataType.FLOAT32;
-      } else if (int.class.equals(c)) {
+      } else if (int.class.equals(c) || o instanceof IntBuffer) {
         return DataType.INT32;
       } else if (byte.class.equals(c)) {
         return DataType.UINT8;
-      } else if (long.class.equals(c)) {
+      } else if (long.class.equals(c) || o instanceof LongBuffer) {
         return DataType.INT64;
       } else if (String.class.equals(c)) {
         return DataType.STRING;
@@ -274,14 +321,18 @@ public final class Tensor {
   }
 
   private void throwIfShapeIsIncompatible(Object o) {
-    if (isByteBuffer(o)) {
-      ByteBuffer oBuffer = (ByteBuffer) o;
-      if (oBuffer.capacity() != numBytes()) {
+    if (isBuffer(o)) {
+      Buffer oBuffer = (Buffer) o;
+      int bytes = numBytes();
+      // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
+      // In such cases, we only care that the raw byte capacity matches the tensor byte capacity.
+      int oBytes = isByteBuffer(o) ? oBuffer.capacity() : oBuffer.capacity() * dtype.byteSize();
+      if (bytes != oBytes) {
         throw new IllegalArgumentException(
             String.format(
                 "Cannot convert between a TensorFlowLite buffer with %d bytes and a "
-                    + "ByteBuffer with %d bytes.",
-                numBytes(), oBuffer.capacity()));
+                    + "Java Buffer with %d bytes.",
+                bytes, oBytes));
       }
       return;
     }
@@ -293,6 +344,10 @@ public final class Tensor {
                   + "with shape %s.",
               Arrays.toString(shapeCopy), Arrays.toString(oShape)));
     }
+  }
+
+  private static boolean isBuffer(Object o) {
+    return o instanceof Buffer;
   }
 
   private static boolean isByteBuffer(Object o) {
@@ -319,7 +374,7 @@ public final class Tensor {
 
   private static native ByteBuffer buffer(long handle);
 
-  private static native void writeDirectBuffer(long handle, ByteBuffer src);
+  private static native void writeDirectBuffer(long handle, Buffer src);
 
   private static native int dtype(long handle);
 

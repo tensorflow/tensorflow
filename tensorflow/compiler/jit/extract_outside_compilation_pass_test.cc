@@ -532,7 +532,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_EQ(if_oc_node_cond_input, recv_if_pred_node);
 
     // Check that then_branch outside compilation has node "identity_true_fn".
-    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_if");
+    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_true_fn");
     EXPECT_NE(true_def, nullptr);
     bool has_identity_true_fn_node = false;
     for (const auto &node_def : true_def->node_def()) {
@@ -544,7 +544,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_TRUE(has_identity_true_fn_node);
 
     // Check that else_branch outside compilation has node "identity_false_fn".
-    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_if");
+    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_false_fn");
     EXPECT_NE(false_def, nullptr);
     bool has_identity_false_fn_node = false;
     for (const auto &node_def : false_def->node_def()) {
@@ -674,7 +674,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_NE(while_oc_node, nullptr);
 
     // Check that cond outside compilation has node "identity_cond_fn".
-    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_while");
+    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_cond_fn");
     EXPECT_NE(cond_def, nullptr);
     bool has_identity_cond_fn_node = false;
     for (const auto &node_def : cond_def->node_def()) {
@@ -686,7 +686,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_TRUE(has_identity_cond_fn_node);
 
     // Check that body outside compilation has node "identity_body_fn".
-    const FunctionDef *body_def = fld.Find("oc_body_host_while_while");
+    const FunctionDef *body_def = fld.Find("oc_body_host_while_body_fn");
     EXPECT_NE(body_def, nullptr);
     bool has_identity_body_fn_node = false;
     for (const auto &node_def : body_def->node_def()) {

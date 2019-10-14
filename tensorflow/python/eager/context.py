@@ -729,6 +729,8 @@ class Context(object):
     """
     if isinstance(name, LogicalDevice):
       name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):

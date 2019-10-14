@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -522,7 +523,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     if (it != specs_.inputs.end()) {
       auto node_name = node->op_def().name();
       if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
-          node_name != "_Arg") {
+          node_name != FunctionLibraryDefinition::kArgOp) {
         // We do not handle the case where the input node has multple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
@@ -542,6 +543,19 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
                                     GetLocationStr(*node));
 
+    auto set_shape_from_list_attr = [&](const AttrValue* attr) {
+      auto& list = attr->list();
+      for (auto shape : llvm::enumerate(list.shape())) {
+        auto* node_context = shape_refiner_->GetContext(node);
+        shape_inference::ShapeHandle handle;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            node_context->MakeShapeFromShapeProto(shape.value(), &handle),
+            GetLocationStr(*node));
+        node_context->set_output(shape.index(), handle);
+      }
+      return Status::OK();
+    };
+
     // We currently have no other way to get shapes from ReadVariableOp's.
     // Some graphs seem to have _output_shapes attributes on them, so use that
     // if possible.
@@ -558,17 +572,8 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
       // (which checks for exact type equality; _output_shapes results in
       // us shoehorning in the more-precise type on the output).
-      if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
-        auto& list = attr->list();
-        for (auto shape : llvm::enumerate(list.shape())) {
-          auto* node_context = shape_refiner_->GetContext(node);
-          shape_inference::ShapeHandle handle;
-          TF_RETURN_WITH_CONTEXT_IF_ERROR(
-              node_context->MakeShapeFromShapeProto(shape.value(), &handle),
-              GetLocationStr(*node));
-          node_context->set_output(shape.index(), handle);
-        }
-      }
+      if (const AttrValue* attr = node->attrs().Find("_output_shapes"))
+        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
     }
 
     // If it is the argument node, the shape handle is set explicitly, so it
@@ -576,13 +581,14 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     if (StringPiece(node->type_string()) == FunctionLibraryDefinition::kArgOp) {
       auto* node_context = shape_refiner_->GetContext(node);
       DCHECK(node_context != nullptr);
-      auto it = node->def().attr().find("shape");
-      if (it != node->def().attr().end()) {
+      if (const AttrValue* attr = node->attrs().Find("shape")) {
         shape_inference::ShapeHandle handle;
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            node_context->MakeShapeFromShapeProto(it->second.shape(), &handle),
+            node_context->MakeShapeFromShapeProto(attr->shape(), &handle),
             GetLocationStr(*node));
         node_context->set_output(0, handle);
+      } else if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
       } else {
         node_context->set_output(0, node_context->UnknownShape());
       }
@@ -708,15 +714,15 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
   TF_ASSIGN_OR_RETURN(auto subtypes,
                       ConvertSubtypes(handle_subtypes, context, builder));
 
-  // TODO(hinsu): Store subtypes information for DT_RESOURCE element type as
-  // well.
   mlir::Type element_type;
-  if (dtype == DT_VARIANT) {
+  if (dtype == DT_VARIANT)
     element_type = mlir::TF::VariantType::get(subtypes, context_);
-  } else {
+  else if (dtype == DT_RESOURCE)
+    element_type = mlir::TF::ResourceType::get(subtypes, context_);
+  else
     TF_RETURN_IF_ERROR(
         ::tensorflow::ConvertDataType(dtype, builder, &element_type));
-  }
+
   return ConvertElementTypeAndShape(element_type, handle, context, builder);
 }
 

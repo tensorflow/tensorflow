@@ -48,32 +48,32 @@ namespace mlir {
 namespace tf_executor {
 namespace {
 
-// If the given tensor has elements of type variant, then returns a new type
-// after dropping subtypes info. Otherwise, returns the original type as is.
-ShapedType DropVariantSubTypes(ShapedType ty) {
+// If the given tensor has elements of type with subtypes, then returns a new
+// type after dropping subtypes info. Otherwise, returns the original type as
+// is.
+ShapedType DropTypeSubTypes(ShapedType ty) {
   Type element_ty = ty.getElementType();
-  if (!element_ty.isa<TF::VariantType>()) return ty;
+  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (!subtype_ty) return ty;
 
-  Type variant_ty = TF::VariantType::get(ty.getContext());
-  if (ty.hasRank()) {
-    return RankedTensorType::get(ty.getShape(), variant_ty);
-  }
+  Type default_ty = GetDefaultTypeOf(subtype_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
 
-  return UnrankedTensorType::get(variant_ty);
+  return UnrankedTensorType::get(default_ty);
 }
 
 // If the given tensor has elements of type ref, then returns a new type
 // of the shape, but corresponding non-ref type as element type. Otherwise,
 // returns the original type as is.
-ShapedType DropRefType(ShapedType type) {
-  Type element_ty = type.getElementType();
-  TF::TensorFlowRefType ref_type = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_type) return type;
+ShapedType DropRefType(ShapedType ty) {
+  Type element_ty = ty.getElementType();
+  auto ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_ty) return ty;
 
-  if (type.hasRank()) {
-    return RankedTensorType::get(type.getShape(), ref_type.RemoveRef());
-  }
-  return UnrankedTensorType::get(ref_type.RemoveRef());
+  Type default_ty = GetDefaultTypeOf(ref_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
+
+  return UnrankedTensorType::get(default_ty);
 }
 
 }  // namespace
@@ -639,8 +639,8 @@ LogicalResult Verify(MergeOp merge) {
              << operand_tensor_ty << " vs " << output_tensor_ty;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropVariantSubTypes(output_tensor_ty)),
-        DropRefType(DropVariantSubTypes(operand_tensor_ty)));
+        DropRefType(DropTypeSubTypes(output_tensor_ty)),
+        DropRefType(DropTypeSubTypes(operand_tensor_ty)));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"

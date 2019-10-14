@@ -45,3 +45,33 @@ py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_test(
+    name = "structured_tensor_spec_test",
+    srcs = ["structured_tensor_spec_test.py"],
+    deps = [
+        ":structured_tensor",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "structured_tensor_slice_test",
+    srcs = ["structured_tensor_slice_test.py"],
+    deps = [
+        ":structured_tensor",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

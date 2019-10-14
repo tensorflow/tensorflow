@@ -59,10 +59,22 @@ namespace TF {
 // TF op helper functions
 //===----------------------------------------------------------------------===//
 
+// Returns the RankedTensorType for the given operand. TensorFlow constant ops
+// may have non-static shape because the shape is not propagated during constant
+// folding. If the defining op for the given operand is a constant op, this
+// routine uses the constant op's attribute to get the actual shape.
+static RankedTensorType GetRankedTensorTypeForOperand(Value *operand) {
+  DenseElementsAttr attr;
+  if (matchPattern(operand, m_Constant(&attr))) {
+    return attr.getType().dyn_cast<RankedTensorType>();
+  }
+  return operand->getType().dyn_cast<RankedTensorType>();
+}
+
 // Returns true if the given `value` is of ranked float tensor type with the
 // given `rank`.
 static inline bool isOfRankedFloatTensorType(Value *value, int rank) {
-  auto type = value->getType().dyn_cast<RankedTensorType>();
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
   return type && type.getRank() == rank &&
          type.getElementType().isa<FloatType>();
 }
@@ -70,28 +82,22 @@ static inline bool isOfRankedFloatTensorType(Value *value, int rank) {
 // Returns true if the given `value` has the specified rank or has unranked
 // type.
 static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
-  if (auto type = value->getType().dyn_cast<RankedTensorType>()) {
-    return type.getRank() == rank;
-  }
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() == rank;
 }
 
 // Returns true if the given `value` has at least the specified rank or has
 // unranked type.
 static inline bool HasRankAtLeast(Value *value, int64_t rank) {
-  Type type = value->getType();
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
-    return ranked_type.getRank() >= rank;
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() >= rank;
 }
 
 // Returns true if the given `value` has at most the specified rank or has
 // unranked type.
 static inline bool HasRankAtMost(Value *value, int64_t rank) {
-  Type type = value->getType();
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
-    return ranked_type.getRank() <= rank;
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() <= rank;
 }
 
 // Returns true if the given pair of TensorFlow types can be cast to one

@@ -438,16 +438,28 @@ class FuncGraph(ops.Graph):
     return [t.shape for t in self.outputs]
 
   @property
-  def variables(self):
-    """A list of variables accessed by this FuncGraph.
+  def trainable_variables(self):
+    """A sequence of trainable variables accessed by this FuncGraph.
 
     Note that functions keep only weak references to variables. Calling the
     function after a variable it accesses has been deleted is an error.
 
-    Yields:
-      Strong references to variables accessed by this FuncGraph.
+    Returns:
+      Sequence of trainable variables for this func graph.
     """
-    for weak_v in self._weak_variables:
+    return tuple(v for v in self.variables if v.trainable)
+
+  @property
+  def variables(self):
+    """A sequence of variables accessed by this FuncGraph.
+
+    Note that functions keep only weak references to variables. Calling the
+    function after a variable it accesses has been deleted is an error.
+
+    Returns:
+      Sequence of variables for this func graph.
+    """
+    def deref(weak_v):
       v = weak_v()
       if v is None:
         raise AssertionError(
@@ -456,7 +468,9 @@ class FuncGraph(ops.Graph):
             "not referenced elsewhere in the program. This is generally a "
             "mistake; consider storing variables in an object attribute on "
             "first call.")
-      yield v
+      return v
+
+    return tuple(deref(v) for v in self._weak_variables)
 
   @variables.setter
   def variables(self, var_list):

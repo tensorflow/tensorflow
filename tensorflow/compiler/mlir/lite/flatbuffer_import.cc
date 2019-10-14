@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -184,6 +185,44 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
   }
 
   return builder.getTensorType(elem_type);
+}
+
+// Extract the min max information in the tensor and create the quant stats op.
+// If the input `tensor` has scale/zero_point, `res` should have quantized
+// type, thus none stats op is required and nullptr is retruned.
+// If the min max information is invalid, nullptr is returned.
+mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
+                                        Value* res) {
+  // If the `tensor` has scale/zero_point, it must have been quantized, then the
+  // min/max stats is just for comments, so ignore it.
+  if (IsQuantized(tensor)) return nullptr;
+
+  auto mins = tensor.quantization->min;
+  auto maxs = tensor.quantization->max;
+  if (mins.size() != maxs.size() || mins.empty()) return nullptr;
+
+  llvm::SmallVector<llvm::APFloat, 4> min_maxs;
+  min_maxs.reserve(mins.size() * 2);
+  for (int i = 0; i < mins.size(); ++i) {
+    llvm::APFloat min(mins[i]);
+    llvm::APFloat max(maxs[i]);
+    min_maxs.push_back(min);
+    min_maxs.push_back(max);
+  }
+  // The layer stats contain only the first min/max pairs.
+  mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
+      b.getTensorType({2}, b.getF32Type()), {min_maxs[0], min_maxs[1]});
+  mlir::ElementsAttr axis_stats;
+  mlir::IntegerAttr axis;
+  if (mins.size() > 1) {
+    llvm::SmallVector<int64_t, 4> axis_stats_shape{
+        static_cast<int64_t>(mins.size()), 2};
+    axis_stats = mlir::DenseFPElementsAttr::get(
+        b.getTensorType(axis_stats_shape, b.getF32Type()), min_maxs);
+    axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
+  }
+  return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
+                                             layer_stats, axis_stats, axis);
 }
 
 StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
@@ -413,7 +452,7 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
-    const tflite::OperatorT& op, const std::vector<Value*> vals_map,
+    const tflite::OperatorT& op, const std::vector<Value*>& vals_map,
     Value* optional_arg_marker, const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
@@ -595,12 +634,23 @@ StatusOr<FuncOp> ConvertSubgraph(
       auto err = errors::FailedPrecondition("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
+    Value* input_value;
     if (add_pseudo_input_ops) {
       auto* input = func.getArgument(i);
       auto op = op_builder.create<tfl::InputOp>(loc, input);
-      vals_map[input_tensor] = op.output();
+      input_value = op.output();
     } else {
-      vals_map[input_tensor] = func.getArgument(i);
+      input_value = func.getArgument(i);
+    }
+
+    // If the `tensor` has min/max and doesn't have scale/zero_point
+    // information, a stats op is created to use the input_value, then the
+    // `tensor` should be mapped to the result of this new stats op.
+    if (auto stats_op =
+            ConvertMinMaxToStatsOp(tensor, op_builder, input_value)) {
+      vals_map[input_tensor] = stats_op->getResult(0);
+    } else {
+      vals_map[input_tensor] = input_value;
     }
   }
 
@@ -643,8 +693,20 @@ StatusOr<FuncOp> ConvertSubgraph(
         auto* mlir_op,
         ConvertOp(*op, vals_map, maybe_optional_arg_marker, op_names,
                   func_names, subgraph.tensors, op_loc, op_builder));
+
+    // Add the results to the value maps. There are two cases: 1. the result
+    // tensor does not have min/max values, the original op result is used
+    // directly; 2. the result tensor has some min/max values, a stats op is
+    // created, then the result of the stats op is used.
     for (auto pair : llvm::enumerate(mlir_op->getResults())) {
-      vals_map[op->outputs[pair.index()]] = pair.value();
+      int output_tensor_index = op->outputs[pair.index()];
+      auto& tensor = *subgraph.tensors[output_tensor_index];
+      if (auto stats_op =
+              ConvertMinMaxToStatsOp(tensor, op_builder, pair.value())) {
+        vals_map[output_tensor_index] = stats_op->getResult(0);
+      } else {
+        vals_map[output_tensor_index] = pair.value();
+      }
     }
   }
 

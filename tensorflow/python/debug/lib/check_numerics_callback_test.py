@@ -36,6 +36,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -550,9 +551,28 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
                        re.search(r"graph op.*\"Xdivy\"", message)))
       self.assertTrue(re.search(r"dtype.*float32", message))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testExpectedNaNOpOutputs(self):
+    """Test calling operations with benign NaN output."""
+    check_numerics_callback.enable_check_numerics()
+
+    # Empty input tensor
+    x = constant_op.constant(1, dtype=dtypes.float32, shape=[0, 1, 1, 1])
+    scale = constant_op.constant([1], dtype=dtypes.float32)
+    offset = constant_op.constant([1], dtype=dtypes.float32)
+
+    # Calling fused_batch_norm with an empty input should output a NaN in the
+    # latter four outputs without triggering the check_numerics callback
+    batch_norm_res = gen_nn_ops._fused_batch_norm(
+        x=x, scale=scale, offset=offset, mean=[], variance=[])
+
+    _, batch_mean, batch_variance, _, _ = self.evaluate(batch_norm_res)
+
+    self.assertTrue(np.isnan(batch_mean.squeeze()))
+    self.assertTrue(np.isnan(batch_variance.squeeze()))
+
   # TODO(cais): Tests for Infs and NaNs during distributed execution.
   # TODO(cais): Benchmark the slowdown due to callbacks and inserted nodes.
-
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

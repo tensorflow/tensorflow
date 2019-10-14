@@ -571,6 +571,14 @@ class Tensor(_TensorLike):
     """
     return self.shape.ndims
 
+  def _maybe_constant_shape(self, gen_array_ops):
+    """The shape tuple if fully defined, otherwise op to get shape."""
+
+    shape = self._shape_as_list()
+    if shape is not None and all(x is not None for x in shape):
+      return shape
+    return gen_array_ops.shape(self)
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -861,10 +869,7 @@ class _EagerTensorBase(Tensor):
     return float(self._numpy())
 
   def __index__(self):
-    maybe_arr = self._numpy()
-    if isinstance(maybe_arr, np.ndarray):
-      return maybe_arr.__index__()
-    return int(maybe_arr)  # Must be a NumPy scalar.
+    return self._numpy().__index__()
 
   def __bool__(self):
     return bool(self._numpy())
@@ -967,6 +972,9 @@ class _EagerTensorBase(Tensor):
       tuple with the shape.
     """
     raise NotImplementedError()
+
+  def _maybe_constant_shape(self, _):
+    return self.shape
 
   def _rank(self):
     """Integer rank of this Tensor.
@@ -1135,11 +1143,11 @@ register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor(value,
-                      dtype=None,
-                      name=None,
-                      preferred_dtype=None,
-                      dtype_hint=None):
+def convert_to_tensor_v1(value,
+                         dtype=None,
+                         name=None,
+                         preferred_dtype=None,
+                         dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1244,7 +1252,7 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
-  return internal_convert_to_tensor(
+  return convert_to_tensor(
       value=value,
       dtype=dtype,
       name=name,
@@ -1256,14 +1264,14 @@ def _error_prefix(name):
   return "" if name is None else "%s: " % name
 
 
-def internal_convert_to_tensor(value,
-                               dtype=None,
-                               name=None,
-                               as_ref=False,
-                               preferred_dtype=None,
-                               dtype_hint=None,
-                               ctx=None,
-                               accepted_result_types=(Tensor,)):
+def convert_to_tensor(value,
+                      dtype=None,
+                      name=None,
+                      as_ref=False,
+                      preferred_dtype=None,
+                      dtype_hint=None,
+                      ctx=None,
+                      accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
@@ -1328,6 +1336,9 @@ def internal_convert_to_tensor(value,
                   (_error_prefix(name), value, type(value)))
 
 
+internal_convert_to_tensor = convert_to_tensor
+
+
 def internal_convert_n_to_tensor(values,
                                  dtype=None,
                                  name=None,
@@ -1366,7 +1377,7 @@ def internal_convert_n_to_tensor(values,
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
-        internal_convert_to_tensor(
+        convert_to_tensor(
             value,
             dtype=dtype,
             name=n,
@@ -1461,7 +1472,7 @@ def internal_convert_to_tensor_or_composite(value,
           (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return internal_convert_to_tensor(
+    return convert_to_tensor(
         value,
         dtype=dtype,
         name=name,
