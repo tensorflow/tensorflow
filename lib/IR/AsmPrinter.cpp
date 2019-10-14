@@ -1519,23 +1519,24 @@ void OperationPrinter::numberValueID(Value *value) {
   }
 
   if (specialNameBuffer.empty()) {
-    switch (value->getKind()) {
-    case Value::Kind::BlockArgument:
-      // If this is an argument to the entry block of a region, give it an 'arg'
-      // name.
-      if (auto *block = cast<BlockArgument>(value)->getOwner()) {
-        auto *parentRegion = block->getParent();
-        if (parentRegion && block == &parentRegion->front()) {
-          specialName << "arg" << nextArgumentID++;
-          break;
-        }
-      }
-      // Otherwise number it normally.
+    auto *blockArg = dyn_cast<BlockArgument>(value);
+    if (!blockArg) {
+      // This is an uninteresting operation result, give it a boring number and
+      // be done with it.
       valueIDs[value] = nextValueID++;
       return;
-    case Value::Kind::OpResult:
-      // This is an uninteresting result, give it a boring number and be
-      // done with it.
+    }
+
+    // Otherwise, if this is an argument to the entry block of a region, give it
+    // an 'arg' name.
+    if (auto *block = blockArg->getOwner()) {
+      auto *parentRegion = block->getParent();
+      if (parentRegion && block == &parentRegion->front())
+        specialName << "arg" << nextArgumentID++;
+    }
+
+    // Otherwise number it normally.
+    if (specialNameBuffer.empty()) {
       valueIDs[value] = nextValueID++;
       return;
     }
@@ -1860,14 +1861,11 @@ void IntegerSet::print(raw_ostream &os) const {
 }
 
 void Value::print(raw_ostream &os) {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    // TODO: Improve this.
-    os << "<block argument>\n";
-    return;
-  case Value::Kind::OpResult:
+  if (auto *op = getDefiningOp())
     return getDefiningOp()->print(os);
-  }
+  // TODO: Improve this.
+  assert(isa<BlockArgument>(*this));
+  os << "<block argument>\n";
 }
 
 void Value::dump() {
