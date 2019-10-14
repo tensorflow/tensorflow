@@ -56,6 +56,45 @@ operator_property::OperatorProperty GetOperatorProperty(
   return property;
 }
 
+TfLiteStatus GetTensorTypeStringRepresentation(const TensorType& tensor_type,
+                                               string& destination) {
+  switch (tensor_type) {
+    case TensorType_FLOAT32:
+      destination = "float32";
+      break;
+    case TensorType_FLOAT16:
+      destination = "float16";
+      break;
+    case TensorType_INT32:
+      destination = "int32";
+      break;
+    case TensorType_UINT8:
+      destination = "uint8";
+      break;
+    case TensorType_INT64:
+      destination = "int64";
+      break;
+    case TensorType_STRING:
+      destination = "string";
+      break;
+    case TensorType_BOOL:
+      destination = "bool";
+      break;
+    case TensorType_INT16:
+      destination = "int16";
+      break;
+    case TensorType_INT8:
+      destination = "int8";
+      break;
+    case TensorType_COMPLEX64:
+      destination = "complex64";
+      break;
+    default:
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
                           bool is_per_channel, int channel_dim_index,
