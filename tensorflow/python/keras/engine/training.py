@@ -667,7 +667,7 @@ class Model(network.Network):
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
             For the first two cases, `batch_size` must be provided.
-            For the last case, `validation_steps` must be provided.
+            For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -709,9 +709,13 @@ class Model(network.Network):
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
-            at the end of every epoch. If validation_data is a `tf.data` dataset
-            and 'validation_steps' is None, validation
-            will run until the `validation_data` dataset is exhausted.
+            at the end of every epoch. If 'validation_steps' is None, validation
+            will run until the `validation_data` dataset is exhausted. In the
+            case of a infinite dataset, it will run into a infinite loop.
+            If 'validation_steps' is specified and only part of the dataset
+            will be consumed, the evaluation will start from the beginning of
+            the dataset at each epoch. This ensures that the same validation
+            samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
