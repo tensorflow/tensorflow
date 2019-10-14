@@ -22,6 +22,7 @@ import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import error_interpolation
@@ -503,7 +504,7 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
-c_api.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
+_pywrap_py_exception_registry.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
 
 _EXCEPTION_CLASS_TO_CODE = {
     class_: code for code, class_ in _CODE_TO_EXCEPTION_CLASS.items()}

@@ -710,5 +710,25 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
 
+class EqualityTest(test_util.TensorFlowTestCase):
+
+  def testEqualityNone(self):
+    x = constant_op.constant([1.0, 2.0, 0.0, 4.0], dtype=dtypes.float32)
+    self.assertNotEqual(x, None)
+    self.assertNotEqual(None, x)
+    self.assertFalse(math_ops.tensor_equals(x, None))
+    self.assertTrue(math_ops.tensor_not_equals(x, None))
+
+
+class RangeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorRange(self):
+    values = range(5)
+    tensor = ops.convert_to_tensor(values)
+    self.assertAllEqual((5,), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(tensor))
+
+
 if __name__ == "__main__":
   googletest.main()

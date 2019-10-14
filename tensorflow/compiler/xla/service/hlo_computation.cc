@@ -248,6 +248,11 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
+bool HloComputation::ContainsInstruction(
+    const HloInstruction* instruction) const {
+  return instruction_iterators_.contains(instruction);
+}
+
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
@@ -1014,8 +1019,14 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
           << operand->ToString() << ", used by " << instr->ToString();
       new_operands.push_back(context->GetInstruction(replaced_operand));
     }
-    instructions.push_back(
-        instr->CloneWithNewOperands(instr->shape(), new_operands, context));
+    std::unique_ptr<HloInstruction> new_instr =
+        instr->CloneWithNewOperands(instr->shape(), new_operands, context);
+    if (instr->opcode() == HloOpcode::kParameter &&
+        instr->parameter_replicated_at_leaf_buffers().has_value()) {
+      new_instr->set_parameter_replicated_at_leaf_buffers(
+          instr->parameter_replicated_at_leaf_buffers().value());
+    }
+    instructions.push_back(std::move(new_instr));
   }
   Builder builder(name() + "." + suffix);
   for (auto& instr : instructions) {

@@ -54,7 +54,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "1.14.0"
+VERSION = "2.0.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 def if_v2(a):
@@ -2509,7 +2509,7 @@ def tf_python_pybind_extension(
         features = features,
         copts = copts,
         hdrs = hdrs,
-        deps = deps + tf_binary_pybind_deps(),
+        deps = deps + tf_binary_pybind_deps() + mkl_deps(),
     )
 
 def if_cuda_or_rocm(if_true, if_false = []):

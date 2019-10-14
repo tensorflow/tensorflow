@@ -124,6 +124,19 @@ struct StdInlinerInterface : public DialectInlinerInterface {
 // StandardOpsDialect
 //===----------------------------------------------------------------------===//
 
+/// A custom unary operation printer that omits the "std." prefix from the
+/// operation names.
+static void printStandardUnaryOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumOperands() == 1 && "unary op should have one operand");
+  assert(op->getNumResults() == 1 && "unary op should have one result");
+
+  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
+    << *op->getOperand(0);
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << op->getOperand(0)->getType();
+}
+
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
 static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
@@ -139,7 +152,8 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
     return;
   }
 
-  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << ", " << *op->getOperand(1);
   p.printOptionalAttrDict(op->getAttrs());
 
@@ -150,7 +164,8 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
 /// A custom cast operation printer that omits the "std." prefix from the
 /// operation names.
 static void printStandardCastOp(Operation *op, OpAsmPrinter &p) {
-  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
     << op->getResult(0)->getType();
 }
@@ -1683,7 +1698,7 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
-  assert(!operands.empty() && "extract_element takes atleast one operand");
+  assert(!operands.empty() && "extract_element takes at least one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();
@@ -2215,24 +2230,7 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
   if (aT.getElementType() != bT.getElementType())
     return false;
 
-  // If the either are unranked, then the cast is valid.
-  auto aRType = aT.dyn_cast<RankedTensorType>();
-  auto bRType = bT.dyn_cast<RankedTensorType>();
-  if (!aRType || !bRType)
-    return true;
-
-  // If they are both ranked, they have to have the same rank, and any specified
-  // dimensions must match.
-  if (aRType.getRank() != bRType.getRank())
-    return false;
-
-  for (unsigned i = 0, e = aRType.getRank(); i != e; ++i) {
-    int64_t aDim = aRType.getDimSize(i), bDim = bRType.getDimSize(i);
-    if (aDim != -1 && bDim != -1 && aDim != bDim)
-      return false;
-  }
-
-  return true;
+  return succeeded(verifyCompatibleShape(aT, bT));
 }
 
 OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
@@ -2336,6 +2334,28 @@ static LogicalResult verify(ZeroExtendIOp op) {
            << dstType << " must be wider than operand type " << srcType;
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FPExtOp
+//===----------------------------------------------------------------------===//
+
+bool FPExtOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() < fb.getWidth();
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// FPTruncOp
+//===----------------------------------------------------------------------===//
+
+bool FPTruncOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() > fb.getWidth();
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

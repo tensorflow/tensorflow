@@ -3,11 +3,11 @@
 HloModule main.5
 
 // CHECK-LABEL: func @main
-ENTRY %foo.5 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
-  %Arg_0.1 = f32[4] parameter(0)
-  %Arg_1.2 = f32[4] parameter(1)
+ENTRY %foo.5 (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
+  %Arg_0.1 = pred[4] parameter(0)
+  %Arg_1.2 = pred[4] parameter(1)
 
   // CHECK-NEXT: xla_hlo.and %arg0, %arg1
-  ROOT %and.3 = f32[4] and(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
+  ROOT %and.3 = pred[4] and(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 

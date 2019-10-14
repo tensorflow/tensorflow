@@ -2003,7 +2003,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `max_jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: 3D image. Size of the last dimension must be 1 or 3.
     min_jpeg_quality: Minimum jpeg encoding quality to use.
     max_jpeg_quality: Maximum jpeg encoding quality to use.
     seed: An operation-specific seed. It will be used in conjunction with the
@@ -2040,19 +2040,19 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
   """Adjust jpeg encoding quality of an image.
 
-  This is a convenience method that converts images to uint8 representation,
-  encodes them to jpeg with `jpeg_quality`, decodes them, and then converts back
+  This is a convenience method that converts an image to uint8 representation,
+  encodes it to jpeg with `jpeg_quality`, decodes it, and then converts back
   to the original data type.
 
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: image or images. Size of the last dimension must be None, 1 or 3.
+    image: 3D image. Size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
-    Adjusted image(s), same shape and DType as `image`.
+    Adjusted image, same shape and DType as `image`.
 
   Usage Example:
     ```python

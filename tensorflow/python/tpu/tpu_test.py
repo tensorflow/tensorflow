@@ -150,6 +150,14 @@ def do_einsum():
 def find_einsum(g):
   graph_def = g.as_graph_def()
   for node in graph_def.node:
+    if node.op == "Einsum":
+      return True
+  return False
+
+
+def find_xla_einsum(g):
+  graph_def = g.as_graph_def()
+  for node in graph_def.node:
     if node.op == "XlaEinsum":
       return True
   return False
@@ -160,12 +168,12 @@ class TPUXlaEinsumTest(test.TestCase):
   def test_tpu_rewrite_uses_xla_einsum(self):
     with ops.Graph().as_default() as g:
       tpu.rewrite(do_einsum)
-      self.assertTrue(find_einsum(g))
+      self.assertTrue(find_einsum(g) or find_xla_einsum(g))
 
   def test_default_does_not_use_xla_einsum(self):
     with ops.Graph().as_default() as g:
       do_einsum()
-      self.assertFalse(find_einsum(g))
+      self.assertFalse(find_xla_einsum(g))
 
 
 if __name__ == "__main__":

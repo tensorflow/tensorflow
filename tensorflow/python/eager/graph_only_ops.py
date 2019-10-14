@@ -25,20 +25,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 
-def graph_zeros_like(tensor):
-  """Graph-only version of tf.zeros_like(), for internal use only."""
-  g = ops._get_graph_from_inputs([tensor])  # pylint: disable=protected-access
-  with g.as_default(), ops.name_scope(None, "zeros_like", [tensor]) as name:
-    tensor = ops.convert_to_tensor(tensor, name="tensor")
-    dtype = tensor.dtype.base_dtype
-    dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
-    op = g._create_op_internal(  # pylint: disable=protected-access
-        "ZerosLike", [tensor], [dtype], input_types=[dtype],
-        attrs={"T": dtype_value}, name=name)
-  result, = op.outputs
-  return result
-
-
 def graph_placeholder(dtype, shape, name=None):
   """Graph-only version of tf.compat.v1.placeholder(), for internal use only."""
   dtype = dtype.base_dtype

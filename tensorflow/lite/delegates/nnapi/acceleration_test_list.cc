@@ -56,6 +56,9 @@ FloatActivationsOpTest/PRelu,29
 LogisticOpTest/LogisticOpTest/Sigmoid(.+nt8)?/\d+
 LogisticOpTest/LogisticOpTest/Sigmoid/\d+
 TanhOpTest/TanhOpTest/Tanh(.+nt8)?/\d+,29
+FloatActivationsOpTest/HardSwish
+QuantizedActivationsOpTest/HardSwish
+QuantizedActivationsOpTest/HardSwishBias
 
 # add_test
 FloatAddOpModel/.+

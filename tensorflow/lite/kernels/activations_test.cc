@@ -567,6 +567,51 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
+TEST(QuantizedActivationsOpTest, ReluUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 7, 1,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({128, 128, 160, 192, 176, 128, 240, 144}));
+}
+
+TEST(QuantizedActivationsOpTest, ReluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        0, 0, 2, 4,  //
+                                                        3, 0, 7, 1,  //
+                                                    },
+                                                    kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 0, 32, 64, 48, 0, 112, 16}));
+}
+
 TEST_P(TanhOpTest, TanhUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;

@@ -72,7 +72,7 @@ class Backend(object):
     """Returns the integer ID of this host."""
 
   @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   def buffers_from_pyvals(self, pyvals_and_devices):
@@ -83,7 +83,7 @@ class Backend(object):
     ]
 
   @abc.abstractmethod
-  def make_tuple(self, c_buffers, device_ordinal):
+  def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
 
   @abc.abstractmethod
@@ -113,14 +113,19 @@ class LocalBackend(Backend):
   def devices(self):
     return self.client.devices()
 
+  def local_devices(self):
+    return self.client.local_devices()
+
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
+    if device is None:
+      device = self.local_devices()[0]
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def make_tuple(self, c_buffers, device_ordinal):
-    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
+  def make_tuple(self, c_buffers, device):
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -365,7 +370,7 @@ class Buffer(object):
   """
 
   @staticmethod
-  def from_pyval(pyval, device=0, backend=None):
+  def from_pyval(pyval, device=None, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
     return backend.buffer_from_pyval(pyval, device)
@@ -387,9 +392,9 @@ class Buffer(object):
     return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
-  def make_tuple(buffers, backend=None, device=0):
+  def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
-    return backend.make_tuple(buffers, device_ordinal=device)
+    return backend.make_tuple(buffers, device)
 
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following

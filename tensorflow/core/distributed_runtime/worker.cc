@@ -80,8 +80,8 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
     s = session->graph_mgr()->Register(
         request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
-        request->collective_graph_key(), session->cluster_flr(),
-        response->mutable_graph_handle());
+        request->config_proto(), request->collective_graph_key(),
+        session->cluster_flr(), response->mutable_graph_handle());
   }
   done(s);
 }

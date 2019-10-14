@@ -11,17 +11,19 @@ is using the [Python API](python_api.md).
 The TensorFlow Lite Converter has a command line tool `tflite_convert` which
 supports basic models. Use the `TFLiteConverter` [Python API](python_api.md) for
 any conversions involving quantization or any additional parameters (e.g.
-signatures in SavedModels or custom objects in Keras models).
+signatures in [SavedModels](https://www.tensorflow.org/guide/saved_model) or
+custom objects in
+[Keras models](https://www.tensorflow.org/guide/keras/overview)).
 
 ## Usage
 
 The following flags specify the input and output files.
 
 *   `--output_file`. Type: string. Specifies the full path of the output file.
-*   --saved_model_dir. Type: string. Specifies the full path to the directory
+*   `--saved_model_dir`. Type: string. Specifies the full path to the directory
     containing the SavedModel generated in 1.X or 2.0.
-*   --keras_model_file. Type: string. Specifies the full path of the HDF5 file
-    containing the tf.keras model generated in 1.X or 2.0.
+*   `--keras_model_file`. Type: string. Specifies the full path of the HDF5 file
+    containing the `tf.keras` model generated in 1.X or 2.0.
 
 The following is an example usage.
 

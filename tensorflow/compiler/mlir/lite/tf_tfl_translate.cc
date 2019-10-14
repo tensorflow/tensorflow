@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -131,7 +132,7 @@ int main(int argc, char **argv) {
 
   StatusOr<mlir::OwningModuleRef> module =
       tensorflow::LoadFromGraphdefOrMlirSource(
-          input_file_name, input_mlir, use_splatted_constant, extra_opdefs,
+          input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,
           output_arrays,
           /*prune_unused_nodes=*/true, &source_mgr, &context);
@@ -146,7 +147,7 @@ int main(int argc, char **argv) {
   mlir::TFL::QuantizationSpecs quant_specs;
   if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
                                           inference_type, &quant_specs)) {
-    llvm::errs() << "UFailed to get input quant spec.";
+    llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }
   if (weight_quantization != "NONE") {
@@ -159,6 +160,17 @@ int main(int argc, char **argv) {
       llvm::errs() << "Unknown weight quantization " << weight_quantization;
       return kTrFailure;
     }
+  }
+
+  if (!quant_stats_file_name.empty()) {
+    std::string error_message;
+    auto file = mlir::openInputFile(quant_stats_file_name, &error_message);
+    if (!file) {
+      llvm::errs() << "fail to open quant stats file: "
+                   << quant_stats_file_name;
+      return kTrFailure;
+    }
+    quant_specs.serialized_quant_stats = file->getBuffer().str();
   }
 
   mlir::TFL::PassConfig pass_config(quant_specs);

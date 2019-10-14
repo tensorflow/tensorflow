@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import shutil
 import tempfile
 
 from tensorflow.core.framework import graph_pb2
@@ -30,6 +29,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -57,7 +57,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
 
   def tearDown(self):
-    shutil.rmtree(self._dump_dir)
+    file_io.delete_recursively(self._dump_dir)
     super(ReconstructNonDebugGraphTest, self).tearDown()
 
   def _graphDefWithoutBlacklistedNodes(self, graph_def):

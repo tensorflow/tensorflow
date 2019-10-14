@@ -21,6 +21,7 @@ package_group(
         "//...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/core/tfrt_delegate/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
@@ -542,6 +543,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":LLVMDialect",
         ":StandardOps",
         ":Support",
     ],
@@ -582,6 +584,17 @@ filegroup(
 )
 
 cc_library(
+    name = "GPUCommonTransforms",
+    hdrs = ["lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h"],
+    deps = [
+        ":GPUDialect",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
     name = "GPUToNVVMTransforms",
     srcs = ["lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp"],
     hdrs = [
@@ -589,14 +602,30 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":GPUCommonTransforms",
         ":GPUDialect",
-        ":IR",
-        ":LLVMDialect",
         ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
         ":Transforms",
-        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "GPUToROCDLTransforms",
+    srcs = ["lib/Conversion/GPUToROCDL/LowerGpuOpsToROCDLOps.cpp"],
+    hdrs = [
+        "include/mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":GPUCommonTransforms",
+        ":GPUDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":ROCDLDialect",
+        ":Transforms",
     ],
     alwayslink = 1,
 )
@@ -606,7 +635,6 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
         "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
-        "lib/Conversion/GPUToCUDA/GenerateCubinAccessors.cpp",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
     includes = ["include"],
@@ -635,9 +663,9 @@ cc_library(
         ":GPUDialect",
         ":IR",
         ":Pass",
-        ":SPIRVConversions",
         ":SPIRVDialect",
         ":StandardOps",
+        ":StandardToSPIRVConversions",
     ],
     alwayslink = 1,
 )
@@ -961,7 +989,27 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVConversions",
+    name = "SPIRVTransforms",
+    srcs = [
+        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/SPIRV/Passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":SPIRVDialect",
+        ":Support",
+        ":Transforms",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "StandardToSPIRVConversions",
     srcs = [
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.cpp",
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.cpp",
@@ -1158,10 +1206,10 @@ cc_library(
 cc_library(
     name = "CFGTransforms",
     srcs = [
-        "lib/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.cpp",
+        "lib/Conversion/LoopToStandard/ConvertLoopToStandard.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h",
+        "include/mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h",
     ],
     includes = ["include"],
     deps = [
@@ -1359,6 +1407,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":NVVMConversionIncGen",
         ":NVVMDialect",
@@ -1382,6 +1431,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":ROCDLConversionIncGen",
         ":ROCDLDialect",
@@ -1454,6 +1504,7 @@ cc_library(
     deps = [
         ":Analysis",
         ":GPUToNVVMTransforms",
+        ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
         ":GPUTransforms",
         ":IR",
@@ -1463,8 +1514,8 @@ cc_library(
         ":Parser",
         ":Pass",
         ":QuantizerTransforms",
-        ":SPIRVConversions",
         ":SPIRVDialectRegistration",
+        ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
         ":VectorToLLVMTransforms",
@@ -1519,31 +1570,31 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "mlir-translate",
-    deps = [
-        ":tools/mlir-translate/mlir-translate",
-    ],
-)
-
 cc_library(
-    name = "tools/mlir-translate/mlir-translate",
+    name = "MlirTranslateMain",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
         ":IR",
-        ":LoopDialectRegistration",
         ":Parser",
+        ":Support",
+        ":TranslateClParser",
+        ":Translation",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-translate",
+    deps = [
+        ":LoopDialectRegistration",
+        ":MlirTranslateMain",
         ":SPIRVDialectRegistration",
         ":SPIRVTranslateRegistration",
         ":StandardDialectRegistration",
-        ":Support",
         ":TargetLLVMIR",
         ":TargetNVVMIR",
         ":TargetROCDLIR",
-        ":TranslateClParser",
-        ":Translation",
         ":VectorDialectRegistration",
-        "@llvm//:support",
     ],
 )
 
@@ -1579,12 +1630,14 @@ cc_binary(
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
+        ":SPIRVTransforms",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
         "//test:TestDialect",
         "//test:TestTransforms",
         "@llvm//:support",
+        "@local_config_mlir//test:TestIR",
         "@local_config_mlir//test:TestPass",
     ],
 )
@@ -1643,6 +1696,7 @@ cc_binary(
         ":GPUDialect",
         ":GPUDialectRegistration",
         ":GPUToNVVMTransforms",
+        ":GPUToROCDLTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
@@ -1667,6 +1721,7 @@ cc_library(
         "lib/TableGen/Constraint.cpp",
         "lib/TableGen/Dialect.cpp",
         "lib/TableGen/Format.cpp",
+        "lib/TableGen/OpInterfaces.cpp",
         "lib/TableGen/OpTrait.cpp",
         "lib/TableGen/Operator.cpp",
         "lib/TableGen/Pattern.cpp",
@@ -1681,6 +1736,7 @@ cc_library(
         "include/mlir/TableGen/Format.h",
         "include/mlir/TableGen/GenInfo.h",
         "include/mlir/TableGen/GenNameParser.h",
+        "include/mlir/TableGen/OpInterfaces.h",
         "include/mlir/TableGen/OpTrait.h",
         "include/mlir/TableGen/Operator.h",
         "include/mlir/TableGen/Pattern.h",

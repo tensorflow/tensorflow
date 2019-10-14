@@ -53,6 +53,10 @@ public:
   /// Return the name of the attribute used for symbol names.
   static StringRef getSymbolAttrName() { return "sym_name"; }
 
+  //===--------------------------------------------------------------------===//
+  // Symbol Utilities
+  //===--------------------------------------------------------------------===//
+
   /// Returns the operation registered with the given symbol name with the
   /// regions of 'symbolTableOp'. 'symbolTableOp' is required to be an operation
   /// with the 'OpTrait::SymbolTable' trait.
@@ -63,6 +67,79 @@ public:
   /// 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol was
   /// found.
   static Operation *lookupNearestSymbolFrom(Operation *from, StringRef symbol);
+
+  /// This class represents a specific symbol use.
+  class SymbolUse {
+  public:
+    SymbolUse(Operation *op, SymbolRefAttr symbolRef)
+        : owner(op), symbolRef(symbolRef) {}
+
+    /// Return the operation user of this symbol reference.
+    Operation *getUser() const { return owner; }
+
+    /// Return the symbol reference that this use represents.
+    SymbolRefAttr getSymbolRef() const { return symbolRef; }
+
+  private:
+    /// The operation that this access is held by.
+    Operation *owner;
+
+    /// The symbol reference that this use represents.
+    SymbolRefAttr symbolRef;
+  };
+
+  /// This class implements a range of SymbolRef uses.
+  class UseRange {
+  public:
+    /// This class implements an iterator over the symbol use range.
+    class iterator final
+        : public indexed_accessor_iterator<iterator, const UseRange *,
+                                           const SymbolUse> {
+    public:
+      const SymbolUse *operator->() const { return &object->uses[index]; }
+      const SymbolUse &operator*() const { return object->uses[index]; }
+
+    private:
+      iterator(const UseRange *owner, ptrdiff_t it)
+          : indexed_accessor_iterator<iterator, const UseRange *,
+                                      const SymbolUse>(owner, it) {}
+
+      /// Allow access to the constructor.
+      friend class UseRange;
+    };
+
+    /// Contruct a UseRange from a given set of uses.
+    UseRange(std::vector<SymbolUse> &&uses) : uses(std::move(uses)) {}
+    iterator begin() const { return iterator(this, /*it=*/0); }
+    iterator end() const { return iterator(this, /*it=*/uses.size()); }
+
+  private:
+    std::vector<SymbolUse> uses;
+  };
+
+  /// Get an iterator range for all of the uses, for any symbol, that are nested
+  /// within the given operation 'from'. This does not traverse into any nested
+  /// symbol tables, and will also only return uses on 'from' if it does not
+  /// also define a symbol table. This function returns None if there are any
+  /// unknown operations that may potentially be symbol tables.
+  static Optional<UseRange> getSymbolUses(Operation *from);
+
+  /// Get all of the uses of the given symbol that are nested within the given
+  /// operation 'from', invoking the provided callback for each. This does not
+  /// traverse into any nested symbol tables, and will also only return uses on
+  /// 'from' if it does not also define a symbol table. This function returns
+  /// None if there are any unknown operations that may potentially be symbol
+  /// tables.
+  static Optional<UseRange> getSymbolUses(StringRef symbol, Operation *from);
+
+  /// Return if the given symbol is known to have no uses that are nested within
+  /// the given operation 'from'. This does not traverse into any nested symbol
+  /// tables, and will also only count uses on 'from' if it does not also define
+  /// a symbol table. This function will also return false if there are any
+  /// unknown operations that may potentially be symbol tables. This doesn't
+  /// necessarily mean that there are no uses, we just can't convervatively
+  /// prove it.
+  static bool symbolKnownUseEmpty(StringRef symbol, Operation *from);
 
 private:
   MLIRContext *context;

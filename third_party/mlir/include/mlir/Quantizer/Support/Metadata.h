@@ -86,7 +86,7 @@ struct CAGUniformMetadata {
   /// expressed which must be satisfied.
   static constexpr int SalienceRequired = 200;
 
-  /// The range that the scheme must represent in order to accomadate the
+  /// The range that the scheme must represent in order to accommodate the
   /// underlying data.
   ExpandingMinMaxFact requiredRange;
 

@@ -189,6 +189,9 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
+  // Same as MakeComputationPostOrder() but sorting the computations by names.
+  std::vector<HloComputation*> MakeComputationPostOrderAndSortedByNames() const;
+
   // Gets the computations in this module which aren't for fusion nodes.
   //
   // Postcondition: All computations in the returned list have
@@ -221,7 +224,14 @@ class HloModule {
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
-      const HloModuleProto& module, const DebugOptions& debug_options);
+      const HloModuleProto& module, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
+
+  // Creates and returns an HloModuleConfig with an appropriate program shape
+  // for the HLO module in the given proto.
+  static StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
+      const ProgramShape& program_shape, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.

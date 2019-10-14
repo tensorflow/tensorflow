@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -167,6 +168,10 @@ class PyLocalClient {
       const std::string& serialized,
       std::shared_ptr<PyLocalClient> this_shared) const;
 
+  // Returns a bad status containing `caller_name` if `device_ordinal` doesn't
+  // correspond to a local device.
+  Status CheckDeviceOrdinal(int device_ordinal, absl::string_view caller_name);
+
  protected:
   std::string platform_name_;
   LocalClient* client_;
@@ -302,11 +307,12 @@ class PyLocalExecutable {
     return executable_->executable()->SizeOfGeneratedCodeInBytes();
   }
 
-  // Returns the device ordinals to which each replica is assigned.
-  const std::vector<int>& DeviceOrdinals() const { return device_ordinals_; }
-
   const DeviceAssignment& device_assignment() const {
     return device_assignment_;
+  }
+
+  const std::vector<std::shared_ptr<Device>>& local_devices() const {
+    return local_devices_;
   }
 
   StatusOr<std::unique_ptr<PyLocalBuffer>> Execute(
@@ -330,13 +336,16 @@ class PyLocalExecutable {
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
+
   // The replica indices of device_assignment_ to be run by this client. On
   // single-host platforms, this is all replicas (i.e. local_replicas_[i] = i),
   // but this may not be the case on multi-host platforms.
   std::vector<int> local_replicas_;
-  // device_ordinals_[i] is the device ordinal to which local_replicas_[i] is
-  // assigned.
-  std::vector<int> device_ordinals_;
+
+  // local_devices_[i] is the Device to which local_replicas_[i] is assigned.
+  // shared_ptrs instead of unique_ptrs to play well with the Python bindings
+  // (see xla.cc).
+  std::vector<std::shared_ptr<Device>> local_devices_;
 };
 
 }  // namespace xla

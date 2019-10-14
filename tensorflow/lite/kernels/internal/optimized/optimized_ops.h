@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/add.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -1485,14 +1486,11 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Add");
-
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const float* input1_data, const float* input2_data,
+                           float* output_data) {
   int i = 0;
-  const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
+
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(params.float_activation_min);
   const auto activation_max = vdupq_n_f32(params.float_activation_max);
@@ -1537,6 +1535,16 @@ inline void Add(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
   }
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const float* input1_data,
+                const RuntimeShape& input2_shape, const float* input2_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Add");
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
 // Element-wise add that can often be used for inner loop of broadcast add as
@@ -1907,16 +1915,83 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul");
+inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/float");
+
+  ArithmeticParams switched_params = unswitched_params;
+
+  const bool use_unswitched =
+      unswitched_params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const float* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const float* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  float* output_data_ptr = output_data;
+  const float* input1_data_ptr = input1_data;
+  const float* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
+        }
+      }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    // TODO(renjieliu): Optimze for scalar broadcast case.
+    reference_ops::BroadcastAdd4DSlow(
+        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
+        unswitched_input2_shape, unswitched_input2_data, output_shape,
+        output_data);
+  }
+}
+
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const float* input1_data, const float* input2_data,
+                           float* output_data) {
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
 
   int i = 0;
-  const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(output_activation_min);
   const auto activation_max = vdupq_n_f32(output_activation_max);
@@ -1965,6 +2040,17 @@ inline void Mul(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(x, output_activation_min,
                                                   output_activation_max);
   }
+}
+
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const float* input1_data,
+                const RuntimeShape& input2_shape, const float* input2_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Mul");
+
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
 inline void Mul(const ArithmeticParams& params,
@@ -2288,6 +2374,68 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
       }
       input2_data_reset = input2_data_ptr;
     }
+  }
+}
+
+inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/float");
+
+  ArithmeticParams switched_params = unswitched_params;
+  switched_params.input1_offset = unswitched_params.input2_offset;
+  switched_params.input2_offset = unswitched_params.input1_offset;
+
+  const bool use_unswitched =
+      unswitched_params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const float* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const float* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise Mul of
+  // sections of the arrays.
+  float* output_data_ptr = output_data;
+  const float* input1_data_ptr = input1_data;
+  const float* input2_data_reset = input2_data;
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            MulElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          input1_data_ptr += y4;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    // TODO(renjieliu): Optimze for scalar broadcast case.
+    reference_ops::BroadcastMul4DSlow(
+        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
+        unswitched_input2_shape, unswitched_input2_data, output_shape,
+        output_data);
   }
 }
 
@@ -3643,8 +3791,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
 // TODO(tflite): notes for optimization:
 // 1) See if e^ is also bottleneck in the reference fully-integer
 // version and apply lookup there and compare.
-// 2) Time spent is currently split between computing max_val, the
-// rint call, and the computation of log_prob.
 inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
@@ -3675,17 +3821,19 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
     const float log_sum_exp = std::log(sum_exp);
 
-    const float precomputed = input_scale * max_val + log_sum_exp;
+    // params.scale is the output scale.
+    const float scale = input_scale / params.scale;
+    const float precomputed =
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
-      // Equivalent to input_scale * (input_data[j] - max_val) - log_sum_exp;
-      const float log_prob = input_scale * input_data[j] - precomputed;
+      // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
+      // output_scale.
+      const float log_prob = scale * input_data[j] - precomputed;
 
       // TODO(tflite): look into better solution.
       // Use std::rint over std::round (which is used in
       // FakeQuant) since it's multiple times faster on tested arm32.
-      const int32_t prob_quantized =
-          std::rint(log_prob / params.scale) + params.zero_point;
-
+      const int32_t prob_quantized = std::rint(log_prob) + params.zero_point;
       output_data[j] = static_cast<uint8_t>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
@@ -5147,6 +5295,10 @@ inline void MultiplyByQuantizedMultiplier4Rows(
     int32x4_t* result_val_3, int32x4_t* result_val_4) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
+
+// The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+// is limited to NEON.
+#ifdef GEMMLOWP_NEON
   int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
   *result_val_1 = RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(
@@ -5164,6 +5316,80 @@ inline void MultiplyByQuantizedMultiplier4Rows(
       SaturatingRoundingDoublingHighMul(
           vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
       right_shift);
+#else
+  int32_t vals[4];
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_1 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_2 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_3 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_4 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+#endif
 }
 
 #endif

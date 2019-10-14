@@ -29,18 +29,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
-#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
@@ -300,12 +297,14 @@ class GraphView {
                 : reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]));
   }
 
+  int32 num_nodes() const { return num_nodes_; }
+
  private:
   char* InitializeNode(char* ptr, const Node* n);
   size_t NodeItemBytes(const Node* n);
 
   int32 num_nodes_ = 0;
-  uint32* node_offsets_ = nullptr;  // array of size "graph_.num_node_ids()"
+  uint32* node_offsets_ = nullptr;  // array of size "num_nodes_"
   // node_offsets_[id] holds the byte offset for node w/ "id" in space_
 
   char* space_;  // NodeItem objects are allocated here
@@ -315,14 +314,13 @@ class GraphView {
 
 class ExecutorImpl : public Executor {
  public:
-  ExecutorImpl(const LocalExecutorParams& p, std::unique_ptr<const Graph> g)
-      : params_(p), graph_(std::move(g)), gview_() {
+  explicit ExecutorImpl(const LocalExecutorParams& p) : params_(p), gview_() {
     CHECK(p.create_kernel != nullptr);
     CHECK(p.delete_kernel != nullptr);
   }
 
   ~ExecutorImpl() override {
-    for (int i = 0; i < graph_->num_node_ids(); i++) {
+    for (int32 i = 0; i < gview_.num_nodes(); i++) {
       NodeItem* item = gview_.node(i);
       if (item != nullptr) {
         params_.delete_kernel(item->kernel);
@@ -333,7 +331,7 @@ class ExecutorImpl : public Executor {
     }
   }
 
-  Status Initialize();
+  Status Initialize(const Graph& graph);
 
   // Process all Nodes in the current graph, attempting to infer the
   // memory allocation attributes to be used wherever they may allocate
@@ -394,7 +392,6 @@ class ExecutorImpl : public Executor {
 
   // Owned.
   LocalExecutorParams params_;
-  std::unique_ptr<const Graph> graph_;
   GraphView gview_;
 
   // A cached value of params_
@@ -623,12 +620,12 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
   *max_dead_count = num_in_edges;
 }
 
-Status ExecutorImpl::Initialize() {
-  gview_.Initialize(graph_.get());
+Status ExecutorImpl::Initialize(const Graph& graph) {
+  gview_.Initialize(&graph);
 
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &cf_info));
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(&graph, &cf_info));
 
   // Cache this value so we make this virtual function call once, rather
   // that O(# steps * # nodes per step) times.
@@ -641,7 +638,7 @@ Status ExecutorImpl::Initialize() {
 
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node.
-  for (const Node* n : graph_->nodes()) {
+  for (const Node* n : graph.nodes()) {
     const int id = n->id();
     const string& frame_name = cf_info.frame_names[id];
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);
@@ -707,9 +704,9 @@ Status ExecutorImpl::Initialize() {
 
   // Initialize PendingCounts only after item->pending_id is initialized for
   // all nodes.
-  InitializePending(graph_.get(), cf_info);
+  InitializePending(&graph, cf_info);
 
-  return gview_.SetAllocAttrs(graph_.get(), params_.device);
+  return gview_.SetAllocAttrs(&graph, params_.device);
 }
 
 // If a Node has been marked to use a ScopedAllocator x for output i, then
@@ -1670,6 +1667,15 @@ bool MightTrace(const NodeItem& item,
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
+  profiler::TraceMe activity(
+      [&] {
+        int64 id = step_id_;
+        if (step_container_ && step_container_->step_id()) {
+          id = step_container_->step_id();
+        }
+        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+      },
+      2);
   WithContext wc(context_);
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -2914,11 +2920,10 @@ void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
 
 }  // namespace
 
-Status NewLocalExecutor(const LocalExecutorParams& params,
-                        std::unique_ptr<const Graph> graph,
+Status NewLocalExecutor(const LocalExecutorParams& params, const Graph& graph,
                         Executor** executor) {
-  ExecutorImpl* impl = new ExecutorImpl(params, std::move(graph));
-  const Status s = impl->Initialize();
+  ExecutorImpl* impl = new ExecutorImpl(params);
+  const Status s = impl->Initialize(graph);
   if (s.ok()) {
     *executor = impl;
   } else {
@@ -2950,8 +2955,7 @@ class DefaultExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       Executor* ret = nullptr;
       TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(graph), &ret));

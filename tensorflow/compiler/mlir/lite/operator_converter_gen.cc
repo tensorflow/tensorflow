@@ -78,8 +78,10 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
 
     StringRef op_name = def->getName().drop_front(4);  // Strip 'TFL_' prefix
     std::string option_name = GetOperatorOptionName(*def);
+    std::string tflite_option_name =
+        option_name == "BasicLSTMOptions" ? "LSTMOptions" : option_name;
 
-    os << "flatbuffers::Offset<tflite::" << option_name << "> Create"
+    os << "flatbuffers::Offset<tflite::" << tflite_option_name << "> Create"
        << option_name << "(mlir::TFL::" << op_name
        << " op, flatbuffers::FlatBufferBuilder *fbb) {\n";
 
@@ -125,7 +127,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
       }
     }
 
-    os << "  tflite::" << option_name << "Builder b(*fbb);\n";
+    os << "  tflite::" << tflite_option_name << "Builder b(*fbb);\n";
     for (const auto &option : options)
       os << formatv("  b.add_{0}(std::move({0}));\n", option);
     os << "  return b.Finish();\n}\n";
@@ -163,7 +165,9 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
           "      *fbb, opcode_index, inputs, outputs,\n";
     if (def->getValueAsBit("hasOptions")) {
       auto option_name = GetOperatorOptionName(*def);
-      os << "      tflite::BuiltinOptions_" << option_name << ", "
+      std::string tflite_option_name =
+          option_name == "BasicLSTMOptions" ? "LSTMOptions" : option_name;
+      os << "      tflite::BuiltinOptions_" << tflite_option_name << ", "
          << "Create" << option_name << "(tflOp, fbb).Union(),\n";
     } else {
       os << "      tflite::BuiltinOptions_NONE, /*builtin_options=*/0,\n";
@@ -177,8 +181,12 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
   }
 }
 
-static inline std::string GetUpperCasedName(const Record &def) {
+static inline std::string GetOperatorName(const Record &def) {
   auto name = def.getValueAsString("opName");
+  // Special case for basic_lstm.
+  if (name == "basic_lstm") {
+    return "LSTM";
+  }
   return name.upper();
 }
 
@@ -201,7 +209,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
     os << "  if (isa<mlir::TFL::" << op_name << ">(op))\n"
-       << "    return tflite::BuiltinOperator_" << GetUpperCasedName(*def)
+       << "    return tflite::BuiltinOperator_" << GetOperatorName(*def)
        << ";\n";
   }
 
@@ -268,6 +276,11 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
   for (const auto *def : defs) {
     if (!def->getValueAsBit("hasOptions")) continue;
     auto option_name = GetOperatorOptionName(*def);
+    // Basic LSTM and LSTM ops share the same option to attribute converter.
+    if (option_name == "BasicLSTMOptions") {
+      continue;
+    }
+
     os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
 
     // We only care about options that are in arguments

@@ -320,9 +320,9 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -368,6 +368,30 @@ retained with length 1.
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+}
+
+def TFL_TransposeConvOp:
+    TFL_Op<"transpose_conv", [NoSideEffect]> {
+  let summary = "Transpose convolution operator";
+
+  let description = [{
+    Performs transpose convolution operation on input.
+  }];
+
+  let arguments = (
+    ins 1DTensorOf<[I32]>:$output_shape,
+    TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
+    TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_AveragePool2DOp:
@@ -581,7 +605,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32, I64, TFL_Str, QI8, QUI8]>:$params,
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$params,
     TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis
   );
@@ -594,7 +618,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TensorOf<[F32, I16, I32, I64, TFL_Str, QI8, QUI8]>:$output
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
@@ -634,9 +658,9 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 0;
 }
@@ -690,9 +714,9 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 0;
 }
@@ -858,9 +882,9 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
       }]>
   ];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_DivOp : TFL_Op<"div", [Broadcastable, NoSideEffect]> {
@@ -879,11 +903,13 @@ def TFL_DivOp : TFL_Op<"div", [Broadcastable, NoSideEffect]> {
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_EluOp: TFL_Op<"elu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1078,9 +1104,9 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
@@ -1112,9 +1138,9 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
 
   let results = (outs AnyTensor:$output);
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
@@ -1206,9 +1232,9 @@ def TFL_LessOp : TFL_Op<"less", [NoSideEffect, NoQuantizableResult]> {
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
@@ -1224,9 +1250,9 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
 
   let results = (outs I1Tensor:$output);
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [NoSideEffect]> {
@@ -1254,9 +1280,9 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
 
   let results = (outs I1Tensor:$output);
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogisticOp: TFL_Op<"logistic", [
@@ -1592,9 +1618,9 @@ def TFL_MulOp : TFL_Op<"mul", [Broadcastable, NoSideEffect, Commutative]> {
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -1762,9 +1788,9 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]
 
   let results = (outs AnyTensor:$output);
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
@@ -2092,9 +2118,9 @@ def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -2117,9 +2143,9 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_TanhOp: TFL_Op<"tanh", [
@@ -2739,6 +2765,43 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
 def LstmResultConstraint : PredOpTrait<
   "the input and result tensor elemental types must be same",
   TCresVTEtIsSameAsOp<0, 0>>;
+
+// This is the basic kernel type LSTM op.
+// TODO(b/142417845): Refactor this part to return its tflite node name as
+// "lstm".
+def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
+    TFL_OperandHasRank<0, 2>, TFL_OperandHasRank<1, 2>, TFL_OperandHasRank<2, 2>,
+    TFL_OperandHasRank<3, 1>, TFL_OperandHasRank<4, 2>]> {
+  let summary = "The basic lstm operator";
+
+  let description = [{
+    basic LSTM Cell Operator.
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$data_input,
+    TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$prev_activ_input,
+    TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$weights_input,
+    TensorOf<[F32, QI32, QUI32]>:$biases_input,
+    TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$prev_state_input,
+
+    // Attributes
+    DefaultValuedAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
+    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
+    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    // Since this op is the BASIC kernel only, constrain it.
+    Confined<
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
+      [TFL_LSTM_KT_BASIC]>:$kernel_type
+  );
+
+  let hasOptions = 1;
+
+  let results = (outs 2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$activ_output,
+                      2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$state_output,
+                      2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$concat_temp,
+                      2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$activ_temp);
+}
 
 // This is the FULL kernel type LSTM op.
 def TFL_LSTMOp :

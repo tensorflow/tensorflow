@@ -119,4 +119,3 @@ def _inverse_circulant(circulant_operator):
     linear_operator_householder.LinearOperatorHouseholder)
 def _inverse_householder(householder_operator):
   return householder_operator
-

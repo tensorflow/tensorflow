@@ -142,7 +142,7 @@ public:
             loc, vRHS, acc, rewriter.getI64ArrayAttr(d));
       // 3. Compute aD outer b (plus accD, if relevant).
       Value *aOuterbD =
-          accD ? rewriter.create<LLVM::fmuladd>(loc, vRHS, aD, b, accD)
+          accD ? rewriter.create<LLVM::FMulAddOp>(loc, vRHS, aD, b, accD)
                      .getResult()
                : rewriter.create<LLVM::FMulOp>(loc, aD, b).getResult();
       // 4. Insert as value `d` in the descriptor.

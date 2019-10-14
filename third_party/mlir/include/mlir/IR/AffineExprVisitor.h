@@ -249,7 +249,7 @@ private:
 // to the same operands, for example, for all result expressions of an
 // AffineMap or AffineValueMap. In such cases, using it for multiple expressions
 // is more efficient than creating a new flattener for each expression since
-// common idenical div and mod expressions appearing across different
+// common identical div and mod expressions appearing across different
 // expressions are mapped to the same local identifier (same column position in
 // 'localVarCst').
 class SimpleAffineExprFlattener

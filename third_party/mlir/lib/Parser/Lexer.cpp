@@ -176,11 +176,20 @@ Token Lexer::lexToken() {
 
 /// Lex an '@foo' identifier.
 ///
-///   symbol-ref-id ::= `@` bare-id
+///   symbol-ref-id ::= `@` (bare-id | string-literal)
 ///
 Token Lexer::lexAtIdentifier(const char *tokStart) {
-  // These always start with a letter or underscore.
-  auto cur = *curPtr++;
+  char cur = *curPtr++;
+
+  // Try to parse a string literal, if present.
+  if (cur == '"') {
+    Token stringIdentifier = lexString(curPtr);
+    if (stringIdentifier.is(Token::error))
+      return stringIdentifier;
+    return formToken(Token::at_identifier, tokStart);
+  }
+
+  // Otherwise, these always start with a letter or underscore.
   if (!isalpha(cur) && cur != '_')
     return emitError(curPtr - 1,
                      "@ identifier expected to start with letter or '_'");

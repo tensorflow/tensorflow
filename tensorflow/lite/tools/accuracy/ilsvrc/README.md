@@ -100,9 +100,6 @@ python generate_validation_labels.py \
 ```
 bazel build -c opt \
   --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
   //tensorflow/lite/tools/accuracy/ilsvrc:imagenet_accuracy_eval
 ```
 

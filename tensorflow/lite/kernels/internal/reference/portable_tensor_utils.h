@@ -29,7 +29,13 @@ namespace tensor_utils {
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
+// Check if all entries of a vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size) {
+  return PortableIsZeroVector(vector, v_size);
+}
+
+// Check if all entries of a vector are zero for int8.
+bool IsZeroVector(const int8_t* vector, int v_size) {
   return PortableIsZeroVector(vector, v_size);
 }
 
@@ -97,6 +103,12 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
       n_output, output_zp, scratch, output);
+}
+
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output) {
+  PortableMatrixScalarMultiplyAccumulate(matrix, scalar, n_row, n_col, output);
 }
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,

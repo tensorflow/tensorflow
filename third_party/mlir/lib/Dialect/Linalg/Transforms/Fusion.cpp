@@ -34,7 +34,6 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
-
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -186,10 +185,10 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {
       auto viewDim = getViewDefiningLoopRange(producer, i);
-      loopRanges[i] = SubViewOp::Range{
-          state.create<ConstantIndexOp>(b, loc, 0),
-          linalg::intrinsics::dim(viewDim.view, viewDim.dimension),
-          state.create<ConstantIndexOp>(b, loc, 1)};
+      loopRanges[i] =
+          SubViewOp::Range{state.create<ConstantIndexOp>(b, loc, 0),
+                           dim(viewDim.view, viewDim.dimension),
+                           state.create<ConstantIndexOp>(b, loc, 1)};
       LLVM_DEBUG(llvm::dbgs() << "new LoopRange: " << loopRanges[i] << "\n");
     }
   }
@@ -225,17 +224,13 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 // Only consider RAW atm.
-struct FusionInfo {
-  LinalgOp originalProducer;
-  LinalgOp fusedProducer;
-};
-static Optional<FusionInfo> fuseProducerOf(LinalgOp consumer,
-                                           unsigned consumerIdx,
-                                           LinalgDependenceGraph &G,
-                                           OperationFolder &state) {
+Optional<FusionInfo> mlir::linalg::fuseProducerOf(LinalgOp consumer,
+                                                  unsigned consumerIdx,
+                                                  LinalgDependenceGraph &graph,
+                                                  OperationFolder &state) {
   LLVM_DEBUG(dbgs() << "\nStart examining consumer: "
                     << *consumer.getOperation());
-  for (auto dependence : G.getDependencesInto(
+  for (auto dependence : graph.getDependencesInto(
            consumer, LinalgDependenceGraph::DependenceType::RAW)) {
     LLVM_DEBUG(dbgs() << "\n***Consider producer:\t"
                       << *dependence.dependentOpView.op << "\n");
@@ -264,7 +259,7 @@ static Optional<FusionInfo> fuseProducerOf(LinalgOp consumer,
 
     // Check for fusion-preventing write that would violate dependences.
     // `view` is a producer write that cannot bypass any other write or read.
-    if (!G.findCoveringDependences(producer, consumer).empty())
+    if (!graph.findCoveringDependences(producer, consumer).empty())
       continue;
 
     // Fuse `producer` just before `consumer`.

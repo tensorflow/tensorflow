@@ -21,16 +21,6 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/op_name_mapper.h"
 
-// These flags are used to control the emission or not of different kinds of ops
-// during the flatbuffer translation.
-extern bool emit_builtin_tflite_ops;
-extern bool emit_select_tf_ops;
-extern bool emit_custom_ops;
-// The flag to control whether to lower tensorlist ops into TF ops.
-extern bool lower_tensor_list_ops;
-// The flag to control whether debug info gets stripped on export.
-extern bool strip_debug_info;
-
 namespace tflite {
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the

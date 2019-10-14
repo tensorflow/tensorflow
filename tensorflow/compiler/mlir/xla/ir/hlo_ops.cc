@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -82,6 +83,45 @@ static LogicalResult Verify(T op) {
 //===----------------------------------------------------------------------===//
 // ConstOp
 //===----------------------------------------------------------------------===//
+
+static void Print(ConstOp op, OpAsmPrinter* printer) {
+  // Use short form only if the result type matches type of attribute 'value'.
+  bool use_short_form = op.value().getType() == op.getType();
+
+  // Print op name.
+  *printer << op.getOperationName();
+
+  // If short form, elide attribute value while printing the attribute
+  // dictionary.
+  SmallVector<StringRef, 1> elided_attrs;
+  if (use_short_form) elided_attrs.push_back("value");
+  printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
+
+  if (use_short_form) {
+    *printer << ' ' << op.value();
+  } else {
+    *printer << " : " << op.getType();
+  }
+}
+
+static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
+  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+
+  // If colon is not present after attribute dictionary, it should be short form
+  // and attribute 'value' is outside the dictionary.
+  if (failed(parser->parseOptionalColon())) {
+    Attribute value;
+    if (parser->parseAttribute(value, "value", result->attributes))
+      return failure();
+    return parser->addTypeToList(value.getType(), result->types);
+  }
+
+  // Long form should have type of the result after colon.
+  Type ty;
+  if (parser->parseType(ty)) return failure();
+  result->types.push_back(ty);
+  return success();
+}
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
@@ -232,6 +272,15 @@ static LogicalResult Verify(GetTupleElementOp op) {
   return success();
 }
 
+OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
+  if (auto tupleOp =
+          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand()->getDefiningOp())) {
+    return tupleOp.getOperand(index().getLimitedValue());
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // TupleOp
 //===----------------------------------------------------------------------===//
@@ -271,7 +320,7 @@ static LogicalResult Verify(BroadcastOp op) {
   if (resultRank != expectedRank) {
     return op.emitOpError(
         llvm::formatv("result rank ({0}) does not match operand rank "
-                      "({2}) plus size of broadcast_sizes ({3})",
+                      "({1}) plus size of broadcast_sizes ({2})",
                       resultRank, operandRank, sizesSize));
   }
 
@@ -449,6 +498,22 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
   // No dimensions to reverse.
   if (dimensions().getNumElements() == 0) return operand();
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult>& results) {
+  // No dimensions to reduce.
+  if (dimensions().getNumElements() == 0) {
+    for (Value* input : this->operands()) {
+      results.push_back(input);
+    }
+    return success();
+  }
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -644,6 +709,32 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CompareOp
+//===----------------------------------------------------------------------===//
+
+void CompareOp::build(Builder* builder, OperationState& result, Value* lhs,
+                      Value* rhs, DenseIntElementsAttr broadcast_dimensions,
+                      StringAttr comparison_direction) {
+  build(builder, result,
+        InferOutputTypes(builder, lhs, rhs, broadcast_dimensions,
+                         comparison_direction),
+        lhs, rhs, broadcast_dimensions, comparison_direction);
+}
+
+Type CompareOp::InferOutputTypes(Builder* builder, Value* lhs, Value* rhs,
+                                 DenseIntElementsAttr broadcast_dimensions,
+                                 StringAttr comparison_direction) {
+  if (!lhs->getType().isa<ShapedType>() || !rhs->getType().isa<ShapedType>())
+    return builder->getTensorType(builder->getI1Type());
+  // TODO(parkers): When binary ops support broadcasting shape inference, reuse
+  // that logic.
+  auto lhs_type = lhs->getType().cast<ShapedType>();
+  auto rhs_type = rhs->getType().cast<ShapedType>();
+  if (lhs_type != rhs_type) return builder->getTensorType(builder->getI1Type());
+  return builder->getTensorType(lhs_type.getShape(), builder->getI1Type());
 }
 
 #define GET_OP_CLASSES

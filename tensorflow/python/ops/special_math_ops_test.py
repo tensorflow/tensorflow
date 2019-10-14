@@ -231,7 +231,6 @@ class EinsumTest(test.TestCase):
       _ = special_math_ops.einsum(
           'ij,jk->ik', a, b, name='name', invalid1='value1', invalid2='value2')
 
-  @test_util.disable_xla('b/131919749')
   def test_unary(self):
     self._check('a', (3,))
     self._check('aa', (3, 3))
@@ -256,7 +255,6 @@ class EinsumTest(test.TestCase):
       self._check('aabcc->ac', (3, 3, 5, 4, 4))
       self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
   def test_unary_ellipsis(self):
     self._check('...->', ())
     self._check('...ijk->...ki', (3, 4, 5))
@@ -295,12 +293,10 @@ class EinsumTest(test.TestCase):
     self._check('ab,b', (3, 4), (4,))
     self._check('cab,b', (1, 3, 4), (4,))
 
-  @test_util.disable_xla('b/131919749')
   def test_reduced_indices(self):
     self._check('ba,b->', (3, 2), (3,))
     self._check('ab,ab->', (3, 4), (3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def test_repeated_indices(self):
     with compat.forward_compatibility_horizon(2019, 10, 19):
       # Repeated indices.
@@ -324,7 +320,6 @@ class EinsumTest(test.TestCase):
     self._check('...,...->...', (2, 3), (2, 3))  # hadamard product
     self._check('...i,...j->...ij', (5, 2), (5, 3))  # outer product
 
-  @test_util.disable_xla('b/131919749')
   def test_broadcasting(self):
     with compat.forward_compatibility_horizon(2019, 10, 19):
       # Batch matmul with broadcasting.

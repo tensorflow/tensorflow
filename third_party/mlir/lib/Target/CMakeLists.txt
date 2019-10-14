@@ -25,6 +25,7 @@ add_llvm_library(MLIRTargetNVVMIR
 target_link_libraries(MLIRTargetNVVMIR
   MLIRGPU
   MLIRIR
+  MLIRLLVMIR
   MLIRNVVMIR
   MLIRTargetLLVMIRModuleTranslation
   )
@@ -39,6 +40,7 @@ add_llvm_library(MLIRTargetROCDLIR
 target_link_libraries(MLIRTargetROCDLIR
   MLIRGPU
   MLIRIR
+  MLIRLLVMIR
   MLIRROCDLIR
   MLIRTargetLLVMIRModuleTranslation
   )

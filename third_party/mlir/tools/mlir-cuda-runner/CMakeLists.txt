@@ -37,7 +37,7 @@ if(MLIR_CUDA_RUNNER_ENABLED)
 
   set(FULL_LINK_LIBS
     MLIRAffineOps
-    MLIRControlFlowToCFG
+    MLIRLoopToStandard
     MLIRGPU
     MLIRGPUtoCUDATransforms
     MLIRGPUtoNVVMTransforms

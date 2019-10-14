@@ -90,7 +90,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
 mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::string_view debug_info_file, mlir::MLIRContext* context) {
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
   SessionOptions session_options;
   RunOptions run_options;
   tensorflow::SavedModelBundle bundle;
@@ -104,16 +104,7 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     return nullptr;
   }
 
-  GraphDebugInfo debug_info;
-  if (!debug_info_file.empty()) {
-    if (!LoadProtoFromFile(debug_info_file, &debug_info).ok()) {
-      LOG(ERROR) << "Failed to load debug info file: " << debug_info_file;
-      return nullptr;
-    }
-  }
-
-  auto module_or = ConvertSavedModelToMlir(bundle, debug_info, context);
-
+  auto module_or = ConvertSavedModelToMlir(bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
     return nullptr;

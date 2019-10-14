@@ -127,6 +127,12 @@ private:
 
   LogicalResult processSpecConstantOp(spirv::SpecConstantOp op);
 
+  /// SPIR-V dialect supports OpUndef using spv.UndefOp that produces a SSA
+  /// value to use with other operations. The SPIR-V spec recommends that
+  /// OpUndef be generated at module level. The serialization generates an
+  /// OpUndef for each type needed at module level.
+  LogicalResult processUndefOp(spirv::UndefOp op);
+
   /// Emit OpName for the given `resultID`.
   LogicalResult processName(uint32_t resultID, StringRef name);
 
@@ -243,12 +249,15 @@ private:
   uint32_t assignBlockID(Block *block);
 
   // Processes the given `block` and emits SPIR-V instructions for all ops
-  // inside. `actionBeforeTerminator` is a callback that will be invoked before
-  // handling the terminator op. It can be used to inject the Op*Merge
-  // instruction if this is a SPIR-V selection/loop header block.
+  // inside. Does not emit OpLabel for this block if `omitLabel` is true.
+  // `actionBeforeTerminator` is a callback that will be invoked before handling
+  // the terminator op. It can be used to inject the Op*Merge instruction if
+  // this is a SPIR-V selection/loop header block.
   LogicalResult
-  processBlock(Block *block,
+  processBlock(Block *block, bool omitLabel = false,
                llvm::function_ref<void()> actionBeforeTerminator = nullptr);
+
+  LogicalResult processSelectionOp(spirv::SelectionOp selectionOp);
 
   LogicalResult processLoopOp(spirv::LoopOp loopOp);
 
@@ -329,6 +338,9 @@ private:
 
   /// Map from blocks to their <id>s.
   DenseMap<Block *, uint32_t> blockIDMap;
+
+  /// Map from the Type to the <id> that represents undef value of that type.
+  DenseMap<Type, uint32_t> undefValIDMap;
 
   /// Map from results of normal operations to their <id>s.
   DenseMap<Value *, uint32_t> valueIDMap;
@@ -444,6 +456,22 @@ LogicalResult Serializer::processSpecConstantOp(spirv::SpecConstantOp op) {
     return processName(resultID, op.sym_name());
   }
   return failure();
+}
+
+LogicalResult Serializer::processUndefOp(spirv::UndefOp op) {
+  auto undefType = op.getType();
+  auto &id = undefValIDMap[undefType];
+  if (!id) {
+    id = getNextID();
+    uint32_t typeID = 0;
+    if (failed(processType(op.getLoc(), undefType, typeID)) ||
+        failed(encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpUndef,
+                                     {typeID, id}))) {
+      return failure();
+    }
+  }
+  valueIDMap[op.getResult()] = id;
+  return success();
 }
 
 LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
@@ -1192,15 +1220,17 @@ uint32_t Serializer::assignBlockID(Block *block) {
 }
 
 LogicalResult
-Serializer::processBlock(Block *block,
+Serializer::processBlock(Block *block, bool omitLabel,
                          llvm::function_ref<void()> actionBeforeTerminator) {
-  auto blockID = findBlockID(block);
-  if (blockID == 0) {
-    blockID = assignBlockID(block);
-  }
+  if (!omitLabel) {
+    auto blockID = findBlockID(block);
+    if (blockID == 0) {
+      blockID = assignBlockID(block);
+    }
 
-  // Emit OpLabel for this block.
-  encodeInstructionInto(functions, spirv::Opcode::OpLabel, {blockID});
+    // Emit OpLabel for this block.
+    encodeInstructionInto(functions, spirv::Opcode::OpLabel, {blockID});
+  }
 
   // Process each op in this block except the terminator.
   for (auto &op : llvm::make_range(block->begin(), std::prev(block->end()))) {
@@ -1220,10 +1250,18 @@ Serializer::processBlock(Block *block,
 namespace {
 /// A pre-order depth-first vistor for processing basic blocks in a spv.loop op.
 ///
-/// This visitor is special tailored for spv.loop block serialization to satisfy
-/// SPIR-V validation rules. It should not be used as a general depth-first
-/// block visitor.
-class LoopBlockVisitor {
+/// SPIR-V spec "2.16.1. Universal Validation Rules" requires that "the order
+/// of blocks in a function must satisfy the rule that blocks appear before all
+/// blocks they dominate." This can be achieved by a pre-order CFG traversal
+/// algorithm. To make the serialization output more logical and readable to
+/// human, we perform depth-first CFG traversal and delay the serialization of
+/// the merge block (and the continue block) until after all other blocks have
+/// been processed.
+///
+/// This visitor is special tailored for spv.selection or spv.loop block
+/// serialization to satisfy SPIR-V validation rules. It should not be used
+/// as a general depth-first block visitor.
+class ControlFlowBlockVisitor {
 public:
   using BlockHandlerType = llvm::function_ref<LogicalResult(Block *)>;
 
@@ -1232,12 +1270,13 @@ public:
   /// Skips handling the `headerBlock` and blocks in the `skipBlocks` list.
   static LogicalResult visit(Block *headerBlock, BlockHandlerType blockHandler,
                              ArrayRef<Block *> skipBlocks) {
-    return LoopBlockVisitor(blockHandler, skipBlocks)
+    return ControlFlowBlockVisitor(blockHandler, skipBlocks)
         .visitHeaderBlock(headerBlock);
   }
 
 private:
-  LoopBlockVisitor(BlockHandlerType blockHandler, ArrayRef<Block *> skipBlocks)
+  ControlFlowBlockVisitor(BlockHandlerType blockHandler,
+                          ArrayRef<Block *> skipBlocks)
       : blockHandler(blockHandler),
         doneBlocks(skipBlocks.begin(), skipBlocks.end()) {}
 
@@ -1274,16 +1313,52 @@ private:
 };
 } // namespace
 
-LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
-  // SPIR-V spec "2.16.1. Universal Validation Rules" requires that "the order
-  // of blocks in a function must satisfy the rule that blocks appear before all
-  // blocks they dominate." This can be achieved by a pre-order CFG traversal
-  // algorithm. To make the serialization output more logical and readable to
-  // human, we perform depth-first CFG traversal and delay the serialization of
-  // the continue block and the merge block until after all other blocks have
-  // been processed.
+LogicalResult Serializer::processSelectionOp(spirv::SelectionOp selectionOp) {
+  // Assign <id>s to all blocks so that branches inside the SelectionOp can
+  // resolve properly.
+  auto &body = selectionOp.body();
+  for (Block &block : body)
+    assignBlockID(&block);
 
-  // Assign <id>s to all blocks so that branchs inside the LoopOp can resolve
+  auto *headerBlock = selectionOp.getHeaderBlock();
+  auto *mergeBlock = selectionOp.getMergeBlock();
+  auto mergeID = findBlockID(mergeBlock);
+
+  // Emit the selection header block, which dominates all other blocks, first.
+  // We need to emit an OpSelectionMerge instruction before the loop header
+  // block's terminator.
+  auto emitSelectionMerge = [&]() {
+    // TODO(antiagainst): properly support loop control here
+    encodeInstructionInto(
+        functions, spirv::Opcode::OpSelectionMerge,
+        {mergeID, static_cast<uint32_t>(spirv::LoopControl::None)});
+  };
+  // For structured selection, we cannot have blocks in the selection construct
+  // branching to the selection header block. Entering the selection (and
+  // reaching the selection header) must be from the block containing the
+  // spv.selection op. If there are ops ahead of the spv.selection op in the
+  // block, we can "merge" them into the selection header. So here we don't need
+  // to emit a separate block; just continue with the existing block.
+  if (failed(processBlock(headerBlock, /*omitLabel=*/true, emitSelectionMerge)))
+    return failure();
+
+  // Process all blocks with a depth-first visitor starting from the header
+  // block. The selection header block and merge block are skipped by this
+  // visitor.
+  auto handleBlock = [&](Block *block) { return processBlock(block); };
+  if (failed(ControlFlowBlockVisitor::visit(headerBlock, handleBlock,
+                                            {mergeBlock})))
+    return failure();
+
+  // There is nothing to do for the merge block in the selection, which just
+  // contains a spv._merge op, itself. But we need to have an OpLabel
+  // instruction to start a new SPIR-V block for ops following this SelectionOp.
+  // The block should use the <id> for the merge block.
+  return encodeInstructionInto(functions, spirv::Opcode::OpLabel, {mergeID});
+}
+
+LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
+  // Assign <id>s to all blocks so that branches inside the LoopOp can resolve
   // properly. We don't need to assign for the entry block, which is just for
   // satisfying MLIR region's structural requirement.
   auto &body = loopOp.body();
@@ -1303,7 +1378,6 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // preceding and following ops. So we need to emit unconditional branches to
   // jump to this LoopOp's SPIR-V blocks and jumping back to the normal flow
   // afterwards.
-
   encodeInstructionInto(functions, spirv::Opcode::OpBranch, {headerID});
 
   // Emit the loop header block, which dominates all other blocks, first. We
@@ -1315,15 +1389,15 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
         functions, spirv::Opcode::OpLoopMerge,
         {mergeID, continueID, static_cast<uint32_t>(spirv::LoopControl::None)});
   };
-  if (failed(processBlock(headerBlock, emitLoopMerge)))
+  if (failed(processBlock(headerBlock, /*omitLabel=*/false, emitLoopMerge)))
     return failure();
 
   // Process all blocks with a depth-first visitor starting from the header
   // block. The loop header block, loop continue block, and loop merge block are
   // skipped by this visitor and handled later in this function.
   auto handleBlock = [&](Block *block) { return processBlock(block); };
-  if (failed(LoopBlockVisitor::visit(headerBlock, handleBlock,
-                                     {continueBlock, mergeBlock})))
+  if (failed(ControlFlowBlockVisitor::visit(headerBlock, handleBlock,
+                                            {continueBlock, mergeBlock})))
     return failure();
 
   // We have handled all other blocks. Now get to the loop continue block.
@@ -1332,7 +1406,8 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
 
   // There is nothing to do for the merge block in the loop, which just contains
   // a spv._merge op, itself. But we need to have an OpLabel instruction to
-  // start a new SPIR-V block for ops following this LoopOp.
+  // start a new SPIR-V block for ops following this LoopOp. The block should
+  // use the <id> for the merge block.
   return encodeInstructionInto(functions, spirv::Opcode::OpLabel, {mergeID});
 }
 
@@ -1438,6 +1513,9 @@ LogicalResult Serializer::processOperation(Operation *op) {
   if (auto varOp = dyn_cast<spirv::GlobalVariableOp>(op)) {
     return processGlobalVariableOp(varOp);
   }
+  if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op)) {
+    return processSelectionOp(selectionOp);
+  }
   if (auto loopOp = dyn_cast<spirv::LoopOp>(op)) {
     return processLoopOp(loopOp);
   }
@@ -1449,6 +1527,9 @@ LogicalResult Serializer::processOperation(Operation *op) {
   }
   if (auto specConstOp = dyn_cast<spirv::SpecConstantOp>(op)) {
     return processSpecConstantOp(specConstOp);
+  }
+  if (auto undefOp = dyn_cast<spirv::UndefOp>(op)) {
+    return processUndefOp(undefOp);
   }
 
   // Then handle all the ops that directly mirror SPIR-V instructions with

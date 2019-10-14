@@ -28,15 +28,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::PadAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HWC;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::PadAttributes;
 using ::tflite::gpu::PaddingContentType;
 using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface PaddingTest : XCTestCase
 - (void)runPadOperation:(const HWC&)prepend
@@ -78,9 +78,9 @@ using ::tflite::gpu::OperationType;
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors(expected, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)runPrepending:(const HWC&)prepend

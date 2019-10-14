@@ -36,6 +36,7 @@ from tensorflow.python.eager import executor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -354,12 +355,37 @@ class TFETest(test_util.TensorFlowTestCase):
           self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                            ctx.device_name)
           self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+        with ctx.device(ctx.list_logical_devices('CPU')[0]):
+          self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                           ctx.device_name)
+          self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+
+    gpus = ctx.list_logical_devices('GPU')
+    if gpus:
+      with ctx.device(gpus[0]):
+        self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',
+                         ctx.device_name)
+        self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
 
     has_cpu_device = False
     for x in ctx.devices():
       has_cpu_device = has_cpu_device or 'CPU' in x
     self.assertTrue(has_cpu_device)
     del ctx
+
+  def testDevice_supportsLogicalDevice(self):
+    ctx = context.Context()
+    cpus = ctx.list_logical_devices('CPU')
+    with ctx.device(cpus[0]):
+      self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                       ctx.device_name)
+
+  def testDevice_supportsDeviceSpec(self):
+    ctx = context.Context()
+    device_name = '/job:localhost/replica:0/task:0/device:CPU:0'
+    device_spec = pydev.DeviceSpec.from_string(device_name)
+    with ctx.device(device_spec):
+      self.assertEqual(device_name, ctx.device_name)
 
   def testAsyncBasic(self):
     ctx = context.Context(execution_mode=context.ASYNC)
