@@ -53,15 +53,12 @@ bazel test \
 && bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=-no_rocm,rocm_multi_gpu, \
+      --test_tag_filters=gpu \
       --test_timeout 600,900,2400,7200 \
       --test_output=errors \
       --jobs=${N_JOBS} \
       --local_test_jobs=1 \
       --test_sharding_strategy=disabled \
       -- \
-      //tensorflow/... \
-      -//tensorflow/compiler/... \
-      -//tensorflow/lite/... \
-      -//tensorflow/python/compiler/tensorrt/... \
+      //tensorflow/core/nccl:nccl_manager_test
 
