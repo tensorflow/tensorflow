@@ -276,17 +276,12 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
   for (const auto *def : defs) {
     if (!def->getValueAsBit("hasOptions")) continue;
     auto option_name = GetOperatorOptionName(*def);
-<<<<<<< HEAD
-    os << formatv("  if(const auto *op = op_union.As{0}())", option_name);
-    os << " {\n";
-=======
     // Basic LSTM and LSTM ops share the same option to attribute converter.
     if (option_name == "BasicLSTMOptions") {
       continue;
     }
 
     os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
->>>>>>> upstream/master
 
     // We only care about options that are in arguments
     auto *arg_values = def->getValueAsDag("arguments");

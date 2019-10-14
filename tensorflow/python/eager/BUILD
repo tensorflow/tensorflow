@@ -794,19 +794,6 @@ tpu_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/tpu:tpu_strategy_util",
     ],
-<<<<<<< HEAD
-    tags = [
-        "no_cuda",
-        "no_pip",
-        "no_rocm",
-        "nogpu",
-        "noguitar",
-        "nomac",
-        "notap",
-        "tpu",
-    ],
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
