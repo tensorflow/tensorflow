@@ -116,22 +116,18 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
           .cast<mlir::DenseIntElementsAttr>();
 
   for (auto val : rhs_contracting_dimensions) {
-    dot_dimension_numbers.add_rhs_contracting_dimensions(
-        val.getLimitedValue(UINT64_MAX));
+    dot_dimension_numbers.add_rhs_contracting_dimensions(val.getSExtValue());
   }
   for (auto val : lhs_contracting_dimensions) {
-    dot_dimension_numbers.add_lhs_contracting_dimensions(
-        val.getLimitedValue(UINT64_MAX));
+    dot_dimension_numbers.add_lhs_contracting_dimensions(val.getSExtValue());
   }
 
   for (auto val : rhs_batch_dimensions) {
-    dot_dimension_numbers.add_rhs_batch_dimensions(
-        val.getLimitedValue(UINT64_MAX));
+    dot_dimension_numbers.add_rhs_batch_dimensions(val.getSExtValue());
   }
 
   for (auto val : lhs_batch_dimensions) {
-    dot_dimension_numbers.add_lhs_batch_dimensions(
-        val.getLimitedValue(UINT64_MAX));
+    dot_dimension_numbers.add_lhs_batch_dimensions(val.getSExtValue());
   }
 
   return dot_dimension_numbers;

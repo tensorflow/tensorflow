@@ -233,6 +233,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_,
+                             ",deterministic=", !dataset()->sloppy_, "#");
+    }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -716,7 +723,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // CHECKPOINT_MARKER_C
           // Non-OK iterator creation status has been notified to the
           // client.
-          workers_[thread_index].cond_var.notify_one();
+          if (dataset()->sloppy_) {
+            sloppy_cond_var_.notify_one();
+          } else {
+            workers_[thread_index].cond_var.notify_one();
+          }
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {

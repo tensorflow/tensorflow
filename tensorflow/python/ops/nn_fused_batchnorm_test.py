@@ -448,6 +448,7 @@ class BatchNormalizationTest(test.TestCase):
       self._test_training(
           x_shape, dtype, [6], np.float32, use_gpu=False, data_format='NHWC')
 
+  @test_util.disable_xla('b/141236973: Empty inputs wrong on CPU.')
   def testTrainingShape5(self):
     with compat.forward_compatibility_horizon(2019, 6, 7):
       x_shape = [0, 131, 127, 6]

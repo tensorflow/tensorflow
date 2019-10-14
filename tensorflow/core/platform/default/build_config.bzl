@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -34,6 +34,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
+        srcs_version = "PY2AND3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -97,7 +98,7 @@ def pyx_library(
         name = name,
         srcs = py_srcs,
         deps = py_deps,
-        srcs_version = "PY2AND3",
+        srcs_version = srcs_version,
         data = shared_objects,
         testonly = testonly,
         **kwargs
@@ -512,6 +513,7 @@ def tf_additional_lib_srcs(exclude = []):
         "default/port.cc",
         "default/posix_file_system.cc",
         "default/subprocess.cc",
+        "default/stacktrace_handler.cc",
     ])
     return select({
         "//tensorflow:windows": windows_srcs,
@@ -529,20 +531,11 @@ def tf_additional_monitoring_srcs():
         "default/monitoring.cc",
     ]
 
-def tf_additional_minimal_lib_srcs():
-    return [
-        "default/integral_types.h",
-        "default/mutex.h",
-        "default/mutex_data.h",
-    ]
-
 def tf_additional_proto_hdrs():
     return [
         "default/integral_types.h",
         "default/logging.h",
-    ] + if_windows([
-        "windows/integral_types.h",
-    ])
+    ]
 
 def tf_additional_human_readable_json_deps():
     return []
@@ -610,15 +603,9 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
+        "default/test.cc",
         "default/test_benchmark.cc",
-    ] + select({
-        "//tensorflow:windows": [
-            "windows/test.cc",
-        ],
-        "//conditions:default": [
-            "posix/test.cc",
-        ],
-    })
+    ]
 
 def tf_kernel_tests_linkstatic():
     return 0
@@ -746,11 +733,8 @@ def tf_additional_numa_copts():
 def tf_additional_rpc_deps():
     return []
 
-def tf_logging_absl_deps():
-    return [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-    ]
+def tf_additional_tensor_coding_deps():
+    return []
 
 def tf_protobuf_deps():
     return [

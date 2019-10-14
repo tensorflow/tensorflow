@@ -9,6 +9,9 @@ package(
 py_binary(
     name = "gen_build_info",
     srcs = ["gen_build_info.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
+    deps = [
+        "@six_archive//:six",
+    ],
 )

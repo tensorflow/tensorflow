@@ -113,13 +113,13 @@ void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
 
   // If user is looking for the raw accumulator, zero_point and all the other
   // dequantize fields don't make sense and should not be set.
-  RUY_DCHECK(dst_zero_point == 0);
-  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
-  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
-  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
-  RUY_DCHECK(spec.multiplier_exponent == 0);
-  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
-  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
+  RUY_DCHECK_EQ(dst_zero_point, 0);
+  RUY_DCHECK_EQ(spec.clamp_max, std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK_EQ(spec.clamp_min, std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint, 0);
+  RUY_DCHECK_EQ(spec.multiplier_exponent, 0);
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint_perchannel, nullptr);
+  RUY_DCHECK_EQ(spec.multiplier_exponent_perchannel, nullptr);
 }
 
 inline bool IsColMajorTrMul(const TrMulParams& params) {
@@ -194,6 +194,11 @@ void PopulateTrMulParams(TrMulParams* params) {
   using LhsKernelLayout = typename Kernel::LhsLayout;
   using RhsKernelLayout = typename Kernel::RhsLayout;
 
+  params->path = ThePath;
+
+  params->cache_friendly_traversal_threshold =
+      Spec::cache_friendly_traversal_threshold();
+
   CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
       Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
   CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
@@ -205,8 +210,6 @@ void PopulateTrMulParams(TrMulParams* params) {
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
 
-  params->cache_friendly_traversal_threshold =
-      Spec::cache_friendly_traversal_threshold();
   return;
 }
 

@@ -89,7 +89,7 @@ class Optimizer(object):
           function not implemented).
     """
     grads = K.gradients(loss, params)
-    if None in grads:
+    if any([g is None for g in grads]):
       raise ValueError('An operation has `None` for gradient. '
                        'Please make sure that all of your ops have a '
                        'gradient defined (i.e. are differentiable). '

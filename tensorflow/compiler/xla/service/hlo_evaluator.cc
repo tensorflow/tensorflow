@@ -417,6 +417,17 @@ Status HloEvaluator::HandleGetDimensionSize(
   return Status::OK();
 }
 
+Status HloEvaluator::HandleSetDimensionSize(
+    HloInstruction* set_dimension_size) {
+  const Literal& operand_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(0));
+  Literal result(set_dimension_size->shape());
+  memcpy(result.untyped_data(), operand_literal.untyped_data(),
+         operand_literal.size_bytes());
+  evaluated_[set_dimension_size] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   // Nothing to do other than sanity checks. Parameters' values are stored in
   // arg_literals_.

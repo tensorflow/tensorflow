@@ -67,7 +67,7 @@ public:
   using Op::Op;
 
   /// Builds an affine apply op with the specified map and operands.
-  static void build(Builder *builder, OperationState *result, AffineMap map,
+  static void build(Builder *builder, OperationState &result, AffineMap map,
                     ArrayRef<Value *> operands);
 
   /// Returns the affine map to be applied by this operation.
@@ -86,8 +86,8 @@ public:
   operand_range getMapOperands() { return getOperands(); }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   OpFoldResult fold(ArrayRef<Attribute> operands);
 
@@ -109,7 +109,7 @@ public:
 /// affine expression of loop induction variables and symbols.
 /// The optional stride arguments should be of 'index' type, and specify a
 /// stride for the slower memory space (memory space with a lower memory space
-/// id), tranferring chunks of number_of_elements_per_stride every stride until
+/// id), transferring chunks of number_of_elements_per_stride every stride until
 /// %num_elements are transferred. Either both or no stride arguments should be
 /// specified. The value of 'num_elements' must be a multiple of
 /// 'number_of_elements_per_stride'.
@@ -141,7 +141,7 @@ class AffineDmaStartOp : public Op<AffineDmaStartOp, OpTrait::VariadicOperands,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *srcMemRef,
+  static void build(Builder *builder, OperationState &result, Value *srcMemRef,
                     AffineMap srcMap, ArrayRef<Value *> srcIndices,
                     Value *destMemRef, AffineMap dstMap,
                     ArrayRef<Value *> destIndices, Value *tagMemRef,
@@ -286,8 +286,8 @@ public:
   static StringRef getTagMapAttrName() { return "tag_map"; }
 
   static StringRef getOperationName() { return "affine.dma_start"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -331,7 +331,7 @@ class AffineDmaWaitOp : public Op<AffineDmaWaitOp, OpTrait::VariadicOperands,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *tagMemRef,
+  static void build(Builder *builder, OperationState &result, Value *tagMemRef,
                     AffineMap tagMap, ArrayRef<Value *> tagIndices,
                     Value *numElements);
 
@@ -371,8 +371,8 @@ public:
   Value *getNumElements() { return getOperand(1 + getTagMap().getNumInputs()); }
 
   static StringRef getTagMapAttrName() { return "tag_map"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -400,13 +400,13 @@ public:
   using Op::Op;
 
   /// Builds an affine load op with the specified map and operands.
-  static void build(Builder *builder, OperationState *result, AffineMap map,
+  static void build(Builder *builder, OperationState &result, AffineMap map,
                     ArrayRef<Value *> operands);
   /// Builds an affine load op with an identity map and operands.
-  static void build(Builder *builder, OperationState *result, Value *memref,
+  static void build(Builder *builder, OperationState &result, Value *memref,
                     ArrayRef<Value *> indices = {});
   /// Builds an affine load op with the specified map and its operands.
-  static void build(Builder *builder, OperationState *result, Value *memref,
+  static void build(Builder *builder, OperationState &result, Value *memref,
                     AffineMap map, ArrayRef<Value *> mapOperands);
 
   /// Returns the operand index of the memref.
@@ -439,8 +439,8 @@ public:
   static StringRef getOperationName() { return "affine.load"; }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -468,11 +468,11 @@ public:
   using Op::Op;
 
   /// Builds an affine store operation with the provided indices (identity map).
-  static void build(Builder *builder, OperationState *result,
+  static void build(Builder *builder, OperationState &result,
                     Value *valueToStore, Value *memref,
                     ArrayRef<Value *> indices);
   /// Builds an affine store operation with the specified map and its operands.
-  static void build(Builder *builder, OperationState *result,
+  static void build(Builder *builder, OperationState &result,
                     Value *valueToStore, Value *memref, AffineMap map,
                     ArrayRef<Value *> mapOperands);
 
@@ -510,8 +510,8 @@ public:
   static StringRef getOperationName() { return "affine.store"; }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -580,9 +580,7 @@ public:
   AffineValueMap getAsAffineValueMap();
 
   unsigned getNumOperands() { return opEnd - opStart; }
-  Value *getOperand(unsigned idx) {
-    return op.getOperation()->getOperand(opStart + idx);
-  }
+  Value *getOperand(unsigned idx) { return op.getOperand(opStart + idx); }
 
   using operand_iterator = AffineForOp::operand_iterator;
   using operand_range = AffineForOp::operand_range;

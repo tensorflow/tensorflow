@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
+#include <ostream>
+
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
@@ -39,6 +42,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_FLOAT;
     case toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
+    case toco::IODataType::INT8:
+      return DT_QINT8;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::INT64:
@@ -73,9 +78,6 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
   if (model_flags.change_concat_input_ranges()) {
     LOG(WARNING) << "Ignored change_concat_input_ranges.";
   }
-  if (toco_flags.post_training_quantize()) {
-    LOG(WARNING) << "Ignored post_training_quantize.";
-  }
   if (toco_flags.dump_graphviz_dir().empty()) {
     LOG(WARNING) << "Ignored dump_graphviz_dir.";
   }
@@ -93,14 +95,15 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const GraphDef& input,
                                          string* result) {
   mlir::MLIRContext context;
-  NodeSpecs specs;
+  GraphImportConfig specs;
+  mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<float> node_mins;
-  std::vector<float> node_maxs;
+  std::vector<double> node_mins;
+  std::vector<double> node_maxs;
   tensorflow::DataType inference_type =
       ConvertIODataTypeToDataType(toco_flags.inference_type());
   for (auto& flag : model_flags.input_arrays()) {
@@ -110,15 +113,28 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
     node_shapes.push_back(std::vector<int>(flag.shape().dims().begin(),
                                            flag.shape().dims().end()));
 
-    const float mean_value = flag.mean_value();
-    const float std_value = flag.std_value();
-    const float qmin = 0, qmax = 255;
+    const double mean_value = flag.mean_value();
+    const double std_value = flag.std_value();
+    const double qmin = 0.0, qmax = 255.0;
     node_mins.push_back((qmin - mean_value) / std_value);
     node_maxs.push_back((qmax - mean_value) / std_value);
   }
   TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
-      node_names, node_dtypes, node_shapes, inference_type, node_mins,
-      node_maxs, &specs.inputs));
+      node_names, node_dtypes, node_shapes, &specs.inputs));
+  if (mlir::TFL::GetInputNodeQuantSpecs(node_names, node_mins, node_maxs,
+                                        inference_type, &quant_specs)) {
+    return errors::InvalidArgument("Failed to get input quant spec.");
+  }
+
+  // Some extra flag related to post training quantization.
+  if (toco_flags.post_training_quantize()) {
+    quant_specs.weight_quantization = true;
+    if (toco_flags.quantize_to_float16()) {
+      quant_specs.inference_type = tensorflow::DT_HALF;
+    } else {
+      quant_specs.inference_type = tensorflow::DT_QINT8;
+    }
+  }
 
   // Parse output arrays.
   std::vector<string> output_arrays(model_flags.output_arrays().begin(),
@@ -139,10 +155,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
   mlir::PassManager pm(module->getContext());
-  bool run_quantize = tensorflow::ShouldRunQuantizePasses(module.get());
-  mlir::TFL::PassConfig pass_config;
+  mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.run_quantize = run_quantize;
   pass_config.lower_tensor_list_ops = true;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
@@ -150,7 +164,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   return ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
-      /*lower_tensor_list_ops=*/true, result, &pm);
+      /*lower_tensor_list_ops=*/true, quant_specs, result, &pm);
 }
 
 }  // namespace tensorflow

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/algorithm.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
@@ -44,6 +45,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   params.AddParam("graph", BenchmarkParam::Create<std::string>(*g_model_path));
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
+  params.AddParam("input_layer_value_range",
+                  BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("require_full_delegation",
@@ -113,23 +116,17 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   ASSERT_GE(inputs.size(), 1);
   auto input_tensor = interpreter->tensor(inputs[0]);
 
-  std::vector<char> input_bytes;
-  input_bytes.reserve(input_tensor->bytes);
-  for (size_t i = 0; i < input_tensor->bytes; i++) {
-    input_bytes.push_back(input_tensor->data.raw_const[i]);
-  }
+  // Copy input tensor to a vector
+  std::vector<char> input_bytes(input_tensor->data.raw,
+                                input_tensor->data.raw + input_tensor->bytes);
+
   benchmark.Prepare();
 
   // Expect data is not the same.
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
-  bool is_same = true;
-  for (size_t i = 0; i < input_tensor->bytes; i++) {
-    if (input_bytes[i] != input_tensor->data.raw_const[i]) {
-      is_same = false;
-      break;
-    }
-  }
-  EXPECT_FALSE(is_same);
+  EXPECT_FALSE(absl::equal(input_bytes.begin(), input_bytes.end(),
+                           input_tensor->data.raw,
+                           input_tensor->data.raw + input_tensor->bytes));
 }
 
 }  // namespace

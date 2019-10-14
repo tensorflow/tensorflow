@@ -39,15 +39,18 @@ class PresetAssignments {
     sizes_.emplace_back(memory_space, size);
   }
 
-  absl::Span<const std::pair<const HloPosition, const HeapSimulator::Chunk>>
-  chunks() const {
+  absl::Span<const std::pair<HloPosition, HeapSimulator::Chunk>> chunks()
+      const {
     return chunks_;
   }
 
   absl::Span<const std::pair<int64, int64>> sizes() const { return sizes_; }
 
+  // Remove the chunks_ entry that corresponds to instruction.
+  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+
  private:
-  std::vector<std::pair<const HloPosition, const HeapSimulator::Chunk>> chunks_;
+  std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, int64>> sizes_;
 };
 
@@ -129,7 +132,7 @@ class MemorySpaceAssignment {
     virtual HloInstruction* instruction() const { return instruction_; }
 
     // Returns the defining position for this allocation.
-    HloPosition defining_position() const { return defining_position_; }
+    virtual HloPosition defining_position() const { return defining_position_; }
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
@@ -139,10 +142,11 @@ class MemorySpaceAssignment {
     int64 end_time() const { return end_time_; }
 
    protected:
-    // Bitcasts are treated specially because they do not define buffers.  This
-    // method propagates the memory space for the bitcasts of this allocation.
-    Status PropagateMemorySpaceToBitcasts(
-        const MemorySpaceAssignment& memory_space_assignment);
+    // Descend to the shape_index element of the tuple and replace that with
+    // new_instruction.
+    StatusOr<HloInstruction*> ReplaceTupleWith(HloInstruction* new_instruction,
+                                               HloInstruction* tuple,
+                                               ShapeIndex shape_index);
 
     HloInstruction* instruction_;
     HloPosition defining_position_;
@@ -180,6 +184,19 @@ class MemorySpaceAssignment {
       }
     }
 
+    HloPosition defining_position() const override {
+      // Unless explicitly set, the defining position of a copy allocation in
+      // retrieved from the previous allocation. This is because we don't create
+      // new CopyStart/CopyDone instructions until later and the position should
+      // point to the previous (copy or otherwise) allocation's position for the
+      // original defining position.
+      if (defining_position_.instruction == nullptr) {
+        return prev_allocation_.defining_position();
+      } else {
+        return defining_position_;
+      }
+    }
+
     HloInstruction* copy_start() const { return copy_start_; }
     HloInstruction* copy_done() const { return copy_done_; }
 
@@ -208,7 +225,7 @@ class MemorySpaceAssignment {
 
   using AllocationSequence = std::list<std::unique_ptr<Allocation>>;
   using AllocationMap =
-      absl::flat_hash_map<const HloBuffer*, AllocationSequence>;
+      absl::flat_hash_map<const HloValue*, AllocationSequence>;
 
   // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
   // architecture-specific integer value that describes the alternate memory.
@@ -245,6 +262,12 @@ class MemorySpaceAssignment {
   // been finalized.
   Status Process();
 
+  // Process() might have altered the computation graph by inserting kTuple and
+  // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
+  // tuple simplification operation (e.g., given GetTupleElement(Tuple(a, b),
+  // 1), simply forwards b). Runs to fixed point.
+  Status SimplifyGraph();
+
   // FixSchedule inserts asynchronous copies in the schedule.
   Status FixSchedule();
 
@@ -259,8 +282,13 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
+  // Add the position to the pending positions that will be colored as alternate
+  // memory.
+  void AddPositionInAlternateMemorySpace(HloPosition position);
+
   HloModule* module_;
   int64 alternate_memory_space_;
+  std::unique_ptr<HloLiveRange> hlo_live_range_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
@@ -269,6 +297,16 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
+  std::vector<HloPosition> pending_positions_in_alternate_mem_;
+};
+
+// This struct contains mandatory memory assignments at a given time. E.g., an
+// input's required memory assignment time would correspond to the definition
+// time of the parameter instruction, and an output's time would correspnd to
+// the time of last use.
+struct RequiredMemoryAssignment {
+  MemorySpaceAssignment::MemorySpace memory_space;
+  int64 time;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
@@ -283,7 +321,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       MemorySpaceAssignment::AllocationMap* allocation_map,
       int64 max_size_in_bytes, int64 min_prefetch_interval,
       int64 max_prefetch_interval, const HloAliasAnalysis& alias_analysis,
-      int64 alignment, GlobalDecreasingSizeBestFitHeap::Type type,
+      const HloLiveRange& hlo_live_range, int64 alignment,
+      GlobalDecreasingSizeBestFitHeap::Type type,
       IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem,
       int64 max_outstanding_async_copies)
       : GlobalDecreasingSizeBestFitHeap(alignment, type),
@@ -292,6 +331,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
         min_prefetch_interval_(min_prefetch_interval),
         max_prefetch_interval_(max_prefetch_interval),
         alias_analysis_(alias_analysis),
+        hlo_live_range_(hlo_live_range),
         is_allowed_in_alternate_mem_(is_allowed_in_alternate_mem),
         max_outstanding_async_copies_(max_outstanding_async_copies) {}
 
@@ -317,9 +357,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
 
-  // Returns the instruction at a particular time in the flattened instruction
-  // schedule.
-  HloInstruction* GetInstructionAt(int64 time) const;
+  // Adds input and outputs as required assignments.
+  void AddInputAndOutputRequiredAssignments();
 
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -366,6 +405,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   int64 min_prefetch_interval_;
   int64 max_prefetch_interval_;
   const HloAliasAnalysis& alias_analysis_;
+  const HloLiveRange& hlo_live_range_;
   IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_;
   // We use a interval tree to keep track of the number of outstanding
   // asynchronous copies.
@@ -373,6 +413,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   int64 max_outstanding_async_copies_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<std::pair<int64, int64>> pending_async_copies_;
+  // This map contains required memory assignments for HloValues (e.g., input
+  // and outputs).
+  absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
+      required_assignments_;
 };
 
 }  // namespace xla

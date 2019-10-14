@@ -56,7 +56,7 @@ class FunctionBodyTransformer(converter.Base):
       return node
 
     scope = anno.getanno(node, anno.Static.SCOPE)
-    function_context_name = self.ctx.namer.new_symbol('lambda_scope',
+    function_context_name = self.ctx.namer.new_symbol('lscope',
                                                       scope.referenced)
     self.state[_Function].context_name = function_context_name
     anno.setanno(node, 'function_context_name', function_context_name)
@@ -79,8 +79,8 @@ class FunctionBodyTransformer(converter.Base):
     self.state[_Function].enter()
     scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
 
-    function_context_name = self.ctx.namer.new_symbol(
-        '{}_scope'.format(node.name), scope.referenced)
+    function_context_name = self.ctx.namer.new_symbol('fscope',
+                                                      scope.referenced)
     self.state[_Function].context_name = function_context_name
     anno.setanno(node, 'function_context_name', function_context_name)
 

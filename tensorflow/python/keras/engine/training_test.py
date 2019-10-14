@@ -39,9 +39,11 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -241,6 +243,38 @@ class CompileTest(keras_parameterized.TestCase):
           sample_weight_mode={'unknown': 'temporal'},
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_session_kwargs(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+
+    # Test that unknown arguments are not accepted
+    with self.assertRaisesRegexp(
+        TypeError,
+        r'Invalid keyword argument'):
+      model.compile(
+          optimizer='adam',
+          loss='mse',
+          foo=True)
+
+    if testing_utils.should_run_eagerly():
+      # Test that Session kwargs cannot be used with run_eagerly
+      with self.assertRaisesRegexp(
+          ValueError,
+          r'not supported when `run_eagerly=True`'):
+        model.compile(
+            optimizer='adam',
+            loss='mse',
+            run_eagerly=True,
+            feed_dict={})
+    else:
+      # Test that Session kwargs trigger legacy path execution
+      model.compile(
+          optimizer='adam',
+          loss='mse',
+          feed_dict={})
+      self.assertFalse(model._experimental_run_tf_function)
 
 
 class TrainingTest(keras_parameterized.TestCase):
@@ -1204,8 +1238,8 @@ class TrainingTest(keras_parameterized.TestCase):
     with context.eager_mode():
       np.random.seed(1337)
       train_x = np.ones((100, 4))
-      train_y = keras.utils.to_categorical(np.random.randint(0, 1,
-                                                             size=(100, 1)), 2)
+      train_y = np_utils.to_categorical(
+          np.random.randint(0, 1, size=(100, 1)), 2)
 
       reference_model = testing_utils.get_small_sequential_mlp(16, 2,
                                                                input_dim=4)
@@ -1397,8 +1431,7 @@ class TrainingTest(keras_parameterized.TestCase):
 
     self.assertLen(model.trainable_variables, 3)
 
-  # TODO(b/131372221): Make this work with subclassed models.
-  @keras_parameterized.run_with_all_model_types(exclude_models=['subclass'])
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   @testing_utils.enable_v2_dtype_behavior
   def test_model_dtype(self):
@@ -1425,6 +1458,25 @@ class TrainingTest(keras_parameterized.TestCase):
       model.fit(x, y)
       model.test_on_batch(x, y)
       model(x)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_model_input_dtype(self):
+    model = testing_utils.get_small_mlp(1, 10, 10)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    x = np.ones((10, 10)).astype(np.float64)
+    y = np.ones((10, 10)).astype(np.float64)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
+    model.fit(dataset)
+    self.assertEqual(model._compute_dtype, 'float32')
+    # Input dtype should match the model dtype, even if the inputs passed to the
+    # model have a different dtype.
+    self.assertEqual(model.inputs[0].dtype, 'float32')
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_subclassed_model_with_training_arg(self):
@@ -1599,7 +1651,7 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_invalid_batch_size_argument_with_sequence_input(self):
 
-    class DummySequence(keras.utils.Sequence):
+    class DummySequence(data_utils.Sequence):
 
       def __getitem__(self, idx):
         return np.zeros([10, 2]), np.ones([10, 4])
@@ -1673,8 +1725,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     int_y_test = y_test.copy()
     int_y_train = y_train.copy()
     # convert class vectors to binary class matrices
-    y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_train = np_utils.to_categorical(y_train, num_classes)
+    y_test = np_utils.to_categorical(y_test, num_classes)
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
@@ -1742,8 +1794,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     int_y_test = y_test.copy()
     int_y_train = y_train.copy()
     # convert class vectors to binary class matrices
-    y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_train = np_utils.to_categorical(y_train, num_classes)
+    y_test = np_utils.to_categorical(y_test, num_classes)
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     sample_weight = np.ones((y_train.shape[0]))
@@ -1812,8 +1864,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
       int_y_test = y_test.copy()
       int_y_train = y_train.copy()
       # convert class vectors to binary class matrices
-      y_train = keras.utils.to_categorical(y_train, num_classes)
-      y_test = keras.utils.to_categorical(y_test, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
+      y_test = np_utils.to_categorical(y_test, num_classes)
       test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
       sample_weight = np.ones((y_train.shape[0]))
@@ -1938,7 +1990,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
           input_shape=(input_dim,),
           num_classes=num_classes)
       # convert class vectors to binary class matrices
-      y_train = keras.utils.to_categorical(y_train, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
       class_weight = dict([(i, 1.) for i in range(num_classes)])
 
       del class_weight[1]

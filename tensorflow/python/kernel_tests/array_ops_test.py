@@ -1430,22 +1430,20 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 
-# Generates a tensor of the specified `shape` using values from `values` scaled
-# by (slice_idx + 1) along `axis` dimension.
-def _scale_per_slice(shape, axis, values):
-  # Note: repeats the values if the shape is larger than values.
-  out = np.take(values, np.remainder(np.arange(np.prod(shape)),
-                                     len(values))).reshape(shape)
-  if axis is not None:
-    scale_shape = [1] * len(shape)
-    scale_shape[axis] = shape[axis]
-    out *= np.arange(1, shape[axis] + 1).reshape(scale_shape)
-  return out
-
-
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_xla("b/140109958")
 class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
+
+  # Generates a tensor of the specified `shape` using values from `values`
+  # scaled by (slice_idx + 1) along `axis` dimension.
+  def _scale_per_slice(self, shape, axis, values):
+    # Note: repeats the values if the shape is larger than values.
+    out = np.take(values, np.remainder(np.arange(np.prod(shape)),
+                                       len(values))).reshape(shape)
+    if axis is not None:
+      scale_shape = [1] * len(shape)
+      scale_shape[axis] = shape[axis]
+      out *= np.arange(1, shape[axis] + 1).reshape(scale_shape)
+    return out
 
   def testAxis(self):
     shape = np.array([2, 3, 4, 5])
@@ -1456,7 +1454,7 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
     for axis in [None, 0, 1, 2, 3]:
       inputs = constant_op.constant(self._scale_per_slice(shape, axis, values))
       expected = self._scale_per_slice(shape, axis, quant_values)
-      unused_minmax_value = 0 if axis is None else []
+      unused_minmax_value = 0 if axis is None else [0] * shape[axis]
       fake_quantized = self.evaluate(
           array_ops.quantize_and_dequantize(
               inputs,

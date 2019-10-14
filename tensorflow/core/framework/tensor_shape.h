@@ -184,6 +184,9 @@ class TensorShapeBase : public TensorShapeRep {
   /// status otherwise.
   static Status IsValidShape(const TensorShapeProto& proto);
 
+  /// Returns `true` iff this is a valid tensor shape.
+  bool IsValid();
+
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
   void AddDim(int64 size);

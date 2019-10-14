@@ -190,6 +190,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
 
+  Status HandleSetDimensionSize(HloInstruction* set_dimension_size) override;
+
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant) override;

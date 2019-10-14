@@ -1228,6 +1228,29 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
               UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
 }
 
+TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, vector_shape_, "param"));
+  auto size = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
+  auto sds = builder.AddInstruction(
+      HloInstruction::CreateSetDimensionSize(vector_shape_, param, size, 0));
+
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  {
+    const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+    EXPECT_EQ(analysis.values().size(), 2);
+
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(sds));
+    EXPECT_TRUE(analysis.GetValueDefinedAt(param).live_out_of_module());
+  }
+}
+
 TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   // Test that a RecvDone forwards its operand tuple element at {0} to element
   // {0} of the output.

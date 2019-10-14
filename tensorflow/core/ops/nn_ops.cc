@@ -2200,7 +2200,7 @@ REGISTER_OP("_MklSoftmax")
     .Input("mkl_logits: uint8")
     .Output("softmax: T")
     .Output("mkl_softmax: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })

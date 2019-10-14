@@ -282,8 +282,10 @@ class LinearOperator(module.Module):
     """
     return self._shape()
 
-  @abc.abstractmethod
   def _shape_tensor(self):
+    # This is not an abstractmethod, since we want derived classes to be able to
+    # override this with optional kwargs, which can reduce the number of
+    # `convert_to_tensor` calls.  See derived classes for examples.
     raise NotImplementedError("_shape_tensor is not implemented.")
 
   def shape_tensor(self, name="shape_tensor"):
@@ -335,12 +337,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      if self.batch_shape.is_fully_defined():
-        return linear_operator_util.shape_tensor(
-            self.batch_shape.as_list(), name="batch_shape")
-      else:
-        return self.shape_tensor()[:-2]
+      return self._batch_shape_tensor()
+
+  def _batch_shape_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    if self.batch_shape.is_fully_defined():
+      return linear_operator_util.shape_tensor(
+          self.batch_shape.as_list(), name="batch_shape")
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[:-2]
 
   @property
   def tensor_rank(self, name="tensor_rank"):
@@ -373,11 +380,16 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      if self.tensor_rank is not None:
-        return ops.convert_to_tensor(self.tensor_rank)
-      else:
-        return array_ops.size(self.shape_tensor())
+      return self._tensor_rank_tensor()
+
+  def _tensor_rank_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    if self.tensor_rank is not None:
+      return ops.convert_to_tensor(self.tensor_rank)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return array_ops.size(shape)
 
   @property
   def domain_dimension(self):
@@ -411,12 +423,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      dim_value = tensor_shape.dimension_value(self.domain_dimension)
-      if dim_value is not None:
-        return ops.convert_to_tensor(dim_value)
-      else:
-        return self.shape_tensor()[-1]
+      return self._domain_dimension_tensor()
+
+  def _domain_dimension_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    dim_value = tensor_shape.dimension_value(self.domain_dimension)
+    if dim_value is not None:
+      return ops.convert_to_tensor(dim_value)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[-1]
 
   @property
   def range_dimension(self):
@@ -450,12 +467,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      dim_value = tensor_shape.dimension_value(self.range_dimension)
-      if dim_value is not None:
-        return ops.convert_to_tensor(dim_value)
-      else:
-        return self.shape_tensor()[-2]
+      return self._range_dimension_tensor()
+
+  def _range_dimension_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    dim_value = tensor_shape.dimension_value(self.range_dimension)
+    if dim_value is not None:
+      return ops.convert_to_tensor(dim_value)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[-2]
 
   def _assert_non_singular(self):
     """Private default implementation of _assert_non_singular."""

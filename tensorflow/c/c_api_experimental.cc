@@ -79,6 +79,14 @@ unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
   return original;
 }
 
+unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  bool original = flags->tf_xla_cpu_global_jit;
+  flags->tf_xla_cpu_global_jit = static_cast<bool>(enable);
+  return static_cast<unsigned char>(original);
+}
+
 void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
 }
@@ -1103,7 +1111,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   }
 
   // Create an inference context with dummy values, which will be updated later.
-  InferenceContext c(TF_GRAPH_DEF_VERSION, &node_def, op_reg_data->op_def,
+  InferenceContext c(TF_GRAPH_DEF_VERSION, node_def, op_reg_data->op_def,
                      std::vector<ShapeHandle>(num_inputs), input_tensors_vector,
                      {},
                      std::vector<std::unique_ptr<std::vector<ShapeAndType>>>());

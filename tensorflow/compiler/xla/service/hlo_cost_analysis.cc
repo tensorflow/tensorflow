@@ -838,6 +838,11 @@ Status HloCostAnalysis::HandleGetDimensionSize(
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleSetDimensionSize(
+    const HloInstruction* /*set_size*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }

@@ -301,6 +301,7 @@ cc_library(
     srcs = ["inference_context.cc"],
     hdrs = ["inference_context.h"],
     deps = [
+        ":buffer",
         ":cl_command_queue",
         ":cl_device",
         ":environment",
@@ -318,6 +319,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
     ],

@@ -42,8 +42,6 @@ constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
 struct OpData {
-  bool requires_broadcast;
-
   // Parameters used in the quantized paths where the output is 8bit
   int32 output_activation_min;
   int32 output_activation_max;
@@ -55,7 +53,6 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
-  data->requires_broadcast = false;
   return data;
 }
 
@@ -76,10 +73,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
-  data->requires_broadcast = !HaveSameShapes(input1, input2);
+  const bool requires_broadcast = !HaveSameShapes(input1, input2);
 
   TfLiteIntArray* output_size = nullptr;
-  if (data->requires_broadcast) {
+  if (requires_broadcast) {
     TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
                                    context, input1, input2, &output_size));
   } else {
@@ -112,11 +109,15 @@ template <KernelType kernel_type>
 void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
+  tflite::ArithmeticParams op_params;
+  // requires_flat_size_broadcast is used for BroadcastMul4DSlow.
+  const bool requires_flat_size_broadcast = !HaveSameShapes(input1, input2);
+  const bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
+      GetTensorShape(input1), GetTensorShape(input2), &op_params);
 #define TF_LITE_MUL(type, opname, data_type)                             \
   data_type output_activation_min, output_activation_max;                \
   CalculateActivationRange(params->activation, &output_activation_min,   \
                            &output_activation_max);                      \
-  tflite::ArithmeticParams op_params;                                    \
   SetActivationParams(output_activation_min, output_activation_max,      \
                       &op_params);                                       \
   type::opname(op_params, GetTensorShape(input1),                        \
@@ -126,13 +127,13 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
 
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
-      if (data->requires_broadcast) {
+      if (requires_flat_size_broadcast) {
         TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, int32_t);
       } else {
         TF_LITE_MUL(reference_ops, Mul, int32_t);
       }
     } else {
-      if (data->requires_broadcast) {
+      if (requires_flat_size_broadcast) {
         TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow, int32_t);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, int32_t);
@@ -140,13 +141,15 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
     }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
-      if (data->requires_broadcast) {
+      if (requires_flat_size_broadcast) {
         TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
       } else {
         TF_LITE_MUL(reference_ops, Mul, float);
       }
     } else {
-      if (data->requires_broadcast) {
+      if (need_broadcast) {
+        TF_LITE_MUL(optimized_ops, BroadcastMulFivefold, float);
+      } else if (requires_flat_size_broadcast) {
         TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow, float);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, float);

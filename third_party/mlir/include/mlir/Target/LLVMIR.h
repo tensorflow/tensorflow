@@ -24,7 +24,7 @@
 
 #include <memory>
 
-// Forward-declare LLVM classses.
+// Forward-declare LLVM classes.
 namespace llvm {
 class LLVMContext;
 class Module;

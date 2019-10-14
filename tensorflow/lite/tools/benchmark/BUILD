@@ -93,6 +93,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/algorithm",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -134,11 +135,12 @@ cc_library(
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),

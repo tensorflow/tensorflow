@@ -34,6 +34,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -58,6 +59,7 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
+
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -78,13 +80,29 @@ ag_ctx = lazy_loader.LazyLoader(
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
+IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 
 
-def _make_input_signature_hashable(elem):
-  """Ensure elem is hashable even if a Variable is nested in it."""
+def _make_input_signature_hashable(elem, variable_map=None):
+  """Rewrite input signature to be hashable.
+
+  We replace nested variables in the input signature with TensorSpec in order to
+  be hashable.
+
+  Args:
+    elem: Input signature element
+    variable_map: Internal argument used for tracking variable aliases
+
+  Returns:
+    A hashable object for the requested input signature
+  """
+  if variable_map is None:
+    variable_map = {}
+
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(_make_input_signature_hashable, elem))
+    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
+                     elem))
 
   # If the element is not hashable, assume it is a weakref to a variable
   # and return the dtype & shape. Else, simply return the element
@@ -93,7 +111,15 @@ def _make_input_signature_hashable(elem):
   except TypeError:
     assert isinstance(elem, weakref.ReferenceType)
     v = elem()
-    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype)
+    idx = variable_map.get(id(v))
+    if idx is None:
+      idx = len(variable_map)
+      variable_map[id(v)] = idx
+
+    # We include the class name to avoid having different types of variables
+    # having the same hash. We Also include the variable index which allows
+    # us to return a different hash if variables have been aliased in a call.
+    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
 
   return elem
 
@@ -618,6 +644,18 @@ class _DelayedRewriteGradientFunctions(object):
 
       forward_function_name = _forward_name(self._func_graph.name)
 
+      # NB: forward and backward function have their  "_implements"
+      # attribute set to None if it was present. This is because we don't
+      # support replacing those functions. If we do want for those functions
+      # to have implements function we need to provide a mechanism that
+      # would allow to identify all functions that call this one
+      # and trace and update their signatures as well. At the moment
+      # we disable this, until the tooling for doing this becomes available.
+      # See:
+      # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
+      common_attributes = dict(self._attrs)
+      common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
+
       existing_outputs = object_identity.ObjectIdentitySet(
           self._func_graph.outputs)
       for capture in captures_from_forward:
@@ -626,15 +664,14 @@ class _DelayedRewriteGradientFunctions(object):
           self._func_graph.outputs.append(capture)
       backward_function_attr = _parse_func_attrs(
           {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
-      backward_function_attr.update(self._attrs)
+      backward_function_attr.update(common_attributes)
 
       backward_function = ConcreteFunction(
           backwards_graph, attrs=backward_function_attr)
       forward_function_attr = _parse_func_attrs({
           BACKWARD_FUNCTION_ATTRIBUTE_NAME:
           backward_function.name})
-      forward_function_attr.update(self._attrs)
-
+      forward_function_attr.update(common_attributes)
       forward_function = _EagerDefinedFunction(
           forward_function_name, self._func_graph, self._func_graph.inputs,
           self._func_graph.outputs, forward_function_attr)
@@ -680,24 +717,14 @@ class _DelayedRewriteGradientFunctions(object):
     return backwards_function._call_flat(  # pylint: disable=protected-access
         cleaned_doutputs, remapped_captures)
 
-  def register(self):
-    """Registers a delayed-rewrite gradient with a unique name (idempotent).
+  def get_gradient_function(self):
+    """Returns gradient function.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
     from the output's gradients and the side outputs of the forward op.
-
-    Returns:
-      The name under which gradient was registered.
     """
-    if self._gradient_name:
-      return self._gradient_name
-    self._gradient_name = "PartitionedCall-%s" % ops.uid()
-
-    @ops.RegisterGradient(self._gradient_name)
-    def _registered_grad_fn(op, *doutputs):  # pylint: disable=unused-variable
-      return self._rewrite_forward_and_call_backward(op, *doutputs)
-    return self._gradient_name
+    return self._rewrite_forward_and_call_backward
 
   def forward(self, inference_args=None, input_tangents=None):
     """A forward function with only user-specified outputs.
@@ -817,7 +844,7 @@ class _TapeGradientFunctions(object):
       if backprop_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
-        output = handles_to_variables.get(ops.tensor_id(output), output)
+        output = handles_to_variables.get(id(output), output)
         trainable_outputs.append(output)
         trainable_indices.append(index)
 
@@ -977,13 +1004,23 @@ class _TapeGradientFunctions(object):
                 backward_function=lambda x: [x],
                 forward_function=lambda x: [x])
         forward_inputs = forward_wrapper_graph.inputs[:num_inference_inputs]
-        gradient_name = self._delayed_rewrite_functions.register()
-        with ops.get_default_graph().gradient_override_map(
-            {"PartitionedCall": gradient_name,
-             "StatefulPartitionedCall": gradient_name}):
-          forward_outputs = forward_function.call(
-              context.context(),
-              forward_inputs)
+        gradient_function = (
+            self._delayed_rewrite_functions._rewrite_forward_and_call_backward)  # pylint: disable=protected-access
+        with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+            {"PartitionedCall": gradient_function,
+             "StatefulPartitionedCall": gradient_function}):
+          # Previously, we relyed on "_gradient_op_type" attribute to restore a
+          # function gradient in function_deserialization.py, So add a dummy
+          # value "PartitionedCallUnused" for the forward compatibility.
+          if fwd_compat.forward_compatible(2019, 11, 16):
+            forward_outputs = forward_function.call(context.context(),
+                                                    forward_inputs)
+          else:
+            with ops.get_default_graph().gradient_override_map(
+                {"PartitionedCall": "PartitionedCallUnused",
+                 "StatefulPartitionedCall": "PartitionedCallUnused"}):
+              forward_outputs = forward_function.call(context.context(),
+                                                      forward_inputs)
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
@@ -998,7 +1035,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackForwardGradients(forward_outputs))
+          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(
@@ -1406,6 +1443,34 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
+    if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
+      # The alternative is to silently drop "implements" tag
+      # but it seems likely it would lead to hard to catch bugs.
+      # Another alternative is to make func_body to preserve the order
+      # of arguments if variables are present. Yet another option
+      # is to automatically replace variables as arguments to functions
+      # to v.read_value() whenever "implements" tag is present
+      # Anytime we annotate existing function we probably want to wrap
+      # it with safe read_value for backward compatibility.
+      has_resource_vars = any(inp.dtype == dtypes.resource
+                              for inp in self.inputs)
+
+      assert not any(
+          (has_resource_vars, self._captured_inputs, self._captured_closures)
+      ), ('Function {name} has "{attr}={value}" attribute and thus can not '
+          "depend on any tensors outside of its signature or modify variables. "
+          "\n\nNote: variables are always captured and cause function "
+          "re-tracing for every variable called.\n"
+          "  inputs: {inputs}\n  captures: {captured}\n"
+          "  closures: {closures}.\n\n"
+          "To pass a variable to such function use  "
+          "use variable.read_value().".format(
+              name=func_graph.name,
+              attr=IMPLEMENTS_ATTRIBUTE_NAME,
+              value=attrs[IMPLEMENTS_ATTRIBUTE_NAME],
+              inputs=self.inputs,
+              captured=self._captured_inputs,
+              closures=self._captured_closures))
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
@@ -1414,8 +1479,7 @@ class ConcreteFunction(object):
     if shared_func_graph:
       self._garbage_collector = None
     else:
-      self._garbage_collector = ConcreteFunctionGarbageCollector(
-          func_graph)
+      self._garbage_collector = ConcreteFunctionGarbageCollector(func_graph)
 
     # Pairs of forward and backward functions used for computing gradients.
     #
@@ -1428,6 +1492,16 @@ class ConcreteFunction(object):
     # Cache the inference function to avoid a (Python) function call when not
     # building gradients.
     self._inference_function = self._delayed_rewrite_functions.forward()
+
+  @property
+  def variables(self):
+    """Sequence of variables for this function."""
+    return tuple(self._func_graph.variables)
+
+  @property
+  def trainable_variables(self):
+    """Sequence of trainable variables for this function."""
+    return tuple(self._func_graph.trainable_variables)
 
   def __call__(self, *args, **kwargs):
     """Executes the wrapped function.
@@ -1604,11 +1678,19 @@ class ConcreteFunction(object):
           ctx, args_with_tangents,
           cancellation_manager=cancellation_manager)
     else:
-      gradient_name = self._delayed_rewrite_functions.register()
-      with ops.get_default_graph().gradient_override_map(
-          {"PartitionedCall": gradient_name,
-           "StatefulPartitionedCall": gradient_name}):
-        flat_outputs = forward_function.call(ctx, args_with_tangents)
+      with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+          {"PartitionedCall": self._get_gradient_function(),
+           "StatefulPartitionedCall": self._get_gradient_function()}):
+        # Previously, we relyed on "_gradient_op_type" attribute to restore a
+        # function gradient in function_deserialization.py. So add a dummy
+        # value "PartitionedCallUnused" for the forward compatibility.
+        if fwd_compat.forward_compatible(2019, 11, 16):
+          flat_outputs = forward_function.call(ctx, args_with_tangents)
+        else:
+          with ops.get_default_graph().gradient_override_map(
+              {"PartitionedCall": "PartitionedCallUnused",
+               "StatefulPartitionedCall": "PartitionedCallUnused"}):
+            flat_outputs = forward_function.call(ctx, args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 
@@ -1718,9 +1800,9 @@ class ConcreteFunction(object):
     forward_function.add_to_graph(g)
     backward_function.add_to_graph(g)
 
-  def _register_delayed_rewrite_gradient(self):
-    """Registers a delayed-rewrite gradient function and returns the name."""
-    return self._delayed_rewrite_functions.register()
+  def _get_gradient_function(self):
+    """Returns gradient function. It will be lazily created at first call."""
+    return self._delayed_rewrite_functions._rewrite_forward_and_call_backward  # pylint: disable=protected-access
 
   def _select_forward_and_backward_functions(
       self, args, possible_gradient_type, executing_eagerly):
@@ -1838,8 +1920,19 @@ class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
   @staticmethod
-  def from_function_and_signature(python_function, input_signature):
-    """Create a FunctionSpec instance given a python function and signature."""
+  def from_function_and_signature(python_function, input_signature,
+                                  is_pure=False):
+    """Create a FunctionSpec instance given a python function and signature.
+
+    Args:
+      python_function: a function to inspect
+      input_signature: a signature of the function (None, if variable)
+      is_pure: if True all input arguments (including variables and constants)
+      will be converted to tensors and no variable changes allowed.
+
+    Returns:
+      instance of FunctionSpec
+    """
     fullargspec = tf_inspect.getfullargspec(python_function)
     # Treat a wrapped partial function as a special case. For all arguments that
     # were overridden with keywords in the partial:
@@ -1906,12 +1999,14 @@ class FunctionSpec(object):
             kwonlydefaults={},
             annotations=fullargspec.annotations)
     is_method = tf_inspect.ismethod(python_function)
-    return FunctionSpec(fullargspec, is_method, [], {}, input_signature)
+    return FunctionSpec(fullargspec, is_method, [], {}, input_signature,
+                        is_pure=is_pure)
 
   def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
-               input_signature):
+               input_signature, is_pure=False):
     self._fullargspec = fullargspec
     self._is_method = is_method
+    self._is_pure = is_pure
     del args_to_prepend
     del kwargs_to_include
     self._default_values = fullargspec.defaults
@@ -1976,6 +2071,11 @@ class FunctionSpec(object):
   def flat_input_signature(self):
     return self._flat_input_signature
 
+  def _convert_variables_to_tensors(self, args, kwargs):
+    args = [ops.convert_to_tensor(x) for x in args]
+    kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+    return tuple(args), kwargs
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -2000,6 +2100,8 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    if self._is_pure:
+      args, kwargs = self._convert_variables_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
         raise TypeError(
@@ -2172,6 +2274,8 @@ class Function(object):
   (defining and calling) is thread-safe, but if users call other methods or
   invoke the base `python_function` themselves, external synchronization is
   necessary.
+  In addition, Function is not reentrant, so recursive functions need to call
+  the wrapped function, not the wrapper.
   """
 
   def __init__(self,
@@ -2210,8 +2314,9 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
+    pure_function = attributes and IMPLEMENTS_ATTRIBUTE_NAME in attributes
     self._function_spec = FunctionSpec.from_function_and_signature(
-        python_function, input_signature)
+        python_function, input_signature, is_pure=pure_function)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -2229,7 +2334,8 @@ class Function(object):
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
-    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+    with self._lock:
+      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
     return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
 
   @property
@@ -2255,7 +2361,8 @@ class Function(object):
     """Returns a concrete function which cleans up its graph function."""
     if self.input_signature:
       args, kwargs = None, None
-    graph_function, _, _ = self._maybe_define_function(args, kwargs)
+    with self._lock:
+      graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
   def _get_concrete_function_internal(self, *args, **kwargs):
@@ -2298,33 +2405,34 @@ class Function(object):
                            "inputs (%s), input_signature (%s)" %
                            (str(args), str(self.input_signature)))
       args, kwargs = None, None
-    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    if self.input_signature:
-      args = self.input_signature
-      kwargs = {}
-    seen_names = set()
-    captured = object_identity.ObjectIdentitySet(
-        graph_function.graph.internal_captures)
-    # pylint: disable=protected-access
-    graph_function._arg_keywords = []
-    prefix_counts = {}
-    # pylint: enable=protected-access
-    num_positional = 0
-    for arg in graph_function.graph.inputs:
-      if arg in captured:
-        break
-      num_positional += 1
-      user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
-      proposal = user_arg_name
-      while proposal in seen_names:
-        index = prefix_counts.get(user_arg_name, 1)
-        proposal = "{}_{}".format(user_arg_name, index)
-        prefix_counts[user_arg_name] = index + 1
-      seen_names.add(proposal)
-      graph_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
-    # Anything can be a positional argument, in the same order as .inputs
-    graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
-    return graph_function
+    with self._lock:
+      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+      if self.input_signature:
+        args = self.input_signature
+        kwargs = {}
+      seen_names = set()
+      captured = object_identity.ObjectIdentitySet(
+          graph_function.graph.internal_captures)
+      # pylint: disable=protected-access
+      graph_function._arg_keywords = []
+      prefix_counts = {}
+      # pylint: enable=protected-access
+      num_positional = 0
+      for arg in graph_function.graph.inputs:
+        if arg in captured:
+          break
+        num_positional += 1
+        user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
+        proposal = user_arg_name
+        while proposal in seen_names:
+          index = prefix_counts.get(user_arg_name, 1)
+          proposal = "{}_{}".format(user_arg_name, index)
+          prefix_counts[user_arg_name] = index + 1
+        seen_names.add(proposal)
+        graph_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
+      # Anything can be a positional argument, in the same order as .inputs
+      graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
+      return graph_function
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
@@ -2502,6 +2610,8 @@ class Function(object):
     `args` and `kwargs` can be None if this `Function` was created with an
     `input_signature`.
 
+    Caller must hold self._lock.
+
     Args:
       args: The varargs for the Python function.
       kwargs: The keyword args for the Python function.
@@ -2529,43 +2639,40 @@ class Function(object):
           "Arguments supplied to `defun`-generated functions must be"
           " hashable.  Original error: %s" % e)
 
-    with self._lock:
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is not None:
-        return graph_function, args, kwargs
+    graph_function = self._function_cache.primary.get(cache_key, None)
+    if graph_function is not None:
+      return graph_function, args, kwargs
 
-      logging.vlog(1,
-                   "Creating new FuncGraph for Python function %r (key: %r)",
-                   self._python_function, cache_key)
-      logging.vlog(2,
-                   "Python function signature [args: %s] [kwargs: %s]",
-                   args,
-                   kwargs)
+    logging.vlog(1,
+                 "Creating new FuncGraph for Python function %r (key: %r)",
+                 self._python_function, cache_key)
+    logging.vlog(2,
+                 "Python function signature [args: %s] [kwargs: %s]",
+                 args,
+                 kwargs)
 
-      # pylint: disable=protected-access
-      call_context_key = cache_key._replace(input_signature=None)
-      # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    call_context_key = cache_key._replace(input_signature=None)
+    # pylint: disable=protected-access
 
-      ag_status = (
-          ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
-      with ag_ctx.ControlStatusCtx(
-          status=ag_status, options=self._autograph_options):
+    ag_status = (
+        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+    with ag_ctx.ControlStatusCtx(
+        status=ag_status, options=self._autograph_options):
 
-        # Build a function with shape relaxation retracing if:
-        # 1. shape relaxation is explicitly enabled
-        # and 2. there's no provided input signature
-        # and 3. there's been a cache miss for this calling context
-        if (self._experimental_relax_shapes
-            and self.input_signature is None
-            and call_context_key in self._function_cache.missed):
-          return self._define_function_with_shape_relaxation(args, kwargs)
+      # Build a function with shape relaxation retracing if:
+      # 1. shape relaxation is explicitly enabled
+      # and 2. there's no provided input signature
+      # and 3. there's been a cache miss for this calling context
+      if (self._experimental_relax_shapes
+          and self.input_signature is None
+          and call_context_key in self._function_cache.missed):
+        return self._define_function_with_shape_relaxation(args, kwargs)
 
-        self._function_cache.missed.add(call_context_key)
-        graph_function = self._function_cache.primary.get(cache_key, None)
-        if graph_function is None:
-          graph_function = self._create_graph_function(args, kwargs)
-          self._function_cache.primary[cache_key] = graph_function
-        return graph_function, args, kwargs
+      self._function_cache.missed.add(call_context_key)
+      graph_function = self._create_graph_function(args, kwargs)
+      self._function_cache.primary[cache_key] = graph_function
+      return graph_function, args, kwargs
 
 
 def register(func, *args, **kwargs):

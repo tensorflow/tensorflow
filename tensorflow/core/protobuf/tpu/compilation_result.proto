@@ -1,10 +1,11 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
 package tensorflow.tpu;
 
 import "tensorflow/compiler/xla/service/hlo.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
+
+option cc_enable_arenas = true;
 
 // Describes the result of a TPU compilation.
 message CompilationResultProto {

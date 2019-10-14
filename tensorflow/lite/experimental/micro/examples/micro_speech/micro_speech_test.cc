@@ -87,6 +87,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(49, input->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(40, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",

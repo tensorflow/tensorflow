@@ -67,23 +67,40 @@ CompileOnlyService::CompileAheadOfTime(
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
+
+  const DebugOptions& debug_options = options.debug_options();
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() = debug_options;
+  // Capture replica_count, num_cores, and device_assignment in ExecutionOptions
+  // to later save in a proto dump.
+  if (options.replica_count() > 0) {
+    execution_options.set_num_replicas(options.replica_count());
+    if (options.has_static_device_assignment()) {
+      CHECK_EQ(options.replica_count(),
+               options.static_device_assignment().replica_count());
+    }
+  }
+  if (options.num_cores() > 0) {
+    execution_options.set_num_partitions(options.num_cores());
+    if (options.has_static_device_assignment()) {
+      CHECK_EQ(options.num_cores(),
+               options.static_device_assignment().computation_count());
+    }
+  }
+  if (options.has_static_device_assignment()) {
+    TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
+        execution_options.mutable_device_assignment()));
+  }
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
-
-    const DebugOptions& debug_options = options.debug_options();
-    ExecutionOptions execution_options;
-    *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
         instance.result_layout->ToProto();
-    if (options.has_static_device_assignment()) {
-      TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
-          execution_options.mutable_device_assignment()));
-    }
+
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(
             ProgramShape(instance.computation.host_program_shape()),
-            instance.argument_layouts, &execution_options));
+            instance.argument_layouts, &execution_options, &options));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,
@@ -91,6 +108,9 @@ CompileOnlyService::CompileAheadOfTime(
     DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
     hlo_modules.push_back(std::move(hlo_module));
   }
+
+  execution_options.clear_shape_with_output_layout();
+  DumpExecutionOptions(execution_options, debug_options);
 
   return compiler_->CompileAheadOfTime(
       absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),

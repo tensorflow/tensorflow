@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
-import sys
 import types
 
 from tensorflow.python.platform import tf_logging as logging
@@ -232,11 +231,5 @@ class TFModuleWrapper(types.ModuleType):
   def __repr__(self):
     return self._tfmw_wrapped_module.__repr__()
 
-  def __getstate__(self):
-    return self.__name__
-
-  def __setstate__(self, d):
-    # pylint: disable=protected-access
-    self.__init__(sys.modules[d]._tfmw_wrapped_module,
-                  sys.modules[d]._tfmw_module_name)
-    # pylint: enable=protected-access
+  def __reduce__(self):
+    return __import__, (self.__name__,)

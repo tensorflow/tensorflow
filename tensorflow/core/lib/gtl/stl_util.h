@@ -32,23 +32,6 @@ limitations under the License.
 namespace tensorflow {
 namespace gtl {
 
-// Deletes all the elements in an STL container and clears the container. This
-// function is suitable for use with a vector, set, hash_set, or any other STL
-// container which defines sensible begin(), end(), and clear() methods.
-//
-// If container is NULL, this function is a no-op.
-template <typename T>
-void STLDeleteElements(T* container) {
-  if (!container) return;
-  auto it = container->begin();
-  while (it != container->end()) {
-    auto temp = it;
-    ++it;
-    delete *temp;
-  }
-  container->clear();
-}
-
 // Given an STL container consisting of (key, value) pairs, STLDeleteValues
 // deletes all the "value" components and clears the container. Does nothing in
 // the case it's given a NULL pointer.

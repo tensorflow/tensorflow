@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -99,6 +100,7 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
     return;
   }
 
+  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -134,6 +136,7 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
                                        DoneCallback done) {
   VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
 
+  MEMDEBUG_CACHE_OP("RecvAsync");
   // Recv the tensor from local_.
   local_->RecvAsync(
       parsed, recv_args,

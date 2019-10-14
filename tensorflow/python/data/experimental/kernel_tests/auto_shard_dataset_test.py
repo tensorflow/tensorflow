@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.data.kernel_tests import test_base
@@ -285,6 +286,19 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     with self.assertRaises(errors.OutOfRangeError):
       dataset = distribute._AutoShardDataset(dataset, 10, 0)
       self.evaluate(self.getNext(dataset)())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShardWithRebatch(self):
+    # Tests that Rebatch is a passthrough op.
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.apply(
+        optimization.assert_next(["Shard", "FlatMap", "BatchV2", "Rebatch"]))
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 3)
+    nxt = self.getNext(dataset)
+    self.evaluate(nxt())
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoReaderPipelines(self):

@@ -39,12 +39,13 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -58,7 +59,6 @@ from tensorflow.python.training.tracking import layer_utils as trackable_layer_u
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
@@ -948,9 +948,12 @@ class Network(base_layer.Layer):
     in a single file.
 
     Saved models can be reinstantiated via `keras.models.load_model`.
-    The model returned by `load_model`
-    is a compiled model ready to be used (unless the saved model
-    was never compiled in the first place).
+    The model returned by `load_model` is a compiled model ready to be used
+    (unless the saved model was never compiled in the first place).
+
+    Models built with the Sequential and Functional API can be saved to both the
+    HDF5 and SavedModel formats. Subclassed models can only be saved with the
+    SavedModel format.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -958,14 +961,14 @@ class Network(base_layer.Layer):
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
         save_format: Either 'tf' or 'h5', indicating whether to save the model
-          to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-          will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
-          disabled (use `tf.keras.experimental.export_saved_model` instead).
-      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
-        format only. Please see the `signatures` argument in
-        `tf.saved_model.save` for details.
-      options: Optional `tf.saved_model.SaveOptions` object that specifies
-        options for saving to SavedModel.
+            to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
+            will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
+            disabled (use `tf.keras.experimental.export_saved_model` instead).
+        signatures: Signatures to save with the SavedModel. Applicable to the
+            'tf' format only. Please see the `signatures` argument in
+            `tf.saved_model.save` for details.
+        options: Optional `tf.saved_model.SaveOptions` object that specifies
+            options for saving to SavedModel.
 
     Example:
 
@@ -980,8 +983,8 @@ class Network(base_layer.Layer):
     model = load_model('my_model.h5')
     ```
     """
-    saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures, options)
+    save.save_model(self, filepath, overwrite, include_optimizer, save_format,
+                    signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1023,7 +1026,7 @@ class Network(base_layer.Layer):
     means saving a `tf.keras.Model` using `save_weights` and loading into a
     `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
     the `Model`'s variables. See the [guide to training
-    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
+    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
     on the TensorFlow format.
 
     Arguments:
@@ -1080,7 +1083,7 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        saving.save_weights_to_hdf5_group(f, self.layers)
+        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
       if context.executing_eagerly():
         session = None
@@ -1192,10 +1195,10 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(
+        hdf5_format.load_weights_from_hdf5_group_by_name(
             f, self.layers, skip_mismatch=skip_mismatch)
       else:
-        saving.load_weights_from_hdf5_group(f, self.layers)
+        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -1288,7 +1291,7 @@ class Network(base_layer.Layer):
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
     # Check for redundancy in inputs.
-    if len(object_identity.ObjectIdentitySet(self.inputs)) != len(self.inputs):
+    if len({id(i) for i in self.inputs}) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
                        'is redundant. '
                        'All inputs should only appear once.'
@@ -1631,9 +1634,9 @@ def _map_graph_network(inputs, outputs):
   # Check that all tensors required are computable.
   # computable_tensors: all tensors in the graph
   # that can be computed from the inputs provided.
-  computable_tensors = object_identity.ObjectIdentitySet()
+  computable_tensors = set()
   for x in inputs:
-    computable_tensors.add(x)
+    computable_tensors.add(id(x))
 
   layers_with_complete_input = []  # To provide a better error msg.
   for depth in depth_keys:
@@ -1641,7 +1644,7 @@ def _map_graph_network(inputs, outputs):
       layer = node.outbound_layer
       if layer:
         for x in nest.flatten(node.input_tensors):
-          if x not in computable_tensors:
+          if id(x) not in computable_tensors:
             raise ValueError('Graph disconnected: '
                              'cannot obtain value for tensor ' + str(x) +
                              ' at layer "' + layer.name + '". '
@@ -1649,7 +1652,7 @@ def _map_graph_network(inputs, outputs):
                              'were accessed without issue: ' +
                              str(layers_with_complete_input))
         for x in nest.flatten(node.output_tensors):
-          computable_tensors.add(x)
+          computable_tensors.add(id(x))
         layers_with_complete_input.append(layer.name)
 
   # Ensure name unicity, which will be crucial for serialization

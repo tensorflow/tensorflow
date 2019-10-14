@@ -2220,7 +2220,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         (*ub)[c] = atIneq(minUbPosition, getNumDimIds() + c);
     }
     // The lower bound leads to a ceildiv while the upper bound is a floordiv
-    // whenever the cofficient at pos != 1. ceildiv (val / d) = floordiv (val +
+    // whenever the coefficient at pos != 1. ceildiv (val / d) = floordiv (val +
     // d - 1 / d); hence, the addition of 'atIneq(minLbPosition, pos) - 1' to
     // the constant term for the lower bound.
     (*lb)[getNumSymbolIds()] += atIneq(minLbPosition, pos) - 1;
@@ -2298,7 +2298,7 @@ FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
   return tmpCst.computeConstantLowerOrUpperBound</*isLower=*/false>(pos);
 }
 
-// A simple (naive and conservative) check for hyper-rectangularlity.
+// A simple (naive and conservative) check for hyper-rectangularity.
 bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
                                                unsigned num) const {
   assert(pos < getNumCols() - 1);
@@ -2632,7 +2632,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   LLVM_DEBUG(llvm::dbgs() << "FM isResultIntegerExact: " << (lcmProducts == 1)
                           << "\n");
   if (lcmProducts == 1 && isResultIntegerExact)
-    *isResultIntegerExact = 1;
+    *isResultIntegerExact = true;
 
   // Copy over the constraints not involving this variable.
   for (auto nbPos : nbIndices) {
@@ -2715,51 +2715,6 @@ void FlatAffineConstraints::projectOut(Value *id) {
   assert(ret);
   (void)ret;
   FourierMotzkinEliminate(pos);
-}
-
-bool FlatAffineConstraints::isRangeOneToOne(unsigned start,
-                                            unsigned limit) const {
-  assert(start <= getNumIds() - 1 && "invalid start position");
-  assert(limit > start && limit <= getNumIds() && "invalid limit");
-
-  FlatAffineConstraints tmpCst(*this);
-
-  if (start != 0) {
-    // Move [start, limit) to the left.
-    for (unsigned r = 0, e = getNumInequalities(); r < e; ++r) {
-      for (unsigned c = 0, f = getNumCols(); c < f; ++c) {
-        if (c >= start && c < limit)
-          tmpCst.atIneq(r, c - start) = atIneq(r, c);
-        else if (c < start)
-          tmpCst.atIneq(r, c + limit - start) = atIneq(r, c);
-        else
-          tmpCst.atIneq(r, c) = atIneq(r, c);
-      }
-    }
-    for (unsigned r = 0, e = getNumEqualities(); r < e; ++r) {
-      for (unsigned c = 0, f = getNumCols(); c < f; ++c) {
-        if (c >= start && c < limit)
-          tmpCst.atEq(r, c - start) = atEq(r, c);
-        else if (c < start)
-          tmpCst.atEq(r, c + limit - start) = atEq(r, c);
-        else
-          tmpCst.atEq(r, c) = atEq(r, c);
-      }
-    }
-  }
-
-  // Mark everything to the right as symbols so that we can check the extents in
-  // a symbolic way below.
-  tmpCst.setDimSymbolSeparation(getNumIds() - (limit - start));
-
-  // Check if the extents of all the specified dimensions are just one (when
-  // treating the rest as symbols).
-  for (unsigned pos = 0, e = tmpCst.getNumDimIds(); pos < e; ++pos) {
-    auto extent = tmpCst.getConstantBoundOnDimSize(pos);
-    if (!extent.hasValue() || extent.getValue() != 1)
-      return false;
-  }
-  return true;
 }
 
 void FlatAffineConstraints::clearConstraints() {

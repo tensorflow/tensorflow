@@ -79,13 +79,13 @@ using FuncTypeBuilder = llvm::function_ref<Type(
 /// whether the function is variadic.  If the builder returns a null type,
 /// `result` will not contain the `type` attribute.  The caller can then add a
 /// type, report the error or delegate the reporting to the op's verifier.
-ParseResult parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
+ParseResult parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
                                 bool allowVariadic,
                                 FuncTypeBuilder funcTypeBuilder);
 
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
-void printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
+void printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
                          ArrayRef<Type> argTypes, bool isVariadic,
                          ArrayRef<Type> results);
 
@@ -97,7 +97,7 @@ namespace OpTrait {
 /// - Ops can be used with SymbolTable in the parent Op and have names;
 /// - Ops have a single region with multiple blocks that corresponds to the body
 ///   of the function;
-/// - the absence of a region corresonds to an external function;
+/// - the absence of a region corresponds to an external function;
 /// - arguments of the first block of the region are treated as function
 ///   arguments;
 /// - they can have argument attributes that are stored in a dictionary

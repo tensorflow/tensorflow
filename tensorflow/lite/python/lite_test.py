@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +21,11 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
+import six
+from six.moves import range
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
@@ -542,7 +546,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
-  def testPostTrainingQuantizeDeprecatedAttribute(self):
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testPostTrainingQuantizeDeprecatedAttribute(self, enable_mlir):
     with ops.Graph().as_default():
       in_tensor_1 = array_ops.placeholder(
           shape=[33, 33], dtype=dtypes.float32, name='inputA')
@@ -557,6 +564,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
     self.assertFalse(quantized_converter.post_training_quantize)
+    quantized_converter.experimental_enable_mlir_converter = enable_mlir
 
     quantized_converter.post_training_quantize = True
     self.assertTrue(quantized_converter.post_training_quantize)
@@ -565,7 +573,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
-  def testPostTrainingQuantize(self):
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testPostTrainingQuantize(self, enable_mlir):
     np.random.seed(0)
     with ops.Graph().as_default():
       # We need the tensor to have more than 1024 elements for quantize_weights
@@ -589,6 +600,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
+
+    quantized_converter.experimental_enable_mlir_converter = enable_mlir
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -697,6 +710,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       # Error if no rep data and int8 included.
       ('NoSampleDataIncludeInt8', False, True, False, True, False, False),
 
+      # Quantize to Float16 even if rep data provided with mlir.
+      ('UseRepresentativeDataMlir', True, False, True, False, False, True),
+      # Quantize to Float16 if no rep data provided with mlir.
+      ('NoRepresentativeDataMlir', False, False, True, False, False, True),
       # Post training quantization if both rep data and int8 included with mlir.
       ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True),
       # Error if no rep data and int8 included with mlir.
@@ -764,7 +781,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       else:
         raise ValueError('Invalid test options.')
 
-  def testInvalidQuantizeFloat16(self):
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testInvalidQuantizeFloat16(self, enable_mlir):
     with ops.Graph().as_default():
       inp, output, _ = self._getCalibrationQuantizeModel()
       sess = session.Session()
@@ -772,6 +792,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Specify float16 quantization
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
+    quantized_converter.experimental_enable_mlir_converter = enable_mlir
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
     # Specifiy only int8 builtin ops
@@ -1115,7 +1136,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn(('add@' + func), converter._debug_info.traces)
+    self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
 
 
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
@@ -1935,7 +1956,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       self.assertValidDebugInfo(converter._debug_info)
 
 
-class GrapplerTest(TestModels):
+class GrapplerTest(TestModels, parameterized.TestCase):
 
   def testConstantFolding(self):
     ops.disable_eager_execution()
@@ -1969,6 +1990,34 @@ class GrapplerTest(TestModels):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([3, 3] == output_details[0]['shape']).all())
 
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testInputNodeIsNotFolded(self, enable_mlir):
+    ops.disable_eager_execution()
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
+      y_const = constant_op.constant([1., 2., 3.])
+      y_add = y_const + y_const
+      out_tensor = in_tensor * y_add
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor, y_const],
+                                                  [out_tensor])
+    converter.experimental_enable_mlir_converter = enable_mlir
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual('Const', input_details[1]['name'])
 
 class ImportOpsUtilTest(test_util.TensorFlowTestCase):
 

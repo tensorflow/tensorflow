@@ -189,7 +189,7 @@ Status XlaCompilationCache::Compile(
                      out_compilation_result, out_executable);
 }
 
-static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
+static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
   const int64 kCompileThreshold = 10;
   const int64 kMinExecutionsPerCompile = 50;
 
@@ -296,9 +296,15 @@ Status XlaCompilationCache::CompileImpl(
 
     // The is_megamorphic bit is "sticky".  We assume clusters that have been
     // observed to be megamorphic once stay megamorphic forever.
-    it->second.is_megamorphic |=
-        IsMegamorphic(/*compile_count=*/it->second.compile_count,
-                      /*execution_count=*/it->second.execution_count);
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
     is_megamorphic = it->second.is_megamorphic;
   }
 

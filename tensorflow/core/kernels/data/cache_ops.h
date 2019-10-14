@@ -34,16 +34,10 @@ class MemoryCache : public ResourceBase {
   string DebugString() const override;
 
   // Marks the cache as completed.
-  void Complete();
-
-  // Returns whether the cache is claimed.
-  bool IsClaimed();
+  void Complete(std::vector<std::vector<Tensor>>&& cache);
 
   // Returns whether the cache is completed.
   bool IsCompleted();
-
-  // Attempts to claim the cache, returning whether the cache was claimed.
-  bool MaybeClaim();
 
   // Resets the cache.
   void Reset();
@@ -51,16 +45,11 @@ class MemoryCache : public ResourceBase {
   // Returns the element at the given index.
   const std::vector<Tensor>& at(int64 index);
 
-  // Adds the element to the cache.
-  void emplace_back(std::vector<Tensor> element);
-
   // Returns the size of the cache.
   size_t size();
 
  private:
   mutex mu_;
-  // Determines whether a writer has claimed the cache.
-  bool claimed_ GUARDED_BY(mu_) = false;
   // Determines whether all elements of the dataset have been cached.
   bool completed_ GUARDED_BY(mu_) = false;
   std::vector<std::vector<Tensor>> cache_ GUARDED_BY(mu_);

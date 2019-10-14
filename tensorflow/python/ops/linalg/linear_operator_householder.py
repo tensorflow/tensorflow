@@ -206,9 +206,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _trace(self):
     # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    shape = self.shape_tensor()
     return math_ops.cast(
-        self.domain_dimension_tensor() - 2, self.dtype) * array_ops.ones(
-            shape=self.batch_shape_tensor(), dtype=self.dtype)
+        self._domain_dimension_tensor(shape=shape) - 2,
+        self.dtype) * array_ops.ones(
+            shape=self._batch_shape_tensor(shape=shape), dtype=self.dtype)
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
@@ -224,16 +226,18 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 
   @property

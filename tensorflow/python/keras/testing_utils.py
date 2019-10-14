@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 import numpy as np
@@ -829,6 +830,7 @@ def disable_v2_dtype_behavior(fn):
 
 def _set_v2_dtype_behavior(fn, enabled):
   """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  @functools.wraps(fn)
   def wrapper(*args, **kwargs):
     v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
     base_layer_utils.V2_DTYPE_BEHAVIOR = enabled

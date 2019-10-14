@@ -36,6 +36,23 @@ Status Base64Encode(StringPiece source,
 template <typename T>
 Status Base64Decode(StringPiece data, T* decoded);
 
+// Explicit instantiations defined in base64.cc.
+extern template Status Base64Decode<string>(StringPiece data, string* decoded);
+extern template Status Base64Encode<string>(StringPiece source,
+                                            string* encoded);
+extern template Status Base64Encode<string>(StringPiece source,
+                                            bool with_padding, string* encoded);
+
+#ifdef USE_TSTRING
+extern template Status Base64Decode<tstring>(StringPiece data,
+                                             tstring* decoded);
+extern template Status Base64Encode<tstring>(StringPiece source,
+                                             tstring* encoded);
+extern template Status Base64Encode<tstring>(StringPiece source,
+                                             bool with_padding,
+                                             tstring* encoded);
+#endif  // USE_TSTRING
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_

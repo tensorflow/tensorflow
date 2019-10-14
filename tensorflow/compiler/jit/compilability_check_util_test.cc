@@ -82,7 +82,8 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
   FunctionLibraryRuntime* GetFunctionLibraryRuntime() {
     OptimizerOptions opts;
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, flib_def_.get(), opts);
+        nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
+        flib_def_.get(), opts);
 
     return pflr_->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   }

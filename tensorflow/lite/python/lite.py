@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
 import enum
+import warnings
+
+import six
 from six import PY3
 
 from google.protobuf import text_format as _text_format
@@ -271,7 +274,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     target_spec: Experimental flag, subject to change. Specification of target
       device.
     optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. E.g. `[Optimize.DEFAULT]
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
@@ -317,7 +320,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     Args:
       funcs: List of TensorFlow ConcreteFunctions. The list should not contain
-        duplicate elements.
+        duplicate elements. Currently converter can only convert a single
+        ConcreteFunction. Converting multiple functions is under development.
 
     Returns:
       TFLiteConverter object.
@@ -678,9 +682,9 @@ class TFLiteConverter(TFLiteConverterBase):
 
             if not isinstance(file_content, str):
               if PY3:
-                file_content = file_content.decode("utf-8")
+                file_content = six.ensure_text(file_content, "utf-8")
               else:
-                file_content = file_content.encode("utf-8")
+                file_content = six.ensure_binary(file_content, "utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):

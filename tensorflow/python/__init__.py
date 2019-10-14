@@ -49,7 +49,10 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import _pywrap_tfprof
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import _pywrap_util_port
+from tensorflow.python import _pywrap_stat_summarizer
+from tensorflow.python import _pywrap_py_exception_registry
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -107,17 +110,12 @@ from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
-# Import audio ops to make sure the ops are registered.
-from tensorflow.python.ops import gen_audio_ops as _
-
-# Import boosted trees ops to make sure the ops are registered (but unused).
-from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_ops
-
-# Import cudnn rnn ops to make sure their ops are registered.
-from tensorflow.python.ops import gen_cudnn_rnn_ops as _
-
-# Import rnn_ops to make sure their ops are registered.
-from tensorflow.python.ops import gen_rnn_ops as _
+# Import to make sure the ops are registered.
+from tensorflow.python.ops import gen_audio_ops
+from tensorflow.python.ops import gen_boosted_trees_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import gen_rnn_ops
+from tensorflow.python.ops import gen_sendrecv_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -159,6 +157,7 @@ from tensorflow.python.ops import rnn_cell
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.ops import gen_debug_ops
 
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit

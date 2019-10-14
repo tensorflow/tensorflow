@@ -124,7 +124,7 @@ TEST(FloatMulOpTest, VariousInputShapes) {
   }
 }
 
-TEST(FloatMulOpTest, WithBroadcast) {
+TEST(FloatMulOpTest, WithScalarBroadcast) {
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
@@ -137,6 +137,40 @@ TEST(FloatMulOpTest, WithBroadcast) {
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-0.2, 0.02, 0.07, 0.08, 0.11, 0.2})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(FloatMulOpTest, WithBroadcast) {
+  std::vector<std::vector<int>> test_shapes = {
+      {2, 4}, {2, 1, 4}, {1, 2, 4}, {1, 2, 1, 4}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
+                      {TensorType_FLOAT32, {4}},  // always a scalar
+                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<float>(m.input1(),
+                            {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0, 1.1, 0.8});
+    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.4});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-0.2, 0.04, 0.21, 0.32, 0.11, 0.4, 0.33, 0.32})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(FloatMulOpTest, WithBroadcast2Elements) {
+  std::vector<std::vector<int>> test_shapes = {
+      {2, 2}, {2, 1, 2}, {1, 2, 2}, {1, 2, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
+                      {TensorType_FLOAT32, {2}},  // always a scalar
+                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+    m.PopulateTensor<float>(m.input2(), {0.1, 0.2});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.07, 0.16})))
         << "With shape number " << i;
   }
 }

@@ -72,7 +72,6 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -150,7 +149,7 @@ py_library(
         "keras_dnn_correctness_test.py",
         "keras_embedding_model_correctness_test.py",
         "keras_image_model_correctness_test.py",
-        "keras_lstm_model_correctness_test.py",
+        "keras_rnn_model_correctness_test.py",
         "keras_stateful_lstm_model_correctness_test.py",
     ],
     deps = [
@@ -228,11 +227,11 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_lstm_model_correctness_test",
+    name = "keras_rnn_model_correctness_test",
     size = "medium",
-    srcs = ["keras_lstm_model_correctness_test.py"],
+    srcs = ["keras_rnn_model_correctness_test.py"],
     full_precision = True,
-    main = "keras_lstm_model_correctness_test.py",
+    main = "keras_rnn_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
@@ -314,7 +313,6 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -351,7 +349,6 @@ cuda_py_test(
         "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -376,7 +373,6 @@ cuda_py_test(
         "noguitar",
         "notap",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -399,7 +395,6 @@ cuda_py_test(
         "no_oss",
         "nomsan",  # b/140958724
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -421,7 +416,6 @@ cuda_py_test(
         "nomsan",  # b/140958724
         "notap",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

@@ -2189,6 +2189,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCholesky:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
+    case HloOpcode::kSetDimensionSize:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:

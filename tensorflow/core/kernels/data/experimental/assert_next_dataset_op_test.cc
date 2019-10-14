@@ -25,44 +25,28 @@ class AssertNextDatasetParams : public DatasetParams {
  public:
   template <typename T>
   AssertNextDatasetParams(T input_dataset_params,
-                          const std::vector<string>& transformations,
+                          const std::vector<tstring>& transformations,
                           DataTypeVector output_dtypes,
                           std::vector<PartialTensorShape> output_shapes,
                           string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name)) {
-    int num_transformations = transformations.size();
-    transformations_ = CreateTensor<tstring>(TensorShape({num_transformations}),
-                                             transformations);
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+                      std::move(node_name)),
+        transformations_(transformations) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() + 1);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&transformations_));
-
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    int num_transformations = transformations_.size();
+    return {CreateTensor<tstring>(TensorShape({num_transformations}),
+                                  transformations_)};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_group_.size() + 1);
-    input_placeholder->emplace_back(AssertNextDatasetOp::kInputDataset);
-    input_placeholder->emplace_back(AssertNextDatasetOp::kTransformations);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(input_dataset_params_.size() + 1);
+    input_names->emplace_back(AssertNextDatasetOp::kInputDataset);
+    input_names->emplace_back(AssertNextDatasetOp::kTransformations);
     return Status::OK();
   }
 
@@ -75,7 +59,7 @@ class AssertNextDatasetParams : public DatasetParams {
   string op_name() const override { return AssertNextDatasetOp::kDatasetType; }
 
  private:
-  Tensor transformations_;
+  std::vector<tstring> transformations_;
 };
 
 class AssertNextDatasetOpTest : public DatasetOpsTestBaseV2 {};

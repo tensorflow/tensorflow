@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 namespace eager {
 
@@ -50,8 +50,8 @@ class EagerClusterFunctionLibraryRuntime
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
-           FunctionLibraryRuntime::LocalHandle handle, const int64 op_id,
-           absl::Span<eager::RemoteTensorHandle* const> args,
+           FunctionLibraryRuntime::LocalHandle handle,
+           std::vector<eager::RemoteTensorHandle>* args,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,

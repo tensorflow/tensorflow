@@ -93,7 +93,7 @@ static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
 }
 
 // Outline the `gpu.launch` operation body into a kernel function. Replace
-// `gpu.return` operations by `std.return` in the generated functions.
+// `gpu.return` operations by `std.return` in the generated function.
 static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   Location loc = launchOp.getLoc();
   SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
@@ -107,7 +107,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk([](mlir::gpu::Return op) {
+  outlinedFunc.walk([](gpu::Return op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();
@@ -131,17 +131,75 @@ static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
 
 namespace {
 
+/// Pass that moves the kernel of each LaunchOp into its separate nested module.
+///
+/// This pass moves the kernel code of each LaunchOp into a function created
+/// inside a nested module. It also creates an external function of the same
+/// name in the parent module.
+///
+/// The kernel modules are intended to be compiled to a cubin blob independently
+/// in a separate pass. The external functions can then be annotated with the
+/// symbol of the cubin accessor function.
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
+    bool modified = false;
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk([&](mlir::gpu::LaunchOp op) {
+      // Insert just after the function.
+      Block::iterator insertPt(func.getOperation()->getNextNode());
+      func.walk([&](gpu::LaunchOp op) {
         FuncOp outlinedFunc = outlineKernelFunc(op);
-        moduleManager.insert(outlinedFunc);
+
+        // Create nested module and insert outlinedFunc. The module will
+        // originally get the same name as the function, but may be renamed on
+        // insertion into the parent module.
+        auto kernelModule = createKernelModule(outlinedFunc, moduleManager);
+        moduleManager.insert(insertPt, kernelModule);
+
+        // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
+        modified = true;
       });
     }
+
+    // If any new module was inserted in this module, annotate this module as
+    // a container module.
+    if (modified)
+      getModule().setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
+                          UnitAttr::get(&getContext()));
+  }
+
+private:
+  // Returns a module containing kernelFunc and all callees (recursive).
+  ModuleOp createKernelModule(FuncOp kernelFunc,
+                              const ModuleManager &parentModuleManager) {
+    auto context = getModule().getContext();
+    Builder builder(context);
+    auto kernelModule =
+        ModuleOp::create(builder.getUnknownLoc(), kernelFunc.getName());
+    kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
+                         builder.getUnitAttr());
+    ModuleManager moduleManager(kernelModule);
+
+    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
+    while (!funcsToInsert.empty()) {
+      FuncOp func = funcsToInsert.pop_back_val();
+      moduleManager.insert(func);
+
+      // TODO(b/141098412): Support any op with a callable interface.
+      func.walk([&](CallOp call) {
+        auto callee = call.callee();
+        if (moduleManager.lookupSymbol<FuncOp>(callee))
+          return;
+
+        auto calleeFromParent =
+            parentModuleManager.lookupSymbol<FuncOp>(callee);
+        funcsToInsert.push_back(calleeFromParent.clone());
+      });
+    }
+
+    return kernelModule;
   }
 };
 

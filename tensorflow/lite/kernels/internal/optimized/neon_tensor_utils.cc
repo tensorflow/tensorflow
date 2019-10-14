@@ -48,6 +48,7 @@ namespace {
 
 constexpr int kFloatValuesPerNeonVector = 4;
 constexpr int kInt16ValuesPerNeonVector = 8;
+constexpr int kInt8ValuesPerNeonVector = 16;
 
 template <int PerNeonSize>
 inline int RoundDownVectors(int size) {
@@ -105,8 +106,11 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   const int left_shift = shift > 0 ? shift : 0;
   const int right_shift = shift > 0 ? 0 : -shift;
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
   int32x4x4_t result;
+  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+  // is limited to NEON.
+#ifdef GEMMLOWP_NEON
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
   result.val[0] =
       RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
                               vmulq_s32(input_val.val[0], left_shifted_one_dup),
@@ -127,6 +131,33 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
                               vmulq_s32(input_val.val[3], left_shifted_one_dup),
                               quantized_multiplier),
                           right_shift);
+#else
+  for (int i = 0; i < 4; ++i) {
+    int32_t vals[4];
+    vals[0] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[1] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[2] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[3] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+
+    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+  }
+#endif
   return result;
 }
 
@@ -136,8 +167,11 @@ inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   const int left_shift = shift > 0 ? shift : 0;
   const int right_shift = shift > 0 ? 0 : -shift;
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
   int32x4x2_t result;
+  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+  // is limited to NEON.
+#ifdef GEMMLOWP_NEON
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
   result.val[0] =
       RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
                               vmulq_s32(input_val.val[0], left_shifted_one_dup),
@@ -148,6 +182,33 @@ inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
                               vmulq_s32(input_val.val[1], left_shifted_one_dup),
                               quantized_multiplier),
                           right_shift);
+#else
+  for (int i = 0; i < 2; ++i) {
+    int32_t vals[4];
+    vals[0] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[1] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[2] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[3] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+
+    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+  }
+#endif
   return result;
 }
 
@@ -810,6 +871,29 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     free(aligned_row_free);
   }
   free(aligned_vec_free);
+}
+
+void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                        int32_t n_row, int32_t n_col,
+                                        int32_t* output) {
+  static const int kWeightsPerNeonLane = 16;
+  // Processing multiple rows at the same time actually makes it slower. :(
+  for (int i = 0; i < n_row; ++i) {
+    int32x4_t row_sum = vdupq_n_s32(0);
+    int j = 0;
+    const int8_t* row_ptr = matrix + i * n_col;
+    for (; j <= n_col - kWeightsPerNeonLane; j += kWeightsPerNeonLane) {
+      const int8x16_t input_value = vld1q_s8(row_ptr + j);
+      int16x8_t temp = vmovl_s8(vget_low_s8(input_value));
+      temp = vaddw_s8(temp, vget_high_s8(input_value));
+      row_sum = vpadalq_s16(row_sum, temp);
+    }
+    int32_t sum = AccumulateNeonLane(row_sum);
+    for (; j < n_col; ++j) {
+      sum += *(row_ptr + j);
+    }
+    output[i] += sum * scalar;
+  }
 }
 
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
@@ -1521,6 +1605,30 @@ bool NeonIsZeroVector(const float* vector, int v_size) {
   // Postamble loop
   for (; v < v_size; ++v) {
     if (vector[v] != 0.0) return false;
+  }
+  return true;
+}
+
+bool NeonIsZeroVector(const int8_t* vector, int v_size) {
+  // If v_size is not divisible by the vector size, then we need to process the
+  // final few elements sequentially. postamble_start shows the start index
+  // where this should happen.
+  const int postamble_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(v_size);
+
+  static const int32x4_t zero_x4_int32 = vmovq_n_s32(0);
+  int v = 0;
+  for (; v < postamble_start; v += kInt8ValuesPerNeonVector) {
+    const int32x4_t i_x4_int32 = vreinterpretq_s32_s8(vld1q_s8(vector + v));
+    const uint32x4_t cmp_result = vceqq_s8(i_x4_int32, zero_x4_int32);
+    if (vgetq_lane_u8(cmp_result, 0) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 1) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 2) == 0) return false;
+    if (vgetq_lane_u8(cmp_result, 3) == 0) return false;
+  }
+  // Postamble loop
+  for (; v < v_size; ++v) {
+    if (vector[v] != 0) return false;
   }
   return true;
 }

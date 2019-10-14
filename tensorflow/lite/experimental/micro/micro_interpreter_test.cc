@@ -71,7 +71,7 @@ class MockOpResolver : public OpResolver {
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInterpreter) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
   tflite::MockOpResolver mock_resolver;
   constexpr size_t allocator_buffer_size = 1024;
@@ -105,7 +105,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
 }
 
 TF_LITE_MICRO_TEST(TestInterpreterProvideInputBuffer) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
   tflite::MockOpResolver mock_resolver;
   int32_t input_buffer = 21;

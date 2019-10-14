@@ -281,7 +281,8 @@ REGISTER_OP("Lgamma").UNARY_REAL();
 REGISTER_OP("Digamma").UNARY_REAL();
 
 REGISTER_OP("Erf").UNARY_REAL();
-
+REGISTER_OP("Erfinv").UNARY_REAL();
+REGISTER_OP("Ndtri").UNARY_REAL();
 REGISTER_OP("Erfc").UNARY_REAL();
 
 REGISTER_OP("Sigmoid").UNARY_COMPLEX();
@@ -917,7 +918,7 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 #endif  // INTEL_MKL
 

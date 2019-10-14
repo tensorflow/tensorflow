@@ -3984,6 +3984,15 @@ class JpegTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True) as sess:
         sess.run(adjust_jpeg_quality_image)
 
+  @test_util.run_deprecated_v1
+  def testAdjustJpegQualityShape(self):
+    with self.cached_session(use_gpu=True):
+      image = constant_op.constant(
+          np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
+      adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
+      self.assertListEqual(adjusted_image.shape.as_list(),
+                           [None, None, 3])
+
 
 class PngTest(test_util.TensorFlowTestCase):
 
@@ -4551,7 +4560,8 @@ class NonMaxSuppressionWithScoresTest(test_util.TensorFlowTestCase):
 class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
-  @test_util.xla_allow_fallback(
+  @test_util.disable_xla(
+      "b/141236442: "
       "non_max_suppression with dynamic output shape unsupported.")
   def testSelectFromThreeClusters(self):
     boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],

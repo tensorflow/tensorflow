@@ -50,6 +50,12 @@ public:
   /// non-standard or non-builtin types.
   Type convertType(Type t) override;
 
+  /// Convert a function type.  The arguments and results are converted one by
+  /// one and results are packed into a wrapped LLVM IR structure type. `result`
+  /// is populated with argument mapping.
+  LLVM::LLVMType convertFunctionSignature(FunctionType type, bool isVariadic,
+                                          SignatureConversion &result);
+
   /// Convert a non-empty list of types to be returned from a function into a
   /// supported LLVM IR type.  In particular, if more than one values is
   /// returned, create an LLVM IR structure type with elements that correspond
@@ -61,6 +67,20 @@ public:
 
   /// Returns the LLVM dialect.
   LLVM::LLVMDialect *getDialect() { return llvmDialect; }
+
+  /// Promote the LLVM struct representation of all MemRef descriptors to stack
+  /// and use pointers to struct to avoid the complexity of the
+  /// platform-specific C/C++ ABI lowering related to struct argument passing.
+  SmallVector<Value *, 4> promoteMemRefDescriptors(Location loc,
+                                                   ArrayRef<Value *> opOperands,
+                                                   ArrayRef<Value *> operands,
+                                                   OpBuilder &builder);
+
+  /// Promote the LLVM struct representation of one MemRef descriptor to stack
+  /// and use pointer to struct to avoid the complexity of the platform-specific
+  /// C/C++ ABI lowering related to struct argument passing.
+  Value *promoteOneMemRefDescriptor(Location loc, Value *operand,
+                                    OpBuilder &builder);
 
 protected:
   /// LLVM IR module used to parse/create types.

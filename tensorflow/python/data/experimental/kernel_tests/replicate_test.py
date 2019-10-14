@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -140,7 +139,6 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     super(RemoteReplicateTest, self).__init__(methodName)
     self._cached_server1 = server_lib.Server.create_local_server()
     self._cached_server2 = server_lib.Server.create_local_server()
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
     self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
     self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
     self._device0 = "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME

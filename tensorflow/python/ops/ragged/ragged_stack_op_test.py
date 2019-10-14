@@ -263,6 +263,12 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase,
               [[b'a00', b'a01'], [b'a10', b'a11'], [b'a20', b'a21']],
               [[b'b00', b'b01', b'b02'], [b'b10', b'b11', b'b12']]]),
       dict(
+          descr='ragged_stack([1D, 1D], axis=0)',
+          ragged_ranks=[0, 0],
+          rt_inputs=(['a', 'b'], ['c', 'd', 'e']),
+          axis=0,
+          expected=[[b'a', b'b'], [b'c', b'd', b'e']]),
+      dict(
           descr='ragged_stack([uniform, ragged], axis=0)',
           ragged_ranks=[0, 1],
           rt_inputs=(

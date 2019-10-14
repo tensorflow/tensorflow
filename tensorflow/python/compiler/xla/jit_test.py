@@ -34,17 +34,14 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-# pylint: enable=g-import-not-at-top
-
-
-_REGISTERED_OPS = op_def_registry.get_registered_ops()
 
 
 def enable_jit_nonstateful(node_def):
-  try:
-    return not _REGISTERED_OPS[node_def.op].is_stateful
-  except KeyError:
+  op_def = op_def_registry.get(node_def.op)
+  if op_def is None:
     raise ValueError("Unregistered op being created: %s" % node_def)
+
+  return not op_def.is_stateful
 
 
 class JITTest(test.TestCase, parameterized.TestCase):

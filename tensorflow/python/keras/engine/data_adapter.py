@@ -336,6 +336,9 @@ class TensorLikeDataAdapter(DataAdapter):
     # input pipeline graph serialization and deserialization
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
+    if shuffle:
+      # See b/141490660 for more details.
+      options.experimental_allow_stateful = True
     dataset = dataset.with_options(options)
     self._dataset = dataset
 
@@ -360,7 +363,7 @@ class TensorLikeDataAdapter(DataAdapter):
 
 
 class CompositeTensorDataAdapter(DataAdapter):
-  """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
+  """Adapter that handles composite tensor."""
 
   @staticmethod
   def can_handle(x, y=None):

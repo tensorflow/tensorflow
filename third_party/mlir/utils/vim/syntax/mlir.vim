@@ -31,7 +31,7 @@ syn match mlirType /x\s*\zsvector/
 " Operations.
 " Core ops (not exhaustive yet).
 " TODO: the list is not exhaustive.
-syn keyword mlirOps alloc addf addi call call_indirect cmpi constant dealloc dma_start dma_wait dim extract_element for getTensor if load memref_cast mulf muli store select subf subi tensor_cast
+syn keyword mlirOps alloc addf addi call call_indirect cmpi constant dealloc dma_start dma_wait dim extract_element for getTensor if load memref_cast mulf muli splat store select subf subi tensor_cast
 
 " Affine ops.
 syn match mlirOps /\<affine\.apply\>/

@@ -101,6 +101,14 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
             communication=communication,
             cluster_resolver=cluster_resolver))
 
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "MultiWorkerMirroredStrategy")
+    # pylint: disable=protected-access
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
+
   @classmethod
   def _from_local_devices(cls, devices):
     """A convenience method to create an obejct with a list of devices."""
@@ -141,6 +149,13 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
             self,
             communication=communication,
             cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "MultiWorkerMirroredStrategy")
+    # pylint: disable=protected-access
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_gpu_per_worker").set(self.extended._num_gpus_per_worker)
 
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
@@ -204,7 +219,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys,
         communication=self._communication)
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    super(CollectiveAllReduceExtended, self)._initialize_single_worker(
+        local_devices)
 
     self._cluster_spec = None
     self._task_type = None
@@ -221,7 +237,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+    logging.info("Single-worker MultiWorkerMirroredStrategy with local_devices "
                  "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
@@ -308,7 +324,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys,
         communication=self._communication)
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    super(CollectiveAllReduceExtended, self)._initialize_single_worker(
+        local_devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, [(self._worker_device, self.worker_devices)])
 
@@ -322,8 +339,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._warn_nccl_no_gpu()
 
     logging.info(
-        "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "
-        "task_type = %r, task_id = %r, num_workers = %r, local_devices = %r, "
+        "MultiWorkerMirroredStrategy with cluster_spec = %r, task_type = %r, "
+        "task_id = %r, num_workers = %r, local_devices = %r, "
         "communication = %s", cluster_spec.as_dict(), task_type,
         task_id, self._num_workers, local_devices,
         self._communication)

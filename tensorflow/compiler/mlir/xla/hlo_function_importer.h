@@ -105,9 +105,17 @@ class HloFunctionImporter {
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
-  // Converts the dot dimensions to attributes.
-  mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(
-      xla::HloInstruction* instruction);
+  // Converts Array ref to padding attribute. Input is a flattened list of
+  // padding low and padding high for each of the spatial dimensions.
+  mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
+
+  // Converts the dot dimensions to attribute.
+  mlir::NamedAttribute ConvertDotDimensionNumbers(
+      const DotDimensionNumbers& dnums);
+
+  // Converts the conv dimensions to attributes.
+  mlir::NamedAttribute ConvertConvDimensionNumbers(
+      const xla::ConvolutionDimensionNumbers& dnums);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

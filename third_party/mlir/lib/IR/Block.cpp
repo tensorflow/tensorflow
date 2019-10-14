@@ -38,15 +38,12 @@ unsigned BlockArgument::getArgNumber() {
 Block::~Block() {
   assert(!verifyInstOrder() && "Expected valid operation ordering.");
   clear();
-
-  for (auto *arg : arguments)
-    if (!arg->use_empty())
-      arg->user_begin()->dump();
-
   llvm::DeleteContainerPointers(arguments);
 }
 
-Region *Block::getParent() { return parentValidInstOrderPair.getPointer(); }
+Region *Block::getParent() const {
+  return parentValidInstOrderPair.getPointer();
+}
 
 /// Returns the closest surrounding operation that contains this block or
 /// nullptr if this block is unlinked.

@@ -27,30 +27,37 @@ class FuncOp;
 class Operation;
 template <typename T>
 class OpPassBase;
-class MLIRContext;
-class OwningRewritePatternList;
 
 namespace xla_hlo {
 
-/// Lowers from TF dialect to XLA dialect.
+/// Lowers from TF dialect to HLO dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
 
-/// Converts the provided Operation as well as all nested operations into XLA
-/// dialect using the conversion patterns registered by the XLA dialect.
+/// Converts the provided Operation as well as all nested operations into HLO
+/// dialect using the conversion patterns registered by the HLO dialect.
 LogicalResult legalizeTF(Operation* op);
 
-/// Lowers XLA control flow ops to the Standard dialect.
+/// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
 
-/// Lowers from XLA dialect to Standard dialect.
+/// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
+
+// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
+// buffers if necessary.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
 
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
 
-// Lowers LHLO dialect to affine dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

@@ -57,10 +57,64 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-// Returns whether the given `a` and `b` ElementsAttr have broadcast-compatible
-// types.
-bool IsBroadcastableElementsAttrs(Attribute a, Attribute b) {
-  return IsBroadcastableElementsAttrAndType(a.getType(), b.getType());
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  // Make sure the val tensor has shape where all dimensions are 1 except
+  // last one.
+  // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
+  const auto filter_shape = filter_elements.getType().getShape();
+  const auto elements_rank = elements.getType().getRank();
+  if (!elements || !filter_elements) {
+    return false;
+  }
+  for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
+    if (elements_shape[i] != 1) return false;
+  }
+  if (elements_rank != 1 && elements_rank != 0 && elements_rank != 4) {
+    return false;
+  }
+  auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
+  // For conv:
+  // Check if last dimension in filter equals the first dimension
+  // For depthwise conv:
+  // Check if the first in filter dimension equals the first dimension.
+  if (filter_shape.empty() ||
+      (is_depthwise ? filter_shape.back() != elements_depth
+                    : filter_shape[0] != elements_depth))
+    return false;
+  return true;
+}
+
+// Expand Attribute 'a' to 4D with all 1s except 1 dimension.
+// Which dimension depends on 'is_depthwise' is true or false.
+ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
+  auto elements = a.dyn_cast<DenseElementsAttr>();
+  auto shape = elements.getType().getShape();
+  if (shape.size() == 4) {
+    return elements;
+  }
+  std::vector<int64_t> shape_data = {1, 1, 1, 1};
+  if (shape.size() == 1 || shape.empty()) {
+    if (is_depthwise)
+      shape_data[3] = shape.empty() ? 1 : shape[0];
+    else
+      shape_data[0] = shape.empty() ? 1 : shape[0];
+  }
+  auto new_shape =
+      RankedTensorType::get(shape_data, elements.getType().getElementType());
+  return elements.reshape(new_shape);
+}
+
+ElementsAttr ExpandTo4DForConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, false);
+}
+
+ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, true);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -210,97 +264,6 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   }
 };
 
-// StridedSlice can have complicated atributes like begin_axis_mask,
-// end_axis_mask, ellipsis_axis_mask, new_axis_mask, shrink_axis_mask. These
-// masks will complicate the strided_slice computation logic, we can simplify
-// the logic by inserting a reshape op to pad the inputs so strided_slice can
-// be easier to handle.
-//
-// So the graph may looks like below:
-//   original_input -> strided_slice -> output
-//      (transforms)
-//   original_input -> reshape -> strided_slice -> output
-//
-// And the new shape is computed based on the masks.
-//
-// An example for new_axis_mask. say the new_axis_mask is 9 which represents
-// [1 0 0 1], and that means we're inserting two new axes at 0 & 3 dim, so
-// if original shape is [2, 3], now we reshape that into [1, 2, 3, 1].
-struct PadStridedSliceDims : public RewritePattern {
-  explicit PadStridedSliceDims(MLIRContext *context)
-      : RewritePattern(TFL::StridedSliceOp::getOperationName(),
-                       {"tfl.strided_slice", "tfl.strided_slice"}, 2, context) {
-  }
-
-  PatternMatchResult matchAndRewrite(Operation *strided_slice_op,
-                                     PatternRewriter &rewriter) const override {
-    // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
-    // mask as well.
-    TFL::StridedSliceOp strided_slice =
-        llvm::cast<TFL::StridedSliceOp>(strided_slice_op);
-    const uint64_t new_axis_mask = strided_slice.new_axis_mask().getZExtValue();
-    if (new_axis_mask == 0) return matchFailure();
-
-    // Insert a new reshape op.
-    Value *original_input = strided_slice.input();
-    RankedTensorType original_input_type =
-        original_input->getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> &original_input_shape =
-        original_input_type.getShape();
-    RankedTensorType begin_type =
-        strided_slice.begin()->getType().cast<RankedTensorType>();
-    const int dim_size = begin_type.getShape()[0];
-    SmallVector<int64_t, 4> new_shape;
-    int mask = 1;
-    int index = 0;
-    for (int i = 0; i < dim_size; ++i) {
-      if (mask & new_axis_mask) {
-        new_shape.emplace_back(1);
-      } else {
-        new_shape.emplace_back(original_input_shape[index]);
-        ++index;
-      }
-      mask = mask << 1;
-    }
-
-    Location loc = strided_slice.getLoc();
-    auto shape_type =
-        rewriter.getTensorType({dim_size}, rewriter.getIntegerType(32));
-    SmallVector<Attribute, 4> result_shape_data(dim_size);
-    for (int i = 0; i < dim_size; ++i) {
-      result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
-    }
-    auto shape_attr =
-        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
-    auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
-    auto new_output_type =
-        rewriter.getTensorType(new_shape, original_input_type.getElementType());
-    TFL::ReshapeOp reshape = rewriter.create<TFL::ReshapeOp>(
-        loc, new_output_type, original_input, shape);
-
-    // Replace the original strided_slice.
-    llvm::APInt new_begin_mask = strided_slice.begin_mask();
-    llvm::APInt new_end_mask = strided_slice.end_mask();
-    // Since we expand the dims, we need to apply them to the begin_mask &
-    // end_mask.
-    new_begin_mask |= strided_slice.new_axis_mask();
-    new_end_mask |= strided_slice.new_axis_mask();
-
-    auto attribute_type = rewriter.getIntegerType(32);
-    rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-        strided_slice_op, strided_slice.getType(), reshape,
-        strided_slice.begin(), strided_slice.end(), strided_slice.strides(),
-        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
-        rewriter.getIntegerAttr(attribute_type, new_end_mask),
-        rewriter.getIntegerAttr(attribute_type, strided_slice.ellipsis_mask()),
-        rewriter.getI32IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice.shrink_axis_mask()));
-    return matchSuccess();
-  }
-};
-
 void Optimize::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *ctx = &getContext();
@@ -309,7 +272,7 @@ void Optimize::runOnFunction() {
   // Add the generated patterns to the list.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, PadStridedSliceDims>(ctx);
+                  FuseFullyConnectedAndMul>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

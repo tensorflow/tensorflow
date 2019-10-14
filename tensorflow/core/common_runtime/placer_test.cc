@@ -37,13 +37,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -355,7 +355,7 @@ class PlacerTest : public ::testing::Test {
 class SoftPlacementPlacerTest : public PlacerTest,
                                 public ::testing::WithParamInterface<bool> {};
 
-INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+INSTANTIATE_TEST_SUITE_P(All, SoftPlacementPlacerTest,
                          ::testing::Values(false, true),
                          ::testing::PrintToStringParamName());
 

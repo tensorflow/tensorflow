@@ -20,6 +20,7 @@ cc_library(
         "comparisons.cc",
         "conv.cc",
         "depthwise_conv.cc",
+        "dequantize.cc",
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
@@ -30,6 +31,7 @@ cc_library(
         "pack.cc",
         "pooling.cc",
         "prelu.cc",
+        "quantize.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
@@ -45,6 +47,7 @@ cc_library(
         ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -78,6 +81,7 @@ cc_library(
         "ceil.cc",
         "comparisons.cc",
         "conv.cc",
+        "dequantize.cc",
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
@@ -89,6 +93,7 @@ cc_library(
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
+        "quantize.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
@@ -104,6 +109,7 @@ cc_library(
         ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -245,6 +251,7 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
@@ -432,10 +439,50 @@ tflite_micro_cc_test(
     ],
 )
 
+tflite_micro_cc_test(
+    name = "quantization_util_test",
+    srcs = [
+        "quantization_util_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+    ],
+)
+
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
     deps = ["//tensorflow/lite/c:c_api_internal"],
+)
+
+tflite_micro_cc_test(
+    name = "quantize_test",
+    srcs = [
+        "quantize_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "dequantize_test",
+    srcs = [
+        "dequantize_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
 )
 
 cc_library(
