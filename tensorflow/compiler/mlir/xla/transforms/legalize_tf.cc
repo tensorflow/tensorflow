@@ -292,6 +292,18 @@ static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
       .cast<DenseIntElementsAttr>();
 }
 
+// Return a new TensorType the same rank and dimensions as the input with an
+// updated element type.
+static Type ChangeTensorElementType(Builder *b, Type tensor_type,
+                                    Type element_type) {
+  RankedTensorType ranked_type = tensor_type.dyn_cast<RankedTensorType>();
+  if (ranked_type) {
+    return b->getTensorType(ranked_type.getShape(), element_type);
+  }
+
+  return b->getTensorType(element_type);
+}
+
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
@@ -587,6 +599,55 @@ class ConvertConv : public OpRewritePattern<OpT> {
 };
 
 using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
+
+// Converts BF16 FloorDiv op to have casting operators on either end as BF16
+// division can result in strange behavior.
+//
+//      floordiv = cast(floordiv(cast(left), cast(right))))
+//
+//   %left_cast = cast(%left)
+//   %right_cast = cast(%right)
+//   %div = div(%left, %left)
+//   %floored = floor(%div)
+//   %floored_cast = cast(%floored)
+//
+// Required to manually specify the intermediate types.
+class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
+ public:
+  explicit ConvertBF16FloorDivOp(MLIRContext *context)
+      : OpRewritePattern<TF::FloorDivOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::FloorDivOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto l = op.x();
+    auto r = op.y();
+    auto element_type = getElementTypeOrSelf(l->getType());
+    if (!element_type.isBF16()) return matchFailure();
+
+    auto out_type = op.z()->getType().cast<TensorType>();
+
+    RankedTensorType l_type = op.x()->getType().dyn_cast<RankedTensorType>();
+    RankedTensorType r_type = op.y()->getType().dyn_cast<RankedTensorType>();
+
+    auto new_l_type =
+        ChangeTensorElementType(&rewriter, l_type, rewriter.getF32Type());
+    auto new_r_type =
+        ChangeTensorElementType(&rewriter, r_type, rewriter.getF32Type());
+
+    l = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_l_type, l);
+    r = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_r_type, r);
+
+    auto intermediate_type = rewriter.create<TF::FloorDivOp>(
+        op.getLoc(),
+        ChangeTensorElementType(&rewriter, out_type, rewriter.getF32Type()), l,
+        r);
+
+    auto floor_op = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), out_type,
+                                                        intermediate_type);
+    rewriter.replaceOp(op, floor_op.getResult());
+    return Pattern::matchSuccess();
+  }
+};
 
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
@@ -1296,8 +1357,9 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertConv2D,
-                  mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertBF16FloorDivOp,
+                  mlir::xla::ConvertConv2D, mlir::xla::ConvertMaxPoolOp,
+                  mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
