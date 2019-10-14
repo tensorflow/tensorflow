@@ -3232,7 +3232,7 @@ def make_strided_slice_tests(options):
   test_parameters = [
       # 4-D (basic cases with const/non-const indices).
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32, tf.int32, tf.int64, tf.bool],
           "index_type": [tf.int32],
           "input_shape": [[12, 2, 2, 5]],
           "strides": [None, [2, 1, 3, 1]],
