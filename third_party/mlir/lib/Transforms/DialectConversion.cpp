@@ -558,7 +558,7 @@ void ConversionPatternRewriterImpl::undoBlockActions(
     case BlockActionKind::Split: {
       action.originalBlock->getOperations().splice(
           action.originalBlock->end(), action.block->getOperations());
-      action.block->dropAllUses();
+      action.block->dropAllDefinedValueUses();
       action.block->erase();
       break;
     }
@@ -989,6 +989,21 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
       return cleanupFailure();
     }
   }
+
+  // Check all of the replacements to ensure that the pattern actually replaced
+  // the root operation. We also mark any other replaced ops as 'dead' so that
+  // we don't try to legalize them later.
+  bool replacedRoot = false;
+  for (unsigned i = curState.numReplacements,
+                e = rewriterImpl.replacements.size();
+       i != e; ++i) {
+    Operation *replacedOp = rewriterImpl.replacements[i].op;
+    if (replacedOp == op)
+      replacedRoot = true;
+    else
+      rewriterImpl.deadOps.insert(replacedOp);
+  }
+  assert(replacedRoot && "expected pattern to replace the root operation");
 
   // Recursively legalize each of the new operations.
   for (unsigned i = curState.numCreatedOperations,
