@@ -439,7 +439,7 @@ class Callback(object):
 
       on_epoch_end: logs include `acc` and `loss`, and
           optionally include `val_loss`
-          (if validation is enabled in `fit`), and `val_acc`
+          (if validation is enabled in `fit`), and `val_accuracy`
           (if validation and accuracy monitoring are enabled).
       on_batch_begin: logs include `size`,
           the number of samples in the current batch.
