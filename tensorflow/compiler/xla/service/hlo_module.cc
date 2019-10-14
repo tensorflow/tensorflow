@@ -222,7 +222,10 @@ string HloModule::ToString(const HloPrintOptions& options) const {
     s << ", is_scheduled=true";
   }
   s << "\n\n";
-  for (const HloComputation* computation : MakeComputationPostOrder()) {
+  const auto& computations = options.canonicalize_computations()
+                                 ? MakeComputationPostOrderAndSortedByNames()
+                                 : MakeComputationPostOrder();
+  for (const HloComputation* computation : computations) {
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
@@ -590,6 +593,16 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
                << " computation_count=" << computations_.size();
   }
   return post_order;
+}
+
+std::vector<HloComputation*>
+HloModule::MakeComputationPostOrderAndSortedByNames() const {
+  auto result = MakeComputationPostOrder();
+  std::sort(result.begin(), result.end(),
+            [](HloComputation* a, HloComputation* b) {
+              return a->name() < b->name();
+            });
+  return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
