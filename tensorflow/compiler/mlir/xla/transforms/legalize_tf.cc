@@ -1341,6 +1341,63 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
   }
 };
 
+class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::OneHotOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+    if (!indices_ty || !indices_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> indices_shape = indices_ty.getShape();
+    Type element_type = indices_ty.getElementType();
+
+    DenseIntElementsAttr depth_attr;
+    if (!matchPattern(op.depth(), m_Constant(&depth_attr))) {
+      return matchFailure();
+    }
+
+    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    int64_t axis = op.axis().getSExtValue();
+    if (axis == -1) axis = indices_shape.size();
+
+    llvm::SmallVector<int64_t, 4> broadcast_dims(indices_shape.size());
+    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+
+    llvm::SmallVector<int64_t, 4> output_dims =
+        llvm::to_vector<4>(indices_shape);
+    output_dims.insert(output_dims.begin() + axis, depth);
+
+    auto index_type = rewriter.getTensorType(output_dims, element_type);
+    auto compare_type =
+        rewriter.getTensorType(output_dims, rewriter.getIntegerType(1));
+
+    Location loc = op.getLoc();
+    Value *compare = rewriter.create<xla_hlo::CompareOp>(
+        loc, compare_type, op.indices(),
+        rewriter.create<xla_hlo::IotaOp>(
+            loc, index_type,
+            IntegerAttr::get(rewriter.getIntegerType(64), axis)),
+        GetI64ElementsAttr(broadcast_dims, &rewriter),
+        StringAttr::get("EQ", rewriter.getContext()));
+    Value *on_value = rewriter.create<xla_hlo::BroadcastOp>(
+        loc, op.getType(), op.on_value(),
+        GetI64ElementsAttr(output_dims, &rewriter));
+    Value *off_value = rewriter.create<xla_hlo::BroadcastOp>(
+        loc, op.getType(), op.off_value(),
+        GetI64ElementsAttr(output_dims, &rewriter));
+    Value *result = rewriter.create<xla_hlo::SelectOp>(
+        loc, op.getType(), compare, on_value, off_value);
+
+    rewriter.replaceOp(
+        op, {result},
+        {op.indices(), op.on_value(), op.depth(), op.off_value()});
+
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
@@ -1364,8 +1421,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
                   mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
-                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp>(
-      op->getContext());
+                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp,
+                  mlir::xla::ConvertOneHotOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

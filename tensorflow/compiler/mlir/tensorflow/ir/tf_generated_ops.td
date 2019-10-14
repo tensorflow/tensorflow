@@ -2797,6 +2797,10 @@ output =
     TF_Tensor:$output
   );
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }

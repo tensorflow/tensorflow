@@ -559,6 +559,23 @@ func @max_pool_grad(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<1
 }
 
 //===----------------------------------------------------------------------===//
+// OneHot op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL:one_hot
+func @one_hot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tensor<f32>) -> tensor<3x5xf32> {
+  // CHECK: %[[IOTA:.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<3x5xi32>
+  // CHECK: %[[COMPARE:.*]] = "xla_hlo.compare"(%arg0, %[[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>, comparison_direction = "EQ"} : (tensor<3xi32>, tensor<3x5xi32>) -> tensor<3x5xi1>
+  // CHECK: %[[ON_VALUE:.*]] = "xla_hlo.broadcast"(%arg1) {broadcast_sizes = dense<[3, 5]> : tensor<2xi64>} : (tensor<f32>) -> tensor<3x5xf32>
+  // CHECK: %[[OFF_VALUE:.*]] = "xla_hlo.broadcast"(%arg2) {broadcast_sizes = dense<[3, 5]> : tensor<2xi64>} : (tensor<f32>) -> tensor<3x5xf32>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.select"(%[[COMPARE]], %[[ON_VALUE]], %[[OFF_VALUE]]) : (tensor<3x5xi1>, tensor<3x5xf32>, tensor<3x5xf32>) -> tensor<3x5xf32>
+  // CHECK: return %[[RESULT]] : tensor<3x5xf32>
+  %depth = "tf.Const"() { value = dense<5> : tensor<i64> } : () -> tensor<i32>
+  %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
+  return %result : tensor<3x5xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Pack op legalizations.
 //===----------------------------------------------------------------------===//
 

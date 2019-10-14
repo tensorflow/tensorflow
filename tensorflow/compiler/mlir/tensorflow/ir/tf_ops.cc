@@ -827,6 +827,50 @@ void NotEqualOp::build(Builder *builder, OperationState &result, Value *x,
 }
 
 //===----------------------------------------------------------------------===//
+// OneHotOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(OneHotOp op) {
+  int64_t axis = op.axis().getSExtValue();
+
+  auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+  if (indices_ty &&
+      !(axis == -1 || (axis >= 0 && axis <= indices_ty.getShape().size()))) {
+    return op.emitOpError()
+           << "expected axis (" << axis << ") to be -1 or between [0, "
+           << indices_ty.getShape().size() << "]";
+  }
+
+  if (axis < -1) {
+    return op.emitOpError() << "expected axis (" << axis
+                            << ") to be -1 or between [0, rank(indices()))";
+  }
+
+  if (!IsOfRankOrUnranked(op.depth(), 0)) {
+    return op.emitOpError() << "requires depth to be a scalar";
+  }
+  if (!IsOfRankOrUnranked(op.on_value(), 0)) {
+    return op.emitOpError() << "requires on_value to be a scalar";
+  }
+  if (!IsOfRankOrUnranked(op.off_value(), 0)) {
+    return op.emitOpError() << "requires off_value to be a scalar";
+  }
+
+  DenseIntElementsAttr depth_attr;
+  if (matchPattern(op.depth(), m_Constant(&depth_attr))) {
+    if (depth_attr.getType().getRank() != 0) {
+      return op.emitOpError() << "requires depth to be a scalar";
+    }
+    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    if (depth < 0) {
+      return op.emitOpError() << "depth must be non-negative, got: " << depth;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // PackOp
 //===----------------------------------------------------------------------===//
 
