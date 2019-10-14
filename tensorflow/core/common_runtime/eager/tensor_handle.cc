@@ -129,7 +129,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
-  VLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
+  DVLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -149,7 +149,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       is_remote_(false),
       handle_dtypes_and_shapes_(resource_handle.dtypes_and_shapes()),
       tensor_handle_data_(std::move(t)) {
-  VLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
+  DVLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -179,8 +179,8 @@ TensorHandle::TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
-  VLOG(3) << "Creating Async Local TensorHandle: " << this
-          << " device: " << device_;
+  DVLOG(3) << "Creating Async Local TensorHandle: " << this
+           << " device: " << device_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -217,7 +217,8 @@ TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
       ctx_(ctx),
       is_remote_(true),
       tensor_handle_data_(std::move(t)) {
-  VLOG(3) << "Creating Remote TensorHandle: " << this << " device: " << device_;
+  DVLOG(3) << "Creating Remote TensorHandle: " << this
+           << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -252,8 +253,8 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
       ctx_(ctx),
       is_remote_(true),
       tensor_handle_data_(std::move(t)) {
-  VLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
-          << " device: " << device_;
+  DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
+           << " device: " << device_;
 }
 #endif
 
@@ -269,7 +270,7 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
       ctx_(nullptr),
       is_remote_(false),
       symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {
-  VLOG(3) << "Creating Symbolic TensorHandle: " << this;
+  DVLOG(3) << "Creating Symbolic TensorHandle: " << this;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -495,7 +496,7 @@ Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
 
 Status TensorHandle::SetRemoteShape(const TensorShape& shape,
                                     tensorflow::Device* d) {
-  VLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d;
+  DVLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d;
 
   if (d != device_) {
     mutex_lock l(remote_mirrors_mutex_);
@@ -543,7 +544,7 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetTensor is only called on non-ready handles.";
 
-  VLOG(3) << "SetTensor on TensorHandle: " << this;
+  DVLOG(3) << "SetTensor on TensorHandle: " << this;
 
   if (tensor.dtype() == DT_RESOURCE) {
     auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
@@ -640,7 +641,7 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
 }
 
 string TensorHandle::DebugString() const {
-  VLOG(1) << "Calling TensorHandle::DebugString() on " << this;
+  DVLOG(1) << "Calling TensorHandle::DebugString() on " << this;
 
   if (symbolic_tensor_) {
     return absl::Substitute("TF_Output($0, $1)", symbolic_tensor_->oper,

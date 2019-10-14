@@ -306,7 +306,7 @@ public:
 
   void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
     successors.push_back(successor);
-    // Insert a sentinal operand to mark a barrier between successor operands.
+    // Insert a sentinel operand to mark a barrier between successor operands.
     operands.push_back(nullptr);
     operands.append(succOperands.begin(), succOperands.end());
   }
@@ -452,6 +452,54 @@ private:
   }
 };
 } // end namespace detail
+
+/// Set of flags used to control the behavior of the various IR print methods
+/// (e.g. Operation::Print).
+class OpPrintingFlags {
+public:
+  OpPrintingFlags();
+  OpPrintingFlags(llvm::NoneType) : OpPrintingFlags() {}
+
+  /// Enable the elision of large elements attributes, by printing a '...'
+  /// instead of the element data. Note: The IR generated with this option is
+  /// not parsable. `largeElementLimit` is used to configure what is considered
+  /// to be a "large" ElementsAttr by providing an upper limit to the number of
+  /// elements.
+  OpPrintingFlags &elideLargeElementsAttrs(int64_t largeElementLimit = 16);
+
+  /// Enable printing of debug information. If 'prettyForm' is set to true,
+  /// debug information is printed in a more readable 'pretty' form. Note: The
+  /// IR generated with 'prettyForm' is not parsable.
+  OpPrintingFlags &enableDebugInfo(bool prettyForm = false);
+
+  /// Always print operations in the generic form.
+  OpPrintingFlags &printGenericOpForm();
+
+  /// Return if the given ElementsAttr should be elided.
+  bool shouldElideElementsAttr(ElementsAttr attr) const;
+
+  /// Return if debug information should be printed.
+  bool shouldPrintDebugInfo() const;
+
+  /// Return if debug information should be printed in the pretty form.
+  bool shouldPrintDebugInfoPrettyForm() const;
+
+  /// Return if operations should be printed in the generic form.
+  bool shouldPrintGenericOpForm() const;
+
+private:
+  /// Elide large elements attributes if the number of elements is larger than
+  /// the upper limit.
+  llvm::Optional<int64_t> elementsAttrElementLimit;
+
+  /// Print debug information.
+  bool printDebugInfoFlag : 1;
+  bool printDebugInfoPrettyFormFlag : 1;
+
+  /// Print operations in the generic form.
+  bool printGenericOpFormFlag : 1;
+};
+
 } // end namespace mlir
 
 namespace llvm {

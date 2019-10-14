@@ -619,6 +619,9 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
   fusion_instruction->FuseInstruction(producer);
+  if (fusion_instruction != producer && fusion_instruction != consumer) {
+    VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
+  }
   return fusion_instruction;
 }
 

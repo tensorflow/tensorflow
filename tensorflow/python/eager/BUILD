@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -781,16 +782,19 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+tpu_py_test(
     name = "remote_cloud_tpu_test",
-    size = "medium",
     srcs = ["remote_cloud_tpu_test.py"],
-    additional_deps = [
-        ":remote",
+    tags = [
+        "notap",
+    ],
+    deps = [
         ":context",
+        ":remote",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/tpu:tpu_strategy_util",
     ],
+<<<<<<< HEAD
     tags = [
         "no_cuda",
         "no_pip",
@@ -801,6 +805,8 @@ tf_py_test(
         "notap",
         "tpu",
     ],
+=======
+>>>>>>> upstream/master
 )
 
 cuda_py_test(

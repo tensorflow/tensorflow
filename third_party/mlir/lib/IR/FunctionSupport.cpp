@@ -202,7 +202,8 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
   auto funcName =
       op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
           .getValue();
-  p << op->getName() << " @" << funcName;
+  p << op->getName() << ' ';
+  p.printSymbolName(funcName);
 
   // Print the signature.
   printSignature(p, op, argTypes, isVariadic, results);

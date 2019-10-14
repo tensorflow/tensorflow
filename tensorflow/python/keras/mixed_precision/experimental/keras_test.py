@@ -37,7 +37,6 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -46,6 +45,7 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale_opti
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.saving import save
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -1135,7 +1135,7 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
 
     # Load model weights and ensure loss scale weights are restored.
-    model = saving.load_model(save_path, custom_objects={'AddLayer': AddLayer})
+    model = save.load_model(save_path, custom_objects={'AddLayer': AddLayer})
     loss_scale = model.optimizer.loss_scale
     (weight,) = model.trainable_weights
     loaded_weight = backend.get_value(weight)

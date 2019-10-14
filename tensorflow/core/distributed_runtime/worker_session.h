@@ -70,8 +70,8 @@ class WorkerSession {
   // devices will be freed by their names.
   Status UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface> new_worker_cache,
-      std::vector<std::unique_ptr<tensorflow::Device>> added_remote_devices,
-      const std::vector<string>& removed_remote_devices);
+      std::vector<std::unique_ptr<Device>> added_remote_devices,
+      const std::vector<Device*>& removed_remote_devices);
 
   ~WorkerSession();
 

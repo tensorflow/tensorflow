@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
+from six.moves import zip
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
@@ -31,6 +34,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -454,19 +459,21 @@ class FromConcreteFunctionTest(TFLiteMLIRTest):
     np.testing.assert_almost_equal(expected_value, actual_value)
 
 
-class FromKerasModelTest(TFLiteMLIRTest):
+class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
 
+  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
+                                  ('SimpleRNN', recurrent.SimpleRNN),
+                                  ('GRU', recurrent_v2.GRU))
   @test_util.run_v2_only
-  def testKerasLSTM(self):
+  def testKerasRNN(self, rnn_layer):
     # This test case is similar to `FromConcreteFunctionTest.testKerasLSTM`
     # above, but it's more concise to pass the Keras model directly.
     # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
     # model will fail if resizing the input to non-1 batch size.
     input_data = constant_op.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
-
-    model = keras.models.Sequential(
-        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+    rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
+    model = keras.models.Sequential([rnn_obj])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -477,7 +484,7 @@ class FromKerasModelTest(TFLiteMLIRTest):
     # Check values from converted model.
     expected_value = model.predict(input_data)
 
-    np.testing.assert_almost_equal(expected_value, actual_value)
+    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
 
 
 class TestFlexMode(TFLiteMLIRTest):

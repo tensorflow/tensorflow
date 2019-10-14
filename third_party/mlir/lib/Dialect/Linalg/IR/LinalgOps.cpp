@@ -632,15 +632,11 @@ static LogicalResult verify(YieldOp op) {
 static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
   p << op->getName().getStringRef() << "(";
-  interleave(
-      op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { p << *v; }, [&]() { p << ", "; });
+  interleaveComma(op->getOperands(), p, [&](Value *v) { p << *v; });
   p << ")";
   p.printOptionalAttrDict(op->getAttrs());
   p << " : ";
-  interleave(
-      op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { p << v->getType(); }, [&]() { p << ", "; });
+  interleaveComma(op->getOperands(), p, [&](Value *v) { p << v->getType(); });
 }
 
 static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,

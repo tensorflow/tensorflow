@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -29,37 +32,98 @@ limitations under the License.
 namespace xla {
 namespace mlir_gpu {
 
-void MlirIrGenTestBase::CompileAndVerifyIr(
-    std::unique_ptr<HloModule> hlo_module, const string& pattern,
-    LoweringStage stage) {
+void MlirIrGenTestBase::CompileIr(std::unique_ptr<HloModule> hlo_module,
+                                  const MlirCompiler::IRHook& ir_hook) {
   MlirCompiler* compiler = GetMLIRCompiler();
-  string ir;
-  compiler->SetModuleHook({[&ir](mlir::ModuleOp module) -> Status {
-                             std::string buffer_string;
-                             llvm::raw_string_ostream ostream(buffer_string);
-                             module.print(ostream);
-                             ostream.flush();
-                             ir = buffer_string;
-                             return Status::OK();
-                           },
-                           stage});
+  compiler->SetModuleHook(ir_hook);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   compiler->RemoveModuleHook();
   TF_ASSERT_OK(status);
+}
 
-  StatusOr<bool> filecheck_result = RunFileCheck(ir, pattern);
+void MlirIrGenTestBase::PatternMatch(const string& str, const string& pattern) {
+  StatusOr<bool> filecheck_result = RunFileCheck(str, pattern);
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
+string MlirIrGenTestBase::CompileIr(
+    std::unique_ptr<HloModule> hlo_module,
+    MlirCompiler::IRHook::LoweringStage printing_stage) {
+  string ir;
+  CompileIr(std::move(hlo_module),
+            {[&ir](mlir::ModuleOp module) -> Status {
+               std::string buffer_string;
+               llvm::raw_string_ostream ostream(buffer_string);
+               module.print(ostream);
+               ostream.flush();
+               ir = buffer_string;
+               return Status::OK();
+             },
+             printing_stage});
+  return ir;
+}
+
+void MlirIrGenTestBase::CompileAndVerifyIr(
+    std::unique_ptr<HloModule> hlo_module, const string& pattern,
+    LoweringStage printing_stage) {
+  string ir = CompileIr(std::move(hlo_module), printing_stage);
+  PatternMatch(ir, pattern);
+}
+
 void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            const string& expected_llvm_ir,
-                                           LoweringStage stage) {
+                                           LoweringStage printing_stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), expected_llvm_ir, stage);
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, printing_stage);
+}
+
+StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
+    std::unique_ptr<HloModule> hlo_module, LoweringStage breaking_stage) {
+  string errors;
+  auto error_handler = [&errors](const EmissionContext::ErrorMap& error_map,
+                                 HloModule* hlo_module) {
+    errors = "ERRORS FOUND: ";
+    for (auto& err : error_map) {
+      errors += "[" + err.first->ToString() + ": " +
+                absl::StrJoin(err.second, "; ") + "]";
+    }
+  };
+
+  MlirCompiler* compiler = GetMLIRCompiler();
+  compiler->SetModuleHook(
+      {[](mlir::ModuleOp module) -> Status {
+         mlir::PassManager pm(module.getContext());
+         pm.addPass(::mlir::createInjectErrorsForTestingPass());
+         if (failed(pm.run(module))) {
+           return InternalError("InjectErrorsForTestingPass failed.");
+         }
+         return Status::OK();
+       },
+       breaking_stage});
+  compiler->SetErrorHandler(error_handler);
+  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  compiler->RemoveModuleHook();
+
+  if (status.ok()) {
+    return errors;
+  }
+  return status;
+}
+
+void MlirIrGenTestBase::CompileAndVerifyErrors(const string& hlo_text,
+                                               const string& expected_errors,
+                                               LoweringStage breaking_stage) {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_text, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      string errors, CompileAndInjectErrors(std::move(module), breaking_stage));
+  PatternMatch(errors, expected_errors);
 }
 
 MlirCompiler* MlirIrGenTestBase::GetMLIRCompiler() {

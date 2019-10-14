@@ -76,8 +76,30 @@ void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
 
 // Returns a data value that is dead iff `control` is dead.
 Output ControlToData(const Scope& scope, Node* control) {
+  // The choice of data type here is important.
+  //
+  // We implement a "control merge", which is a control edge that is alive if
+  // either of two nodes (denoted as A and B below) are alive, in the following
+  // manner:
+  //
+  //   A --ctrl--> Const0 --data--> Merge --data--> Identity
+  //                                 ^                 |
+  //                                 |                ctrl
+  //   B --ctrl--> Const1 --data-----+                 |
+  //                                                   v
+  //                                                  ***
+  //
+  // where *** denotes the merged control output.
+  //
+  // We want everything starting from Const{0/1} to Identity to either wholly
+  // live on the host or wholly live on device so we need to pick a data type
+  // that is either consistently assigned to the device (e.g. float) or
+  // consistently assigned to the host (e.g. int32).  We should *not* pick a
+  // data type that partly placed on the host and partly on the device
+  // (e.g. bool constants are placed on the device but bool Identity is placed
+  // on the host).
   Output data = ops::Const(scope.WithOpName("ctrl_as_data"),
-                           Tensor(DT_BOOL, TensorShape({0})));
+                           Tensor(DT_INT32, TensorShape({0})));
   scope.graph()->AddControlEdge(control, data.node());
   return Output(data.node());
 }

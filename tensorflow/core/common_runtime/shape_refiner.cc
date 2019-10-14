@@ -140,7 +140,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
 // other maintainability issues.
 Status ShapeRefiner::InferShapesForFunction(
     const FunctionDef* function_def, AttrSlice attributes,
-    bool keep_nested_shapes, ExtendedInferenceContext* outer_context) {
+    ExtendedInferenceContext* outer_context) {
   const Graph* graph;
   auto it = functions_.find(function_def);
   if (it != functions_.end()) {
@@ -180,38 +180,9 @@ Status ShapeRefiner::InferShapesForFunction(
     ReverseDFS(*graph, {}, node_shape_inference_lambda);
   }
 
-  if (keep_nested_shapes && inference_status.ok()) {
-    // Fill the nested inferences map.
-    //
-    // The materialized function graph has extra nodes for arguments and
-    // return values, which are not explicitly listed in the FunctionDef,
-    // we filter out these special nodes here to not expose the implementation
-    // details and keep only inferences for the nodes listed in the FunctionDef.
-    std::unordered_map<string, const NodeDef*> user_defined_nodes;
-    for (const auto& node_def : function_def->node_def()) {
-      user_defined_nodes[node_def.name()] = &node_def;
-    }
-
-    std::unordered_map<string, std::unique_ptr<ExtendedInferenceContext>>
-        nested_inferences;
-    for (const Node* node : function_nodes) {
-      const string& node_name = node->name();
-      if (user_defined_nodes.find(node_name) != user_defined_nodes.end()) {
-        nested_inferences[node_name] = std::move(node_to_context_[node]);
-        node_to_context_.erase(node);
-        // By default InferenceContext refers to a NodeDef from Graph.
-        // Change it to the publicly accessible NodeDef of the function
-        // definition.
-        nested_inferences[node_name]->get_context()->node_def_ =
-            user_defined_nodes[node_name];
-      }
-    }
-    outer_context->set_nested_inferences(std::move(nested_inferences));
-  } else {
-    // Delete the contexts created for the functions nodes to save memory.
-    for (const Node* node : function_nodes) {
-      node_to_context_.erase(node);
-    }
+  // Delete the contexts created for the functions nodes to save memory.
+  for (const Node* node : function_nodes) {
+    node_to_context_.erase(node);
   }
 
   return inference_status;
@@ -220,7 +191,7 @@ Status ShapeRefiner::InferShapesForFunction(
 Status ShapeRefiner::AddNode(const Node* node) {
   // Create the inference context for this node with the existing input shapes.
   std::unique_ptr<InferenceContext> ic(new InferenceContext(
-      graph_def_version_, &node->def(), node->op_def(),
+      graph_def_version_, node->def(), node->op_def(),
       std::vector<ShapeHandle>(node->num_inputs()), {}, {}, {}));
   TF_RETURN_IF_ERROR(ic->construction_status());
 
@@ -664,9 +635,8 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           // performing inference on the function body.
           auto const_tensor_map_copy = const_tensor_map_;
           const_tensor_map_.clear();
-          Status function_inference_status =
-              InferShapesForFunction(function_def, AttrSlice(&function.attr()),
-                                     keep_nested_shape_inferences_, ec);
+          Status function_inference_status = InferShapesForFunction(
+              function_def, AttrSlice(&function.attr()), ec);
           const_tensor_map_ = const_tensor_map_copy;
           return function_inference_status;
         }

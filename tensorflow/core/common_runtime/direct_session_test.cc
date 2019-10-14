@@ -648,7 +648,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
 
   // Prepares RunOptions and RunMetadata
   RunOptions run_options;
-  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  run_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
   RunMetadata run_metadata;
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
 
@@ -679,7 +679,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
   CallableOptions callable_options =
       MakeCallableOptions({}, {y_ + ":0"}, {y_neg_});
   callable_options.mutable_run_options()->set_trace_level(
-      RunOptions::FULL_TRACE);
+      RunOptions::SOFTWARE_TRACE);
   TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
 
   RunMetadata run_metadata;

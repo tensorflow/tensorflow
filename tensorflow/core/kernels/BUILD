@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
@@ -797,6 +798,7 @@ cc_library(
     }),
     deps = [
         "//third_party/eigen3",
+        "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
@@ -811,7 +813,10 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -6691,6 +6696,11 @@ cc_library(
     alwayslink = 1,
 )
 
+build_test(
+    name = "android_tensorflow_kernels_build_test",
+    targets = [":android_tensorflow_kernels"],
+)
+
 cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
@@ -6704,6 +6714,11 @@ cc_library(
         "//tensorflow/core:android_tensorflow_lib_lite",
     ],
     alwayslink = 1,
+)
+
+build_test(
+    name = "android_tensorflow_image_op_build_test",
+    targets = [":android_tensorflow_image_op"],
 )
 
 cc_library(

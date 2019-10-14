@@ -5091,7 +5091,7 @@ Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64 size) {
   VLOG_CALL(PARAM(location), PARAM(size));
 
   if (ok()) {
-    CheckError(parent_->MemZero(this, location, size));
+    CheckStatus(parent_->MemZero(this, location, size));
   } else {
     LOG(INFO) << DebugStreamPointers()
               << " did not memzero GPU location; source: " << location;
@@ -5104,7 +5104,7 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
   if (ok()) {
-    CheckError(parent_->Memset32(this, location, pattern, size));
+    CheckStatus(parent_->Memset32(this, location, pattern, size));
   } else {
     LOG(INFO) << DebugStreamPointers()
               << " did not memset GPU location; source: " << location

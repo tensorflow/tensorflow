@@ -36,7 +36,7 @@ def proc_func_that_adds_task_type_in_return_data(test_obj):
 
 
 def proc_func_that_errors():
-  raise RuntimeError('This is an error.')
+  raise ValueError('This is an error.')
 
 
 def proc_func_that_does_nothing():
@@ -76,9 +76,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_multi_process_runner_error_propagates_from_subprocesses(self):
     job_count_dict = {'worker': 1, 'ps': 1}
-    with self.assertRaisesRegexp(
-        RuntimeError, 'Exception raised by subprocess: RuntimeError: '
-                      'This is an error.'):
+    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
       multi_process_runner.run(
           proc_func_that_errors,
           multi_process_runner.job_count_to_cluster_spec(job_count_dict),

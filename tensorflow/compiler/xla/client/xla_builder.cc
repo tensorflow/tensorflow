@@ -212,12 +212,11 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
+
     case HloOpcode::kGetDimensionSize:
-    case HloOpcode::kSetDimensionSize: {
-      // DimensionSize is always considered constant in XLA -- If a dynamic
+      // GetDimensionSize is always considered constant in XLA -- If a dynamic
       // dimension is presented, -1 is returned.
       break;
-    }
 
     // Non functional ops.
     case HloOpcode::kRng:

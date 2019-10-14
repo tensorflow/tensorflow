@@ -29,18 +29,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
-#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
@@ -1670,6 +1667,15 @@ bool MightTrace(const NodeItem& item,
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
+  profiler::TraceMe activity(
+      [&] {
+        int64 id = step_id_;
+        if (step_container_ && step_container_->step_id()) {
+          id = step_container_->step_id();
+        }
+        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+      },
+      2);
   WithContext wc(context_);
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;

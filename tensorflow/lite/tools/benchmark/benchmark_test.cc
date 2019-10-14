@@ -45,6 +45,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   params.AddParam("graph", BenchmarkParam::Create<std::string>(*g_model_path));
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
+  params.AddParam("input_layer_value_range",
+                  BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("require_full_delegation",

@@ -324,6 +324,8 @@ class TypeSpec(object):
       ])
     if isinstance(value, tuple):
       return tuple([self.__make_cmp_key(v) for v in value])
+    if isinstance(value, list):
+      return (list, tuple([self.__make_cmp_key(v) for v in value]))
     if isinstance(value, tensor_shape.TensorShape):
       if value.ndims is None:
         # Note: we include a type object in the tuple, to ensure we can't get
@@ -349,7 +351,7 @@ class TypeSpec(object):
     """Returns true if the given type serializations compatible."""
     if type(a) is not type(b):
       return False
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       return (len(a) == len(b) and
               all(TypeSpec.__is_compatible(x, y) for (x, y) in zip(a, b)))
     if isinstance(a, dict):
@@ -390,7 +392,7 @@ class TypeSpec(object):
     """
     if type(a) is not type(b):
       raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)

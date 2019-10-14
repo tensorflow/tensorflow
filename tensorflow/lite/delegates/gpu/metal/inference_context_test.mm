@@ -31,7 +31,7 @@ using ::tflite::gpu::metal::ComputeTaskDescriptor;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::GetBestSupportedMetalDevice;
 using ::tflite::gpu::metal::RunGraph;
-using ::tflite::gpu::metal::VectorToUint8Vector;
+using ::tflite::gpu::metal::GetByteBuffer;
 using ::tflite::gpu::TensorFloat32;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
@@ -119,7 +119,7 @@ static std::vector<ComputeTaskDescriptorPtr> AddUniformLinkable(
   desc->uniform_buffers = {
       {"constant FLT4&",
        [channel_multipliers](const std::map<ValueId, BHWC>& buffers) {
-         return VectorToUint8Vector(channel_multipliers);
+         return GetByteBuffer(channel_multipliers);
        }},
   };
   return {desc};
@@ -138,7 +138,7 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
   desc->immutable_buffers = {
-      {"device FLT4* const", VectorToUint8Vector(channel_multipliers)},
+      {"device FLT4* const", GetByteBuffer(channel_multipliers)},
   };
   return {desc};
 }
@@ -170,9 +170,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2.2f, 3.3f, 4.4f}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testImmutableShaderOutput {
@@ -187,9 +187,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 4, 9, 16, 25, 36, 49}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testUniformShaderOutput {
@@ -203,9 +203,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4, 6}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testUniformAndImmutableShaderOutput {
@@ -222,9 +222,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 6, 12, 20, 26, 38, 52}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

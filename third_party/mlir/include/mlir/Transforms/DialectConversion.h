@@ -270,6 +270,15 @@ public:
                           Region::iterator before) override;
   using PatternRewriter::inlineRegionBefore;
 
+  /// PatternRewriter hook for cloning blocks of one region into another. The
+  /// given region to clone *must* not have been modified as part of conversion
+  /// yet, i.e. it must be within an operation that is either in the process of
+  /// conversion, or has not yet been converted.
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before,
+                         BlockAndValueMapping &mapping) override;
+  using PatternRewriter::cloneRegionBefore;
+
   /// PatternRewriter hook for creating a new operation.
   Operation *createOperation(const OperationState &state) override;
 
@@ -465,6 +474,12 @@ private:
 //===----------------------------------------------------------------------===//
 // Op Conversion Entry Points
 //===----------------------------------------------------------------------===//
+
+/// Below we define several entry points for operation conversion. It is
+/// important to note that the patterns provided to the conversion framework may
+/// have additional constraints. See the `PatternRewriter Hooks` section of the
+/// ConversionPatternRewriter, to see what additional constraints are imposed on
+/// the use of the PatternRewriter.
 
 /// Apply a partial conversion on the given operations, and all nested
 /// operations. This method converts as many operations to the target as

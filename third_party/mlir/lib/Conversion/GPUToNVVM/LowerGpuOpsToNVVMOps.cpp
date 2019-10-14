@@ -34,7 +34,7 @@ using namespace mlir;
 
 namespace {
 
-// Converts all_reduce op to LLVM/NVVM ops.
+/// Converts all_reduce op to LLVM/NVVM ops.
 struct GPUAllReduceOpLowering : public LLVMOpLowering {
   explicit GPUAllReduceOpLowering(LLVMTypeConverter &lowering_)
       : LLVMOpLowering(gpu::AllReduce::getOperationName(),
@@ -50,42 +50,42 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
   }
 
 private:
-  // Creates an all_reduce across the block.
-  //
-  // First reduce the elements within a warp. The first thread of each warp
-  // writes the intermediate result to shared memory. After synchronizing the
-  // block, the first warp reduces the values from shared memory. The result
-  // is broadcasted to all threads through shared memory.
-  //
-  //     %warp_reduce = `createWarpReduce(%operand)`
-  //     %shared_mem_ptr = llvm.mlir.addressof @reduce_buffer
-  //     %zero = llvm.mlir.constant(0 : i32) : !llvm.i32
-  //     %lane_id = nvvm.read.ptx.sreg.laneid  : !llvm.i32
-  //     %is_first_lane = llvm.icmp "eq" %lane_id, %zero : !llvm.i1
-  //     %thread_idx = `getLinearThreadIndex()` : !llvm.i32
-  //     llvm.cond_br %is_first_lane, ^then1, ^continue1
-  //   ^then1:
-  //     %warp_id = `getWarpId()`
-  //     %store_dst = llvm.getelementptr %shared_mem_ptr[%zero, %warp_id]
-  //     llvm.store %store_dst, %warp_reduce
-  //     llvm.br ^continue1
-  //   ^continue1:
-  //     nvvm.barrier0
-  //     %num_warps = `getNumWarps()` : !llvm.i32
-  //     %is_valid_warp = llvm.icmp "slt" %thread_idx, %num_warps
-  //     %result_ptr = llvm.getelementptr %shared_mem_ptr[%zero, %zero]
-  //     llvm.cond_br %is_first_lane, ^then2, ^continue2
-  //   ^then2:
-  //     %load_src = llvm.getelementptr %shared_mem_ptr[%zero, %thread_idx]
-  //     %value = llvm.load %load_src
-  //     %result = `createWarpReduce(%value)`
-  //     llvm.store %result_ptr, %result
-  //     llvm.br ^continue2
-  //   ^continue2:
-  //     nvvm.barrier0
-  //     %result = llvm.load %result_ptr
-  //     return %result
-  //
+  /// Creates an all_reduce across the block.
+  ///
+  /// First reduce the elements within a warp. The first thread of each warp
+  /// writes the intermediate result to shared memory. After synchronizing the
+  /// block, the first warp reduces the values from shared memory. The result
+  /// is broadcasted to all threads through shared memory.
+  ///
+  ///     %warp_reduce = `createWarpReduce(%operand)`
+  ///     %shared_mem_ptr = llvm.mlir.addressof @reduce_buffer
+  ///     %zero = llvm.mlir.constant(0 : i32) : !llvm.i32
+  ///     %lane_id = nvvm.read.ptx.sreg.laneid  : !llvm.i32
+  ///     %is_first_lane = llvm.icmp "eq" %lane_id, %zero : !llvm.i1
+  ///     %thread_idx = `getLinearThreadIndex()` : !llvm.i32
+  ///     llvm.cond_br %is_first_lane, ^then1, ^continue1
+  ///   ^then1:
+  ///     %warp_id = `getWarpId()`
+  ///     %store_dst = llvm.getelementptr %shared_mem_ptr[%zero, %warp_id]
+  ///     llvm.store %store_dst, %warp_reduce
+  ///     llvm.br ^continue1
+  ///   ^continue1:
+  ///     nvvm.barrier0
+  ///     %num_warps = `getNumWarps()` : !llvm.i32
+  ///     %is_valid_warp = llvm.icmp "slt" %thread_idx, %num_warps
+  ///     %result_ptr = llvm.getelementptr %shared_mem_ptr[%zero, %zero]
+  ///     llvm.cond_br %is_first_lane, ^then2, ^continue2
+  ///   ^then2:
+  ///     %load_src = llvm.getelementptr %shared_mem_ptr[%zero, %thread_idx]
+  ///     %value = llvm.load %load_src
+  ///     %result = `createWarpReduce(%value)`
+  ///     llvm.store %result_ptr, %result
+  ///     llvm.br ^continue2
+  ///   ^continue2:
+  ///     nvvm.barrier0
+  ///     %result = llvm.load %result_ptr
+  ///     return %result
+  ///
   Value *createBlockReduce(Location loc, Value *operand,
                            ConversionPatternRewriter &rewriter) const {
     auto type = operand->getType().cast<LLVM::LLVMType>();
@@ -141,18 +141,18 @@ private:
     return result;
   }
 
-  // Creates an if-block skeleton and calls the two factories to generate the
-  // ops in the `then` and `else` block..
-  //
-  //     llvm.cond_br %condition, ^then, ^continue
-  //   ^then:
-  //     %then_operands = `thenOpsFactory()`
-  //     llvm.br ^continue(%then_operands)
-  //   ^else:
-  //     %else_operands = `elseOpsFactory()`
-  //     llvm.br ^continue(%else_operands)
-  //   ^continue(%block_operands):
-  //
+  /// Creates an if-block skeleton and calls the two factories to generate the
+  /// ops in the `then` and `else` block..
+  ///
+  ///     llvm.cond_br %condition, ^then, ^continue
+  ///   ^then:
+  ///     %then_operands = `thenOpsFactory()`
+  ///     llvm.br ^continue(%then_operands)
+  ///   ^else:
+  ///     %else_operands = `elseOpsFactory()`
+  ///     llvm.br ^continue(%else_operands)
+  ///   ^continue(%block_operands):
+  ///
   template <typename ThenOpsFactory, typename ElseOpsFactory>
   void createIf(Location loc, ConversionPatternRewriter &rewriter,
                 Value *condition, ThenOpsFactory &&thenOpsFactory,
@@ -188,7 +188,7 @@ private:
       continueBlock->addArgument(operand->getType());
   }
 
-  // Shortcut for createIf with empty else block and no block operands.
+  /// Shortcut for createIf with empty else block and no block operands.
   template <typename Factory>
   void createPredicatedBlock(Location loc, ConversionPatternRewriter &rewriter,
                              Value *condition,
@@ -202,8 +202,8 @@ private:
         [&] { return ArrayRef<Value *>(); });
   }
 
-  // Creates a reduction across the first activeWidth lanes of a warp.
-  // The first lane returns the result, all others return values are undefined.
+  /// Creates a reduction across the first activeWidth lanes of a warp.
+  /// The first lane returns the result, all others return values are undefined.
   Value *createWarpReduce(Location loc, Value *activeWidth, Value *laneId,
                           Value *operand,
                           ConversionPatternRewriter &rewriter) const {
@@ -276,7 +276,7 @@ private:
     return rewriter.getInsertionBlock()->getArgument(0);
   }
 
-  // Creates a global array stored in shared memory.
+  /// Creates a global array stored in shared memory.
   Value *createSharedMemoryArray(Location loc, ModuleOp module,
                                  LLVM::LLVMType elementType, int numElements,
                                  ConversionPatternRewriter &rewriter) const {
@@ -294,7 +294,7 @@ private:
     return rewriter.create<LLVM::AddressOfOp>(loc, globalOp);
   }
 
-  // Returns the index of the thread within the block.
+  /// Returns the index of the thread within the block.
   Value *getLinearThreadIndex(Location loc,
                               ConversionPatternRewriter &rewriter) const {
     Value *dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
@@ -308,7 +308,7 @@ private:
     return rewriter.create<LLVM::AddOp>(loc, int32Type, tmp3, idX);
   }
 
-  // Returns the number of threads in the block.
+  /// Returns the number of threads in the block.
   Value *getBlockSize(Location loc, ConversionPatternRewriter &rewriter) const {
     Value *dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
     Value *dimY = rewriter.create<NVVM::BlockDimYOp>(loc, int32Type);
@@ -317,7 +317,7 @@ private:
     return rewriter.create<LLVM::MulOp>(loc, int32Type, dimXY, dimZ);
   }
 
-  // Returns the number of warps in the block.
+  /// Returns the number of warps in the block.
   Value *getNumWarps(Location loc, Value *blockSize,
                      ConversionPatternRewriter &rewriter) const {
     auto warpSizeMinusOne = rewriter.create<LLVM::ConstantOp>(
@@ -327,7 +327,7 @@ private:
     return getDivideByWarpSize(biasedBlockSize, rewriter);
   }
 
-  // Returns the number of active threads in the warp, not clamped to 32.
+  /// Returns the number of active threads in the warp, not clamped to 32.
   Value *getActiveWidth(Location loc, Value *threadIdx, Value *blockSize,
                         ConversionPatternRewriter &rewriter) const {
     Value *threadIdxMask = rewriter.create<LLVM::ConstantOp>(
@@ -338,7 +338,7 @@ private:
                                         numThreadsWithSmallerWarpId);
   }
 
-  // Returns value divided by the warp size (i.e. 32).
+  /// Returns value divided by the warp size (i.e. 32).
   Value *getDivideByWarpSize(Value *value,
                              ConversionPatternRewriter &rewriter) const {
     auto loc = value->getLoc();
@@ -352,11 +352,11 @@ private:
   static constexpr int kWarpSize = 32;
 };
 
-// A pass that replaces all occurrences of GPU device operations with their
-// corresponding NVVM equivalent.
-//
-// This pass only handles device code and is not meant to be run on GPU host
-// code.
+/// A pass that replaces all occurrences of GPU device operations with their
+/// corresponding NVVM equivalent.
+///
+/// This pass only handles device code and is not meant to be run on GPU host
+/// code.
 class LowerGpuOpsToNVVMOpsPass : public ModulePass<LowerGpuOpsToNVVMOpsPass> {
 public:
   void runOnModule() override {
@@ -379,10 +379,9 @@ public:
         GPUAllReduceOpLowering>(converter);
 
     ConversionTarget target(getContext());
+    target.addIllegalDialect<gpu::GPUDialect>();
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalDialect<NVVM::NVVMDialect>();
-    target.addDynamicallyLegalOp<FuncOp>(
-        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
     if (failed(applyPartialConversion(m, target, patterns, &converter)))
       signalPassFailure();
   }

@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -31,11 +32,14 @@
 using namespace mlir;
 using namespace mlir::gpu;
 
+//===----------------------------------------------------------------------===//
+// GPUDialect
+//===----------------------------------------------------------------------===//
+
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
-bool GPUDialect::isKernel(FuncOp function) {
-  UnitAttr isKernelAttr =
-      function.getAttrOfType<UnitAttr>(getKernelFuncAttrName());
+bool GPUDialect::isKernel(Operation *op) {
+  UnitAttr isKernelAttr = op->getAttrOfType<UnitAttr>(getKernelFuncAttrName());
   return static_cast<bool>(isKernelAttr);
 }
 
@@ -45,6 +49,85 @@ GPUDialect::GPUDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
                 >();
+}
+
+LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
+                                                   NamedAttribute attr) {
+  if (!attr.second.isa<UnitAttr>() ||
+      !attr.first.is(getContainerModuleAttrName()))
+    return success();
+
+  auto module = dyn_cast<ModuleOp>(op);
+  if (!module)
+    return op->emitError("expected '")
+           << getContainerModuleAttrName() << "' attribute to be attached to '"
+           << ModuleOp::getOperationName() << '\'';
+
+  auto walkResult = module.walk([&module](LaunchFuncOp launchOp) -> WalkResult {
+    // Ignore launches that are nested more or less deep than functions in the
+    // module we are currently checking.
+    if (!launchOp.getParentOp() ||
+        launchOp.getParentOp()->getParentOp() != module)
+      return success();
+
+    // Ignore launch ops with missing attributes here. The errors will be
+    // reported by the verifiers of those ops.
+    if (!launchOp.getAttrOfType<StringAttr>(
+            LaunchFuncOp::getKernelAttrName()) ||
+        !launchOp.getAttrOfType<SymbolRefAttr>(
+            LaunchFuncOp::getKernelModuleAttrName()))
+      return success();
+
+    // Check that `launch_func` refers to a well-formed GPU kernel module.
+    StringRef kernelModuleName = launchOp.getKernelModuleName();
+    auto kernelModule = module.lookupSymbol<ModuleOp>(kernelModuleName);
+    if (!kernelModule)
+      return launchOp.emitOpError()
+             << "kernel module '" << kernelModuleName << "' is undefined";
+    if (!kernelModule.getAttrOfType<UnitAttr>(
+            GPUDialect::getKernelModuleAttrName()))
+      return launchOp.emitOpError("module '")
+             << kernelModuleName << "' is missing the '"
+             << GPUDialect::getKernelModuleAttrName() << "' attribute";
+
+    // Check that `launch_func` refers to a well-formed kernel function.
+    StringRef kernelName = launchOp.kernel();
+    Operation *kernelFunc = kernelModule.lookupSymbol(kernelName);
+    auto kernelStdFunction = dyn_cast_or_null<FuncOp>(kernelFunc);
+    auto kernelLLVMFunction = dyn_cast_or_null<LLVM::LLVMFuncOp>(kernelFunc);
+    if (!kernelStdFunction && !kernelLLVMFunction)
+      return launchOp.emitOpError("kernel function '")
+             << kernelName << "' is undefined";
+    if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
+            GPUDialect::getKernelFuncAttrName()))
+      return launchOp.emitOpError("kernel function is missing the '")
+             << GPUDialect::getKernelFuncAttrName() << "' attribute";
+
+    unsigned actualNumArguments = launchOp.getNumKernelOperands();
+    unsigned expectedNumArguments = kernelLLVMFunction
+                                        ? kernelLLVMFunction.getNumArguments()
+                                        : kernelStdFunction.getNumArguments();
+    if (expectedNumArguments != actualNumArguments)
+      return launchOp.emitOpError("got ")
+             << actualNumArguments << " kernel operands but expected "
+             << expectedNumArguments;
+
+    // Due to the ordering of the current impl of lowering and LLVMLowering,
+    // type checks need to be temporarily disabled.
+    // TODO(ntv,zinenko,herhut): reactivate checks once "changing gpu.launchFunc
+    // to encode target module" has landed.
+    // auto functionType = kernelFunc.getType();
+    // for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
+    //   if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
+    //     return emitOpError("type of function argument ")
+    //            << i << " does not match";
+    //   }
+    // }
+
+    return success();
+  });
+
+  return walkResult.wasInterrupted() ? failure() : success();
 }
 
 template <typename T> static LogicalResult verifyIndexOp(T op) {
@@ -394,7 +477,11 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
   result.addOperands(kernelOperands);
   result.addAttribute(getKernelAttrName(),
-                      builder->getSymbolRefAttr(kernelFunc));
+                      builder->getStringAttr(kernelFunc.getName()));
+  auto kernelModule = kernelFunc.getParentOfType<ModuleOp>();
+  if (Optional<StringRef> kernelModuleName = kernelModule.getName())
+    result.addAttribute(getKernelModuleAttrName(),
+                        builder->getSymbolRefAttr(*kernelModuleName));
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
@@ -406,11 +493,15 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 }
 
 StringRef LaunchFuncOp::kernel() {
-  return getAttrOfType<SymbolRefAttr>(getKernelAttrName()).getValue();
+  return getAttrOfType<StringAttr>(getKernelAttrName()).getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
   return getNumOperands() - kNumConfigOperands;
+}
+
+StringRef LaunchFuncOp::getKernelModuleName() {
+  return getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName()).getValue();
 }
 
 Value *LaunchFuncOp::getKernelOperand(unsigned i) {
@@ -426,39 +517,25 @@ KernelDim3 LaunchFuncOp::getBlockSizeOperandValues() {
 }
 
 LogicalResult LaunchFuncOp::verify() {
-  auto kernelAttr = this->getAttr(getKernelAttrName());
-  if (!kernelAttr) {
-    return emitOpError("attribute 'kernel' must be specified");
-  } else if (!kernelAttr.isa<SymbolRefAttr>()) {
-    return emitOpError("attribute 'kernel' must be a function");
-  }
-
   auto module = getParentOfType<ModuleOp>();
-  FuncOp kernelFunc = module.lookupSymbol<FuncOp>(kernel());
-  if (!kernelFunc)
-    return emitOpError("kernel function '") << kernelAttr << "' is undefined";
+  if (!module)
+    return emitOpError("expected to belong to a module");
 
-  if (!kernelFunc.getAttrOfType<mlir::UnitAttr>(
-          GPUDialect::getKernelFuncAttrName())) {
-    return emitOpError("kernel function is missing the '")
-           << GPUDialect::getKernelFuncAttrName() << "' attribute";
-  }
-  unsigned numKernelFuncArgs = kernelFunc.getNumArguments();
-  if (getNumKernelOperands() != numKernelFuncArgs) {
-    return emitOpError("got ")
-           << getNumKernelOperands() << " kernel operands but expected "
-           << numKernelFuncArgs;
-  }
-  // Due to the ordering of the current impl of lowering and LLVMLowering, type
-  // checks need to be temporarily disabled.
-  // TODO(ntv,zinenko,herhut): reactivate checks once "changing gpu.launchFunc
-  // to encode target module" has landed.
-  // auto functionType = kernelFunc.getType();
-  // for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
-  //   if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
-  //     return emitOpError("type of function argument ")
-  //            << i << " does not match";
-  //   }
-  // }
+  if (!module.getAttrOfType<UnitAttr>(GPUDialect::getContainerModuleAttrName()))
+    return emitOpError("expected the closest surrounding module to have the '" +
+                       GPUDialect::getContainerModuleAttrName() +
+                       "' attribute");
+
+  auto kernelAttr = getAttrOfType<StringAttr>(getKernelAttrName());
+  if (!kernelAttr)
+    return emitOpError("string attribute '" + getKernelAttrName() +
+                       "' must be specified");
+
+  auto kernelModuleAttr =
+      getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName());
+  if (!kernelModuleAttr)
+    return emitOpError("symbol reference attribute '" +
+                       getKernelModuleAttrName() + "' must be specified");
+
   return success();
 }

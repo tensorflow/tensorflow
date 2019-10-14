@@ -342,6 +342,11 @@ class EinsumTest(test.TestCase):
   def test_dtypes(self):
     dtypes = []
     if test.is_built_with_rocm():
+<<<<<<< HEAD
+=======
+      # This test triggers the BLAS op calls on the GPU
+      # ROCm does not support BLAS operations for complex types
+>>>>>>> upstream/master
       dtypes = [np.float64, np.float32]
     else:
       dtypes = [np.float64, np.float32, np.complex64, np.complex128]

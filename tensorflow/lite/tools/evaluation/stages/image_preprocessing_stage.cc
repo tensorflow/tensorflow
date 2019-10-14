@@ -95,9 +95,10 @@ inline void ResizeBilinear(int input_height, int input_width,
 
 // Loads the JPEG image then does the crop, resize and quantization.
 template <typename T>
-void LoadImageJPEG(std::string* filename, float input_mean, float scale,
+void LoadImageJpeg(std::string* filename, float input_mean, float scale,
                    float cropping_fraction, int image_height, int image_width,
-                   std::vector<T>& output_data, int total_size) {
+                   std::vector<T>& output_data, int total_size,
+                   bool aspect_preserving) {
   // Read image.
   std::ifstream t(*filename);
   std::string image_str((std::istreambuf_iterator<char>(t)),
@@ -118,14 +119,19 @@ void LoadImageJPEG(std::string* filename, float input_mean, float scale,
                                   nullptr));
 
   // Central Crop.
-  const int left = static_cast<int>(
-      std::round(original_width * (1 - cropping_fraction) / 2));
-  const int top = static_cast<int>(
-      std::round(original_height * (1 - cropping_fraction) / 2));
-  const int crop_width =
-      static_cast<int>(std::round(original_width * cropping_fraction));
-  const int crop_height =
-      static_cast<int>(std::round(original_height * cropping_fraction));
+  int crop_height, crop_width;
+  if (aspect_preserving) {
+    float ratio =
+        std::max(image_width / (cropping_fraction * original_width),
+                 image_height / (cropping_fraction * original_height));
+    crop_height = static_cast<int>(round(image_height / ratio));
+    crop_width = static_cast<int>(round(image_width / ratio));
+  } else {
+    crop_height = static_cast<int>(round(cropping_fraction * original_height));
+    crop_width = static_cast<int>(round(cropping_fraction * original_width));
+  }
+  int left = static_cast<int>(round((original_width - crop_width) / 2.0));
+  int top = static_cast<int>(round((original_height - crop_height) / 2.0));
   std::vector<float> cropped_image;
   cropped_image.reserve(crop_height * crop_width * kNumChannels);
   Crop(original_height, original_width, top, left, crop_height, crop_width,
@@ -158,12 +164,14 @@ void LoadImageRaw(std::string* filename, float input_mean, float scale,
 template <typename T>
 void LoadImage(std::string* filename, float input_mean, float scale,
                float cropping_fraction, int image_height, int image_width,
-               std::vector<T>& output_data, int total_size, bool preprocessed) {
+               std::vector<T>& output_data, int total_size, bool preprocessed,
+               bool aspect_preserving) {
   if (preprocessed) {
     LoadImageRaw<T>(filename, input_mean, scale, output_data, total_size);
   } else {
-    LoadImageJPEG<T>(filename, input_mean, scale, cropping_fraction,
-                     image_height, image_width, output_data, total_size);
+    LoadImageJpeg<T>(filename, input_mean, scale, cropping_fraction,
+                     image_height, image_width, output_data, total_size,
+                     aspect_preserving);
   }
 }
 }  // namespace
@@ -213,17 +221,17 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     evaluation::LoadImage<uint8_t>(
         image_path_, input_mean_value_, scale_, cropping_fraction_,
         params.image_height(), params.image_width(), uint8_preprocessed_image_,
-        total_size_, params.load_raw_images());
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   } else if (output_type_ == kTfLiteInt8) {
     evaluation::LoadImage<int8_t>(
         image_path_, input_mean_value_, scale_, cropping_fraction_,
         params.image_height(), params.image_width(), int8_preprocessed_image_,
-        total_size_, params.load_raw_images());
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   } else if (output_type_ == kTfLiteFloat32) {
     evaluation::LoadImage<float>(
         image_path_, input_mean_value_, scale_, cropping_fraction_,
         params.image_height(), params.image_width(), float_preprocessed_image_,
-        total_size_, params.load_raw_images());
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   }
 
   latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);

@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -64,6 +65,10 @@ Value *Aliases::find(Value *v) {
   while (true) {
     if (isa<BlockArgument>(v))
       return v;
+    if (auto alloc = dyn_cast_or_null<AllocOp>(v->getDefiningOp())) {
+      if (isStrided(alloc.getType()))
+        return alloc.getResult();
+    }
     if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
       auto it = aliases.insert(std::make_pair(v, find(slice.view())));
       return it.first->second;
