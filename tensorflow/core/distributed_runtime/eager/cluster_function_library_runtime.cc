@@ -28,31 +28,52 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-Status EagerClusterFunctionLibraryRuntime::Instantiate(
+void EagerClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
-    FunctionLibraryRuntime::LocalHandle* handle) {
+    FunctionLibraryRuntime::LocalHandle* handle,
+    FunctionLibraryRuntime::DoneCallback done) {
   const tensorflow::AttrTypeMap* attr_types;
   bool is_function = false;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(function_name.c_str(),
-                                                  &attr_types, &is_function));
-  if (!is_function) {
-    return errors::Internal(function_name, " is not a function.");
+  Status s;
+  s = tensorflow::AttrTypeMapForOp(function_name.c_str(), &attr_types,
+                                   &is_function);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
-  auto op = absl::make_unique<EagerOperation>(ctx_, function_name.c_str(),
-                                              is_function, attr_types);
-  TF_RETURN_IF_ERROR(op->SetDeviceName(options.target.c_str()));
+  if (!is_function) {
+    done(errors::Internal(function_name, " is not a function."));
+    return;
+  }
+  auto target = options.target;
+  auto* released_op =
+      new EagerOperation(ctx_, function_name.c_str(), is_function, attr_types);
+  s = released_op->SetDeviceName(target.c_str());
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
-  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
+  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   eager::EagerClient* eager_client = nullptr;
   Device* device;
-  TF_RETURN_IF_ERROR(ctx_->FindDeviceFromName(options.target.c_str(), &device));
-  TF_RETURN_IF_ERROR(ctx_->GetClient(device, &eager_client));
+  s = ctx_->FindDeviceFromName(target.c_str(), &device);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  s = ctx_->GetClient(device, &eager_client);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
   if (eager_client == nullptr) {
-    return errors::InvalidArgument("Could not find eager client for target: ",
-                                   options.target);
+    done(errors::InvalidArgument("Could not find eager client for target: ",
+                                 target));
+    return;
   }
 
   const FunctionLibraryDefinition& func_lib_def =
@@ -72,24 +93,20 @@ Status EagerClusterFunctionLibraryRuntime::Instantiate(
       *func_lib_def.Find(function_name);
   register_function->set_is_component_function(true);
 
-  Status status;
-  Notification done;
-  // TODO(yujingzhang): make this call async.
-  eager_client->StreamingEnqueueAsync(
-      request, response, [request, response, &status, &done](const Status& s) {
-        status = s;
+  eager_client->EnqueueAsync(
+      request, response,
+      [this, request, response, handle, released_op, target, context_id,
+       eager_client, done](const Status& s) {
+        {
+          mutex_lock l(mu_);
+          *handle = function_data_.size();
+          function_data_.emplace_back(target, context_id, eager_client,
+                                      absl::WrapUnique(released_op));
+        }
+        done(s);
         delete request;
         delete response;
-        done.Notify();
       });
-  done.WaitForNotification();
-  TF_RETURN_IF_ERROR(status);
-
-  mutex_lock l(mu_);
-  *handle = function_data_.size();
-  function_data_.emplace_back(options.target, context_id, eager_client,
-                              std::move(op));
-  return Status::OK();
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(

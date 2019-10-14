@@ -341,6 +341,12 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
+  void InstantiateRemote(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::Handle* handle,
+      FunctionLibraryRuntime::DoneCallback done);
+
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
@@ -386,10 +392,11 @@ class ProcessFunctionLibraryRuntime {
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
-    Status DistributedInit(
+    void DistributedInit(
         DistributedFunctionLibraryRuntime* parent, const string& function_name,
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-        const FunctionLibraryRuntime::InstantiateOptions& options);
+        const FunctionLibraryRuntime::InstantiateOptions& options,
+        FunctionLibraryRuntime::DoneCallback done);
 
    private:
     mutex mu_;
