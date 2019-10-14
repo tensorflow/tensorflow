@@ -610,7 +610,10 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],
-    hdrs = ["register.h"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "register.h",
+    ],
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",

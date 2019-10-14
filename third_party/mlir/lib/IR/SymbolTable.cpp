@@ -20,6 +20,16 @@
 
 using namespace mlir;
 
+/// Return true if the given operation is unknown and may potentially define a
+/// symbol table.
+static bool isPotentiallyUnknownSymbolTable(Operation *op) {
+  return !op->getDialect() && op->getNumRegions() == 1;
+}
+
+//===----------------------------------------------------------------------===//
+// SymbolTable
+//===----------------------------------------------------------------------===//
+
 /// Build a symbol table with the symbols within the given operation.
 SymbolTable::SymbolTable(Operation *op) : context(op->getContext()) {
   assert(op->hasTrait<OpTrait::SymbolTable>() &&
@@ -107,9 +117,15 @@ Operation *SymbolTable::lookupSymbolIn(Operation *symbolTableOp,
 /// nullptr if no valid symbol was found.
 Operation *SymbolTable::lookupNearestSymbolFrom(Operation *from,
                                                 StringRef symbol) {
-  while (from && !from->hasTrait<OpTrait::SymbolTable>())
+  assert(from && "expected valid operation");
+  while (!from->hasTrait<OpTrait::SymbolTable>()) {
     from = from->getParentOp();
-  return from ? lookupSymbolIn(from, symbol) : nullptr;
+
+    // Check that this is a valid op and isn't an unknown symbol table.
+    if (!from || isPotentiallyUnknownSymbolTable(from))
+      return nullptr;
+  }
+  return lookupSymbolIn(from, symbol);
 }
 
 //===----------------------------------------------------------------------===//
@@ -141,4 +157,189 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SymbolTable Trait Types
+//===----------------------------------------------------------------------===//
+
+/// A utility result for walking a nested attribute for symbol uses.
+enum HandlerResult {
+  /// The walk of the containter can continue.
+  Continue = 0,
+  /// The walk should recurse into the given attribute, as it is a container.
+  RecurseNestedAttribute,
+  /// The walk should end immediately, as an interrupt has been signaled.
+  Interrupt
+};
+
+/// Utility function used to handle a nested attribute during a walk of symbol
+/// uses. It returns the above HandlerResult signaling the next action for the
+/// walk.
+HandlerResult handleAttrDuringSymbolWalk(
+    Operation *op, Attribute attr,
+    SmallVectorImpl<std::pair<Attribute, unsigned>> &worklist,
+    function_ref<WalkResult(SymbolTable::SymbolUse)> callback) {
+  switch (attr.getKind()) {
+  /// Check for a nested container attribute, these will also need to be
+  /// walked.
+  case StandardAttributes::Array:
+  case StandardAttributes::Dictionary: {
+    worklist.push_back({attr, /*index*/ 0});
+    return HandlerResult::RecurseNestedAttribute;
+  }
+
+  // Invoke the provided callback if we find a symbol use and check for a
+  // requested interrupt.
+  case StandardAttributes::SymbolRef: {
+    SymbolTable::SymbolUse use(op, attr.cast<SymbolRefAttr>());
+    return callback(use).wasInterrupted() ? HandlerResult::Interrupt
+                                          : HandlerResult::Continue;
+  }
+  default:
+    return HandlerResult::Continue;
+  }
+}
+
+/// Walk all of the symbol references within the given operation, invoking the
+/// provided callback for each found use.
+static WalkResult
+walkSymbolRefs(Operation *op,
+               function_ref<WalkResult(SymbolTable::SymbolUse)> callback) {
+  // Check to see if the operation has any attributes.
+  DictionaryAttr attrDict = op->getAttrList().getDictionary();
+  if (!attrDict)
+    return WalkResult::advance();
+
+  // A worklist of a container attribute and the current index into the held
+  // attribute list.
+  SmallVector<std::pair<Attribute, unsigned>, 1> worklist;
+  worklist.push_back({attrDict, /*index*/ 0});
+  while (!worklist.empty()) {
+    Attribute attr = worklist.back().first;
+    unsigned &index = worklist.back().second;
+
+    // Iterate over the given attribute, which is guaranteed to be a container.
+    HandlerResult handlerResult = HandlerResult::Continue;
+    if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
+      ArrayRef<Attribute> attrs = arrayAttr.getValue();
+      unsigned attrSize = attrs.size();
+      while (index != attrSize)
+        if ((handlerResult = handleAttrDuringSymbolWalk(op, attrs[index++],
+                                                        worklist, callback)))
+          break;
+    } else {
+      auto dictAttr = attr.cast<DictionaryAttr>();
+      ArrayRef<NamedAttribute> attrs = dictAttr.getValue();
+      unsigned attrSize = attrs.size();
+      while (index != attrSize)
+        if ((handlerResult = handleAttrDuringSymbolWalk(
+                 op, attrs[index++].second, worklist, callback)))
+          break;
+    }
+    if (handlerResult == HandlerResult::Interrupt)
+      return WalkResult::interrupt();
+
+    // If we didn't encounter a nested attribute, pop the last item from the
+    // worklist.
+    if (handlerResult != HandlerResult::RecurseNestedAttribute)
+      worklist.pop_back();
+  }
+  return WalkResult::advance();
+}
+
+/// Walk all of the uses, for any symbol, that are nested within the given
+/// operation 'from', invoking the provided callback for each. This does not
+/// traverse into any nested symbol tables, and will also only return uses on
+/// 'from' if it does not also define a symbol table.
+static Optional<WalkResult>
+walkSymbolUses(Operation *from,
+               function_ref<WalkResult(SymbolTable::SymbolUse)> callback) {
+  // If from is not a symbol table, check for uses. A symbol table defines a new
+  // scope, so we can't walk the attributes from the symbol table op.
+  if (!from->hasTrait<OpTrait::SymbolTable>()) {
+    if (walkSymbolRefs(from, callback).wasInterrupted())
+      return WalkResult::interrupt();
+  }
+
+  SmallVector<Region *, 1> worklist;
+  worklist.reserve(from->getNumRegions());
+  for (Region &region : from->getRegions())
+    worklist.push_back(&region);
+
+  while (!worklist.empty()) {
+    Region *region = worklist.pop_back_val();
+    for (Block &block : *region) {
+      for (Operation &op : block) {
+        if (walkSymbolRefs(&op, callback).wasInterrupted())
+          return WalkResult::interrupt();
+
+        // If this operation has regions, and it as well as its dialect arent't
+        // registered then conservatively fail. The operation may define a
+        // symbol table, so we can't opaquely know if we should traverse to find
+        // nested uses.
+        if (isPotentiallyUnknownSymbolTable(&op))
+          return llvm::None;
+
+        // If this op defines a new symbol table scope, we can't traverse. Any
+        // symbol references nested within 'op' are different semantically.
+        if (!op.hasTrait<OpTrait::SymbolTable>()) {
+          for (Region &region : op.getRegions())
+            worklist.push_back(&region);
+        }
+      }
+    }
+  }
+  return WalkResult::advance();
+}
+
+/// Get an iterator range for all of the uses, for any symbol, that are nested
+/// within the given operation 'from'. This does not traverse into any nested
+/// symbol tables, and will also only return uses on 'from' if it does not
+/// also define a symbol table. This function returns None if there are any
+/// unknown operations that may potentially be symbol tables.
+auto SymbolTable::getSymbolUses(Operation *from) -> Optional<UseRange> {
+  std::vector<SymbolUse> uses;
+  Optional<WalkResult> result = walkSymbolUses(from, [&](SymbolUse symbolUse) {
+    uses.push_back(symbolUse);
+    return WalkResult::advance();
+  });
+  return result ? Optional<UseRange>(std::move(uses)) : Optional<UseRange>();
+}
+
+/// Get all of the uses of the given symbol that are nested within the given
+/// operation 'from', invoking the provided callback for each. This does not
+/// traverse into any nested symbol tables, and will also only return uses on
+/// 'from' if it does not also define a symbol table. This function returns
+/// None if there are any unknown operations that may potentially be symbol
+/// tables.
+auto SymbolTable::getSymbolUses(StringRef symbol, Operation *from)
+    -> Optional<UseRange> {
+  SymbolRefAttr symbolRefAttr = SymbolRefAttr::get(symbol, from->getContext());
+
+  std::vector<SymbolUse> uses;
+  Optional<WalkResult> result = walkSymbolUses(from, [&](SymbolUse symbolUse) {
+    if (symbolRefAttr == symbolUse.getSymbolRef())
+      uses.push_back(symbolUse);
+    return WalkResult::advance();
+  });
+  return result ? Optional<UseRange>(std::move(uses)) : Optional<UseRange>();
+}
+
+/// Return if the given symbol is known to have no uses that are nested within
+/// the given operation 'from'. This does not traverse into any nested symbol
+/// tables, and will also only count uses on 'from' if it does not also define
+/// a symbol table. This function will also return false if there are any
+/// unknown operations that may potentially be symbol tables.
+bool SymbolTable::symbolKnownUseEmpty(StringRef symbol, Operation *from) {
+  SymbolRefAttr symbolRefAttr = SymbolRefAttr::get(symbol, from->getContext());
+
+  // Walk all of the symbol uses looking for a reference to 'symbol'.
+  Optional<WalkResult> walkResult =
+      walkSymbolUses(from, [&](SymbolUse symbolUse) {
+        return symbolUse.getSymbolRef() == symbolRefAttr
+                   ? WalkResult::interrupt()
+                   : WalkResult::advance();
+      });
+  return !walkResult || !walkResult->wasInterrupted();
 }

@@ -68,6 +68,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:default/env.cc",
@@ -388,6 +389,7 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:windows/env.cc",

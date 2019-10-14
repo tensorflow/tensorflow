@@ -59,9 +59,7 @@ std::string GetSoftmaxKernelCode(
   c += "    if (z < size.x) {\n";
   c += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
   c += "      float4 src = " +
-       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id,
-                                TextureAddressMode::DONT_CARE) +
-       ";\n";
+       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id) + ";\n";
   c += "      sum += dot(mask_temp, exp(src));\n";
   c += "      offset += 32;\n";
   c += "    }\n";
@@ -92,9 +90,7 @@ std::string GetSoftmaxKernelCode(
   c += "    int z = offset + tid;\n";
   c += "    if (z < size.x) {\n";
   c += "      FLT4 res = TO_FLT4(exp(" +
-       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id,
-                                TextureAddressMode::DONT_CARE) +
-       ")*sum);\n";
+       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id) + ")*sum);\n";
   const LinkingContext context{"res", "0", "0", "z"};
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.Write4D("res", "0", "0", "z", batch_id);

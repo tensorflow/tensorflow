@@ -2531,8 +2531,7 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
       if dtype is not None and dtype != tensor.dtype:
         return zeros(
             shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
-      with ops.device(tensor.device):
-        return gen_array_ops.zeros_like(tensor, name=name)
+      return gen_array_ops.zeros_like(tensor, name=name)
 
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
@@ -32,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -61,7 +61,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self.session_root):
-      shutil.rmtree(self.session_root)
+      file_io.delete_recursively(self.session_root)
 
   def _assert_correct_run_subdir_naming(self, run_subdir):
     self.assertStartsWith(run_subdir, "run_")

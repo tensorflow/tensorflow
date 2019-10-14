@@ -204,6 +204,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "xla_fusion_autotuner_thresh"
+        number: 15
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
       reserved_range {
         start: 2
         end: 3

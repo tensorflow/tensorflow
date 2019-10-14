@@ -27,7 +27,16 @@
 namespace mlir {
 namespace spirv {
 
+// Creates a module pass that converts standard ops to SPIR-V ops.
 std::unique_ptr<OpPassBase<mlir::ModuleOp>> createConvertStandardToSPIRVPass();
+
+// Creates a module pass that converts composite types used by objects in the
+// StorageBuffer, PhysicalStorageBuffer, Uniform, and PushConstant storage
+// classes with layout information.
+//
+// Right now this pass only supports Vulkan layout rules.
+std::unique_ptr<OpPassBase<mlir::ModuleOp>>
+createDecorateSPIRVCompositeTypeLayoutPass();
 
 } // namespace spirv
 } // namespace mlir

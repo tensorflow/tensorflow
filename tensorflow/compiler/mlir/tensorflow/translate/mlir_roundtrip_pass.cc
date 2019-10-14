@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
@@ -41,8 +42,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
       ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));
   mlir::StatusScopedDiagnosticHandler status_handler(context);
   if (failed(mlir::verify(*module))) {
-    // TODO(jpienaar): Remove, just simple verification that this works.
-    module->dump();
+    if (VLOG_IS_ON(1)) module->dump();
     return status_handler.ConsumeStatus();
   }
   return module;
@@ -78,7 +78,7 @@ Status MlirImportPass::Run(const GraphOptimizationPassOptions& options) {
   MLIRContext context;
   if (options.graph) {
     if (!Import(options, **options.graph, &context).ok()) {
-      // TODO(prakalps): Update metric on failure.
+      metrics::IncrementMLIRImportFailureCount();
     }
   }
   return Status::OK();

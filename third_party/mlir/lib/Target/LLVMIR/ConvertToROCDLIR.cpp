@@ -23,6 +23,7 @@
 #include "mlir/Target/ROCDLIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -55,7 +56,7 @@ static llvm::Value *createDeviceFunctionCall(llvm::IRBuilder<> &builder,
                                              StringRef fn_name, int parameter) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
   llvm::FunctionType *function_type = llvm::FunctionType::get(
-      llvm::Type::getInt32Ty(module->getContext()), // return type.
+      llvm::Type::getInt64Ty(module->getContext()), // return type.
       llvm::Type::getInt32Ty(module->getContext()), // parameter type.
       false);                                       // no variadic arguments.
   llvm::Function *fn = llvm::dyn_cast<llvm::Function>(
@@ -93,7 +94,7 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(ModuleOp m) {
   // foreach GPU kernel
   // 1. Insert AMDGPU_KERNEL calling convention.
   // 2. Insert amdgpu-flat-workgroup-size(1, 1024) attribute.
-  for (FuncOp func : m.getOps<FuncOp>()) {
+  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 

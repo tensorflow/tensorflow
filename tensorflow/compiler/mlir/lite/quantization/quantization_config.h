@@ -50,6 +50,10 @@ struct QuantizationSpecs {
   // quantization aware training or calibration, for the remaining tensors.
   std::vector<std::pair<double, double>> input_ranges;
 
+  // A serialized "QuantizationInfo" object to specify value ranges for some of
+  // the tensors with known names.
+  std::string serialized_quant_stats = "";
+
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.

@@ -479,12 +479,18 @@ static void BM_FeedInputFetchOutput(int iters) {
   Node* y = test::graph::Recv(g, "y", "float", ALICE, 1, BOB);
   Node* sum = test::graph::Add(g, x, y);
   Node* z = test::graph::Send(g, sum, "z", BOB, 1, ALICE);
+
+  string x_key = test::GetRendezvousKey(x);
+  string y_key = test::GetRendezvousKey(y);
+  string z_key = test::GetRendezvousKey(z);
+
   Tensor val(DT_FLOAT, TensorShape({}));
   val.scalar<float>()() = 3.14;
 #ifdef PLATFORM_GOOGLE
   SetBenchmarkItemsProcessed(static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
-  test::Benchmark("cpu", g).RunWithArgs({{x, val}, {y, val}}, {z}, iters);
+  test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
+                                                  {z_key}, iters);
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 

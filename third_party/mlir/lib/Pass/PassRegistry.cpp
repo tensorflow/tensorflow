@@ -34,23 +34,15 @@ static llvm::ManagedStatic<llvm::DenseMap<const PassID *, PassInfo>>
 static llvm::ManagedStatic<llvm::StringMap<PassPipelineInfo>>
     passPipelineRegistry;
 
-/// Utility to create a default registry function from a pass instance.
-static PassRegistryFunction
-buildDefaultRegistryFn(PassAllocatorFunction allocator) {
-  return [=](OpPassManager &pm) { pm.addPass(allocator()); };
+// Helper to avoid exposing OpPassManager.
+void mlir::detail::addPassToPassManager(OpPassManager &pm,
+                                        std::unique_ptr<Pass> pass) {
+  pm.addPass(std::move(pass));
 }
 
 //===----------------------------------------------------------------------===//
 // PassPipelineInfo
 //===----------------------------------------------------------------------===//
-
-/// Constructor that accepts a pass allocator function instead of the standard
-/// registry function. This is useful for registering specializations of
-/// existing passes.
-PassPipelineRegistration::PassPipelineRegistration(
-    StringRef arg, StringRef description, PassAllocatorFunction allocator) {
-  registerPassPipeline(arg, description, buildDefaultRegistryFn(allocator));
-}
 
 void mlir::registerPassPipeline(StringRef arg, StringRef description,
                                 const PassRegistryFunction &function) {
@@ -64,13 +56,9 @@ void mlir::registerPassPipeline(StringRef arg, StringRef description,
 // PassInfo
 //===----------------------------------------------------------------------===//
 
-PassInfo::PassInfo(StringRef arg, StringRef description, const PassID *passID,
-                   PassAllocatorFunction allocator)
-    : PassRegistryEntry(arg, description, buildDefaultRegistryFn(allocator)) {}
-
 void mlir::registerPass(StringRef arg, StringRef description,
                         const PassID *passID,
-                        const PassAllocatorFunction &function) {
+                        const PassRegistryFunction &function) {
   PassInfo passInfo(arg, description, passID, function);
   bool inserted = passRegistry->try_emplace(passID, passInfo).second;
   assert(inserted && "Pass registered multiple times");
@@ -86,6 +74,52 @@ const PassInfo *mlir::Pass::lookupPassInfo(const PassID *passID) {
 }
 
 //===----------------------------------------------------------------------===//
+// PassOptions
+//===----------------------------------------------------------------------===//
+
+LogicalResult PassOptionsBase::parseFromString(StringRef options) {
+  // TODO(parkers): Handle escaping strings.
+  // NOTE: `options` is modified in place to always refer to the unprocessed
+  // part of the string.
+  while (!options.empty()) {
+    size_t spacePos = options.find(' ');
+    StringRef arg = options;
+    if (spacePos != StringRef::npos) {
+      arg = options.substr(0, spacePos);
+      options = options.substr(spacePos + 1);
+    } else {
+      options = StringRef();
+    }
+    if (arg.empty())
+      continue;
+
+    // At this point, arg refers to everything that is non-space in options
+    // upto the next space, and options refers to the rest of the string after
+    // that point.
+
+    // Split the individual option on '=' to form key and value. If there is no
+    // '=', then value is `StringRef()`.
+    size_t equalPos = arg.find('=');
+    StringRef key = arg;
+    StringRef value;
+    if (equalPos != StringRef::npos) {
+      key = arg.substr(0, equalPos);
+      value = arg.substr(equalPos + 1);
+    }
+    auto it = OptionsMap.find(key);
+    if (it == OptionsMap.end()) {
+      llvm::errs() << "<Pass-Options-Parser>: no such option " << key << "\n";
+
+      return failure();
+    }
+    if (llvm::cl::ProvidePositionalOption(it->second, value, 0))
+      return failure();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TextualPassPipeline Parser
 //===----------------------------------------------------------------------===//
 
@@ -98,7 +132,7 @@ public:
   LogicalResult initialize(StringRef text, raw_ostream &errorStream);
 
   /// Add the internal pipeline elements to the provided pass manager.
-  void addToPipeline(OpPassManager &pm) const;
+  LogicalResult addToPipeline(OpPassManager &pm) const;
 
 private:
   /// A functor used to emit errors found during pipeline handling. The first
@@ -117,6 +151,7 @@ private:
     PipelineElement(StringRef name) : name(name), registryEntry(nullptr) {}
 
     StringRef name;
+    StringRef options;
     const PassRegistryEntry *registryEntry;
     std::vector<PipelineElement> innerPipeline;
   };
@@ -137,8 +172,8 @@ private:
                                        ErrorHandlerT errorHandler);
 
   /// Add the given pipeline elements to the provided pass manager.
-  void addToPipeline(ArrayRef<PipelineElement> elements,
-                     OpPassManager &pm) const;
+  LogicalResult addToPipeline(ArrayRef<PipelineElement> elements,
+                              OpPassManager &pm) const;
 
   std::vector<PipelineElement> pipeline;
 };
@@ -167,8 +202,8 @@ LogicalResult TextualPipeline::initialize(StringRef text,
 }
 
 /// Add the internal pipeline elements to the provided pass manager.
-void TextualPipeline::addToPipeline(OpPassManager &pm) const {
-  addToPipeline(pipeline, pm);
+LogicalResult TextualPipeline::addToPipeline(OpPassManager &pm) const {
+  return addToPipeline(pipeline, pm);
 }
 
 /// Parse the given pipeline text into the internal pipeline vector. This
@@ -179,21 +214,36 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
   SmallVector<std::vector<PipelineElement> *, 4> pipelineStack = {&pipeline};
   for (;;) {
     std::vector<PipelineElement> &pipeline = *pipelineStack.back();
-    size_t pos = text.find_first_of(",()");
+    size_t pos = text.find_first_of(",(){");
     pipeline.emplace_back(/*name=*/text.substr(0, pos).trim());
 
     // If we have a single terminating name, we're done.
     if (pos == text.npos)
       break;
 
-    char sep = text[pos];
-    text = text.substr(pos + 1);
+    text = text.substr(pos);
+    char sep = text[0];
 
-    // Just a name ending in a comma, continue.
-    if (sep == ',')
-      continue;
+    // Handle pulling ... from 'pass{...}' out as PipelineElement.options.
+    if (sep == '{') {
+      text = text.substr(1);
 
-    if (sep == '(') {
+      // Skip over everything until the closing '}' and store as options.
+      size_t close = text.find('}');
+
+      // TODO(parkers): Handle skipping over quoted sub-strings.
+      if (close == StringRef::npos) {
+        return errorHandler(
+            /*rawLoc=*/text.data() - 1,
+            "missing closing '}' while processing pass options");
+      }
+      pipeline.back().options = text.substr(0, close);
+      text = text.substr(close + 1);
+
+      // Skip checking for '(' because nested pipelines cannot have options.
+    } else if (sep == '(') {
+      text = text.substr(1);
+
       // Push the inner pipeline onto the stack to continue processing.
       pipelineStack.push_back(&pipeline.back().innerPipeline);
       continue;
@@ -201,8 +251,7 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
 
     // When handling the close parenthesis, we greedily consume them to avoid
     // empty strings in the pipeline.
-    assert(sep == ')' && "Bogus separator!");
-    do {
+    while (text.consume_front(")")) {
       // If we try to pop the outer pipeline we have unbalanced parentheses.
       if (pipelineStack.size() == 1)
         return errorHandler(/*rawLoc=*/text.data() - 1,
@@ -210,7 +259,7 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
                             "parentheses while parsing pipeline");
 
       pipelineStack.pop_back();
-    } while (text.consume_front(")"));
+    }
 
     // Check if we've finished parsing.
     if (text.empty())
@@ -276,14 +325,17 @@ TextualPipeline::resolvePipelineElement(PipelineElement &element,
 }
 
 /// Add the given pipeline elements to the provided pass manager.
-void TextualPipeline::addToPipeline(ArrayRef<PipelineElement> elements,
-                                    OpPassManager &pm) const {
+LogicalResult TextualPipeline::addToPipeline(ArrayRef<PipelineElement> elements,
+                                             OpPassManager &pm) const {
   for (auto &elt : elements) {
-    if (elt.registryEntry)
-      elt.registryEntry->addToPipeline(pm);
-    else
-      addToPipeline(elt.innerPipeline, pm.nest(elt.name));
+    if (elt.registryEntry) {
+      if (failed(elt.registryEntry->addToPipeline(pm, elt.options)))
+        return failure();
+    } else if (failed(addToPipeline(elt.innerPipeline, pm.nest(elt.name)))) {
+      return failure();
+    }
   }
+  return success();
 }
 
 /// This function parses the textual representation of a pass pipeline, and adds
@@ -295,7 +347,8 @@ LogicalResult mlir::parsePassPipeline(StringRef pipeline, OpPassManager &pm,
   TextualPipeline pipelineParser;
   if (failed(pipelineParser.initialize(pipeline, errorStream)))
     return failure();
-  pipelineParser.addToPipeline(pm);
+  if (failed(pipelineParser.addToPipeline(pm)))
+    return failure();
   return success();
 }
 
@@ -314,6 +367,10 @@ struct PassArgData {
   /// This field is used when the parsed option corresponds to a registered pass
   /// or pass pipeline.
   const PassRegistryEntry *registryEntry;
+
+  /// This field is set when instance specific pass options have been provided
+  /// on the command line.
+  StringRef options;
 
   /// This field is used when the parsed option corresponds to an explicit
   /// pipeline.
@@ -396,7 +453,10 @@ bool PassNameParser::parse(llvm::cl::Option &opt, StringRef argName,
     return failed(value.pipeline.initialize(arg, llvm::errs()));
 
   // Otherwise, default to the base for handling.
-  return llvm::cl::parser<PassArgData>::parse(opt, argName, arg, value);
+  if (llvm::cl::parser<PassArgData>::parse(opt, argName, arg, value))
+    return true;
+  value.options = arg;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -437,11 +497,14 @@ bool PassPipelineCLParser::contains(const PassRegistryEntry *entry) const {
 }
 
 /// Adds the passes defined by this parser entry to the given pass manager.
-void PassPipelineCLParser::addToPipeline(OpPassManager &pm) const {
+LogicalResult PassPipelineCLParser::addToPipeline(OpPassManager &pm) const {
   for (auto &passIt : impl->passList) {
-    if (passIt.registryEntry)
-      passIt.registryEntry->addToPipeline(pm);
-    else
-      passIt.pipeline.addToPipeline(pm);
+    if (passIt.registryEntry) {
+      if (failed(passIt.registryEntry->addToPipeline(pm, passIt.options)))
+        return failure();
+    } else if (failed(passIt.pipeline.addToPipeline(pm))) {
+      return failure();
+    }
   }
+  return success();
 }

@@ -120,6 +120,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           current_elements_(params.dataset->cycle_length_),
           args_list_(params.dataset->cycle_length_) {}
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_, "#");
+    }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));

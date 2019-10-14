@@ -313,7 +313,6 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
-
 void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
                                   Value *base, ArrayRef<Value *> indexings) {
   result.addOperands(base);
@@ -391,22 +390,32 @@ static LogicalResult verify(SliceOp op) {
 //===----------------------------------------------------------------------===//
 // SubViewOp
 //===----------------------------------------------------------------------===//
+static Type getSubViewResultType(MemRefType memRefType) {
+  auto rank = memRefType.getRank();
+  SmallVector<int64_t, 4> sizes(rank, -1);
+  int64_t offset;
+  SmallVector<int64_t, 4> strides;
+  Type elementType = memRefType.getElementType();
+  auto res = getStridesAndOffset(memRefType, strides, offset);
+  assert(succeeded(res) && "SubViewOp expected strided memref type");
+  (void)res;
+  // Assume sizes and offset are fully dynamic for now until canonicalization
+  // occurs on the ranges.
+  // Strides don't change though.
+  // TODO(ntv) for canonicalization it may be better to use a (min, size, step)
+  // instead of a (min, max, step) abstraction.
+  auto stridedLayout = makeStridedLinearLayoutMap(
+      strides, MemRefType::getDynamicStrideOrOffset(), memRefType.getContext());
+  return MemRefType::get(sizes, elementType, stridedLayout,
+                         memRefType.getMemorySpace());
+}
+
 void mlir::linalg::SubViewOp::build(Builder *b, OperationState &result,
                                     Value *view, ArrayRef<Value *> ranges,
                                     Type resultType,
                                     ArrayRef<NamedAttribute> attrs) {
-  // If the result type is not specified, assume sizes are fully dynamic.
-  // Strides don't change though.
-  // TODO(ntv) for canonicalization it may be better to use a (min, size, step)
-  // instead of a (min, max, step) abstraction.
-  if (!resultType) {
-    auto rank = ranges.size();
-    SmallVector<int64_t, 4> sizes(rank, -1);
-    auto memRefType = view->getType().cast<MemRefType>();
-    Type elementType = memRefType.getElementType();
-    resultType = MemRefType::get(sizes, elementType, memRefType.getAffineMaps(),
-                                 memRefType.getMemorySpace());
-  }
+  if (!resultType)
+    resultType = getSubViewResultType(view->getType().cast<MemRefType>());
   build(b, result, resultType, view, ranges);
   result.addAttributes(attrs);
 }
@@ -442,7 +451,7 @@ static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   return failure(
       parser.resolveOperand(inputView, memRefType, result.operands) ||
       parser.resolveOperands(ops, indexTy, result.operands) ||
-      parser.addTypeToList(memRefType, result.types));
+      parser.addTypeToList(getSubViewResultType(memRefType), result.types));
 }
 
 //===----------------------------------------------------------------------===//
@@ -632,15 +641,11 @@ static LogicalResult verify(YieldOp op) {
 static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
   p << op->getName().getStringRef() << "(";
-  interleave(
-      op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { p << *v; }, [&]() { p << ", "; });
+  interleaveComma(op->getOperands(), p, [&](Value *v) { p << *v; });
   p << ")";
   p.printOptionalAttrDict(op->getAttrs());
   p << " : ";
-  interleave(
-      op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { p << v->getType(); }, [&]() { p << ", "; });
+  interleaveComma(op->getOperands(), p, [&](Value *v) { p << v->getType(); });
 }
 
 static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,

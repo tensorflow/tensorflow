@@ -48,15 +48,11 @@ std::string GetSoftmaxKernelCode(
   c += "  float sum = 0.0f;\n";
   c += "  for (int d = 0; d < size.z; ++d) {\n";
   c += "    float4 mask_temp = d == size.z - 1 ? mask : (float4)(1.0f);\n";
-  c += "    float4 t = " +
-       src_tensor.ReadAsFloat3D("X", "Y", "d", TextureAddressMode::DONT_CARE) +
-       ";\n";
+  c += "    float4 t = " + src_tensor.ReadAsFloat3D("X", "Y", "d") + ";\n";
   c += "    sum += dot(mask_temp, exp(t));\n";
   c += "  }\n";
   c += "  for (int d = 0; d < size.z; ++d) {\n";
-  c += "    float4 t = " +
-       src_tensor.ReadAsFloat3D("X", "Y", "d", TextureAddressMode::DONT_CARE) +
-       ";\n";
+  c += "    float4 t = " + src_tensor.ReadAsFloat3D("X", "Y", "d") + ";\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
   c += PostProcess(linked_operations, {"result", "X", "Y", "d"});

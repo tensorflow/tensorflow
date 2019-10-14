@@ -114,6 +114,11 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
+      string BuildTraceMeName() override {
+        return strings::StrCat(prefix(),
+                               "#num_replicas=", dataset()->num_replicas_, "#");
+      }
+
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
@@ -156,9 +161,9 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
                                input_desc.original_batch_dim);
           if (start >= end) {
             // We can get here if ceil(original_batch_dim_ / new batch dim) <
-            // num_replicas_, i.e. the batch isn't big enough to distribute over
-            // num replicas. In this case, we return empty tensors for the
-            // remaining iterations that correspond to this batch.
+            // num_replicas_, i.e. the batch isn't big enough to distribute
+            // over num replicas. In this case, we return empty tensors for
+            // the remaining iterations that correspond to this batch.
             start = end;
           }
           Tensor slice = input_desc.whole_tensor.Slice(start, end);

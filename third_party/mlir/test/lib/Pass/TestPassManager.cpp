@@ -28,7 +28,53 @@ struct TestModulePass : public ModulePass<TestModulePass> {
 struct TestFunctionPass : public FunctionPass<TestFunctionPass> {
   void runOnFunction() final {}
 };
-} // namespace
+class TestOptionsPass : public FunctionPass<TestOptionsPass> {
+public:
+  struct Options : public PassOptions<Options> {
+    List<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
+                         llvm::cl::desc("Example list option")};
+    List<std::string> stringListOption{
+        *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
+        llvm::cl::desc("Example string list option")};
+    Option<std::string> stringOption{*this, "string",
+                                     llvm::cl::desc("Example string option")};
+  };
+  TestOptionsPass(const Options &options) {
+    listOption.assign(options.listOption.begin(), options.listOption.end());
+    stringOption = options.stringOption;
+    stringListOption.assign(options.stringListOption.begin(),
+                            options.stringListOption.end());
+  }
+
+  void printAsTextualPipeline(raw_ostream &os) final {
+    os << "test-options-pass{";
+    if (!listOption.empty()) {
+      os << "list=";
+      // Not interleaveComma to avoid spaces between the elements.
+      interleave(listOption, os, ",");
+    }
+    if (!stringListOption.empty()) {
+      os << " string-list=";
+      interleave(stringListOption, os, ",");
+    }
+    if (!stringOption.empty())
+      os << " string=" << stringOption;
+    os << "}";
+  }
+
+  void runOnFunction() final {}
+
+  SmallVector<int64_t, 4> listOption;
+  SmallVector<std::string, 4> stringListOption;
+  std::string stringOption;
+};
+
+/// A test pass that always aborts to enable testing the crash recovery
+/// mechanism of the pass manager.
+class TestCrashRecoveryPass : public OperationPass<TestCrashRecoveryPass> {
+  void runOnOperation() final { abort(); }
+};
+} // end anonymous namespace
 
 static void testNestedPipeline(OpPassManager &pm) {
   // Nest a module pipeline that contains:
@@ -48,15 +94,37 @@ static void testNestedPipelineTextual(OpPassManager &pm) {
   (void)parsePassPipeline("test-pm-nested-pipeline", pm);
 }
 
+static PassRegistration<TestOptionsPass, TestOptionsPass::Options>
+    reg("test-options-pass", "Test options parsing capabilities");
+
 static PassRegistration<TestModulePass>
     unusedMP("test-module-pass", "Test a module pass in the pass manager");
 static PassRegistration<TestFunctionPass>
     unusedFP("test-function-pass", "Test a function pass in the pass manager");
 
-static PassPipelineRegistration
+static PassRegistration<TestCrashRecoveryPass>
+    unusedCrashP("test-pass-crash",
+                 "Test a pass in the pass manager that always crashes");
+
+static PassPipelineRegistration<>
     unused("test-pm-nested-pipeline",
            "Test a nested pipeline in the pass manager", testNestedPipeline);
-static PassPipelineRegistration
+static PassPipelineRegistration<>
     unusedTextual("test-textual-pm-nested-pipeline",
                   "Test a nested pipeline in the pass manager",
                   testNestedPipelineTextual);
+static PassPipelineRegistration<>
+    unusedDump("test-dump-pipeline",
+               "Dumps the pipeline build so far for debugging purposes",
+               [](OpPassManager &pm) {
+                 pm.printAsTextualPipeline(llvm::errs());
+                 llvm::errs() << "\n";
+               });
+
+static PassPipelineRegistration<TestOptionsPass::Options>
+    registerOptionsPassPipeline(
+        "test-options-pass-pipeline",
+        "Parses options using pass pipeline registration",
+        [](OpPassManager &pm, const TestOptionsPass::Options &options) {
+          pm.addPass(std::make_unique<TestOptionsPass>(options));
+        });

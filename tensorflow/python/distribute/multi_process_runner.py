@@ -29,6 +29,7 @@ import json
 import os
 import signal
 import sys
+import traceback
 
 from absl import flags
 from six.moves import queue as Queue
@@ -92,8 +93,7 @@ def run(proc_func,
   """Run functions on local sub-processes.
 
   Experimental. API subject to change. To fully inspect logging from
-  subprocesses, use following two flags with bazel test:
-  `--test_arg=--logtostderr --test_output=streamed`.
+  subprocesses, use `--test_arg=--logtostderr` flag with bazel test.
 
   Args:
     proc_func: Function to be run on the processes. This will be run on
@@ -203,7 +203,8 @@ def run(proc_func,
       # pylint: disable=broad-except
       except Exception as e:
         # Capture all exceptions to be reported to parent process.
-        finish_wrapper_func_properly(e)
+        finish_wrapper_func_properly(
+            type(e)(str(e) + '\n' + traceback.format_exc()))
         return
 
       finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
@@ -237,7 +238,8 @@ def run(proc_func,
           raise internal_queue_result
       # If none of those did, report time out to user.
       raise RuntimeError(
-          'One or more subprocesses timed out. Please inspect logs for '
+          'One or more subprocesses timed out. Please use '
+          '`--test_arg=--logtostderr` bazel flag to inspect logs for '
           'subprocess debugging info. Timeout = {} sec.'.format(timeout))
 
   for internal_queue_result in internal_queue_results:
@@ -320,11 +322,10 @@ def try_run_and_except_connection_error(test_obj):
   try:
     yield
   except RuntimeError as e:
-    if ('Connection reset by peer' in e.message or
-        'Socket closed' in e.message or
-        'failed to connect to all addresses' in e.message):
+    if ('Connection reset by peer' in str(e) or 'Socket closed' in str(e) or
+        'failed to connect to all addresses' in str(e)):
       test_obj.skipTest(
-          'Skipping connection error between processes: {}'.format(e.message))
+          'Skipping connection error between processes: {}'.format(str(e)))
     else:
       raise
 

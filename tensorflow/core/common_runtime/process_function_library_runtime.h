@@ -353,7 +353,8 @@ class ProcessFunctionLibraryRuntime {
                         const std::vector<string>& output_devices,
                         const DeviceSet& device_set,
                         const std::vector<Node*>& arg_nodes,
-                        const std::vector<Node*>& ret_nodes) const;
+                        const std::vector<Node*>& ret_nodes,
+                        Device* default_device) const;
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
@@ -375,7 +376,7 @@ class ProcessFunctionLibraryRuntime {
           local_handle_(local_handle),
           function_key_(function_key) {}
 
-    string target_device() { return target_device_; }
+    const string& target_device() { return target_device_; }
     const string& function_key() { return function_key_; }
 
     FunctionLibraryRuntime::LocalHandle local_handle() {

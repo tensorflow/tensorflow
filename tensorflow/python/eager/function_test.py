@@ -290,16 +290,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
-  def testCaptureNonTrainableVariable(self):
-
-    v = variables.Variable(1.0, trainable=False)
+  def testCapturesVariables(self):
+    a = variables.Variable(1.0, trainable=False)
+    b = variables.Variable(1.0)
+    cc = [None]
 
     @def_function.function
     def f():
-      return v + 1
+      c = cc[0]
+      if c is None:
+        c = cc[0] = variables.Variable(1.)
+      return a + b + c + 1
 
-    c = f.get_concrete_function()
-    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+    cf = f.get_concrete_function()
+    c = cc[0]
+
+    self.assertEqual(cf.variables, (a, b, c))
+    self.assertEqual(cf.trainable_variables, (b, c))
+    self.assertEqual(cf.graph.variables, (a, b, c))
+    self.assertEqual(cf.graph.trainable_variables, (b, c))
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -524,6 +533,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     _ = pool.map(thread_func, list(range(num_threads)))
 
     self.assertLen(set(concrete_functions), 1)
+
+  def testGetConcreteFunctionThreadSafetyWithArgs(self):
+    @def_function.function
+    def add_100(*args):
+      return math_ops.add_n(args)
+
+    p = multiprocessing.pool.ThreadPool(2)
+    args = (constant_op.constant(1.),) * 100
+    f1, f2 = p.map(add_100.get_concrete_function, [args] * 2)
+    # I see about len(args) + max(0, len(args) - 3) arguments expected.
+    f1(*args)
+    del f2
 
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
@@ -2541,6 +2562,45 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         TestClass([constant_op.constant(1.),
                    constant_op.constant(2.)], constant_op.constant(3.)))
     self.assertLen(total_function_cache(defined), 2)
+
+  def testCacheKeyVariables(self):
+    @function.defun
+    def defined(a, b, c):
+      return a + b + c
+
+    x = resource_variable_ops.ResourceVariable(0.0)
+    y = resource_variable_ops.ResourceVariable(0.0)
+    z = resource_variable_ops.ResourceVariable(0.0)
+
+    # If tensor equality is not enabled, we always get a cache miss if the
+    # function is called with different variables. With equality enabled we
+    # should only get a miss if the aliasing changed.
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Calling again is a cache hit
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Re-arranging arguments doesn't change signature
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined),
+                   1 if ops.Tensor._USE_EQUALITY else 2)
+
+    # Aliasing causes cache miss
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 3)
+
+    # Re-arranging arguments doesn't change signature
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 4)
+
+    # Different alias positions causes cache miss
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined),
+                   3 if ops.Tensor._USE_EQUALITY else 5)
 
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()

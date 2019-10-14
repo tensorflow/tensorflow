@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",

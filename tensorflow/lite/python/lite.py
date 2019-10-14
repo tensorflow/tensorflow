@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
 import enum
+import warnings
+
+import six
 from six import PY3
 
 from google.protobuf import text_format as _text_format
@@ -679,9 +682,9 @@ class TFLiteConverter(TFLiteConverterBase):
 
             if not isinstance(file_content, str):
               if PY3:
-                file_content = file_content.decode("utf-8")
+                file_content = six.ensure_text(file_content, "utf-8")
               else:
-                file_content = file_content.encode("utf-8")
+                file_content = six.ensure_binary(file_content, "utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):

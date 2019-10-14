@@ -43,7 +43,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <pre>{@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
- * ByteBuffer ith_output = ByteBuffer.allocateDirect(3 * 2 * 4 * 4);  // Float tensor, shape 3x2x4.
+ * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
  * ith_output.order(ByteOrder.nativeOrder());
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
@@ -65,12 +65,11 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * model with Toco, as are the default shapes of the inputs.
  *
  * <p>When inputs are provided as (multi-dimensional) arrays, the corresponding input tensor(s) will
- * be implicitly resized according to that array's shape. When inputs are provided as {@link
- * ByteBuffer} types, no implicit resizing is done; the caller must ensure that the {@link
- * ByteBuffer} byte size either matches that of the corresponding tensor, or that they first resize
- * the tensor via {@link #resizeInput()}. Tensor shape and type information can be obtained via the
- * {@link Tensor} class, available via {@link #getInputTensor(int)} and {@link
- * #getOutputTensor(int)}.
+ * be implicitly resized according to that array's shape. When inputs are provided as {@link Buffer}
+ * types, no implicit resizing is done; the caller must ensure that the {@link Buffer} byte size
+ * either matches that of the corresponding tensor, or that they first resize the tensor via {@link
+ * #resizeInput()}. Tensor shape and type information can be obtained via the {@link Tensor} class,
+ * available via {@link #getInputTensor(int)} and {@link #getOutputTensor(int)}.
  *
  * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
  * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
@@ -227,20 +226,31 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Runs model inference if the model takes only one input, and provides only one output.
    *
-   * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
-   * consider using {@link ByteBuffer} to feed primitive input data for better performance.
+   * <p>Warning: The API is more efficient if a {@link Buffer} (preferably direct, but not required)
+   * is used as the input/output data type. Please consider using {@link Buffer} to feed and fetch
+   * primitive data for better performance. The following concrete {@link Buffer} types are
+   * supported:
    *
-   * @param input an array or multidimensional array, or a {@link ByteBuffer} of primitive types
-   *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
+   * <ul>
+   *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
+   *   <li>{@link FloatBuffer} - compatible with float Tensors.
+   *   <li>{@link IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@link LongBuffer} - compatible with int64 Tensors.
+   * </ul>
+   *
+   * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
+   *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
-   *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
-   *     until model inference is done. A {@code null} value is allowed only if the caller is using
-   *     a {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to
-   *     the input {@link Tensor}.
-   * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
-   *     types including int, float, long, and byte. A null value is allowed only if the caller is
-   *     using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
-   *     bound to the output {@link Tensor}. See also {@link Options#setAllowBufferHandleOutput()}.
+   *     array input path. When a {@link Buffer} is used, its content should remain unchanged until
+   *     model inference is done, and the caller must ensure that the {@link Buffer} is at the
+   *     appropriate read position. A {@code null} value is allowed only if the caller is using a
+   *     {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to the
+   *     input {@link Tensor}.
+   * @param output a multidimensional array of output data, or a {@link Buffer} of primitive types
+   *     including int, float, long, and byte. When a {@link Buffer} is used, the caller must ensure
+   *     that it is set the appropriate write position. A null value is allowed only if the caller
+   *     is using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
+   *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
    */
   public void run(Object input, Object output) {
     Object[] inputs = {input};
@@ -252,22 +262,33 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
    *
-   * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
-   * consider using {@link ByteBuffer} to feed primitive input data for better performance.
+   * <p>Warning: The API is more efficient if {@link Buffer}s (preferably direct, but not required)
+   * are used as the input/output data types. Please consider using {@link Buffer} to feed and fetch
+   * primitive data for better performance. The following concrete {@link Buffer} types are
+   * supported:
+   *
+   * <ul>
+   *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
+   *   <li>{@link FloatBuffer} - compatible with float Tensors.
+   *   <li>{@link IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@link LongBuffer} - compatible with int64 Tensors.
+   * </ul>
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
    * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
-   *     model. Each input can be an array or multidimensional array, or a {@link ByteBuffer} of
-   *     primitive types including int, float, long, and byte. {@link ByteBuffer} is the preferred
-   *     way to pass large input data, whereas string types require using the (multi-dimensional)
-   *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
-   *     until model inference is done.
+   *     model. Each input can be an array or multidimensional array, or a {@link Buffer} of
+   *     primitive types including int, float, long, and byte. {@link Buffer} is the preferred way
+   *     to pass large input data, whereas string types require using the (multi-dimensional) array
+   *     input path. When {@link Buffer} is used, its content should remain unchanged until model
+   *     inference is done, and the caller must ensure that the {@link Buffer} is at the appropriate
+   *     read position.
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
-   *     ByteBuffer}s of primitive types including int, float, long, and byte. It only needs to keep
-   *     entries for the outputs to be used.
+   *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
+   *     entries for the outputs to be used. When a {@link Buffer} is used, the caller must ensure
+   *     that it is set the appropriate write position.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {

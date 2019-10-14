@@ -36,7 +36,7 @@ namespace detail {
 /// inside the Attribute.
 template <
     typename AttrClass,
-    // Require AttrClass to be a derived class from Atribute and get its
+    // Require AttrClass to be a derived class from Attribute and get its
     // value type
     typename ValueType =
         typename std::enable_if<std::is_base_of<Attribute, AttrClass>::value,

@@ -171,4 +171,5 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    tags = ["no_rocm"],
 )

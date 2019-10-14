@@ -235,7 +235,7 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
              params.padding.prepended.w,
              params.padding.prepended.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

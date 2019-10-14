@@ -154,7 +154,7 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
          std::vector<int> sizes{dimension.w, dimension.h};
-         return VectorToUint8Vector(sizes);
+         return GetByteBuffer(sizes);
        }},
   };
 

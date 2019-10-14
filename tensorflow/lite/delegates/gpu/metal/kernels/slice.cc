@@ -164,7 +164,7 @@ std::vector<ComputeTaskDescriptorPtr> Slice(int id, ValueId input_id,
              output_dimension.c,
              IntegralDivideRoundUp(output_dimension.c, 4),
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

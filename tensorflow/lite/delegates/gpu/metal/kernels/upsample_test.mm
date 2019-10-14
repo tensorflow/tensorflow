@@ -65,9 +65,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testUpsamplingBilinear1x2x1To1x4x1 {
@@ -89,9 +89,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, 2.5, 4.0, 4.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testUpsamplingBilinear2x2x1To4x4x1 {
@@ -113,11 +113,11 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 4.0, 6.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors(
       {1.0, 2.5, 4.0, 4.0, 3.5, 4.75, 6.0, 6.0, 6.0, 7.0, 8.0, 8.0, 6.0, 7.0, 8.0, 8.0},
       model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

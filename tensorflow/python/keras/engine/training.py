@@ -291,6 +291,22 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
+    # Prepare Session arguments (legacy).
+    kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
+    unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
+    if unknown_kwargs:
+      raise TypeError(
+          'Invalid keyword argument(s) in `compile`: %s' % (unknown_kwargs,))
+    self._function_kwargs = kwargs
+    if self._function_kwargs:
+      self._experimental_run_tf_function = False
+      if self.run_eagerly:
+        raise ValueError(
+            'Session keyword arguments are not supported '
+            'when `run_eagerly=True`. You passed the following '
+            'Session arguments: %s' % (self._function_kwargs,))
+
     self._set_optimizer(optimizer)
     is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                               for opt in nest.flatten(self.optimizer))
@@ -416,8 +432,6 @@ class Model(network.Network):
       # Functions for train, test and predict will
       # be compiled lazily when required.
       # This saves time when the user is not using all functions.
-      self._function_kwargs = kwargs
-
       self.train_function = None
       self.test_function = None
       self.predict_function = None
@@ -2778,6 +2792,10 @@ class Model(network.Network):
       else:
         input_shape = (None,) + tuple(inputs.shape[1:])
       self._build_input_shape = input_shape
+
+    # Cast inputs to the compute dtype. This is primarily used
+    # when saving to determine the correct dtype in the input signature.
+    inputs = self._maybe_cast_inputs(inputs)
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).

@@ -192,7 +192,8 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     if (!caster.load(argument, /*convert=*/true)) {
       return InvalidArgument("Invalid array value.");
     }
-    tree.arrays.push_back(std::move(caster.array));
+    DCHECK_EQ(caster.arrays.size(), 1);
+    tree.arrays.push_back(std::move(caster.arrays.front()));
     tree.leaves.push_back(std::move(*caster));
     tree.shape = tree.leaves.front().shape();
   }

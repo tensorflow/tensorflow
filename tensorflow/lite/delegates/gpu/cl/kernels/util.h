@@ -48,12 +48,16 @@ class TensorCodeGenerator {
     SizeVariablesNames(const std::string& width_name,
                        const std::string& height_name,
                        const std::string& depth_name);
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name,
+                       const std::string& batch_name);
 
     std::string width = "unknown";
     std::string height = "unknown";
     std::string channels = "unknown";
     std::string depth = "unknown";
-    std::string batch_size = "unknown";
+    std::string batch = "unknown";
   };
   TensorCodeGenerator() = default;
   TensorCodeGenerator(const std::string& name,
@@ -77,24 +81,24 @@ class TensorCodeGenerator {
   // parameter.
   std::string Read3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Read4D supports BUFFER and IMAGE_BUFFER storage types.
   std::string Read4D(
       const std::string& x, const std::string& y, const std::string& z,
       const std::string& b,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   std::string ReadAsFloat4D(
       const std::string& x, const std::string& y, const std::string& z,
       const std::string& b,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   std::string Write3D(const std::string& var_name, const std::string& x,
                       const std::string& y, const std::string& z) const;
@@ -106,12 +110,12 @@ class TensorCodeGenerator {
 
   std::string Read(
       const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat(
       const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
 

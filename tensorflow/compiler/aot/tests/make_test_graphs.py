@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +22,9 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+
+import six
+from six.moves import range
 
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
@@ -76,7 +80,7 @@ def tfadd_with_ckpt_saver(out_dir):
     # Without the SaverDef, the restore op won't be named correctly.
     saver_file = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt_saver.saver')
     with open(saver_file, 'wb') as f:
-      f.write(saver.as_saver_def().SerializeToString())
+      f.write(six.ensure_binary(saver.as_saver_def().SerializeToString()))
 
 
 def tfassert_eq(_):
@@ -176,7 +180,7 @@ def write_graph(build_graph, out_dir):
     build_graph(out_dir)
     filename = os.path.join(out_dir, 'test_graph_%s.pb' % build_graph.__name__)
     with open(filename, 'wb') as f:
-      f.write(g.as_graph_def().SerializeToString())
+      f.write(six.ensure_binary(g.as_graph_def().SerializeToString()))
 
 
 def main(_):

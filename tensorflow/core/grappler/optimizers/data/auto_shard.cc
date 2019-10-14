@@ -51,11 +51,13 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 25> kPassThroughOps = {
+constexpr std::array<const char*, 28> kPassThroughOps = {
     "_Retval",
+    "AssertNextDataset",
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
+    "ExperimentalRebatchDataset",
     "PaddedBatchDataset",
     "PaddedBatchDatasetV2",
     "CacheDataset",
@@ -69,6 +71,7 @@ constexpr std::array<const char*, 25> kPassThroughOps = {
     "ParallelMapDataset",
     "PrefetchDataset",
     "ReduceDataset",
+    "RebatchDataset",
     "RepeatDataset",
     "ShardDataset",
     "ShuffleAndRepeatDataset",
@@ -399,7 +402,7 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   if (!s.ok() && errors::IsNotFound(s)) {
     LOG(WARNING) << "Cannot find shardable dataset, adding a shard node at "
                  << "the end of the dataset instead. This may have performance "
-                 << "implications.";
+                 << "implications. Error: " << s.error_message();
     TF_RETURN_IF_ERROR(AddShardNode(&graph, *sink_node, num_workers, index));
   } else if (!s.ok()) {
     return s;
