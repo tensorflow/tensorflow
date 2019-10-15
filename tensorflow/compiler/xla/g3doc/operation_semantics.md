@@ -36,59 +36,65 @@ See also
 
 Performs a custom computation across replicas.
 
-<b> `AllReduce(operand, computation, replica_group_ids)` </b>
+<b> `AllReduce(operand, computation, replica_group_ids, channel_id)` </b>
 
-Arguments                | Type             | Semantics
--------------------------| -----------------| -----------------------------
-`operand`                | `XlaOp`          | Array to sum across replicas
-`computation`            | `XlaComputation` | Computation to apply
- `replica_group_ids`     | `int64` vector   | Group ID for each replica
+| Arguments        | Type                 | Semantics                        |
+| ---------------- | -------------------- | -------------------------------- |
+| `operand`        | `XlaOp`              | Array to reduce across replicas. |
+| `computation`    | `XlaComputation`     | Reduction computation            |
+| `replica_groups` | vector of vectors of | Groups between which the         |
+:                  : `int64`              : reductions are performed         :
+| `channel_id`     | optional `int64`     | Optional channel ID for          |
+:                  :                      : cross-module communication       :
+
+-   `replica_groups` is a list of replica groups between which the reduction is
+    performed (replica id for the current replica can be retrieved using
+    [`ReplicaId`](#replicaid)). `replica_groups` must either be empty (in which
+    case all replicas belong to a single group), or contain the same number of
+    elements as the number of replicas. For example, `replica_groups = {0, 2},
+    {1, 3}` performs reduction between the replicas `0` and `2`, and `1` and
+    `3`.
+-   `channel_id` is used for cross-module communication: only `all-reduce`
+    operations with the same `channel_id` can communicate to each other.
 
 The output shape is the same as the input shape. For example, if there are two
-replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
+replicas and the operand has the value `[1.0, 2.5]` and `[3.0, 5.25]`
 respectively on the two replicas, then the output value from this op and
-summation computation will be `(4.0, 7.75)` on both replicas.
+summation computation will be `[4.0, 7.75]` on both replicas.
 
-`replica_group_ids` identifies the group ID of each replica. The group ID must
-either be empty (all replicas belong to a single group), or contain the same
-number of elements as the number of replicas. For example, if
-`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
-four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
-each subgroup *must* be identical, so, for example, using:
-`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
-
-Computing the result of `AllReduce` requires having one input from each
-replica, so if one replica executes a `AllReduce` node more times than
-another, then the former replica will wait forever. Since the replicas are all
-running the same program, there are not a lot of ways for that to happen, but it
-is possible when a while loop's condition depends on data from infeed and the
-data that is infed causes the while loop to iterate more times on one replica
-than another.
-
+Computing the result of `AllReduce` requires having one input from each replica,
+so if one replica executes a `AllReduce` node more times than another, then the
+former replica will wait forever. Since the replicas are all running the same
+program, there are not a lot of ways for that to happen, but it is possible when
+a while loop's condition depends on data from infeed and the data that is infed
+causes the while loop to iterate more times on one replica than another.
 
 ## AllToAll
 
 See also
 [`XlaBuilder::AllToAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Alltoall is a collective operation that sends data from all cores to all cores.
+AllToAll is a collective operation that sends data from all cores to all cores.
 It has two phases:
 
-1.  the scatter phase. On each core, the operand is split into `split_count`
-number of blocks along the `split_dimensions`, and the blocks are scattered
-to all cores, e.g., the ith block is send to the ith core.
-2.  the gather phase. Each core concatenates the received blocks along the
-`concat_dimension`.
+1.  The scatter phase. On each core, the operand is split into `split_count`
+    number of blocks along the `split_dimensions`, and the blocks are scattered
+    to all cores, e.g., the ith block is send to the ith core.
+2.  The gather phase. Each core concatenates the received blocks along the
+    `concat_dimension`.
 
 The participating cores can be configured by:
 
--   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
-all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
-applied within subgroups in the specified order. For example, replica
-groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
-1, 2, 3, and in the gather phase, the received blocks will be concatenated
-in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
-5, 0, and the concatenation order is 4, 5, 0.
+-   `replica_groups`: each ReplicaGroup contains a list of replica id
+    participating in the computation (replica id for the current replica can be
+    retrieved using [`ReplicaId`](#replicaid)). AllToAll will be applied within
+    subgroups in the specified order. For example, `replica_groups = {{1,2,3},
+    {4,5,0}}` means that an AllToAll will be applied within replicas `{1, 2,
+    3}`, and in the gather phase, and the received blocks will be concatenated
+    in the same order of 1, 2, 3. Then, another AllToAll will be applied within
+    replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
+    `replica_groups` is empty, all replicas belong to one group, in the
+    concatenation order of their appearence.
 
 Prerequisites:
 
