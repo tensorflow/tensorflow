@@ -457,9 +457,19 @@ spv.module "Logical" "GLSL450" {
 //===----------------------------------------------------------------------===//
 
 spv.module "Logical" "GLSL450" {
+  // CHECK: spv.specConstant @sc1 = false
   spv.specConstant @sc1 = false
-  spv.specConstant @sc2 = 42 : i64
+  // CHECK: spv.specConstant @sc2 spec_id(5) = 42 : i64
+  spv.specConstant @sc2 spec_id(5) = 42 : i64
+  // CHECK: spv.specConstant @sc3 = 1.500000e+00 : f32
   spv.specConstant @sc3 = 1.5 : f32
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  // expected-error @+1 {{SpecId cannot be negative}}
+  spv.specConstant @sc2 spec_id(-5) = 42 : i64
 }
 
 // -----

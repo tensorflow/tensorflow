@@ -3,14 +3,14 @@
 spv.module "Logical" "GLSL450" {
   // CHECK: spv.specConstant @sc_true = true
   spv.specConstant @sc_true = true
-  // CHECK: spv.specConstant @sc_false = false
-  spv.specConstant @sc_false = false
+  // CHECK: spv.specConstant @sc_false spec_id(1) = false
+  spv.specConstant @sc_false spec_id(1) = false
 
   // CHECK: spv.specConstant @sc_int = -5 : i32
   spv.specConstant @sc_int = -5 : i32
 
-  // CHECK: spv.specConstant @sc_float = 1.000000e+00 : f32
-  spv.specConstant @sc_float = 1. : f32
+  // CHECK: spv.specConstant @sc_float spec_id(5) = 1.000000e+00 : f32
+  spv.specConstant @sc_float spec_id(5) = 1. : f32
 
   // CHECK-LABEL: @use
   func @use() -> (i32) {
