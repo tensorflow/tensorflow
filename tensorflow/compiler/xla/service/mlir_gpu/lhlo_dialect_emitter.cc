@@ -54,34 +54,36 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
+namespace lhlo = ::mlir::xla_lhlo;
+
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAdd:
-      func_builder.create<::mlir::xla_lhlo::AddOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMultiply:
-      func_builder.create<::mlir::xla_lhlo::MulOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSubtract:
-      func_builder.create<::mlir::xla_lhlo::SubOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
-      func_builder.create<::mlir::xla_lhlo::DivOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
-      func_builder.create<::mlir::xla_lhlo::AndOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMinimum:
-      func_builder.create<::mlir::xla_lhlo::MinOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MinOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMaximum:
-      func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MaxOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kExp:
-      func_builder.create<::mlir::xla_lhlo::ExpOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -222,8 +224,8 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   auto attribute =
       builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
 
-  auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
-      getLocation(fusion), attribute);
+  auto fusion_op =
+      func_builder.create<lhlo::FusionOp>(getLocation(fusion), attribute);
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
@@ -254,6 +256,22 @@ Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
+  llvm::SmallVector<NamedAttribute, 2> attributes{
+      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
+      builder_.getNamedAttr("comparison_direction",
+                            builder_.getStringAttr(ComparisonDirectionToString(
+                                compare->comparison_direction())))};
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
+                                          function.args_end()};
+  func_builder.create<lhlo::CompareOp>(builder_.getUnknownLoc(), llvm::None,
+                                       arg_values, attributes);
   return Status::OK();
 }
 

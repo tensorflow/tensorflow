@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -105,10 +106,10 @@ StatusOr<Value*> HloDialectEmitter::EmitComputation(
 }
 
 Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto resType,
+  TF_ASSIGN_OR_RETURN(auto res_type,
                       ConvertTensorType(instr->shape(), builder_));
 
-  auto attribute =
+  auto name_attr =
       builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()));
   llvm::SmallVector<Value*, 4> arguments;
   for (auto operand : instr->operands()) {
@@ -116,8 +117,8 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   }
   TF_ASSIGN_OR_RETURN(
       auto inserted,
-      InsertMlirOp(instr->opcode(), builder_, builder_.getUnknownLoc(), resType,
-                   arguments, attribute));
+      InsertMlirOp(instr->opcode(), builder_, builder_.getUnknownLoc(),
+                   res_type, arguments, name_attr));
   instruction_to_values_[instr] = inserted;
   return Status::OK();
 }
@@ -192,7 +193,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   TF_ASSIGN_OR_RETURN(const auto return_type,
                       ConvertTensorType(reduce->shape(), builder_));
   const auto& dimensions = reduce->dimensions();
-  const auto dimensionsAttr =
+  const auto dimensions_attr =
       ::mlir::DenseIntElementsAttr::get(
           builder_.getTensorType(dimensions.size(),
                                  builder_.getIntegerType(64)),
@@ -201,7 +202,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   auto reduceOp = builder_.create<hlo::ReduceOp>(
       builder_.getUnknownLoc(), return_type,
       llvm::makeArrayRef(operands).take_front(num_inputs),
-      llvm::makeArrayRef(operands).take_back(num_inputs), dimensionsAttr);
+      llvm::makeArrayRef(operands).take_back(num_inputs), dimensions_attr);
   {
     auto computation = reduce->to_apply();
     auto block = new mlir::Block();
@@ -222,6 +223,24 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   }
   // TODO(b/137624192) Add support for multiple results.
   instruction_to_values_[reduce] = reduceOp.getResult(0);
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
+  TF_ASSIGN_OR_RETURN(Type res_type,
+                      ConvertTensorType(compare->shape(), builder_));
+  llvm::SmallVector<NamedAttribute, 2> attributes{
+      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
+      builder_.getNamedAttr("comparison_direction",
+                            builder_.getStringAttr(ComparisonDirectionToString(
+                                compare->comparison_direction())))};
+  llvm::SmallVector<Value*, 4> arguments;
+  for (auto operand : compare->operands()) {
+    arguments.push_back(instruction_to_values_[operand]);
+  }
+  instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
+      builder_.getUnknownLoc(), llvm::makeArrayRef(res_type), arguments,
+      attributes);
   return Status::OK();
 }
 

@@ -96,6 +96,7 @@ cc_library(
     hdrs = ["hlo_dialect_emitter.h"],
     deps = [
         "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/service:hlo",
         "@com_google_absl//absl/types:span",
