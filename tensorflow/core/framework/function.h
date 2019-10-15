@@ -832,12 +832,11 @@ class DistributedFunctionLibraryRuntime {
   virtual ~DistributedFunctionLibraryRuntime() {}
 
   // The _target attr in attrs determines where the function is instantiated.
-  virtual void Instantiate(
+  virtual Status Instantiate(
       const string& function_name, const FunctionLibraryDefinition& lib_def,
       AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
-      FunctionLibraryRuntime::LocalHandle* handle,
-      FunctionLibraryRuntime::DoneCallback done) = 0;
+      FunctionLibraryRuntime::LocalHandle* handle) = 0;
 
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
