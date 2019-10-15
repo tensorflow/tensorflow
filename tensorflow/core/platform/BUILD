@@ -8,7 +8,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
@@ -346,11 +345,6 @@ cc_library(
     ] + tf_platform_helper_deps("platform_port_impl"),
 )
 
-build_test(
-    name = "platform_port_build_test",
-    targets = [":platform_port"],
-)
-
 cc_library(
     name = "platform_strings",
     srcs = [
@@ -547,7 +541,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = [":test_impl"],
+    deps = tf_platform_helper_deps("test_impl"),
 )
 
 cc_library(
@@ -599,6 +593,57 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_mobile_aware_deps("unbounded_work_queue_impl"),
+)
+
+# This is a hacky, do-nothing, binary that makes it easy to verify ability to
+# build, link, and in some cases run all of the libraries under platform.
+# Realistically, most of this would be covered by tests but at this point
+# keeping things building correctly is step one.
+cc_binary(
+    name = "build_test",
+    testonly = 1,
+    srcs = ["build_test.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":abi",
+        ":annotation",
+        ":byte_order",
+        ":cord",
+        ":cpu_feature_guard",
+        ":denormal",
+        ":dynamic_annotations",
+        ":env_time",
+        ":file_statistics",
+        ":gif",
+        ":jpeg",
+        ":macros",
+        ":mutex",
+        ":net",
+        ":numbers",
+        ":platform",
+        ":platform_port",
+        ":platform_strings",
+        ":png",
+        ":prefetch",
+        ":protobuf",
+        ":rocm_rocdl_path",
+        ":scanner",
+        ":setround",
+        ":stacktrace",
+        ":stacktrace_handler",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":subprocess",
+        ":tensor_coding",
+        ":test",
+        ":thread_annotations",
+        ":threadpool_interface",
+        ":threadpool_options",
+        ":tstring",
+        ":types",
+    ],
 )
 
 # --------------------------------------------------------------------------
