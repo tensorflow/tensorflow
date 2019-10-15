@@ -19,6 +19,7 @@ package_group(
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = [
         "//...",
+        "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
         "//tensorflow/core/tfrt_delegate/...",
