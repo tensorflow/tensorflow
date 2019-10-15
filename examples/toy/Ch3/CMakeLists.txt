@@ -1,11 +1,8 @@
+add_subdirectory(include)
+
 set(LLVM_LINK_COMPONENTS
   Support
   )
-
-set(LLVM_TARGET_DEFINITIONS include/toy/Ops.td)
-mlir_tablegen(include/toy/Ops.h.inc -gen-op-decls)
-mlir_tablegen(include/toy/Ops.cpp.inc -gen-op-defs)
-add_public_tablegen_target(ToyCh3OpsIncGen)
 
 set(LLVM_TARGET_DEFINITIONS mlir/ToyCombine.td)
 mlir_tablegen(ToyCombine.inc -gen-rewriters "-I${CMAKE_CURRENT_SOURCE_DIR}/include")

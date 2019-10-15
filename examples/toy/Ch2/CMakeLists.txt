@@ -1,8 +1,4 @@
-
-set(LLVM_TARGET_DEFINITIONS include/toy/Ops.td)
-mlir_tablegen(include/toy/Ops.h.inc -gen-op-decls)
-mlir_tablegen(include/toy/Ops.cpp.inc -gen-op-defs)
-add_public_tablegen_target(ToyCh2OpsIncGen)
+add_subdirectory(include)
 
 set(LLVM_LINK_COMPONENTS
   Support
