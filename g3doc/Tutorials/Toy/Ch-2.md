@@ -23,45 +23,73 @@ addresses this issue by being designed for extensibility. As such, there are
 little to none pre-defined instructions (*operations* in MLIR terminology) or
 types.
 
-## MLIR Dialects and Operations
+## Interfacing with MLIR
 
-[Language reference](../../LangRef.md#dialects)
+[Language reference](../../LangRef.md)
 
-In MLIR, the core unit of abstraction and computation is an `Operation`, similar
-in many ways to LLVM instructions. Operations can be used to represent all of
-the core IR structures in LLVM: instructions, globals(like functions), modules,
-etc; however MLIR does not have a closed set of operations. Instead, the MLIR
-operation set is fully extensible and operations can have application-specific
-semantics.
-
+MLIR is designed to be a completely extensible infrastructure; there is no
+closed set of attributes (think always constant metadata), operations, or types.
 MLIR supports this extensibility with the concept of
-[Dialects](../../LangRef.md#dialects). Among other things, Dialects provide a
-grouping mechanism for operations under a unique `namespace`. Dialects will be
-discussed a bit more in the [next chapter](Ch-3.md).
+[Dialects](../../LangRef.md#dialects). Dialects provide a grouping mechanism for
+abstraction under a unique `namespace`.
+
+In MLIR, [`Operations`](../../LangRef.md#operations) are the core unit of
+abstraction and computation, similar in many ways to LLVM instructions.
+Operations can have application-specific semantics and can be used to represent
+all of the core IR structures in LLVM: instructions, globals(like functions),
+modules, etc.
 
 Here is the MLIR assembly for the Toy 'transpose' operations:
 
-```MLIR(.mlir)
-%t_tensor = "toy.transpose"(%tensor) { inplace = true } : (tensor<2x3xf64>) -> tensor<3x2xf64>
+```mlir
+%t_tensor = "toy.transpose"(%tensor) {inplace = true} : (tensor<2x3xf64>) -> tensor<3x2xf64>
 ```
 
-Let's look at the anatomy of this MLIR operation:
+Let's break down the anatomy of this MLIR operation:
 
--   it is identified by its name, which is expected to be a unique string (e.g.
-    `toy.transpose`).
-    *   the operation name is split in two parts: the dialect namespace prefix,
-        and the specific op name. This can be read as the `transpose` operation
-        in the `toy` dialect.
--   it takes as input zero or more operands (or arguments), which are SSA values
-    defined by other operations or referring to block arguments (e.g.
-    `%tensor`).
--   it produces zero or more results (we will limit ourselves to single result
-    operations in the context of Toy), which are SSA values (e.g. `%t_tensor`).
--   it has zero or more attributes, which are special operands that are always
-    constant (e.g. `inplace = true`).
--   lastly, the type of the operation appears at the end in a functional form,
-    spelling the types of the arguments in parentheses and the type of the
-    return values afterward.
+-   `%t_tensor`
+
+    *   The name given to the result defined by this operation. An operation may
+        define zero or more results (we will limit ourselves to single result
+        operations in the context of Toy), which are SSA values.
+
+-   `"toy.transpose"`
+
+    *   The name of the operation. It is expected to be a unique string, with
+        the namespace of the dialect prefixed before a "`.`". This can be read
+        as the `transpose` operation in the `toy` dialect.
+
+-   `(%tensor)`
+
+    *   A list of zero or more input operands (or arguments), which are SSA
+        values defined by other operations or referring to block arguments.
+
+-   `{ inplace = true }`
+
+    *   A dictionary of zero or more attributes, which are special operands that
+        are always constant. Here we define a boolean attribute named 'inplace',
+        that has a constant value of true.
+
+-   `(tensor<2x3xf64) -> tensor<3x2xf64>`
+
+    *   This trailing portion refers to the type of the operation in a
+        functional form, spelling the types of the arguments in parentheses and
+        the type of the return values afterward.
+
+Shown here is the general form of an operation. As described above, the set of
+operations in MLIR is extensible. This means that the infrastructure must be
+able to opaquely reason about the structure of an operation. This is done by
+boiling down the composition of an operation into discrete pieces:
+
+-   A name for the operation.
+-   A source location for debugging purposes.
+-   A list of SSA operand values.
+-   A list of [types](../../LangRef.md#type-system) for result values.
+-   A list of [attributes](../../LangRef.md#attributes).
+-   A list of successors [blocks](../../LangRef.md#blocks) (for branches
+    mostly).
+-   A list of [regions](../../LangRef.md#regions) (for structural operations
+    like functions).
 
 Finally, in MLIR every operation has a mandatory source location associated with
 it. Contrary to LLVM where debug info locations are metadata and can be dropped,
@@ -69,93 +97,407 @@ in MLIR the location is a core requirement which translates in APIs manipulating
 operations requiring it. Dropping a location becomes an explicit choice and
 cannot happen by mistake.
 
-## Opaque API
+### Opaque API
 
-MLIR is designed to be a completely extensible system, as such the
-infrastructure has the capability to opaquely represent operations (as well as
-attributes, types, etc.) that have not been registered. This allows MLIR to
-parse, represent, and round-trip any valid IR. For example, the following can
-round-trip through *mlir-opt*:
+MLIR is designed to be a completely extensible system, and as such, the
+infrastructure has the capability to opaquely represent all of its core
+components: attributes, operations, types, etc. This allows MLIR to parse,
+represent, and round-trip any valid IR. For example, we could place our toy
+operation from above into an .mlir file and round-trip through *mlir-opt*
+without registering anything:
+
+```mlir
+func @toy_func(%tensor: tensor<2x3xf64>) -> tensor<3x2xf64> {
+  %t_tensor = "toy.transpose"(%tensor) { inplace = true } : (tensor<2x3xf64>) -> tensor<3x2xf64>
+  return %t_tensor : tensor<3x2xf64>
+}
+```
+
+In the cases of unregistered attributes, operations, types, MLIR will enforce
+some structural constraints (SSA, block termination, etc.) but otherwise they
+are completely opaque. This can be useful for bootstrapping purposes, but it is
+generally advised against. Opaque operations must be treated conservatively by
+transformations and analyses, and are much harder to construct and manipulate.
+
+This handling can be observed by crafting what should be an invalid IR for Toy
+and see it round-trip without tripping the verifier:
 
 ```MLIR(.mlir)
-func @some_func(%arg0: !random_dialect<"custom_type">) -> !another_dialect<"other_type"> {
-  %result = "custom.operation"(%arg0) { attr = #random_dialect<"custom_attribute"> } : (!random_dialect<"custom_type">) -> !another_dialect<"other_type">
-  return %result : !another_dialect<"other_type">
+// RUN: toyc %s -emit=mlir
+
+func @main() {
+  %0 = "toy.print"() : () -> tensor<2x3xf64>
 }
 ```
 
-Here MLIR will enforce some structural constraints (SSA, block termination,
-etc.) but otherwise the types and the `custom.operation` are completely opaque.
+There are multiple problems here: the `toy.print` operation is not a terminator,
+it should take an operand, and it shouldn't return any values. In the next
+section, we will register our dialect and operations with MLIR, plug into the
+verifier, and add nicer APIs to manipulate our operations.
 
-We will take advantage of this facility for the initial emission of MLIR for Toy
-by traversing the AST. Our operation names will be prefixed `toy.` in
-preparation for a `toy` dialect, which we will introduce with more details in
-the [next chapter](Ch-3.md).
+## Defining a Toy Dialect
 
-Programmatically creating an opaque operation, like the one above, involves
-using the `mlir::OperationState` structure which group all the basic elements
-needed to build an operation with an `mlir::OpBuilder`:
-
--   The name of the operation.
--   A location for debugging purposes. It is mandatory, but can be explicitly
-    set to `unknown`.
--   A list of operand values.
--   A list of types for result values.
--   A list of attributes.
--   A list of successors blocks (for branches mostly).
--   A list of regions (for structural operations like functions).
-
-To build the `custom.operation` from the listing above, assuming you have a
-`Value *` handle to `%arg0`, is as simple as:
+To effectively interface with MLIR, we will define a new Toy dialect. This
+dialect will properly model the semantics of the Toy language, as well as
+provide an easy avenue for high-level analysis and transformation.
 
 ```c++
-// Creation of the state defining the operation:
-mlir::OperationState state(location, "custom.operation");
-state.addOperands(arg0);
+/// This is the definition of the Toy dialect. A dialect inherits from
+/// mlir::Dialect and registers custom attributes, operations, and types (in its
+/// constructor). It can also override some general behavior exposed via virtual
+/// methods, which will be demonstrated in later chapters of the tutorial.
+class ToyDialect : public mlir::Dialect {
+ public:
+  explicit ToyDialect(mlir::MLIRContext *ctx);
 
-// The return type for the operation: `!another_dialect<"other_type">`
-auto anotherDialectPrefix = mlir::Identifier::get("another_dialect", &context);
-auto returnType = mlir::OpaqueType::get(another_dialect_prefix,
-                                        "custom_type", &context);
-state.addTypes(returnType);
-
-
-// Using a builder to create the operation and insert it where the builder
-// insertion point is currently set.
-Operation *customOperation = builder.createOperation(state);
-
-// An operation is not an SSA value (unlike LLVM), because it can return
-// multiple SSA values, the resulting value can be obtained:
-Value *result = customOperation->getResult(0);
+  /// Provide a utility accessor to the dialect namespace. This is used by
+  /// several utilities.
+  static llvm::StringRef getDialectNamespace() { return "toy"; }
+};
 ```
 
-This approach is used in `Ch2/mlir/MLIRGen.cpp` to implement a naive MLIR
-generation through a simple depth-first search traversal of the Toy AST. Here is
-how we create a `toy.transpose` operation:
+The dialect can now be registered in the global registry:
 
 ```c++
-mlir::Operation *createTransposeOp(OpBuilder &builder,
-                                   mlir::Value *input_tensor) {
-  // Fill the `OperationState` with the required fields.
-  mlir::OperationState result(location, "toy.transpose");
-  result.addOperands(input_tensor);
+  mlir::registerDialect<ToyDialect>();
+```
 
-  // We use the MLIR tensor type for 'toy' types.
-  auto type = builder.getTensorType({2, 2}, builder.getF64Type());
-  result.addTypes(type);
+Any new `MLIRContext` created from now on will contain an instance of the Toy
+dialect, and invoke specific hooks for things like parsing attributes and types.
 
-  // Create the transpose operation.
-  Operation *newTransposeOp = builder->createOperation(result);
-  return newTransposeOp;
+## Defining Toy Operations
+
+Now that we have a `Toy` dialect, we can start registering operations. This will
+allow for providing semantic information that the rest of the system can hook
+into. Let's walk through the creation of the `toy.constant` operation:
+
+```mlir
+ %4 = "toy.constant"() {value = dense<1.0> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
+```
+
+This operation takes zero operands, a
+[dense elements](../../LangRef.md#dense-elements-attribute) attribute named
+`value`, and returns a single result of
+[TensorType](../../LangRef.md#tensor-type). An operation inherits from the
+[CRTP](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern)
+`mlir::Op` class which also takes some optional *traits* to customize its
+behavior. These traits may provide additional accessors, verification, etc.
+
+```c++
+class ConstantOp : public mlir::Op<ConstantOp,
+                     /// The ConstantOp takes zero inputs.
+                     mlir::OpTrait::ZeroOperands,
+                     /// The ConstantOp returns a single result.
+                     mlir::OpTrait::OneResult,
+                     /// The ConstantOp is pure and has no visible side-effects.
+                     mlir::OpTrait::HasNoSideEffect> {
+
+ public:
+  /// Inherit the constructors from the base Op class.
+  using Op::Op;
+
+  /// Provide the unique name for this operation. MLIR will use this to register
+  /// the operation and uniquely identify it throughout the system.
+  static llvm::StringRef getOperationName() { return "toy.constant"; }
+
+  /// Return the value of the constant by fetching it from the attribute.
+  mlir::DenseElementsAttr getValue();
+
+  /// Operations can provide additional verification beyond the traits they
+  /// define. Here we will ensure that the specific invariants of the constant
+  /// operation are upheld, for example the result type must be of TensorType.
+  LogicalResult verify();
+
+  /// Provide an interface to build this operation from a set of input values.
+  /// This interface is used by the builder to allow for easily generating
+  /// instances of this operation:
+  ///   mlir::OpBuilder::create<ConstantOp>(...)
+  /// This method populates the given `state` that MLIR uses to create
+  /// operations. This state is a collection of all of the discrete elements
+  /// that an operation may contain.
+  /// Build a constant with the given return type and `value` attribute.
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
+                    mlir::Type result, mlir::DenseElementsAttr value);
+  /// Build a constant and reuse the type from the given 'value'.
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
+                    mlir::DenseElementsAttr value);
+  /// Build a constant by broadcasting the given 'value'.
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
+                    double value);
+};
+```
+
+and we register this operation in the `ToyDialect` constructor:
+
+```c++
+ToyDialect::ToyDialect(mlir::MLIRContext *ctx)
+    : mlir::Dialect(getDialectNamespace(), ctx) {
+  addOperations<ConstantOp>();
 }
 ```
+
+### Op vs Operation: Using MLIR Operations
+
+Now that we have defined an operation, we will want to access and transform it.
+In MLIR, there are two main classes related to operations: `Operation` and `Op`.
+Operation is the actual opaque instance of the operation, and represents the
+general API into an operation instance. An `Op` is the base class of a derived
+operation, like `ConstantOp`, and acts as smart pointer wrapper around a
+`Operation*`. This means that when we define our Toy operations, we are actually
+providing a clean interface for building and interfacing with the `Operation`
+class; this is why our `ConstantOp` defines no class fields. Therefore, we
+always pass these classes around by-value, instead of by reference or pointer
+(passing by-value is a common idiom and applies similarly to attributes, types,
+etc). We can always get an instance of our toy operation by using LLVM's casting
+infrastructure:
+
+```c++
+void processConstantOp(mlir::Operation *op) {
+  ConstantOp op = llvm::dyn_cast<ConstantOp>(op);
+
+  // This operation is not an instance of `ConstantOp`.
+  if (!op)
+    return;
+
+  // Get the internal operation instance back.
+  mlir::Operation *internalOp = op.getOperation();
+  assert(internalOp == op && "these operation instances are the same");
+}
+```
+
+### Using the Operation Definition Specification (ODS) Framework
+
+In addition to specializing the `mlir::Op` C++ template, MLIR also supports
+defining operations in a declarative manner. This is achieved via the
+[Operation Definition Specification](../../OpDefinitions.md) framework. Facts
+regarding an operation are specified concisely into a TableGen record, which
+will be expanded into an equivalent `mlir::Op` C++ template specialization at
+compile time. Using the ODS framework is the desired way for defining operations
+in MLIR given the simplicity, conciseness, and general stability in the face of
+C++ API changes.
+
+Lets see how to define the ODS equivalent of our ConstantOp:
+
+The first thing to do is to define a link to the Toy dialect that we defined in
+c++. This is used to link all of the operations that we will define, to our
+dialect:
+
+```tablegen
+// Provide a definition of the 'toy' dialect in the ODS framework so that we
+// can define our operations.
+def Toy_Dialect : Dialect {
+  // The namespace of our dialect, this corresponds 1-1 with the string we
+  // provided in `ToyDialect::getDialectNamespace`.
+  let name = "toy";
+
+  // The c++ namespace that the dialect class definition resides in.
+  let cppNamespace = "toy";
+}
+```
+
+Now that we have defined a link to the toy dialect, we can start defining
+operations. Operations in ODS are defined by inheriting from the `Op` class. To
+simplify our operation definitions, we will define a base class for operations
+in the Toy dialect.
+
+```tablegen
+// Base class for toy dialect operations. This operation inherits from the base
+// `Op` class in OpBase.td, and provides:
+//   * The parent dialect of the operation.
+//   * The mnemonic for the operation, or the name without the dialect prefix.
+//   * A list of traits for the operation.
+class Toy_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<Toy_Dialect, mnemonic, traits>;
+```
+
+With all of the preliminary pieces defined, we can begin to define the constant
+operation:
+
+We define a toy operation by inheriting from our base 'Toy_Op' class above. Here
+we provide the mnemonic and a list of traits for the operation. The
+[mnemonic](../../OpDefinitions.md#operation-name) here matches the one given in
+`ConstantOp::getOperationName` without the dialect prefix; `toy.`. The constant
+operation here is also marked as 'NoSideEffect'. This is an ODS trait, and
+matches one-to-one with the trait we providing when defining `ConstantOp`:
+`mlir::OpTrait::HasNoSideEffect`. Missing here from our c++ definition are the
+`ZeroOperands` and `OneResult` traits, these will be automatically inferred
+based upon the `arguments` and `results` fields we define later.
+
+```tablegen
+def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
+}
+```
+
+#### Defining Arguments and Results
+
+With the shell of the operation defined, we can now provide the
+[inputs](../../OpDefinitions.md#operation-arguments) and
+[outputs](../../OpDefinitions.md#operation-results) to our operation. The
+inputs, or arguments, to an operation may be attributes or types for SSA operand
+values. The results correspond to a set of types for the values produced by the
+operation:
+
+```tablegen
+def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
+  // The constant operation takes an attribute as the only input.
+  // `F64ElementsAttr` corresponds to a 64-bit floating-point ElementsAttr.
+  let arguments = (ins F64ElementsAttr:$value);
+
+  // The generic call operation returns a single value of TensorType.
+  // F64Tensor corresponds to a 64-bit floating-point TensorType.
+  let results = (outs F64Tensor);
+}
+```
+
+By providing a name to the arguments or results, e.g. `$value`, ODS will
+automatically generate a matching accessor: `DenseElementsAttr
+ConstantOp::value()`.
+
+#### Adding Documentation
+
+The next step after defining the operation, is to document it. Operations may
+provide
+[`summary` and `description`](../../OpDefinitions.md#operation-documentation)
+fields to describe the semantics of the operation. This information is useful
+for users of the dialect, and can even be used to auto-generate markdown
+documents.
+
+```tablegen
+def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
+  // Provide a summary and description for this operation. This can be used to
+  // auto-generate documenatation of the operations within our dialect.
+  let summary = "constant operation";
+  let description = [{
+    Constant operation turns a literal into an SSA value. The data is attached
+    to the operation as an attribute. For example:
+
+      %0 = "toy.constant"()
+         { value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf64> }
+        : () -> tensor<2x3xf64>
+  }];
+
+  // The constant operation takes an attribute as the only input.
+  // `F64ElementsAttr` corresponds to a 64-bit floating-point ElementsAttr.
+  let arguments = (ins F64ElementsAttr:$value);
+
+  // The generic call operation returns a single value of TensorType.
+  // F64Tensor corresponds to a 64-bit floating-point TensorType.
+  let results = (outs F64Tensor);
+}
+```
+
+#### Verifying Operation Semantics
+
+At this point we've already covered a majority of the original c++ operation
+definition. The next piece to define is the verifier. Luckily, much like the
+named accessor, the ODS framework will automatically generate a lot of the
+necessary verification logic based upon the constraints we have given. This
+means that we don't need to verify the structure of the return type, or even the
+input attribute `value`. In many cases, additional verification is not even
+necessary for ODS operations. To add additional verification logic, an operation
+can override the [`verifier`](../../OpDefinitions.md#custom-verifier-code)
+field. The `verifier` field allows for defining a c++ code blob that will be run
+as part of ConstantOp::verify. This blob can assume that all of the other
+invariants of the operation have already been verified:
+
+```tablegen
+def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
+  // Provide a summary and description for this operation. This can be used to
+  // auto-generate documenatation of the operations within our dialect.
+  let summary = "constant operation";
+  let description = [{
+    Constant operation turns a literal into an SSA value. The data is attached
+    to the operation as an attribute. For example:
+
+      %0 = "toy.constant"()
+         { value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf64> }
+        : () -> tensor<2x3xf64>
+  }];
+
+  // The constant operation takes an attribute as the only input.
+  // `F64ElementsAttr` corresponds to a 64-bit floating-point ElementsAttr.
+  let arguments = (ins F64ElementsAttr:$value);
+
+  // The generic call operation returns a single value of TensorType.
+  // F64Tensor corresponds to a 64-bit floating-point TensorType.
+  let results = (outs F64Tensor);
+
+  // Add additional verification logic to the constant operation. Here we invoke
+  // a static `verify` method in a c++ source file. This codeblock is executed
+  // inside of ConstantOp::verify, so we can use `this` to refer to the current
+  // operation instance.
+  let verifier = [{ return ::verify(*this); }];
+}
+```
+
+#### Attaching `build` Methods
+
+The final missing component here from our original c++ example are the `build`
+methods. ODS can generate some simple build methods automatically, and in this
+case it will generate our first build method for us. For the rest, we define the
+[`builders`](../../OpDefinitions.md#custom-builder-methods) field. This field
+takes a list of `OpBuilder` objects that take a string corresponding to a list
+of c++ parameters, as well as a code block.
+
+```tablegen
+def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
+  // Provide a summary and description for this operation. This can be used to
+  // auto-generate documenatation of the operations within our dialect.
+  let summary = "constant operation";
+  let description = [{
+    Constant operation turns a literal into an SSA value. The data is attached
+    to the operation as an attribute. For example:
+
+      %0 = "toy.constant"()
+         { value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf64> }
+        : () -> tensor<2x3xf64>
+  }];
+
+  // The constant operation takes an attribute as the only input.
+  // `F64ElementsAttr` corresponds to a 64-bit floating-point ElementsAttr.
+  let arguments = (ins F64ElementsAttr:$value);
+
+  // The generic call operation returns a single value of TensorType.
+  // F64Tensor corresponds to a 64-bit floating-point TensorType.
+  let results = (outs F64Tensor);
+
+  // Add additional verification logic to the constant operation. Here we invoke
+  // a static `verify` method in a c++ source file. This codeblock is executed
+  // inside of ConstantOp::verify, so we can use `this` to refer to the current
+  // operation instance.
+  let verifier = [{ return ::verify(*this); }];
+
+  // Add custom build methods for the constant operation. These method populates
+  // the `state` that MLIR uses to create operations, i.e. these are used when
+  // using `builder.create<ConstantOp>(...)`.
+  let builders = [
+    // Build a constant with a given constant tensor value.
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "DenseElementsAttr value", [{
+      build(builder, result, value.getType(), value);
+    }]>,
+
+    // Build a constant with a given constant floating-point value. This builder
+    // invokes a static `buildConstantOp` utility function in a c++ source file
+    // to keep the tablegen c++ code blocks simple.
+    OpBuilder<"Builder *builder, OperationState &result, double value", [{
+      buildConstantOp(builder, result, value);
+    }]>
+  ];
+}
+```
+
+Above we introduce several of the concepts for defining operations in the ODS
+framework, but there are many more that we haven't had a chance to: regions,
+variadic operands, etc. Check out the
+[full specification](../../OpDefinitions.md) for more details.
 
 ## Complete Toy Example
 
-At this point we can already generate our "Toy IR" without having registered
-anything with MLIR. A simplified version of the previous example:
+At this point we can generate our "Toy IR". A simplified version of the previous
+example:
 
-```Toy {.toy}
+```.toy
 # User defined generic function that operates on unknown shaped arguments.
 def multiply_transpose(a, b) {
   return a * transpose(b);
@@ -172,9 +514,9 @@ def main() {
 
 Results in the following IR:
 
-```MLIR(.mlir)
+```mlir
 module {
-  func @multiply_transpose(%arg0: tensor<*xf64>, %arg1: tensor<*xf64>)
+  func @multiply_transpose(%arg0: tensor<*xf64>, %arg1: tensor<*xf64>) -> tensor<*xf64>
   attributes  {toy.generic} {
     %0 = "toy.transpose"(%arg1) : (tensor<*xf64>) -> tensor<*xf64> loc("test/codegen.toy":3:14)
     %1 = "toy.mul"(%arg0, %0) : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64> loc("test/codegen.toy":3:14)
@@ -198,25 +540,6 @@ You can build `toyc-ch2` and try yourself: `toyc-ch2 test/codegen.toy -emit=mlir
 test/codegen.toy -emit=mlir -mlir-print-debuginfo 2> codegen.mlir` followed by
 `toyc-ch2 codegen.mlir -emit=mlir`.
 
-At this point MLIR does not know anything about Toy, so there are no semantics
-associated with the operations, everything is opaque and string-based. The only
-thing enforced by MLIR here is that the IR is in SSA form: values are defined
-once, and uses appear after their definition.
-
-This can be observed by crafting what should be an invalid IR for Toy and see it
-round-trip without tripping the verifier:
-
-```MLIR(.mlir)
-// RUN: toyc %s -emit=mlir
-
-func @main() {
-  %0 = "toy.print"() : () -> tensor<2x3xf64>
-}
-```
-
-There are multiple problems here: the `toy.print` operation is not a terminator,
-it should take an operand, and it shouldn't return any values.
-
-In the [next chapter](Ch-3.md) we will register our dialect and operations with
-MLIR, plug into the verifier, and add nicer APIs to manipulate our operations.
-
+At this point MLIR knows about our Toy dialect and operations. In the
+[next chapter](Ch-3.md) we will leverage our new dialect to implement some
+high-level language-specific analyses and transformations for the Toy language.

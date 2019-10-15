@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "toy/Dialect.h"
 #include "toy/MLIRGen.h"
 #include "toy/Parser.h"
 #include <memory>
@@ -75,6 +76,9 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
 }
 
 int dumpMLIR() {
+  // Register our Dialect with MLIR.
+  mlir::registerDialect<mlir::toy::ToyDialect>();
+
   mlir::MLIRContext context;
 
   // Handle '.toy' input to the compiler.
