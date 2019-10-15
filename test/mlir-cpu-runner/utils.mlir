@@ -1,6 +1,7 @@
 // RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm -lower-to-llvm | mlir-cpu-runner -e print_0d -entry-point-result=void -shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext | FileCheck %s --check-prefix=PRINT-0D
 // RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm -lower-to-llvm | mlir-cpu-runner -e print_1d -entry-point-result=void -shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext | FileCheck %s --check-prefix=PRINT-1D
 // RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm -lower-to-llvm | mlir-cpu-runner -e print_3d -entry-point-result=void -shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext | FileCheck %s --check-prefix=PRINT-3D
+// RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm -lower-to-llvm | mlir-cpu-runner -e vector_splat_2d -entry-point-result=void -shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext | FileCheck %s --check-prefix=PRINT-VECTOR-SPLAT-2D
 
 func @print_0d() {
   %f = constant 2.00000e+00 : f32
@@ -51,3 +52,27 @@ func @print_memref_3d_f32(memref<?x?x?xf32>)
 // PRINT-3D-COUNT-2: {{.*[[:space:]].*}}2,    2,    2,    2,    2
 //    PRINT-3D-NEXT: 2,    2,    4,    2,    2
 //    PRINT-3D-NEXT: 2,    2,    2,    2,    2
+
+!vector_type_C = type vector<4x4xf32>
+!matrix_type_CC = type memref<1x1x!vector_type_C>
+func @vector_splat_2d() {
+  %c0 = constant 0 : index
+  %f10 = constant 10.0 : f32
+  %vf10 = splat %f10: !vector_type_C
+  %C = alloc() : !matrix_type_CC
+  store %vf10, %C[%c0, %c0]: !matrix_type_CC
+
+  %CC = memref_cast %C: !matrix_type_CC to memref<?x?x!vector_type_C>
+  call @print_memref_vector_4x4xf32(%CC): (memref<?x?x!vector_type_C>) -> ()
+
+  dealloc %C : !matrix_type_CC
+  return
+}
+
+// PRINT-VECTOR-SPLAT-2D: Memref base@ = {{.*}} rank = 2 offset = 0 sizes = [1, 1] strides = [1, 1] data =
+// PRINT-VECTOR-SPLAT-2D-NEXT: [((10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10)),
+// PRINT-VECTOR-SPLAT-2D-NEXT:  ((10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10))],
+// PRINT-VECTOR-SPLAT-2D:      [((10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10)),
+// PRINT-VECTOR-SPLAT-2D-NEXT:  ((10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10),   (10, 10, 10, 10))]
+
+func @print_memref_vector_4x4xf32(memref<?x?x!vector_type_C>)

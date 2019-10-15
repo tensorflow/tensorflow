@@ -77,4 +77,19 @@ print_memref_3d_f32(StridedMemRefType<float, 3> *M);
 extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_4d_f32(StridedMemRefType<float, 4> *M);
 
+template <typename T, int Dim, int... Dims> struct Vector {
+  Vector<T, Dims...> vector[Dim];
+};
+template <typename T, int Dim> struct Vector<T, Dim> { T vector[Dim]; };
+
+template <int D1, typename T> using Vector1D = Vector<T, D1>;
+template <int D1, int D2, typename T> using Vector2D = Vector<T, D1, D2>;
+template <int D1, int D2, int D3, typename T>
+using Vector3D = Vector<T, D1, D2, D3>;
+template <int D1, int D2, int D3, int D4, typename T>
+using Vector4D = Vector<T, D1, D2, D3, D4>;
+
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
+print_memref_vector_4x4xf32(StridedMemRefType<Vector2D<4, 4, float>, 2> *M);
+
 #endif // MLIR_CPU_RUNNER_MLIRUTILS_H_
