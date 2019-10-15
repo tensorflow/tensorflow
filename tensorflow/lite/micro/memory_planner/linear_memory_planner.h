@@ -37,6 +37,7 @@ class LinearMemoryPlanner : public MemoryPlanner {
                                   int buffer_index, int* offset) override;
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
   static constexpr int kMaxBufferCount = 1024;
   size_t buffer_offsets_[kMaxBufferCount];
   int current_buffer_count_;
