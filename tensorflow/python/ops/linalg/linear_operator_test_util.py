@@ -434,8 +434,8 @@ def _test_eigvalsh(use_placeholder, shapes_info, dtype):
       atol = self._atol[dtype]  # pylint: disable=protected-access
       rtol = self._rtol[dtype]  # pylint: disable=protected-access
       if dtype == dtypes.float32 or dtype == dtypes.complex64:
-        atol = 1e-5
-        rtol = 1e-5
+        atol = 1e-4
+        rtol = 1e-4
       self.assertAllClose(op_eigvals_v, mat_eigvals_v, atol=atol, rtol=rtol)
   return test_eigvalsh
 
