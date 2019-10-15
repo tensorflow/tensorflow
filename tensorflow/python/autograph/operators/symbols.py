@@ -79,8 +79,8 @@ class AttributeAccessSymbol(Symbol):
     if (is_undefined(parent_value) or
         getattr(parent_value, self.attr_name, None) is None):
       return Undefined(self.name)
-    else:
-      return parent_value.__getattribute__(self.attr_name)
+    
+    return parent_value.__getattribute__(self.attr_name)
 
 
 class SubscriptSymbol(Symbol):
