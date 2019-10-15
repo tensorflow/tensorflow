@@ -1757,8 +1757,15 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
   auto minmax = std::minmax_element(values, values + size);
   *min = *minmax.first;
   *max = *minmax.second;
+  NeonSymmetricQuantizeFloats(values, size, quantized_values, *min, *max,
+                              scaling_factor);
+}
+
+void NeonSymmetricQuantizeFloats(const float* values, const int size,
+                                 int8_t* quantized_values, float min, float max,
+                                 float* scaling_factor) {
   const int kScale = 127;
-  const float range = std::max(std::abs(*min), std::abs(*max));
+  const float range = std::max(std::abs(min), std::abs(max));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;
