@@ -146,17 +146,10 @@ class DatasetParams {
   // Returns the functions that will be used when running the dataset op.
   virtual std::vector<FunctionDef> func_lib() const { return {}; }
 
-  // Returns a function definition for the transformation performed by
-  // this type of dataset.
-  virtual Status CreateFactory(FunctionDef* fdef) const {
-    return errors::Unimplemented(
-        "CreateFactory is not implemented for params '", op_name(), "'");
-  }
-
-  // Returns the op name for the op represented by these parameters. This name
-  // needs to match the registered name of the dataset op (usually a constant
-  // called `kDatasetType`).
-  virtual string op_name() const = 0;
+  // Returns the dataset type for the op represented by these parameters. This
+  // type usually needs to match the constant called `kDatasetType` defined in
+  // the dataset kernel.
+  virtual string dataset_type() const = 0;
 
   virtual int op_version() const { return op_version_; }
 
@@ -186,9 +179,7 @@ class RangeDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  Status CreateFactory(FunctionDef* fdef) const override;
-
-  string op_name() const override;
+  string dataset_type() const override;
 
  private:
   int64 start_;
@@ -213,8 +204,9 @@ class BatchDatasetParams : public DatasetParams {
         parallel_copy_(parallel_copy) {
     input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = 2;
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override;
@@ -223,9 +215,7 @@ class BatchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  Status CreateFactory(FunctionDef* fdef) const override;
-
-  string op_name() const override;
+  string dataset_type() const override;
 
  private:
   int64 batch_size_;
@@ -254,8 +244,9 @@ class MapDatasetParams : public DatasetParams {
         use_inter_op_parallelism_(use_inter_op_parallelism),
         preserve_cardinality_(preserve_cardinality) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override;
@@ -264,9 +255,7 @@ class MapDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  Status CreateFactory(FunctionDef* fdef) const override;
-
-  string op_name() const override;
+  string dataset_type() const override;
 
   std::vector<FunctionDef> func_lib() const override;
 
@@ -291,9 +280,7 @@ class TensorSliceDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  Status CreateFactory(FunctionDef* fdef) const override;
-
-  string op_name() const override;
+  string dataset_type() const override;
 
   int64 num_slices() const { return components_[0].dim_size(0); }
 
@@ -322,8 +309,9 @@ class TakeDatasetParams : public DatasetParams {
                       std::move(node_name)),
         count_(count) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override;
@@ -332,12 +320,39 @@ class TakeDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  Status CreateFactory(FunctionDef* fdef) const override;
-
-  string op_name() const override;
+  string dataset_type() const override;
 
  private:
   int64 count_;
+};
+
+// `ConcatenateDatasetParams` is a common dataset parameter type that are used
+// in testing.
+class ConcatenateDatasetParams : public DatasetParams {
+ public:
+  template <typename T, typename P>
+  ConcatenateDatasetParams(T input_dataset_params_0, P input_dataset_params_1,
+                           DataTypeVector output_dtypes,
+                           std::vector<PartialTensorShape> output_shapes,
+                           string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)) {
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_0));
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_1));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params_0.dataset_type(),
+                                   input_dataset_params_0.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override;
+
+  Status GetInputNames(std::vector<string>* input_names) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  string dataset_type() const override;
 };
 
 template <typename T>
@@ -778,9 +793,6 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
       const DatasetParams& dataset_params,
       std::vector<std::unique_ptr<Tensor>>* created_tensors,
       std::unique_ptr<Tensor>* dataset);
-
-  Status CreateFactory(const DatasetParams& dataset_params,
-                       FunctionDef* fdef) const;
 };
 
 #define ITERATOR_GET_NEXT_TEST_P(dataset_op_test_class, dataset_params_class, \
