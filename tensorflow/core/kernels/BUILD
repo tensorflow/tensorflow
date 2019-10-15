@@ -7768,7 +7768,6 @@ tf_mkl_kernel_library(
 
 tf_mkl_kernel_library(
     name = "mkl_tmp_bf16_ops",
-    hdrs = ["no_op.h"],
     prefix = "mkl_tmp_bf16_ops",
     deps = [
         ":no_op",
