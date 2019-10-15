@@ -74,7 +74,7 @@ the IR and replacing it with a different set of operations, we can plug into the
 MLIR `Canonicalizer` pass by implementing a `RewritePattern`:
 
 ```c++
-/// Fold transpose(transpose(x)) -> transpose(x)
+/// Fold transpose(transpose(x)) -> x
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
   /// We register this pattern to match every toy.transpose in the IR.
   /// The "benefit" is used by the framework to order the patterns and process
