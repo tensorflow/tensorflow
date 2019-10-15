@@ -142,6 +142,16 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
                   .getElementType()
                   .isF32());
 
+  // output gate bias is 0 since it is out of bounds of the bias tensor, so
+  // we set its value as a const tensor of specified size and value 0.
+  EXPECT_TRUE(
+      mlir::cast<mlir::ConstantOp>(it->getOpOperand(15).get()->getDefiningOp())
+          .getValue()
+          .cast<ElementsAttr>()
+          .getValue<FloatAttr>(0)
+          .getValue()
+          .isExactlyValue(0.0f));
+
   EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getType().getResults();
   SmallVector<int64_t, 2> output_shape{1, -1};
