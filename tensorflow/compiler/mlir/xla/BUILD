@@ -81,6 +81,21 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "xla_canonicalize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/canonicalize.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+    ],
+)
+
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
@@ -239,6 +254,7 @@ cc_library(
     deps = [
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
+        ":xla_canonicalize_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

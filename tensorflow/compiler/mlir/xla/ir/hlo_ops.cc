@@ -80,6 +80,38 @@ static LogicalResult Verify(T op) {
   return success();
 }
 
+namespace {
+
+//===----------------------------------------------------------------------===//
+// Utilities for the canonicalize patterns
+//===----------------------------------------------------------------------===//
+
+// Returns 1D 64-bit dense elements attribute with the given values.
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder* builder) {
+  RankedTensorType ty = builder->getTensorType(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseElementsAttr::get<int64_t>(ty, values)
+      .cast<DenseIntElementsAttr>();
+}
+
+// Given the start indices and slice sizes for a dynamic-slice that can be
+// converted to a static slice, returns the limits for the static slice.
+DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
+                                      DenseIntElementsAttr slice_sizes,
+                                      Builder* builder) {
+  SmallVector<int64_t, 4> slice_limits;
+  for (int64_t i = 0; i < slice_sizes.getNumElements(); ++i) {
+    int64_t start_index = start_indices.getValue<IntegerAttr>(i).getInt();
+    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    slice_limits.push_back(start_index + slice_size);
+  }
+  return GetI64ElementsAttr(slice_limits, builder);
+}
+
+#include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // ConstOp
 //===----------------------------------------------------------------------===//
@@ -466,6 +498,15 @@ static LogicalResult Verify(ConcatenateOp op) {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicSliceOp
+//===----------------------------------------------------------------------===//
+
+void DynamicSliceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicSliceToSlice>(context);
 }
 
 //===----------------------------------------------------------------------===//
