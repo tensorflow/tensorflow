@@ -21,6 +21,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -259,6 +262,44 @@ class CollectiveOpGPUTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InternalError,
                                    'but that group has type'):
         sess.run([c0, c1], options=run_options)
+
+  @test_util.run_v2_only
+  def testCollectiveReduceMinMax(self):
+    gpus = config.list_physical_devices('GPU')
+    if len(gpus) != 1:
+      self.skipTest('Expected 1 GPU but found {} GPUs'.format(len(gpus)))
+    config.set_virtual_device_configuration(gpus[0], [
+        context.VirtualDeviceConfiguration(1024),
+        context.VirtualDeviceConfiguration(1024)
+    ])
+    context.ensure_initialized()
+
+    @def_function.function
+    def run_all_reduce(group_key, instance_key, merge_op):
+      group_size = 2
+      t0 = [1., 20., 3., 40., 5.]
+      t1 = [10., 2., 30., 4., 50.]
+      os.environ['NCCL_DEBUG'] = 'INFO'
+      os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
+      with ops.device('/GPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(
+            in0, group_size, group_key, instance_key, merge_op, final_op='Id',
+            communication_hint='nccl')
+      with ops.device('/GPU:1'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(
+            in1, group_size, group_key, instance_key, merge_op, final_op='Id',
+            communication_hint='nccl')
+      return c0, c1
+
+    for combination in [('Max', [10., 20., 30., 40., 50.]),
+                        ('Min', [1., 2., 3., 4., 5.])]:
+      merge_op = combination[0]
+      results = run_all_reduce(group_key=10, instance_key=20, merge_op=merge_op)
+      expected = combination[1]
+      for result in results:
+        self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
 
 if __name__ == '__main__':
