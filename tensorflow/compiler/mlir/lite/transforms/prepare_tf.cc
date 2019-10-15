@@ -162,9 +162,6 @@ using PreparePerTensorFakeQuant =
 using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
     TF::FakeQuantWithMinMaxVarsPerChannelOp>;
 
-using PrepareQuantStats =
-    TFL::ConvertStatsToQDQs<TFL::QuantizeOp, TFL::DequantizeOp>;
-
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
 //
@@ -499,8 +496,6 @@ void PrepareTFPass::runOnFunction() {
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  // Convert quant stats to uint8 quantization parameters.
-  patterns.insert<PrepareQuantStats>(8, false, false, ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
