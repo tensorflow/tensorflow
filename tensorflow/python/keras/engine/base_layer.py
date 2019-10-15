@@ -858,7 +858,7 @@ class Layer(module.Module):
 
     This method can also be called directly on a Functional Model during
     construction. In this case, any loss Tensors passed to this Model must
-    be symbolic and be able to be traced back to the model's `Input`s. These
+    be symbolic and be able to be traced back to the model's `Inputs`. These
     losses become part of the model's topology and are tracked in `get_config`.
 
     Example:
