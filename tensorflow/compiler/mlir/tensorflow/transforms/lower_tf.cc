@@ -16,13 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TF {
 namespace {
+
+#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_lower_tf.inc"
 
 // Infers ExpandDims op output type for the given input type `ty` and dimension
 // to expand at the given `axis`.
@@ -91,6 +96,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerPackOp>(context);
+  populateWithGenerated(context, patterns);
 }
 
 }  // namespace TF
