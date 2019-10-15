@@ -62,6 +62,8 @@ StatusOr<Value*> InsertMlirOp(
       return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kSelect:
+      return {func_builder.create<hlo::SelectOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Opcode ", HloOpcodeString(opcode), " is not supported."));

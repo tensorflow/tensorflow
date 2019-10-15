@@ -67,6 +67,23 @@ ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
 )");
 }
 
+TEST_F(LhloGenTest, Select) {
+  CompileAndVerifyIr(R"(
+HloModule Select
+
+ENTRY %Select (p: pred[2,2], x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %p = pred[2,2]{1,0} parameter(0)
+  %x = f32[2,2]{1,0} parameter(1)
+  %y = f32[2,2]{1,0} parameter(2)
+  ROOT %select = f32[2,2]{1,0} select(pred[2,2]{1,0} %p, f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @select(%[[PRED:.*]]: [[PRED_TYPE:.*]], %[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.select"(%[[PRED]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "select"} : ([[PRED_TYPE]], [[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
 // TODO(pifon): Re-enable the test with ExpOp.
 
 TEST_F(LhloGenTest, AddInGPUDialect) {
