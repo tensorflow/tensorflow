@@ -68,7 +68,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
-      cpu_tensor = constant_op.constant(1, dtype=dtype)
+      with ops.device('CPU:0'):
+        cpu_tensor = constant_op.constant(1, dtype=dtype)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
 
