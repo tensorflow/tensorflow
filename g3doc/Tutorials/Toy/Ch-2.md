@@ -343,7 +343,7 @@ def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // `F64ElementsAttr` corresponds to a 64-bit floating-point ElementsAttr.
   let arguments = (ins F64ElementsAttr:$value);
 
-  // The generic call operation returns a single value of TensorType.
+  // The constant operation returns a single value of TensorType.
   // F64Tensor corresponds to a 64-bit floating-point TensorType.
   let results = (outs F64Tensor);
 }
