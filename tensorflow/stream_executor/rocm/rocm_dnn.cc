@@ -54,7 +54,7 @@ NarrowT CheckedNarrowing(const WideT& wide) {
   return narrow;
 }
 
-const int kImmediateModeVlogLevel = -1;
+const int kImmediateModeVlogLevel = 3;
 
 }  // namespace
 
