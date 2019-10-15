@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -128,14 +129,6 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
     results.clear();
   }
   return results;
-}
-
-// Fill random integer values between [low, high]
-template <typename T>
-void FillRandomIntValues(T* ptr, int num_elements, int low, int high) {
-  for (int i = 0; i < num_elements; ++i) {
-    *ptr++ = static_cast<T>(rand() % (high - low + 1) + low);
-  }
 }
 
 void FillRandomString(tflite::DynamicBuffer* buffer,
@@ -279,13 +272,7 @@ BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {}
 
 void BenchmarkTfLiteModel::CleanUp() {
-  if (inputs_data_.empty()) {
-    return;
-  }
   // Free up any pre-allocated tensor data during PrepareInputData.
-  for (int i = 0; i < inputs_data_.size(); ++i) {
-    delete[] inputs_data_[i].data.raw;
-  }
   inputs_data_.clear();
 }
 
@@ -431,59 +418,54 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     }
     InputTensorData t_data;
     if (t->type == kTfLiteFloat32) {
-      t_data.bytes = sizeof(float) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      std::generate_n(t_data.data.f, num_elements, []() {
+      t_data = InputTensorData::Create<float>(num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
     } else if (t->type == kTfLiteFloat16) {
-      t_data.bytes = sizeof(TfLiteFloat16) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      std::generate_n(t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
-        __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        TfLiteFloat16 f16_placeholder_value;
-        memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-        return f16_placeholder_value;
-      });
+      t_data = InputTensorData::Create<TfLiteFloat16>(
+          num_elements, []() -> TfLiteFloat16 {
+            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+            TfLiteFloat16 f16_placeholder_value;
+            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+            return f16_placeholder_value;
+          });
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
 #endif
     } else if (t->type == kTfLiteInt64) {
-      t_data.bytes = sizeof(int64_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      FillRandomIntValues<int64_t>(t_data.data.i64, num_elements, low, high);
+      t_data = InputTensorData::Create<int64_t>(num_elements, [=]() {
+        return static_cast<int64_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt32) {
-      // TODO(yunluli): This is currently only used for handling embedding input
-      // for speech models. Generalize if necessary.
-      t_data.bytes = sizeof(int32_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      FillRandomIntValues<int32_t>(t_data.data.i32, num_elements, low, high);
+      t_data = InputTensorData::Create<int32_t>(num_elements, [=]() {
+        return static_cast<int32_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt16) {
-      t_data.bytes = sizeof(int16_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      FillRandomIntValues<int16_t>(t_data.data.i16, num_elements, low, high);
+      t_data = InputTensorData::Create<int16_t>(num_elements, [=]() {
+        return static_cast<int16_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteUInt8) {
-      t_data.bytes = sizeof(uint8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 254;
-      FillRandomIntValues<uint8_t>(t_data.data.uint8, num_elements, low, high);
+      t_data = InputTensorData::Create<uint8_t>(num_elements, [=]() {
+        return static_cast<uint8_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt8) {
-      t_data.bytes = sizeof(int8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
       int low = has_value_range ? low_range : -127;
       int high = has_value_range ? high_range : 127;
-      FillRandomIntValues<int8_t>(t_data.data.int8, num_elements, low, high);
+      t_data = InputTensorData::Create<int8_t>(num_elements, [=]() {
+        return static_cast<int8_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
@@ -491,7 +473,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
                         << " of type " << t->type;
       return kTfLiteError;
     }
-    inputs_data_.push_back(t_data);
+    inputs_data_.push_back(std::move(t_data));
   }
   return kTfLiteOk;
 }
@@ -510,7 +492,8 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
       });
       buffer.WriteToTensor(t, /*new_shape=*/nullptr);
     } else {
-      std::memcpy(t->data.raw, inputs_data_[j].data.raw, inputs_data_[j].bytes);
+      std::memcpy(t->data.raw, inputs_data_[j].data.get(),
+                  inputs_data_[j].bytes);
     }
   }
 
