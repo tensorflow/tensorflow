@@ -74,7 +74,7 @@ the IR and replacing it with a different set of operations, we can plug into the
 MLIR `Canonicalizer` pass by implementing a `RewritePattern`:
 
 ```c++
-/// Fold transpose(transpose(x) -> transpose(x)
+/// Fold transpose(transpose(x)) -> transpose(x)
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
   /// We register this pattern to match every toy.transpose in the IR.
   /// The "benefit" is used by the framework to order the patterns and process
@@ -119,7 +119,7 @@ void TransposeOp::getCanonicalizationPatterns(
 ```
 
 We also need to update our main file, `toyc.cpp`, to add an optimization
-pipeline. In MLIR, the optimizations are ran through a `PassManager` in a
+pipeline. In MLIR, the optimizations are run through a `PassManager` in a
 similar way to LLVM:
 
 ```c++
@@ -127,7 +127,7 @@ similar way to LLVM:
   pm.addPass(mlir::createCanonicalizerPass());
 ```
 
-Finally, we can try to run `toyc test/transpose_transpose.toy -emit=mlir -opt`
+Finally, we can try to run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt`
 and observe our pattern in action:
 
 ```MLIR(.mlir)
@@ -242,7 +242,7 @@ module {
 }
 ```
 
-We can try to run `toyc test/trivialReshape.toy -emit=mlir -opt` and observe our
+We can try to run `toyc-ch3 test/trivialReshape.toy -emit=mlir -opt` and observe our
 pattern in action:
 
 ```MLIR(.mlir)
