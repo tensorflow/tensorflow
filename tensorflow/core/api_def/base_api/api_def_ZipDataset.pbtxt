@@ -19,11 +19,10 @@ END
   }
   summary: "Creates a dataset that zips together `input_datasets`."
   description: <<END
-The resulting dataset will produce a stream of elements, whose elements are 
-created by zipping corresponding elements from each of the input datasets.
+The elements of the resulting dataset are created by zipping corresponding 
+elements from each of the input datasets.
 
-The stream will stop as soon as any one of the input datasets runs out 
-of elements, and no error will be raised if the other datasets contain 
-additional data.
+The size of the resulting dataset will match the size of the smallest input
+dataset, and no error will be raised if input datasets have different sizes.
 END
 }
