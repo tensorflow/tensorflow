@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MEMORY_PLANNER_GREEDY_MEMORY_PLANNER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MEMORY_PLANNER_GREEDY_MEMORY_PLANNER_H_
 
+#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/memory_planner/memory_planner.h"
 
 namespace tflite {
@@ -86,6 +87,7 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   };
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
   // Whether a buffer is active in a given time range.
   bool DoesEntryOverlapInTime(const ListEntry* entry, const int first_time_used,
                               const int last_time_used) const;

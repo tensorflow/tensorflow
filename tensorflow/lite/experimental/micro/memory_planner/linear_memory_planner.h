@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MEMORY_PLANNER_LINEAR_MEMORY_PLANNER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MEMORY_PLANNER_LINEAR_MEMORY_PLANNER_H_
 
+#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/memory_planner/memory_planner.h"
 
 namespace tflite {
@@ -36,6 +37,7 @@ class LinearMemoryPlanner : public MemoryPlanner {
                                   int buffer_index, int* offset) override;
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
   static constexpr int kMaxBufferCount = 1024;
   int buffer_offsets_[kMaxBufferCount];
   int current_buffer_count_;
