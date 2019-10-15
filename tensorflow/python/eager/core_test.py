@@ -745,12 +745,14 @@ class TFETest(test_util.TensorFlowTestCase):
                'container', '', 'shared_name', ''))
 
   def testExecuteShapeAttrBadValue(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Expecting a Dimension for attr shape, got object'):
       execute(
           b'VarHandleOp',
           num_outputs=1,
           inputs=[],
-          attrs=('shape', 1, 'dtype', dtypes.int32.as_datatype_enum,
+          attrs=('shape', [object()], 'dtype', dtypes.int32.as_datatype_enum,
                  'container', '', 'shared_name', ''))
 
   def testExecuteListStringAttr(self):
