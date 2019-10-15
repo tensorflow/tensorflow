@@ -21,7 +21,20 @@ namespace tflite {
 
 namespace reference_ops {
 
-// Return true for broadcast case, false otherwise.
+// Consolidates dimensions in broadcast inputs, checks for five-fold pattern.
+//
+// For example, if sequence of dimensions of one input is
+// ..., 1, 3, 1, 7, 9, 5,... and the other is ..., 2, 3, 1, 7, 1, 1, ...
+// we can consolidate these as
+// ..., 1, 3*7, 9*5, ... and 2, 3*7, 1.
+//
+// The category is updated in the less-frequent case of shapes that are
+// not suited to a fivefold-loop broadcast.
+//
+// Falls back to generic pattern when it does not know how to process properly.
+//
+// Returns true iff there is some sort of broadcast, which includes five-fold
+// patterns and falling back to generic broadcast.
 inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
                                    const RuntimeShape& shape1,
                                    tflite::ArithmeticParams* params) {
@@ -52,8 +65,10 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
           BroadcastableOpCategory::kSecondInputBroadcastsFast;
       break;
     } else {
+      // This case is erroneous: there is a dimension that does not match and
+      // is not a broadcast from one shape to the other.
       params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
-      break;
+      return true;
     }
   }
 
