@@ -155,6 +155,10 @@ private:
     return specConstMap.lookup(id);
   }
 
+  /// Creates a spirv::SpecConstantOp.
+  spirv::SpecConstantOp createSpecConstant(Location loc, uint32_t resultID,
+                                           Attribute defaultValue);
+
   /// Processes the OpVariable instructions at current `offset` into `binary`.
   /// It is expected that this method is used for variables that are to be
   /// defined at module scope and will be deserialized into a spv.globalVariable
@@ -608,6 +612,7 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     return emitError(unknownLoc, "invalid Decoration code : ") << words[1];
   }
   auto attrName = convertToSnakeCase(decorationName);
+  auto symbol = opBuilder.getIdentifier(attrName);
   switch (static_cast<spirv::Decoration>(words[1])) {
   case spirv::Decoration::DescriptorSet:
   case spirv::Decoration::Binding:
@@ -616,24 +621,23 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
              << decorationName << " needs a single integer literal";
     }
     decorations[words[0]].set(
-        opBuilder.getIdentifier(attrName),
-        opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
+        symbol, opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
   case spirv::Decoration::BuiltIn:
     if (words.size() != 3) {
       return emitError(unknownLoc, "OpDecorate with ")
              << decorationName << " needs a single integer literal";
     }
-    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
-                              opBuilder.getStringAttr(stringifyBuiltIn(
-                                  static_cast<spirv::BuiltIn>(words[2]))));
+    decorations[words[0]].set(
+        symbol, opBuilder.getStringAttr(
+                    stringifyBuiltIn(static_cast<spirv::BuiltIn>(words[2]))));
     break;
   case spirv::Decoration::ArrayStride:
     if (words.size() != 3) {
       return emitError(unknownLoc, "OpDecorate with ")
              << decorationName << " needs a single integer literal";
     }
-    typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
+    typeDecorations[words[0]] = words[2];
     break;
   case spirv::Decoration::Block:
   case spirv::Decoration::BufferBlock:
@@ -645,8 +649,15 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     // verification.
     // TODO: Update StructType to contain this information since
     // it is needed for many validation rules.
-    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
-                              opBuilder.getUnitAttr());
+    decorations[words[0]].set(symbol, opBuilder.getUnitAttr());
+    break;
+  case spirv::Decoration::SpecId:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecoration with ")
+             << decorationName << "needs a single integer literal";
+    }
+    decorations[words[0]].set(
+        symbol, opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
@@ -870,6 +881,20 @@ std::string Deserializer::getSpecConstantSymbol(uint32_t id) {
     constName = "spirv_spec_const_" + std::to_string(id);
   }
   return constName;
+}
+
+spirv::SpecConstantOp Deserializer::createSpecConstant(Location loc,
+                                                       uint32_t resultID,
+                                                       Attribute defaultValue) {
+  auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
+  auto op = opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName,
+                                                    defaultValue);
+  if (decorations.count(resultID)) {
+    for (auto attr : decorations[resultID].getAttrs())
+      op.setAttr(attr.first, attr.second);
+  }
+  specConstMap[resultID] = op;
+  return op;
 }
 
 LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
@@ -1264,10 +1289,7 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
     auto attr = opBuilder.getIntegerAttr(intType, value);
 
     if (isSpec) {
-      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-      auto op =
-          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-      specConstMap[resultID] = op;
+      createSpecConstant(unknownLoc, resultID, attr);
     } else {
       // For normal constants, we just record the attribute (and its type) for
       // later materialization at use sites.
@@ -1302,10 +1324,7 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
 
     auto attr = opBuilder.getFloatAttr(floatType, value);
     if (isSpec) {
-      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-      auto op =
-          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-      specConstMap[resultID] = op;
+      createSpecConstant(unknownLoc, resultID, attr);
     } else {
       // For normal constants, we just record the attribute (and its type) for
       // later materialization at use sites.
@@ -1332,10 +1351,7 @@ LogicalResult Deserializer::processConstantBool(bool isTrue,
   auto attr = opBuilder.getBoolAttr(isTrue);
   auto resultID = operands[1];
   if (isSpec) {
-    auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-    auto op =
-        opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-    specConstMap[resultID] = op;
+    createSpecConstant(unknownLoc, resultID, attr);
   } else {
     // For normal constants, we just record the attribute (and its type) for
     // later materialization at use sites.

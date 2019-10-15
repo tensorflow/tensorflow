@@ -45,6 +45,7 @@ static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
 static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
+static constexpr const char kSpecIdAttrName[] = "spec_id";
 static constexpr const char kTypeAttrName[] = "type";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
@@ -1949,8 +1950,19 @@ static ParseResult parseSpecConstantOp(OpAsmParser &parser,
   Attribute valueAttr;
 
   if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
-                             state.attributes) ||
-      parser.parseEqual() ||
+                             state.attributes))
+    return failure();
+
+  // Parse optional spec_id.
+  if (succeeded(parser.parseOptionalKeyword(kSpecIdAttrName))) {
+    IntegerAttr specIdAttr;
+    if (parser.parseLParen() ||
+        parser.parseAttribute(specIdAttr, kSpecIdAttrName, state.attributes) ||
+        parser.parseRParen())
+      return failure();
+  }
+
+  if (parser.parseEqual() ||
       parser.parseAttribute(valueAttr, kDefaultValueAttrName, state.attributes))
     return failure();
 
@@ -1960,11 +1972,17 @@ static ParseResult parseSpecConstantOp(OpAsmParser &parser,
 static void print(spirv::SpecConstantOp constOp, OpAsmPrinter &printer) {
   printer << spirv::SpecConstantOp::getOperationName() << ' ';
   printer.printSymbolName(constOp.sym_name());
+  if (auto specID = constOp.getAttrOfType<IntegerAttr>(kSpecIdAttrName))
+    printer << ' ' << kSpecIdAttrName << '(' << specID.getInt() << ')';
   printer << " = ";
   printer.printAttribute(constOp.default_value());
 }
 
 static LogicalResult verify(spirv::SpecConstantOp constOp) {
+  if (auto specID = constOp.getAttrOfType<IntegerAttr>(kSpecIdAttrName))
+    if (specID.getValue().isNegative())
+      return constOp.emitOpError("SpecId cannot be negative");
+
   auto value = constOp.default_value();
 
   switch (value.getKind()) {
