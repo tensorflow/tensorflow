@@ -770,12 +770,26 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                       const TestDataset& dataset,
                       std::unique_ptr<TestIterator>* iterator);
 
+  // Runs the dataset operation according to the predefined dataset params and
+  // produces outputs.
+  Status RunDatasetOp(const DatasetParams& dataset_params,
+                      std::vector<Tensor>* outputs);
+
  protected:
   // Make destructor protected so that DatasetOpsTestBaseV2 objects cannot
   // be instantiated directly. Only subclasses can be instantiated.
   virtual ~DatasetOpsTestBaseV2(){};
 
  private:
+  // Runs the dataset operation according to the predefined dataset params and
+  // the produced outputs will be stored in `dataset_ctx`.
+  Status RunDatasetOp(
+      const DatasetParams& dataset_params,
+      std::unique_ptr<OpKernel>* dataset_kernel,
+      std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
+      std::vector<std::unique_ptr<Tensor>>* created_tensors,
+      std::unique_ptr<OpKernelContext>* dataset_ctx);
+
   Status MakeDataset(
       const DatasetParams& dataset_params,
       std::unique_ptr<OpKernel>* dataset_kernel,

@@ -757,13 +757,12 @@ Status DatasetOpsTestBaseV2::MakeDataset(
   return Status::OK();
 }
 
-Status DatasetOpsTestBaseV2::MakeDataset(
+Status DatasetOpsTestBaseV2::RunDatasetOp(
     const DatasetParams& dataset_params,
     std::unique_ptr<OpKernel>* dataset_kernel,
     std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
-    std::unique_ptr<OpKernelContext>* dataset_ctx,
     std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    DatasetBase** dataset) {
+    std::unique_ptr<OpKernelContext>* dataset_ctx) {
   std::vector<Tensor*> input_datasets;
   for (auto& input : dataset_params.input_dataset_params()) {
     std::unique_ptr<Tensor> t;
@@ -787,8 +786,23 @@ Status DatasetOpsTestBaseV2::MakeDataset(
   TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, dataset_kernel));
   TF_RETURN_IF_ERROR(CreateDatasetContext(dataset_kernel->get(), &inputs,
                                           dataset_ctx_params, dataset_ctx));
-  TF_RETURN_IF_ERROR(
-      CreateDataset(dataset_kernel->get(), dataset_ctx->get(), dataset));
+  TF_RETURN_IF_ERROR(RunOpKernel(dataset_kernel->get(), dataset_ctx->get()));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::MakeDataset(
+    const DatasetParams& dataset_params,
+    std::unique_ptr<OpKernel>* dataset_kernel,
+    std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
+    std::unique_ptr<OpKernelContext>* dataset_ctx,
+    std::vector<std::unique_ptr<Tensor>>* created_tensors,
+    DatasetBase** dataset) {
+  TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, dataset_kernel,
+                                  dataset_ctx_params, created_tensors,
+                                  dataset_ctx));
+  // Assume that DatasetOp has only one output.
+  DCHECK_EQ((*dataset_ctx)->num_outputs(), 1);
+  TF_RETURN_IF_ERROR(GetDatasetFromContext(dataset_ctx->get(), 0, dataset));
   return Status::OK();
 }
 
@@ -803,6 +817,16 @@ Status DatasetOpsTestBaseV2::MakeIterator(
       iterator_ctx.get(), dataset_params.iterator_prefix(), &iterator_base));
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::RunDatasetOp(const DatasetParams& dataset_params,
+                                          std::vector<Tensor>* outputs) {
+  TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, &dataset_kernel_, &params_,
+                                  &tensors_, &dataset_ctx_));
+  for (int i = 0; i < dataset_ctx_->num_outputs(); ++i) {
+    outputs->emplace_back(*dataset_ctx_->mutable_output(i));
+  }
   return Status::OK();
 }
 
