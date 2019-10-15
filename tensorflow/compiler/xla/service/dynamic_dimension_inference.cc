@@ -85,6 +85,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
 
+  Status HandleClamp(HloInstruction* hlo) override;
+
   Status HandleWhile(HloInstruction* hlo) override;
 
   Status HandleSlice(HloInstruction* hlo) override;
@@ -508,6 +510,10 @@ Status DynamicDimensionInferenceVisitor::HandleSelect(HloInstruction* hlo) {
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
     HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
+}
+
+Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
 }
 

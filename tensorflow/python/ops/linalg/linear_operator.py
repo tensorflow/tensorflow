@@ -1052,6 +1052,28 @@ class LinearOperator(module.Module):
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 
+  def _eigvals(self):
+    return linalg_ops.self_adjoint_eigvals(self.to_dense())
+
+  def eigvals(self, name="eigvals"):
+    """Returns the eigenvalues of this linear operator.
+
+    If the operator is marked as self-adjoint (via `is_self_adjoint`)
+    this computation can be more efficient.
+
+    Note: This currently only supports self-adjoint operators.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb, N]` `Tensor` of same `dtype` as `self`.
+    """
+    if not self.is_self_adjoint:
+      raise NotImplementedError("Only self-adjoint matrices are supported.")
+    with self._name_scope(name):
+      return self._eigvals()
+
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
 

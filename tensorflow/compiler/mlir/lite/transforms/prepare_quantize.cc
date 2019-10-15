@@ -161,8 +161,12 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
+using PrepareQuantStats =
+    TFL::ConvertStatsToQDQs<TFL::QuantizeOp, TFL::DequantizeOp>;
+
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
+  MLIRContext* ctx = func.getContext();
 
   // Set the quantization parameters for the quantizable input nodes. If this
   // failed, return the function immediately.
@@ -171,13 +175,19 @@ void PrepareQuantizePass::runOnFunction() {
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
+  OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferneceType();
   if (is_signed) {
-    OwningRewritePatternList patterns;
-    patterns.insert<ConvertUnsignedToSigned<TFL::QuantizeOp>>(
-        func.getContext());
-    applyPatternsGreedily(func, patterns);
+    patterns.insert<ConvertUnsignedToSigned<TFL::QuantizeOp>>(ctx);
+    // Convert quant stats to int8 quantization parameters.
+    // Currently, only activation stats are imported, so narrow_range = false.
+    patterns.insert<PrepareQuantStats>(8, false, true, ctx);
+  } else {
+    // Convert quant stats to uint8 quantization parameters.
+    // Currently, only activation stats are imported, so narrow_range = false.
+    patterns.insert<PrepareQuantStats>(8, false, false, ctx);
   }
+  applyPatternsGreedily(func, patterns);
 
   ApplyQuantizationParamsPropagation(func, is_signed, GetOpQuantSpec);
 }

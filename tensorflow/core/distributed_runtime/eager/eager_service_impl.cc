@@ -153,8 +153,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
-      remote_workers, request->context_id(), std::move(rendezvous_creator),
-      std::move(remote_mgr));
+      remote_workers, request->context_id(), request->context_view_id(),
+      std::move(rendezvous_creator), std::move(remote_mgr));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();

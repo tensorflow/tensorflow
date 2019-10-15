@@ -106,8 +106,7 @@ Simple usage:
             "%s: Perform only straightforward conversions to upgrade to "
             "2.0. In more difficult cases, switch to use compat.v1.\n"
             "%s: Keep 1.* code intact and import compat.v1 "
-            "module. Also disable 2.0 behavior to ensure code "
-            "that requires 1.X behavior continues to work." %
+            "module." %
             (_DEFAULT_MODE, _SAFETY_MODE)),
       default=_DEFAULT_MODE)
   parser.add_argument(

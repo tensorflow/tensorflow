@@ -925,6 +925,7 @@ Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
+    uint64 context_view_id,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -945,7 +946,7 @@ Status EagerContext::InitializeRemoteWorker(
 
   remote_contexts_ = remote_contexts;
   context_id_ = context_id;
-  context_view_id_ = 0;
+  context_view_id_ = context_view_id;
 
   rendezvous_creator_ = std::move(rendezvous_creator);
   remote_eager_workers_ = std::move(remote_eager_workers);

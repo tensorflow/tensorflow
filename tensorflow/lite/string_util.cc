@@ -15,20 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/string_util.h"
 
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
+
 #include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
-namespace {
-
-// Convenient method to get pointer to int32_t.
-const int32_t* GetIntPtr(const char* ptr) {
-  return reinterpret_cast<const int32_t*>(ptr);
-}
-
-}  // namespace
 
 void DynamicBuffer::AddString(const char* str, size_t len) {
   data_.resize(data_.size() + len);
@@ -117,9 +110,9 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
                     tensor->is_variable, tensor);
 }
 
-int GetStringCount(const char* raw_buffer) {
+int GetStringCount(const void* raw_buffer) {
   // The first integers in the raw buffer is the number of strings.
-  return *GetIntPtr(raw_buffer);
+  return *static_cast<const int32_t*>(raw_buffer);
 }
 
 int GetStringCount(const TfLiteTensor* tensor) {
@@ -127,11 +120,11 @@ int GetStringCount(const TfLiteTensor* tensor) {
   return GetStringCount(tensor->data.raw);
 }
 
-StringRef GetString(const char* raw_buffer, int string_index) {
+StringRef GetString(const void* raw_buffer, int string_index) {
   const int32_t* offset =
-      GetIntPtr(raw_buffer + sizeof(int32_t) * (string_index + 1));
-  return {
-      raw_buffer + (*offset),
+      static_cast<const int32_t*>(raw_buffer) + (string_index + 1);
+  return StringRef{
+      static_cast<const char*>(raw_buffer) + (*offset),
       (*(offset + 1)) - (*offset),
   };
 }

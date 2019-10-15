@@ -15,12 +15,14 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -211,6 +213,33 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// Pad op utilities.
+//===----------------------------------------------------------------------===//
+
+static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
+    Builder *b, ElementsAttr input, int column) {
+  auto int_attr = input.cast<DenseIntElementsAttr>();
+  auto shaped_type = int_attr.getType();
+  auto element_type = shaped_type.getElementType();
+  auto shape = shaped_type.getShape();
+
+  if (shape.size() != 2) return DenseIntElementsAttr();
+
+  llvm::SmallVector<int64_t, 4> values;
+  values.reserve(shaped_type.getNumElements() / shape[1]);
+
+  for (auto it : llvm::enumerate(int_attr.getIntValues())) {
+    if (it.index() % shape[1] == column) {
+      values.push_back(it.value().getSExtValue());
+    }
+  }
+
+  return DenseIntElementsAttr::get<int64_t>(
+             b->getTensorType({shape[0]}, element_type), values)
+      .cast<DenseIntElementsAttr>();
+}
+
+//===----------------------------------------------------------------------===//
 // Binary op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -218,7 +247,7 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 template <typename T>
 static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
   auto valType = val->getType().cast<TensorType>();
-  auto valElementType = valType.getElementType();
+  auto valElementType = getElementTypeOrSelf(val->getType());
 
   // Handle integer elements.
   Attribute elementAttr;
@@ -228,7 +257,8 @@ static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
     elementAttr = b.getFloatAttr(valElementType, constant);
   else
     llvm_unreachable("unhandled element type");
-  return DenseElementsAttr::get(valType, elementAttr);
+
+  return DenseIntElementsAttr::get(valType, elementAttr);
 }
 
 // Returns whether the two values are guaranteed to be broadcastable to the
@@ -290,6 +320,18 @@ static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
   RankedTensorType type = b.getTensorType({minRank}, b.getIntegerType(64));
   return DenseIntElementsAttr::get<int64_t>(type, broadcastDimensions)
       .cast<DenseIntElementsAttr>();
+}
+
+// Return a new TensorType the same rank and dimensions as the input with an
+// updated element type.
+static Type ChangeTensorElementType(Builder *b, Type tensor_type,
+                                    Type element_type) {
+  RankedTensorType ranked_type = tensor_type.dyn_cast<RankedTensorType>();
+  if (ranked_type) {
+    return b->getTensorType(ranked_type.getShape(), element_type);
+  }
+
+  return b->getTensorType(element_type);
 }
 
 //===----------------------------------------------------------------------===//
@@ -587,6 +629,55 @@ class ConvertConv : public OpRewritePattern<OpT> {
 };
 
 using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
+
+// Converts BF16 FloorDiv op to have casting operators on either end as BF16
+// division can result in strange behavior.
+//
+//      floordiv = cast(floordiv(cast(left), cast(right))))
+//
+//   %left_cast = cast(%left)
+//   %right_cast = cast(%right)
+//   %div = div(%left, %left)
+//   %floored = floor(%div)
+//   %floored_cast = cast(%floored)
+//
+// Required to manually specify the intermediate types.
+class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
+ public:
+  explicit ConvertBF16FloorDivOp(MLIRContext *context)
+      : OpRewritePattern<TF::FloorDivOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::FloorDivOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto l = op.x();
+    auto r = op.y();
+    auto element_type = getElementTypeOrSelf(l->getType());
+    if (!element_type.isBF16()) return matchFailure();
+
+    auto out_type = op.z()->getType().cast<TensorType>();
+
+    RankedTensorType l_type = op.x()->getType().dyn_cast<RankedTensorType>();
+    RankedTensorType r_type = op.y()->getType().dyn_cast<RankedTensorType>();
+
+    auto new_l_type =
+        ChangeTensorElementType(&rewriter, l_type, rewriter.getF32Type());
+    auto new_r_type =
+        ChangeTensorElementType(&rewriter, r_type, rewriter.getF32Type());
+
+    l = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_l_type, l);
+    r = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_r_type, r);
+
+    auto intermediate_type = rewriter.create<TF::FloorDivOp>(
+        op.getLoc(),
+        ChangeTensorElementType(&rewriter, out_type, rewriter.getF32Type()), l,
+        r);
+
+    auto floor_op = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), out_type,
+                                                        intermediate_type);
+    rewriter.replaceOp(op, floor_op.getResult());
+    return Pattern::matchSuccess();
+  }
+};
 
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
@@ -1280,6 +1371,63 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
   }
 };
 
+class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::OneHotOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+    if (!indices_ty || !indices_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> indices_shape = indices_ty.getShape();
+    Type element_type = indices_ty.getElementType();
+
+    DenseIntElementsAttr depth_attr;
+    if (!matchPattern(op.depth(), m_Constant(&depth_attr))) {
+      return matchFailure();
+    }
+
+    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    int64_t axis = op.axis().getSExtValue();
+    if (axis == -1) axis = indices_shape.size();
+
+    llvm::SmallVector<int64_t, 4> broadcast_dims(indices_shape.size());
+    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+
+    llvm::SmallVector<int64_t, 4> output_dims =
+        llvm::to_vector<4>(indices_shape);
+    output_dims.insert(output_dims.begin() + axis, depth);
+
+    auto index_type = rewriter.getTensorType(output_dims, element_type);
+    auto compare_type =
+        rewriter.getTensorType(output_dims, rewriter.getIntegerType(1));
+
+    Location loc = op.getLoc();
+    Value *compare = rewriter.create<xla_hlo::CompareOp>(
+        loc, compare_type, op.indices(),
+        rewriter.create<xla_hlo::IotaOp>(
+            loc, index_type,
+            IntegerAttr::get(rewriter.getIntegerType(64), axis)),
+        GetI64ElementsAttr(broadcast_dims, &rewriter),
+        StringAttr::get("EQ", rewriter.getContext()));
+    Value *on_value = rewriter.create<xla_hlo::BroadcastOp>(
+        loc, op.getType(), op.on_value(),
+        GetI64ElementsAttr(output_dims, &rewriter));
+    Value *off_value = rewriter.create<xla_hlo::BroadcastOp>(
+        loc, op.getType(), op.off_value(),
+        GetI64ElementsAttr(output_dims, &rewriter));
+    Value *result = rewriter.create<xla_hlo::SelectOp>(
+        loc, op.getType(), compare, on_value, off_value);
+
+    rewriter.replaceOp(
+        op, {result},
+        {op.indices(), op.on_value(), op.depth(), op.off_value()});
+
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
@@ -1296,14 +1444,15 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertConv2D,
-                  mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertBF16FloorDivOp,
+                  mlir::xla::ConvertConv2D, mlir::xla::ConvertMaxPoolOp,
+                  mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
                   mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
-                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp>(
-      op->getContext());
+                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp,
+                  mlir::xla::ConvertOneHotOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

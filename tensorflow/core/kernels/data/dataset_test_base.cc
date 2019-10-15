@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
+#include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
@@ -814,10 +815,10 @@ Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  NodeDef node_def =
-      test::function::NDef(dataset_params.node_name(),
-                           name_utils::OpName(dataset_params.op_name(), params),
-                           input_names, attributes);
+  NodeDef node_def = test::function::NDef(
+      dataset_params.node_name(),
+      name_utils::OpName(dataset_params.dataset_type(), params), input_names,
+      attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
   return Status::OK();
 }
@@ -910,12 +911,7 @@ Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status RangeDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeRangeDataset();
-  return Status::OK();
-}
-
-string RangeDatasetParams::op_name() const {
+string RangeDatasetParams::dataset_type() const {
   return RangeDatasetOp::kDatasetType;
 }
 
@@ -940,12 +936,7 @@ Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status BatchDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeBatchDataset();
-  return Status::OK();
-}
-
-string BatchDatasetParams::op_name() const {
+string BatchDatasetParams::dataset_type() const {
   return BatchDatasetOp::kDatasetType;
 }
 
@@ -973,15 +964,9 @@ Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status MapDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  std::vector<string> input_names;
-  TF_RETURN_IF_ERROR(GetInputNames(&input_names));
-  bool has_other_args = input_names.size() > 1;
-  *fdef = test::function::MakeMapDataset(has_other_args);
-  return Status::OK();
+string MapDatasetParams::dataset_type() const {
+  return MapDatasetOp::kDatasetType;
 }
-
-string MapDatasetParams::op_name() const { return MapDatasetOp::kDatasetType; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
@@ -1036,12 +1021,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
-Status TensorSliceDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeTensorSliceDataset();
-  return Status::OK();
-}
-
-string TensorSliceDatasetParams::op_name() const {
+string TensorSliceDatasetParams::dataset_type() const {
   return TensorSliceDatasetOp::kDatasetType;
 }
 
@@ -1051,9 +1031,7 @@ std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
 
 Status TakeDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  input_names->reserve(input_dataset_params_.size() + 1);
-  input_names->emplace_back(TakeDatasetOp::kInputDataset);
-  input_names->emplace_back(TakeDatasetOp::kCount);
+  *input_names = {TakeDatasetOp::kInputDataset, TakeDatasetOp::kCount};
   return Status::OK();
 }
 
@@ -1063,13 +1041,30 @@ Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status TakeDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeTakeDataset();
+string TakeDatasetParams::dataset_type() const {
+  return TakeDatasetOp::kDatasetType;
+}
+
+std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
+  return {};
+}
+
+Status ConcatenateDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  *input_names = {ConcatenateDatasetOp::kInputDataset,
+                  ConcatenateDatasetOp::kAnotherDataset};
   return Status::OK();
 }
 
-string TakeDatasetParams::op_name() const {
-  return TakeDatasetOp::kDatasetType;
+Status ConcatenateDatasetParams::GetAttributes(
+    AttributeVector* attr_vector) const {
+  *attr_vector = {{ConcatenateDatasetOp::kOutputTypes, output_dtypes_},
+                  {ConcatenateDatasetOp::kOutputShapes, output_shapes_}};
+  return Status::OK();
+}
+
+string ConcatenateDatasetParams::dataset_type() const {
+  return ConcatenateDatasetOp::kDatasetType;
 }
 
 }  // namespace data

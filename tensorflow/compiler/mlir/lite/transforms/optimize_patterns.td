@@ -52,61 +52,37 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
 
-// If we see an add op adding a constant value to a convolution op with constant
-// bias, we can fuse the add into the convolution op by constant folding the
-// bias and the add op's constant operand.
-// The following pattern restricts to float constant values for now.
-def : Pat<(TFL_AddOp (TFL_Conv2DOp $input, $filter,
+// If we see a binary op (add, sub) op adding a constant value to a convolution
+// op with constant bias, we can fuse the binary op into the convolution op by
+// constant folding the bias and the binary op's constant operand. The following
+// pattern restricts to float constant values for now.
+multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
+  def : Pat<(binaryOp (TFL_Conv2DOp $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w),
                      (ConstantOp F32ElementsAttr:$value), $act_fn),
           (TFL_Conv2DOp $input, $filter,
-                        (TFL_AddOp (ConstantOp $bias),
+                        (binaryOp (ConstantOp $bias),
                                    (ConstantOp $value), TFL_AF_None),
                         $h_factor, $w_factor, $act_fn,
                         $padding, $stride_h, $stride_w)>;
-def : Pat<(TFL_AddOp (TFL_DepthwiseConv2DOp $input, $filter,
+  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
                      (ConstantOp F32ElementsAttr:$value), $act_fn),
           (TFL_DepthwiseConv2DOp $input, $filter,
-                          (TFL_AddOp (ConstantOp $bias),
+                          (binaryOp (ConstantOp $bias),
                                      (ConstantOp $value),
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier)>;
-
-// If we see an sub op adding a constant value to a convolution op with constant
-// bias, we can fuse the sub into the convolution op by constant folding the
-// bias and the sub op's constant operand.
-// The following pattern restricts to float constant values for now.
-def : Pat<(TFL_SubOp (TFL_Conv2DOp $input, $filter,
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_Conv2DOp $input, $filter,
-                        (TFL_SubOp (ConstantOp $bias),
-                                   (ConstantOp $value), TFL_AF_None),
-                        $h_factor, $w_factor, $act_fn,
-                        $padding, $stride_h, $stride_w)>;
-def : Pat<(TFL_SubOp (TFL_DepthwiseConv2DOp $input, $filter,
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_DepthwiseConv2DOp $input, $filter,
-                          (TFL_SubOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier)>;
+}
+foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
+  defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
@@ -116,13 +92,14 @@ def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
 def ExpandTo4DForDepthwiseConv: NativeCodeCall<
   "ExpandTo4DForDepthwiseConv($0)">;
 
-// If we see a div op multiplying a constant value to a convolution op with
-// constant filter and bias, we can fuse the division into the convolution
-// op by constant folding the filter/bias and the div op's constant operand.
+// If we see a (div or Mul) op (dividing/multiplying) a constant value
+// to a convolution op with constant filter and bias, we can fuse the div/mul
+// into the convolution op by constant folding
+// the filter/bias and the div/mul op's constant operand.
 // The following pattern restricts to float constant values for now.
-// Note the Div pattern is similar to the Mul pattern.
-// TODO(karimnosseir): generalize pattern and avoid duplication.
-def : Pat<(TFL_DivOp (TFL_DepthwiseConv2DOp $input,
+
+multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
+  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -130,71 +107,37 @@ def : Pat<(TFL_DivOp (TFL_DepthwiseConv2DOp $input,
                           $multiplier),
                      (ConstantOp F32ElementsAttr:$value), $act_fn),
           (TFL_DepthwiseConv2DOp $input,
-                          (TFL_DivOp (ConstantOp $filter),
+                          (BinaryOp (ConstantOp $filter),
                                      (ConstantOp
                                        (ExpandTo4DForDepthwiseConv $value)),
                                      TFL_AF_None),
-                          (TFL_DivOp (ConstantOp $bias),
+                          (BinaryOp (ConstantOp $bias),
                                      (ConstantOp $value),
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
           [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
-
-def : Pat<(TFL_DivOp (TFL_Conv2DOp $input,
+  def : Pat<(BinaryOp (TFL_Conv2DOp $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w),
                      (ConstantOp F32ElementsAttr:$value), $act_fn),
           (TFL_Conv2DOp $input,
-                          (TFL_DivOp (ConstantOp $filter),
+                          (BinaryOp (ConstantOp $filter),
                                      (ConstantOp (ExpandTo4DForConv $value)),
                                      TFL_AF_None),
-                          (TFL_DivOp (ConstantOp $bias),
+                          (BinaryOp (ConstantOp $bias),
                                      (ConstantOp $value),
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w),
           [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+}
 
-def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_DepthwiseConv2DOp $input,
-                          (TFL_MulOp (ConstantOp $filter),
-                                     (ConstantOp (
-                                       ExpandTo4DForDepthwiseConv $value)),
-                                     TFL_AF_None),
-                          (TFL_MulOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
-
-def : Pat<(TFL_MulOp (TFL_Conv2DOp $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_Conv2DOp $input,
-                          (TFL_MulOp (ConstantOp $filter),
-                                     (ConstantOp (ExpandTo4DForConv $value)),
-                                     TFL_AF_None),
-                          (TFL_MulOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w),
-          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
+  defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
 
 // This pattern applies when the same quantize/dequantize have been used twice

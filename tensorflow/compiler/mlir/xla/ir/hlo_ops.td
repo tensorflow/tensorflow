@@ -155,6 +155,12 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     HLO_Tensor:$rhs,
     BroadcastDimAttr:$broadcast_dimensions
   );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "DenseIntElementsAttr broadcast_dimensions"
+  >];
+
   let results = (outs HLO_Tensor);
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
@@ -174,6 +180,9 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
+
+def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
@@ -279,19 +288,17 @@ def HLO_CompareOp: HLO_Op<"compare",
     BroadcastDimAttr:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "DenseIntElementsAttr broadcast_dimensions, "
+    "StringAttr comparison_direction"
+  >];
   let results = (outs HLO_PredTensor);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
     "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
   >];
-
-  let extraClassDeclaration = [{
-    // Infers output type for given operand and attributes.
-    static Type InferOutputTypes(Builder *builder, Value *lhs, Value *rhs,
-                                 DenseIntElementsAttr broadcast_dimensions,
-                                 StringAttr comparison_direction);
-  }];
 }
 
 //===----------------------------------------------------------------------===//

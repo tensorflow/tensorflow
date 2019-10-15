@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include "absl/strings/numbers.h"
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -128,14 +131,6 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
   return results;
 }
 
-// Fill random integer values between [low, high]
-template <typename T>
-void FillRandomIntValues(T* ptr, int num_elements, int low, int high) {
-  for (int i = 0; i < num_elements; ++i) {
-    *ptr++ = static_cast<T>(rand() % (high - low + 1) + low);
-  }
-}
-
 void FillRandomString(tflite::DynamicBuffer* buffer,
                       const std::vector<int>& sizes,
                       const std::function<std::string()>& random_func) {
@@ -191,8 +186,8 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
   std::vector<int> tmp_range;
   for (const auto val : value_ranges) {
-    std::vector<std::string> name_range = Split(val, '#');
-    if (name_range.size() != 2) {
+    std::vector<std::string> name_range = Split(val, ',');
+    if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
     }
 
@@ -210,20 +205,18 @@ TfLiteStatus PopulateInputLayerInfo(
         << ") in --input_layer as " << names_string;
 
     // Parse the range value.
-    const std::string& input_range_str = name_range[1];
-    tmp_range.clear();
-    TFLITE_BENCHMARK_CHECK(
-        util::SplitAndParse(input_range_str, ',', &tmp_range))
-        << "Incorrect input value range string specified: " << input_range_str;
-    if (tmp_range.size() != 2 && tmp_range[0] > tmp_range[1]) {
+    int low, high;
+    bool has_low = absl::SimpleAtoi(name_range[1], &low);
+    bool has_high = absl::SimpleAtoi(name_range[2], &high);
+    if (!has_low || !has_high || low > high) {
       TFLITE_LOG(FATAL)
           << "Wrong low and high value of the input value range specified: "
-          << input_range_str;
+          << val;
     }
 
     info->at(layer_info_idx).has_value_range = true;
-    info->at(layer_info_idx).low = tmp_range[0];
-    info->at(layer_info_idx).high = tmp_range[1];
+    info->at(layer_info_idx).low = low;
+    info->at(layer_info_idx).high = high;
   }
 
   return kTfLiteOk;
@@ -279,13 +272,7 @@ BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {}
 
 void BenchmarkTfLiteModel::CleanUp() {
-  if (inputs_data_.empty()) {
-    return;
-  }
   // Free up any pre-allocated tensor data during PrepareInputData.
-  for (int i = 0; i < inputs_data_.size(); ++i) {
-    delete[] inputs_data_[i].data.raw;
-  }
   inputs_data_.clear();
 }
 
@@ -299,11 +286,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
     CreateFlag<std::string>(
         "input_layer_value_range", &params_,
-        "A map-like string representing value range for integer input layers. "
-        "Each item is separated by ':', and the item value is a pair of input "
-        "layer name and integer-only range values (both low and high are "
-        "inclusive), the name and the range is separated by '#', the low/high "
-        "are separated by ',' e.g. input1#1,2:input2#0,254"),
+        "A map-like string representing value range for *integer* input "
+        "layers. Each item is separated by ':', and the item value consists of "
+        "input layer name and integer-only range values (both low and high are "
+        "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -415,7 +401,16 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
-    const auto& input_info = inputs_[j];
+    bool has_value_range = false;
+    int low_range = 0;
+    int high_range = 0;
+    // For tflite files that are benchmarked without input layer parameters
+    // inputs_ is empty.
+    if (!inputs_.empty()) {
+      has_value_range = inputs_[j].has_value_range;
+      low_range = inputs_[j].low;
+      high_range = inputs_[j].high;
+    }
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
     for (int i = 0; i < sizes.size(); ++i) {
@@ -423,59 +418,54 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     }
     InputTensorData t_data;
     if (t->type == kTfLiteFloat32) {
-      t_data.bytes = sizeof(float) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      std::generate_n(t_data.data.f, num_elements, []() {
+      t_data = InputTensorData::Create<float>(num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
     } else if (t->type == kTfLiteFloat16) {
-      t_data.bytes = sizeof(TfLiteFloat16) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      std::generate_n(t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
-        __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        TfLiteFloat16 f16_placeholder_value;
-        memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-        return f16_placeholder_value;
-      });
+      t_data = InputTensorData::Create<TfLiteFloat16>(
+          num_elements, []() -> TfLiteFloat16 {
+            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+            TfLiteFloat16 f16_placeholder_value;
+            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+            return f16_placeholder_value;
+          });
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
 #endif
     } else if (t->type == kTfLiteInt64) {
-      t_data.bytes = sizeof(int64_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int64_t>(t_data.data.i64, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = InputTensorData::Create<int64_t>(num_elements, [=]() {
+        return static_cast<int64_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt32) {
-      // TODO(yunluli): This is currently only used for handling embedding input
-      // for speech models. Generalize if necessary.
-      t_data.bytes = sizeof(int32_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int32_t>(t_data.data.i32, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = InputTensorData::Create<int32_t>(num_elements, [=]() {
+        return static_cast<int32_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt16) {
-      t_data.bytes = sizeof(int16_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int16_t>(t_data.data.i16, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = InputTensorData::Create<int16_t>(num_elements, [=]() {
+        return static_cast<int16_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteUInt8) {
-      t_data.bytes = sizeof(uint8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 254;
-      FillRandomIntValues<uint8_t>(t_data.data.uint8, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 254;
+      t_data = InputTensorData::Create<uint8_t>(num_elements, [=]() {
+        return static_cast<uint8_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteInt8) {
-      t_data.bytes = sizeof(int8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : -127;
-      int high = input_info.has_value_range ? input_info.high : 127;
-      FillRandomIntValues<int8_t>(t_data.data.int8, num_elements, low, high);
+      int low = has_value_range ? low_range : -127;
+      int high = has_value_range ? high_range : 127;
+      t_data = InputTensorData::Create<int8_t>(num_elements, [=]() {
+        return static_cast<int8_t>(rand() % (high - low + 1) + low);
+      });
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
@@ -483,7 +473,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
                         << " of type " << t->type;
       return kTfLiteError;
     }
-    inputs_data_.push_back(t_data);
+    inputs_data_.push_back(std::move(t_data));
   }
   return kTfLiteOk;
 }
@@ -502,7 +492,8 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
       });
       buffer.WriteToTensor(t, /*new_shape=*/nullptr);
     } else {
-      std::memcpy(t->data.raw, inputs_data_[j].data.raw, inputs_data_[j].bytes);
+      std::memcpy(t->data.raw, inputs_data_[j].data.get(),
+                  inputs_data_[j].bytes);
     }
   }
 

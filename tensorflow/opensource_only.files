@@ -1,4 +1,5 @@
 llvm/llvm/projects/google_mlir/mlir_configure.bzl
+tensorflow/.bazelversion
 tensorflow/__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py

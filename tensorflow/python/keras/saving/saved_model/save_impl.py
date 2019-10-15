@@ -530,7 +530,8 @@ def layer_call_wrapper(call_collection, method):
     with base_layer_utils.call_context().enter(
         layer, inputs=inputs, build_graph=False, training=training,
         saving=True):
-      ret = method(*args, **kwargs)
+      with base_layer_utils.autocast_context_manager(layer._compute_dtype):  # pylint: disable=protected-access
+        ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
   return tf_decorator.make_decorator(target=method, decorator_func=wrapper)

@@ -43,6 +43,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
@@ -1998,7 +1999,8 @@ def _convert_gather(pfor_input):
     axis = 0
   else:
     validate_indices = None
-    axis = pfor_input.unstacked_input(2)
+    # Assume we will never have a Tensor with rank > 2**32.
+    axis = math_ops.cast(pfor_input.unstacked_input(2), dtypes.int32)
     axis_value = tensor_util.constant_value(axis)
     if axis_value is not None:
       axis = axis_value
@@ -2034,8 +2036,9 @@ def _convert_gather(pfor_input):
     param_flat = _flatten_first_two_dims(param)
 
     # Recompute indices to handle stacked param.
-    indices_offset = math_ops.range(
-        loop_len_vector[0]) * array_ops.shape(param)[1]
+    indices_offset = (math_ops.range(math_ops.cast(loop_len_vector[0],
+                                                   dtype=indices.dtype)) *
+                      math_ops.cast(array_ops.shape(param)[1], indices.dtype))
     # Reshape indices_offset to allow broadcast addition
     ones = array_ops.ones([array_ops.rank(indices) - 1], dtype=dtypes.int32)
     new_shape = array_ops.concat([loop_len_vector, ones], axis=0)
@@ -2797,13 +2800,8 @@ def _convert_cholesky(pfor_input):
 
 @RegisterPFor("LogMatrixDeterminant")
 def _convert_log_matrix_determinant(pfor_input):
-  # Input must have shape [N, M, M], so we need to flatten.
-  t = _flatten_first_two_dims(pfor_input.stacked_input(0))
-  sign, log_abs_det = linalg_ops.log_matrix_determinant(t)
-  return [
-      wrap(_unflatten_first_dim(x, pfor_input.pfor.loop_len_vector), True)
-      for x in (sign, log_abs_det)
-  ]
+  t = pfor_input.stacked_input(0)
+  return [wrap(x, True) for x in linalg_ops.log_matrix_determinant(t)]
 
 
 @RegisterPFor("MatrixTriangularSolve")
@@ -2821,7 +2819,10 @@ def _convert_matrix_triangular_solve(pfor_input):
 @RegisterPFor("SelfAdjointEigV2")
 def _convert_self_adjoint_eig(pfor_input):
   t = pfor_input.stacked_input(0)
-  return [wrap(x, True) for x in linalg_ops.self_adjoint_eig(t)]
+  compute_v = pfor_input.get_attr("compute_v")
+  e, v = gen_linalg_ops.self_adjoint_eig_v2(t, compute_v=compute_v)
+  # If compute_v is False, v will have shape [0].
+  return wrap(e, True), wrap(v, compute_v)
 
 
 # logging_ops

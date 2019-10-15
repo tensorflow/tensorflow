@@ -120,7 +120,6 @@ load(
     "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
-    "tf_lib_proto_compiler_deps",
     "tf_lib_proto_parsing_deps",
     "tf_proto_library",
     "tf_proto_library_cc",
@@ -511,9 +510,6 @@ tf_cc_test(
 # don't have to depend on lib/platformlib.
 cc_library(
     name = "lib_proto_parsing",
-    srcs = [
-        "//tensorflow/core/platform:protobuf.cc",
-    ],
     hdrs = [
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
@@ -537,20 +533,10 @@ cc_library(
         "//tensorflow/core/platform:cpu_info",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:platform",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "lib_proto_compiler",
-    hdrs = [
-        "//tensorflow/core/platform:protobuf_compiler.h",
-    ],
-    copts = tf_copts(),
-    deps = tf_lib_proto_compiler_deps() + [
-        ":lib_proto_parsing",
     ],
 )
 

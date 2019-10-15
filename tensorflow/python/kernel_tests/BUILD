@@ -3355,6 +3355,27 @@ cuda_py_test(
     shard_count = 20,
 )
 
+tf_py_test(
+    name = "eig_op_test",
+    size = "medium",
+    srcs = ["eig_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+    ],
+    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
+    shard_count = 20,
+    tags = [
+        "no_rocm",  # flaky test
+        "no_windows",
+    ],
+    # b/127344411: xla_enable_strict_auto_jit = True,
+)
+
 cuda_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",

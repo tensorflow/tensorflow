@@ -305,6 +305,12 @@ def run_functions_eagerly(run_eagerly):
   RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
 
 
+@tf_export("config.experimental_functions_run_eagerly")
+def functions_run_eagerly():
+  """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return RUN_FUNCTIONS_EAGERLY
+
+
 class FunctionDeleter(object):
 
   def __init__(self, func_graph):

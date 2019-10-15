@@ -48,6 +48,7 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleParameter(HloInstruction* param) override;
   Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleCompare(HloInstruction* compare) override;
 
  private:
   ::mlir::OpBuilder builder_;

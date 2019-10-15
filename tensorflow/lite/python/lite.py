@@ -279,7 +279,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
     experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
+      Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:
 
@@ -533,7 +533,7 @@ class TFLiteConverter(TFLiteConverterBase):
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
     experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
+      Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:
 

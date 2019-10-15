@@ -24,12 +24,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TrivialCrossReplicaSumTest : public HloTestBase {};
+class TrivialAllReduceTest : public HloTestBase {};
 
-// Currently the CPU and GPU backends only support CrossReplicaSum with one
+// Currently the CPU and GPU backends only support AllReduce with one
 // replica.  But we can at least check this.
 
-XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
+XLA_TEST_F(TrivialAllReduceTest, OneOperand) {
   const char* module_str = R"(
   HloModule test
 
@@ -50,7 +50,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
   EXPECT_EQ(literal, ExecuteAndTransfer(std::move(module), {&literal}));
 }
 
-XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
+XLA_TEST_F(TrivialAllReduceTest, MultipleOperands) {
   const char* module_str = R"(
   HloModule test
 
@@ -77,7 +77,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
 // On the GPU backend, constants get special handling.  Someone might pass a
 // constant to CRS to e.g. count the number of replicas -- we need to make sure
 // it works.
-XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
+XLA_TEST_F(TrivialAllReduceTest, ConstantOperand) {
   const char* module_str = R"(
   HloModule test
 
