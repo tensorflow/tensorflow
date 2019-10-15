@@ -1576,10 +1576,12 @@ rinfo_.push_back({csinfo_.tanh_grad,
     int axis = -1;
     string mode_string;
     string round_mode_string;
+    DataType type;
     TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
     TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &type));
 
     if (narrow_range) {
       VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
@@ -1609,6 +1611,15 @@ rinfo_.push_back({csinfo_.tanh_grad,
               << "for Quantize op ";
 
       return false;
+    }
+    if (mode_string == "MIN_FIRST") {
+      if (type != DT_QUINT8) {
+        VLOG(1) << "QuantizeOpRewrite: For MIN_FIRST mode the data type is "
+                << "not DT_UINT8."
+                << "This case is not optimized by Intel MKL, "
+                << "thus using Eigen op for Quantize op ";
+        return false;
+      }
     }
     return true;
   }

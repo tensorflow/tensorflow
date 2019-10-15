@@ -80,7 +80,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   explicit MklReorderWithScalePrimitive(
       const memory* from, const memory* to,
       const MklReorderWithScaleFwdParams& fwdParams) {
-    // create reorder primitive
+    // Create reorder primitive
     Setup(from, to, fwdParams);
   }
 
@@ -97,7 +97,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for reorder
   struct ReorderContext {
-    // MKLDNN memory
+    // MKL-DNN memory
     std::shared_ptr<mkldnn::memory> src_mem;
     std::shared_ptr<mkldnn::memory> dst_mem;
 
@@ -141,14 +141,11 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     auto const& post_op_params = fwdParams.post_op_params;
     mkldnn::primitive_attr post_ops_attr;
 
-    if (post_op_params.name == "scale") {
-      DCHECK_EQ(post_op_params.param.size(), 1);
-      std::vector<float> scales;
-      scales.push_back(post_op_params.param[0]);
-      post_ops_attr.set_output_scales(0, scales);
-    } else {
-      DCHECK(post_op_params.name == "scale");
-    }
+    DCHECK(post_op_params.name == "scale");
+    DCHECK_EQ(post_op_params.param.size(), 1);
+    std::vector<float> scales;
+    scales.push_back(post_op_params.param[0]);
+    post_ops_attr.set_output_scales(0, scales);
 
     // Create a reorder
     context_.reorder_pd =
@@ -234,16 +231,16 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-/// Fuction to find(or create) a reorder from memory pointed by
-/// from to memory pointed by to, it will create primitive or
-/// get primitive from pool if it is cached.
-/// Returns the primitive.
+// Fuction to find (or create) a reorder from memory pointed by
+// 'from' to memory pointed by 'to', it will create primitive or
+// get primitive from pool if it is cached.
+// Returns the primitive.
 template <typename T>
 inline primitive FindOrCreateReorder(
     const memory* from, const memory* to,
     const MklReorderWithScaleFwdParams& fwdParams) {
-  CHECK_NOTNULL(from);
-  CHECK_NOTNULL(to);
+  DCHECK(from);
+  DCHECK(to);
   MklReorderWithScalePrimitive* reorder_prim =
       MklReorderWithScalePrimitiveFactory<T>::Get(from, to, fwdParams);
   return *reorder_prim->GetPrimitive();
@@ -299,8 +296,8 @@ class MklQuantizeV2Op : public OpKernel {
   }
 
   ~MklQuantizeV2Op() {
-    if (this->minfirst_input_ != nullptr) {
-      delete this->minfirst_input_;
+    if (minfirst_input_ != nullptr) {
+      delete minfirst_input_;
       minfirst_input_ = nullptr;
     }
   }
@@ -308,8 +305,61 @@ class MklQuantizeV2Op : public OpKernel {
   float* GetMinfirstInputBuf(int size) {
     if (!minfirst_input_) {
       minfirst_input_ = new float[size];
+      minfirst_input_size_ = size;
+    } else if (size != minfirst_input_size_) {
+      delete minfirst_input_;
+      minfirst_input_ = new float[size];
+      minfirst_input_size_ = size;
     }
+
     return minfirst_input_;
+  }
+
+  void Compute_Scalar(OpKernelContext* ctx, float min_range, float max_range) {
+    // TO-DO - Scalar support has to be added for SCALE mode
+    OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
+                errors::InvalidArgument(
+                    "Scalar calculation in MKL is supported only for"
+                    "MIN_FIRST mode for now."));
+
+    auto cpu_engine = engine(engine::cpu, 0);
+    const Tensor& input = ctx->input(0);
+    const unsigned int src_idx = 0;
+    const Tensor& src_tensor = MklGetInput(ctx, src_idx);
+
+    MklDnnShape output_mkl_shape;
+    output_mkl_shape.SetMklTensor(false);
+
+    Tensor* output_tensor = nullptr;
+    AllocateOutputSetMklShape(ctx, 0, &output_tensor, src_tensor.shape(),
+                              output_mkl_shape);
+    TensorShape min_tf_shape = {};
+    MklDnnShape min_mkl_shape;
+    min_mkl_shape.SetMklTensor(false);
+    Tensor* output_min_tensor = nullptr;
+    AllocateOutputSetMklShape(ctx, 1, &output_min_tensor, min_tf_shape,
+                              min_mkl_shape);
+    TensorShape max_tf_shape = {};
+    MklDnnShape max_mkl_shape;
+    max_mkl_shape.SetMklTensor(false);
+    Tensor* output_max_tensor = nullptr;
+    AllocateOutputSetMklShape(ctx, 2, &output_max_tensor, max_tf_shape,
+                              max_mkl_shape);
+
+    // Estimate scale for qunatization
+    float scale_factor = 0;
+    const int number_of_bits = sizeof(T) * 8;
+    const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+    scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
+
+    float* src_data = const_cast<float*>(src_tensor.flat<float>().data());
+    T* out_data = output_tensor->flat<T>().data();
+
+    out_data[0] = (src_data[0] - min_range) * scale_factor;
+    output_min_tensor->flat<float>()(0) = min_range;
+    output_max_tensor->flat<float>()(0) = max_range;
+
+    return;
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -318,7 +368,7 @@ class MklQuantizeV2Op : public OpKernel {
     const float input_max_range = ctx->input(2).flat<float>()(0);
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
-    OP_REQUIRES(ctx, (input_max_range > input_min_range),
+    OP_REQUIRES(ctx, !(input_max_range < input_min_range),
                 errors::InvalidArgument(
                     "input_max_range must be larger than input_min_range."));
 
@@ -351,6 +401,9 @@ class MklQuantizeV2Op : public OpKernel {
     // Set the dst layout to be the best mkl layout based on dims and type.
     memory::format dst_layout_type;
     switch (src_tf_shape.dims()) {
+      case 0:
+        Compute_Scalar(ctx, min_range, max_range);
+        return;
       case 1:
         dst_layout_type = memory::format::x;
         break;
@@ -385,10 +438,19 @@ class MklQuantizeV2Op : public OpKernel {
     auto flat_input = input.flat<float>().data();
     if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       float* minfirst_input = GetMinfirstInputBuf(input.NumElements());
-#pragma omp parallel for schedule(static)
-      for (int i = 0; i < input.NumElements(); i++) {
-        minfirst_input[i] = flat_input[i] - min_range;
-      }
+      const Eigen::TensorOpCost cost(
+          sizeof(float), /*load bytes*/
+          sizeof(float), /*saved bytes*/
+          /*sub cost*/ Eigen::TensorOpCost::AddCost<float>());
+
+      const CPUDevice& d = ctx->eigen_device<CPUDevice>();
+      auto ParallelSub = [&](int64 start, int64 end) {
+        for (int i = start; i < end; i++) {
+          minfirst_input[i] = flat_input[i] - min_range;
+        }
+      };
+      d.parallelFor(input.NumElements(), cost, ParallelSub);
+
       src.SetUsrMem(src_md, minfirst_input);
     } else {
       src.SetUsrMem(src_md, &src_tensor);
@@ -498,6 +560,7 @@ class MklQuantizeV2Op : public OpKernel {
   int axis_;
   bool narrow_range_;
   float* minfirst_input_ = nullptr;
+  int minfirst_input_size_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
