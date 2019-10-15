@@ -32,8 +32,10 @@ class TestModule(tf.Module):
   # the initial import, in which case this test doesn't make much sense and
   # will be superceded by MLIR->MLIR shape inference tests.
   #
-  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
-  # CHECK-NEXT: tf_saved_model.exported_names = ["some_function"]
+  # CHECK:      func {{@[a-zA-Z_0-9]+}}(
+  # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]},
+  # CHECK-SAME:   %arg1: tensor<f32> {tf_saved_model.index_path = [1]}) -> tensor<f32>
+  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
   @tf.function(input_signature=[
       tf.TensorSpec([], tf.float32),
       tf.TensorSpec([], tf.float32)

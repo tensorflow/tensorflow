@@ -36,6 +36,9 @@ class TensorFlowSavedModelDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
 
+// Returns the list of exported names for `op`.
+SmallVector<StringRef, 2> GetExportedNames(Operation *op);
+
 }  // namespace tf_saved_model
 }  // namespace mlir
 
