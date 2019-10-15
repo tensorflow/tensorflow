@@ -15,18 +15,49 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/SMLoc.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace tf_device {
 
-TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext *context)
+TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
     : Dialect(/*name=*/"tf_device", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
       >();
 }
+
+//===----------------------------------------------------------------------===//
+// tf_device.return
+//===----------------------------------------------------------------------===//
+
+namespace {
+ParseResult ParseReturnOp(OpAsmParser* parser, OperationState* state) {
+  llvm::SmallVector<OpAsmParser::OperandType, 2> op_info;
+  llvm::SmallVector<Type, 2> types;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(parser->parseOperandList(op_info) ||
+                 (!op_info.empty() && parser->parseColonTypeList(types)) ||
+                 parser->resolveOperands(op_info, types, loc, state->operands));
+}
+
+void Print(ReturnOp op, OpAsmPrinter* p) {
+  *p << op.getOperationName();
+  if (op.getNumOperands() > 0) {
+    *p << ' ';
+    p->printOperands(op.getOperands());
+    *p << " : ";
+    interleaveComma(op.getOperandTypes(), *p);
+  }
+}
+}  // anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

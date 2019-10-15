@@ -1757,6 +1757,85 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
   }
 };
 
+class SliceOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SLICE);
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    Value<TensorRef<BHWC>>* input;
+    RETURN_IF_ERROR(reader->ReadValue(0, &input));
+    RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
+
+    SliceAttributes attr;
+    attr.strides = BHWC(1, 1, 1, 1);
+    Tensor<Linear, DataType::INT32> starts, ends;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &starts));
+    RETURN_IF_ERROR(reader->ReadTensor(2, &ends));
+    if (starts.data.size() == 4) {
+      attr.starts =
+          BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
+    } else if (starts.data.size() == 3) {
+      attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
+    } else {
+      return UnimplementedError(
+          "Slicing is supported for 3 or 4 dimensional tensors only.");
+    }
+    if (ends.data.size() == 4) {
+      attr.ends = BHWC(ends.data[0], ends.data[1], ends.data[2], ends.data[3]);
+    } else if (starts.data.size() == 3) {
+      attr.ends =
+          BHWC(input->tensor.shape.b, ends.data[0], ends.data[1], ends.data[2]);
+    } else {
+      return UnimplementedError(
+          "Slicing is supported for 3 or 4 dimensional tensors only.");
+    }
+    RETURN_IF_ERROR(UpdateIfNegative(input->tensor.shape, &attr));
+
+    auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+    if ((attr.ends.b - attr.starts.b) != out_shape.b) {
+      return UnimplementedError("Output batch don't match");
+    }
+    if ((attr.ends.h - attr.starts.h) != out_shape.h) {
+      return UnimplementedError("Output height doesn't match");
+    }
+    if ((attr.ends.w - attr.starts.w) != out_shape.w) {
+      return UnimplementedError("Output width doesn't match");
+    }
+    if ((attr.ends.c - attr.starts.c) != out_shape.c) {
+      return UnimplementedError("Output channels don't match");
+    }
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+
+ private:
+  Status UpdateIfNegative(const BHWC& input_shape, SliceAttributes* attr) {
+    if (attr->ends.h < 0) {
+      attr->ends.h = input_shape.h + attr->ends.h;
+    }
+    if (attr->ends.w < 0) {
+      attr->ends.w = input_shape.w + attr->ends.w;
+    }
+    if (attr->ends.c < 0) {
+      attr->ends.c = input_shape.c + attr->ends.c;
+    }
+    if (attr->ends.b < 0) {
+      attr->ends.b = input_shape.b + attr->ends.b;
+    }
+    return OkStatus();
+  }
+};
+
 class StridedSliceOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2223,6 +2302,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSoftmax:
       return absl::make_unique<SoftmaxOperationParser>();
+    case kTfLiteBuiltinSlice:
+      return absl::make_unique<SliceOperationParser>();
     case kTfLiteBuiltinStridedSlice:
       return absl::make_unique<StridedSliceOperationParser>();
     case kTfLiteBuiltinSqrt:

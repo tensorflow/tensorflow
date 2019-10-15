@@ -20,6 +20,9 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -322,6 +325,38 @@ class CollectiveOpTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    'Shape mismatch'):
         sess.run([c0, c1], options=run_options)
+
+  @test_util.run_v2_only
+  def testCollectiveGroupSizeMismatch(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    @def_function.function
+    def run_all_reduce():
+      group_key = 10
+      instance_key = 20
+      t0 = [1, 2, 3, 4]
+      t1 = [5, 6, 7, 8]
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(
+            in0, group_size=2, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(
+            in1, group_size=3, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
+      return c0, c1
+
+    with self.assertRaisesRegexp(errors.InternalError,
+                                 'but that group has size'):
+      run_all_reduce()
 
 
 if __name__ == '__main__':

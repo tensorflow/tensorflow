@@ -46,6 +46,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -776,6 +777,35 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmark_tf_reduce_logsumexp_GPU(self):
     self._benchmark_tf_reduce_logsum_exp(device=GPU)
+
+  def _benchmark_transpose(self,
+                           m,
+                           num_iters,
+                           perm=None,
+                           conjugate=False,
+                           execution_mode=None):
+    func = lambda: array_ops.transpose(m, perm, conjugate)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
+  def benchmark_tf_transpose_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
 
   def benchmark_defun_without_signature(self):
 

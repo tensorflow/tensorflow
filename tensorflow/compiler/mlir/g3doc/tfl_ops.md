@@ -1217,7 +1217,7 @@ Softmax operator
 
 ### Description:
 
-Computes element-wise softmax activiations with the following formula
+Computes element-wise softmax activations with the following formula
 
   exp(input) / tf.reduce_sum(exp(input * beta), dim)
 

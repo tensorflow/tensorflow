@@ -29,6 +29,43 @@ Arguments  | Type    | Semantics
 ---------- | ------- | -------------------------
 `operands` | `XlaOp` | variadic number of tokens
 
+## AllReduce
+
+See also
+[`XlaBuilder::AllReduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Performs a custom computation across replicas.
+
+<b> `AllReduce(operand, computation, replica_group_ids)` </b>
+
+Arguments                | Type             | Semantics
+-------------------------| -----------------| -----------------------------
+`operand`                | `XlaOp`          | Array to sum across replicas
+`computation`            | `XlaComputation` | Computation to apply
+ `replica_group_ids`     | `int64` vector   | Group ID for each replica
+
+The output shape is the same as the input shape. For example, if there are two
+replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
+respectively on the two replicas, then the output value from this op and
+summation computation will be `(4.0, 7.75)` on both replicas.
+
+`replica_group_ids` identifies the group ID of each replica. The group ID must
+either be empty (all replicas belong to a single group), or contain the same
+number of elements as the number of replicas. For example, if
+`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
+four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
+each subgroup *must* be identical, so, for example, using:
+`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
+
+Computing the result of `AllReduce` requires having one input from each
+replica, so if one replica executes a `AllReduce` node more times than
+another, then the former replica will wait forever. Since the replicas are all
+running the same program, there are not a lot of ways for that to happen, but it
+is possible when a while loop's condition depends on data from infeed and the
+data that is infed causes the while loop to iterate more times on one replica
+than another.
+
+
 ## AllToAll
 
 See also
@@ -55,8 +92,8 @@ in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
 
 Prerequisites:
 
--   The dimension size of the operand on the split_dimension is divisible by
-split_count.
+-   The dimension size of the operand on the `split_dimension` is divisible by
+`split_count`.
 -   The operand's shape is not tuple.
 
 <b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
@@ -809,38 +846,7 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 ## CrossReplicaSum
 
-See also
-[`XlaBuilder::CrossReplicaSum`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
-
-Computes a sum across replicas.
-
-<b> `CrossReplicaSum(operand)` </b>
-
-Arguments | Type    | Semantics
---------- | ------- | -----------------------------
-`operand` | `XlaOp` | Array to sum across replicas.
-| `replica_group_ids`    | `int64` vector | Group ID for each replica.      |
-
-The output shape is the same as the input shape. For example, if there are two
-replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
-respectively on the two replicas, then the output value from this op will be
-`(4.0, 7.75)` on both replicas.
-
-`replica_group_ids` identifies the group ID of each replica. The group ID must
-either be empty (all replicas belong to a single group), or contain the same
-number of elements as the number of replicas. For example, if
-`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
-four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
-each subgroup *must* be identical, so, for example, using:
-`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
-
-Computing the result of CrossReplicaSum requires having one input from each
-replica, so if one replica executes a CrossReplicaSum node more times than
-another, then the former replica will wait forever. Since the replicas are all
-running the same program, there are not a lot of ways for that to happen, but it
-is possible when a while loop's condition depends on data from infeed and the
-data that is infed causes the while loop to iterate more times on one replica
-than another.
+Performs `AllReduce` with a summation computation.
 
 ## CustomCall
 

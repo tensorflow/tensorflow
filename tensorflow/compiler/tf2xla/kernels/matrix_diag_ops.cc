@@ -267,7 +267,8 @@ REGISTER_XLA_OP(Name("MatrixDiagV2")
 class MatrixDiagPartOp : public XlaOpKernel {
  public:
   explicit MatrixDiagPartOp(OpKernelConstruction* context)
-      : XlaOpKernel(context) {}
+      : XlaOpKernel(context),
+        is_gpu_(context->device_type().type_string() == DEVICE_GPU_XLA_JIT) {}
 
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
@@ -315,13 +316,17 @@ class MatrixDiagPartOp : public XlaOpKernel {
     std::vector<xla::XlaOp> diag_list;
     xla::PaddingConfig padding_config;
     if (num_diags == 1) {
-      context->SetOutput(0, xla::GetMatrixDiagonal(input, upper_diag_index));
+      context->SetOutput(
+          0, is_gpu_ ? xla::GetMatrixDiagonalViaGather(input, upper_diag_index)
+                     : xla::GetMatrixDiagonal(input, upper_diag_index));
       return;
     }
     padding_config = xla::MakeNoPaddingConfig(input_rank - 1);
     for (int diag_index = upper_diag_index; diag_index >= lower_diag_index;
          --diag_index) {
-      auto single_diag = xla::GetMatrixDiagonal(input, diag_index);
+      xla::XlaOp single_diag =
+          is_gpu_ ? xla::GetMatrixDiagonalViaGather(input, diag_index)
+                  : xla::GetMatrixDiagonal(input, diag_index);
       const int64 diag_length =
           (diag_index >= 0) ? (num_cols - diag_index) : (num_rows + diag_index);
       const int64 padding_length = max_diag_len - diag_length;
@@ -336,6 +341,9 @@ class MatrixDiagPartOp : public XlaOpKernel {
         xla::ConcatInDim(context->builder(), diag_list, input_rank - 2);
     context->SetOutput(0, xla::Reshape(concat, output_shape.dim_sizes()));
   }
+
+ private:
+  const bool is_gpu_;
 };
 
 REGISTER_XLA_OP(Name("MatrixDiagPart"), MatrixDiagPartOp);

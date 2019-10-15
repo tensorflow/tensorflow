@@ -49,7 +49,7 @@ namespace {
 //   %init_value = "tf.ReadVariableOp"(%resource_handle)
 //   "tf.AssignAddVariableOp"(%resource_handle, %init_value)
 //   %new_value = "tf.ReadVariableOp"(%resource_handle)
-//   "tf_device.return"(%new_value)
+//   tf_device.return %new_value
 // })
 //
 // After this pass, the computation would become:
@@ -58,7 +58,7 @@ namespace {
 // %init_value = "tf.ReadVariableOp"(%resource_handle)
 // %1:2 = "tf_device.launch"() ( {
 //   %new_value = "tf.AddV2"(%init_value, %init_value)
-//   "tf_device.return"(%new_value, %new_value)
+//   tf_device.return %new_value, %new_value
 // })
 // "tf.AssignVariableOp"(%resource_handle, %1#1)
 //

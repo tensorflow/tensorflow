@@ -234,6 +234,32 @@ class CollectiveOpGPUTest(test.TestCase):
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
+  def testCollectiveDeviceMismatch(self):
+    group_size = 2
+    group_key = 10
+    instance_key = 20
+    t0 = [1, 2, 3, 4]
+    t1 = [5, 6, 7, 8]
+    with self.session(
+        config=self._configure(group_size,
+                               set_config_proto_nccl=False)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(in0, group_size, group_key,
+                                       instance_key, 'Add', 'Id')
+      with ops.device('/GPU:0'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(in1, group_size, group_key,
+                                       instance_key, 'Add', 'Id')
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 100
+      with self.assertRaisesRegexp(errors.InternalError,
+                                   'but that group has type'):
+        sess.run([c0, c1], options=run_options)
+
 
 if __name__ == '__main__':
   test.main()
