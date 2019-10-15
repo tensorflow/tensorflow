@@ -173,6 +173,25 @@ class IndexedSlicesTest(PForTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
 
+  def test_reduce(self):
+
+    def reduce_fn(p, q):
+      return math_ops.reduce_mean(p + q, axis=0)
+
+    x = random_ops.random_uniform([4, 3, 2])
+    y = random_ops.random_uniform([4, 3, 2])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      reduced = pfor_config.reduce(reduce_fn, x_i, y_i)
+      return reduced + x_i
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 4)
+    ans = reduce_fn(x, y) + x
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
   def test_reduce_concat(self):
     x = random_ops.random_uniform([8, 3])
 
