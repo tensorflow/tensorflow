@@ -1071,14 +1071,14 @@ contextually dependent on what they are attached to.
 
 There are two main classes of attributes; dependent and dialect. Dependent
 attributes derive their structure and meaning from what they are attached to,
-e.g the meaning of the `index` attribute on a `dim` operation is defined by the
-`dim` operation. Dialect attributes, on the other hand, derive their context and
-meaning from a specific dialect. An example of a dialect attribute may be a
+e.g., the meaning of the `index` attribute on a `dim` operation is defined by
+the `dim` operation. Dialect attributes, on the other hand, derive their context
+and meaning from a specific dialect. An example of a dialect attribute may be a
 `swift.self` function argument attribute that indicates an argument is the
 self/context parameter. The context of this attribute is defined by the `swift`
 dialect and not the function argument.
 
-Attributes values are represented by the following forms:
+Attribute values are represented by the following forms:
 
 ``` {.ebnf}
 attribute-value ::= attribute-alias | dialect-attribute | standard-attribute
