@@ -145,17 +145,8 @@ inline void EvalHybridSVDF(
 
   // Initialize the pointer to storage for quantized values and the weights
   // feature.
-  int8_t* quantized_input_ptr_batch;
-  const int8_t* weights_feature_ptr;
-  if (weights_feature->type == kTfLiteUInt8) {
-    quantized_input_ptr_batch =
-        reinterpret_cast<int8_t*>(GetTensorData<uint8_t>(input_quantized));
-    weights_feature_ptr = reinterpret_cast<const int8_t*>(
-        GetTensorData<uint8_t>(weights_feature));
-  } else {
-    quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
-    weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
-  }
+  int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
+  const int8_t* weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
 
   // Initialize the pointer to storage for scaling factors.
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
