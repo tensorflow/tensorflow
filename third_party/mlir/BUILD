@@ -158,7 +158,6 @@ cc_library(
     name = "EDSC",
     srcs = [
         "lib/EDSC/Builders.cpp",
-        "lib/EDSC/CoreAPIs.cpp",
         "lib/EDSC/Helpers.cpp",
         "lib/EDSC/Intrinsics.cpp",
     ],
@@ -177,6 +176,23 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":VectorOps",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
+    name = "EDSCInterface",
+    srcs = [
+        "lib/EDSC/CoreAPIs.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Core.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
         "@llvm//:support",
     ],
 )
