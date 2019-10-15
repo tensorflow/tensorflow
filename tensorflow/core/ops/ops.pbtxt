@@ -12181,32 +12181,6 @@ op {
   }
 }
 op {
-  name: "Einsum"
-  input_arg {
-    name: "inputs"
-    type_attr: "T"
-    number_attr: "N"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "equation"
-    type: "string"
-  }
-  attr {
-    name: "N"
-    type: "int"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-}
-op {
   name: "Eig"
   input_arg {
     name: "input"
@@ -12214,11 +12188,11 @@ op {
   }
   output_arg {
     name: "e"
-    type_attr: "T"
+    type_attr: "Tout"
   }
   output_arg {
     name: "v"
-    type_attr: "T"
+    type_attr: "Tout"
   }
   attr {
     name: "compute_v"
@@ -12248,6 +12222,32 @@ op {
         type: DT_COMPLEX128
       }
     }
+  }
+}
+op {
+  name: "Einsum"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "equation"
+    type: "string"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
   }
 }
 op {
