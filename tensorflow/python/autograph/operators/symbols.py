@@ -106,10 +106,10 @@ class SubscriptSymbol(Symbol):
     index_value = self.index_symbol.maybe_compute_value()
     if is_undefined(parent_value) or is_undefined(index_value):
       return Undefined(self.name)
-    else:
-      try:
-        return parent_value[index_value]
-      except (IndexError, KeyError, TypeError):
-        # Reify the lack of an object for the given index/key
-        # This allows us to define them later without regret
-        return Undefined(self.name)
+
+    try:
+      return parent_value[index_value]
+    except (IndexError, KeyError, TypeError):
+      # Reify the lack of an object for the given index/key
+      # This allows us to define them later without regret
+      return Undefined(self.name)
