@@ -110,6 +110,8 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":logging",
+        "@com_google_absl//absl/strings",
+        "@gemmlowp",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -117,8 +119,12 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@gemmlowp",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(

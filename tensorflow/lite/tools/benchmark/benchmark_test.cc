@@ -85,6 +85,21 @@ TEST(BenchmarkTest, DoesntCrash) {
   benchmark.Run();
 }
 
+TEST(BenchmarkTest, DoesntCrashWithExplicitInput) {
+  ASSERT_THAT(g_model_path, testing::NotNull());
+
+  // Note: the following input-related params are *specific* to model
+  // 'g_model_path' which is specified as 'lite:testdata/multi_add.bin for the
+  // test.
+  BenchmarkParams params = CreateParams();
+  params.Set<std::string>("input_layer", "a,b,c,d");
+  params.Set<std::string>("input_layer_shape",
+                          "1,8,8,3:1,8,8,3:1,8,8,3:1,8,8,3");
+  params.Set<std::string>("input_layer_value_range", "d,1,10:b,0,100");
+  BenchmarkTfLiteModel benchmark(std::move(params));
+  benchmark.Run();
+}
+
 class MaxDurationWorksTestListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
     const int64_t num_actul_runs = results.inference_time_us().count();

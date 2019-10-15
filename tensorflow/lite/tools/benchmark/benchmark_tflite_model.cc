@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/numbers.h"
+
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
@@ -191,8 +193,8 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
   std::vector<int> tmp_range;
   for (const auto val : value_ranges) {
-    std::vector<std::string> name_range = Split(val, '#');
-    if (name_range.size() != 2) {
+    std::vector<std::string> name_range = Split(val, ',');
+    if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
     }
 
@@ -210,20 +212,18 @@ TfLiteStatus PopulateInputLayerInfo(
         << ") in --input_layer as " << names_string;
 
     // Parse the range value.
-    const std::string& input_range_str = name_range[1];
-    tmp_range.clear();
-    TFLITE_BENCHMARK_CHECK(
-        util::SplitAndParse(input_range_str, ',', &tmp_range))
-        << "Incorrect input value range string specified: " << input_range_str;
-    if (tmp_range.size() != 2 && tmp_range[0] > tmp_range[1]) {
+    int low, high;
+    bool has_low = absl::SimpleAtoi(name_range[1], &low);
+    bool has_high = absl::SimpleAtoi(name_range[2], &high);
+    if (!has_low || !has_high || low > high) {
       TFLITE_LOG(FATAL)
           << "Wrong low and high value of the input value range specified: "
-          << input_range_str;
+          << val;
     }
 
     info->at(layer_info_idx).has_value_range = true;
-    info->at(layer_info_idx).low = tmp_range[0];
-    info->at(layer_info_idx).high = tmp_range[1];
+    info->at(layer_info_idx).low = low;
+    info->at(layer_info_idx).high = high;
   }
 
   return kTfLiteOk;
@@ -299,11 +299,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
     CreateFlag<std::string>(
         "input_layer_value_range", &params_,
-        "A map-like string representing value range for integer input layers. "
-        "Each item is separated by ':', and the item value is a pair of input "
-        "layer name and integer-only range values (both low and high are "
-        "inclusive), the name and the range is separated by '#', the low/high "
-        "are separated by ',' e.g. input1#1,2:input2#0,254"),
+        "A map-like string representing value range for *integer* input "
+        "layers. Each item is separated by ':', and the item value consists of "
+        "input layer name and integer-only range values (both low and high are "
+        "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
