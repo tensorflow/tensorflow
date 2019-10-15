@@ -125,7 +125,7 @@ void ASTDumper::dump(NumberExprAST *num) {
   llvm::errs() << num->getValue() << " " << loc(num) << "\n";
 }
 
-/// Helper to print recursively a literal. This handles nested array like:
+/// Helper to print recurisvely a literal. This handles nested array like:
 ///    [ [ 1, 2 ], [ 3, 4 ] ]
 /// We print out such array with the dimensions spelled out at every level:
 ///    <2,2>[<2>[ 1, 2 ], <2>[ 3, 4 ] ]
