@@ -23,7 +23,6 @@ from __future__ import print_function
 
 from tensorflow.python import tf2
 
-from tensorflow.python.keras import applications
 from tensorflow.python.keras import datasets
 from tensorflow.python.keras import estimator
 from tensorflow.python.keras import layers
