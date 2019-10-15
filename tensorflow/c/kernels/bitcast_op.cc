@@ -163,7 +163,7 @@ void RegisterBitcastOpKernel() {
 
 // A dummy static variable initialized by a lambda whose side-effect is to
 // register the bitcast kernel.
-static bool IsBitcastOpKernelRegistered = []() {
+[[maybe_unused]] static bool IsBitcastOpKernelRegisteredUnused = []() {
   if (SHOULD_REGISTER_OP_KERNEL("BitcastOp")) {
     RegisterBitcastOpKernel();
   }
