@@ -24,7 +24,7 @@
 #include <assert.h>
 #include <iostream>
 
-template <size_t... Dims> struct StaticSizeMult {
+template <int... Dims> struct StaticSizeMult {
   static constexpr int value = 1;
 };
 
