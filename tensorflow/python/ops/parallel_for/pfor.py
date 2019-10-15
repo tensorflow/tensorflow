@@ -43,6 +43,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
@@ -2821,7 +2822,10 @@ def _convert_matrix_triangular_solve(pfor_input):
 @RegisterPFor("SelfAdjointEigV2")
 def _convert_self_adjoint_eig(pfor_input):
   t = pfor_input.stacked_input(0)
-  return [wrap(x, True) for x in linalg_ops.self_adjoint_eig(t)]
+  compute_v = pfor_input.get_attr("compute_v")
+  e, v = gen_linalg_ops.self_adjoint_eig_v2(t, compute_v=compute_v)
+  # If compute_v is False, v will have shape [0].
+  return wrap(e, True), wrap(v, compute_v)
 
 
 # logging_ops

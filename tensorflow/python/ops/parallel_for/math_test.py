@@ -661,7 +661,8 @@ class LinalgTest(PForTestCase):
     x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
 
     def loop_fn(i):
-      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+      return (linalg_ops.self_adjoint_eig(array_ops.gather(x, i)),
+              linalg_ops.self_adjoint_eigvals(array_ops.gather(x, i)))
 
     self._test_loop_fn(loop_fn, 2)
 
