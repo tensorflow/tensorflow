@@ -56,9 +56,9 @@ def main() {
 }
 ```
 
-Type checking is statically performed through type inference, the language only
-requires type declarations to specify tensor shapes when needed. Function are
-generic: their parameters are unranked (in other word we know these are tensors
+Type checking is statically performed through type inference; the language only
+requires type declarations to specify tensor shapes when needed. Functions are
+generic: their parameters are unranked (in other words we know these are tensors
 but we don't know how many dimensions or the size of the dimensions). They are
 specialized for every newly discovered signature at call sites. Let's revisit
 the previous example by adding a user-defined function:
@@ -148,7 +148,7 @@ directory, try running `path/to/BUILD/bin/toyc-ch1 test/ast.toy -emit=ast`.
 The code for the lexer is fairly straightforward, it is all in a single header:
 `examples/toy/Ch1/include/toy/Lexer.h`. The parser can be found in
 `examples/toy/Ch1/include/toy/Parser.h`, it is a recursive descent parser. If
-you are not familiar with such Lexer/Parser, these are very similar to the LLVM
+you are not familiar with such a Lexer/Parser, these are very similar to the LLVM
 Kaleidoscope equivalent that are detailed in the first two chapters of the
 [Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl02.html).
 
