@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <numeric>
 #include <string>
@@ -1207,6 +1208,70 @@ static LogicalResult Verify(ShapeNOp op) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - operands begin and size are 1D with the same number of elements.
+// - if the input is a ranked tensor, the rank of the input equals the number
+//   of elements in operands begin and size.
+// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+//
+static LogicalResult Verify(SliceOp op) {
+  RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
+  if (begin_ty && begin_ty.getRank() != 1) {
+    return op.emitOpError() << "requires begin operand to be 1D tensor";
+  }
+
+  RankedTensorType size_ty = GetRankedTensorTypeForOperand(op.size());
+  if (size_ty && size_ty.getRank() != 1) {
+    return op.emitOpError() << "requires size operand to be 1D tensor";
+  }
+
+  if (!begin_ty || !size_ty || !begin_ty.hasStaticShape() ||
+      !size_ty.hasStaticShape())
+    return success();
+
+  if (begin_ty.getNumElements() != size_ty.getNumElements()) {
+    return op.emitOpError() << "requires begin and size operands to have the"
+                               " same number of elements";
+  }
+
+  auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+  if (input_ty && begin_ty.getNumElements() != input_ty.getRank()) {
+    return op.emitOpError() << "requires number of elements in begin and size"
+                               "are equal to input rank";
+  }
+
+  DenseIntElementsAttr begin_indices;
+  if (matchPattern(op.begin(), m_Constant(&begin_indices))) {
+    DenseIntElementsAttr slice_sizes;
+    bool constant_slice_sizes =
+        matchPattern(op.size(), m_Constant(&slice_sizes));
+    int dim = 0;
+    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+      int64_t begin_index = raw_begin_index.getSExtValue();
+      int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
+      int64_t slice_size = constant_slice_sizes
+                               ? slice_sizes.getValue<APInt>(dim).getSExtValue()
+                               : 0;
+      if (slice_size == -1 && input_size != -1) {
+        slice_size = input_size - begin_index;
+      }
+      if (begin_index < 0 ||
+          (input_size != -1 && begin_index + slice_size > input_size)) {
+        return op.emitOpError()
+               << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
+      }
+      ++dim;
+    }
   }
 
   return success();
