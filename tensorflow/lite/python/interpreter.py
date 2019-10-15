@@ -276,6 +276,31 @@ class Interpreter(object):
       only hold the function returned from tensor() if you are using raw
       data access.""")
 
+  # Experimental and subject to change
+  def _get_op_details(self, op_index):
+    """Gets a dictionary with arrays of ids for tensors involved with an op.
+
+    Args:
+      op_index: Operation/node index of node to query.
+
+    Returns:
+      a dictionary containing the index, op name, and arrays with lists of the
+      indices for the inputs and outputs of the op/node.
+    """
+    op_index = int(op_index)
+    op_name = self._interpreter.NodeName(op_index)
+    op_inputs = self._interpreter.NodeInputs(op_index)
+    op_outputs = self._interpreter.NodeOutputs(op_index)
+
+    details = {
+        'index': op_index,
+        'op_name': op_name,
+        'inputs': op_inputs,
+        'outputs': op_outputs,
+    }
+
+    return details
+
   def _get_tensor_details(self, tensor_index):
     """Gets tensor details.
 
@@ -306,6 +331,18 @@ class Interpreter(object):
     }
 
     return details
+
+  # Experimental and subject to change
+  def _get_ops_details(self):
+    """Gets op details for every node.
+
+    Returns:
+      A list of dictionaries containing arrays with lists of tensor ids for
+      tensors involved in the op.
+    """
+    return [
+        self._get_op_details(idx) for idx in range(self._interpreter.NumNodes())
+    ]
 
   def get_tensor_details(self):
     """Gets tensor details for every tensor with valid tensor details.
