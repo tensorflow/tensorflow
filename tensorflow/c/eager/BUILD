@@ -154,6 +154,7 @@ tf_cuda_cc_test(
     tags = [
         "guitar",
         "multi_gpu",
+        "no_oss",  # TODO(b/136267687): re-enable after fixing flakiness
     ],
     deps = [
         ":c_api",
