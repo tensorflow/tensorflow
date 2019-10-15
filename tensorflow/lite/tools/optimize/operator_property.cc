@@ -238,6 +238,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     }
+    case BuiltinOperator_STRIDED_SLICE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
