@@ -663,11 +663,6 @@ def tf_lib_proto_parsing_deps():
         "//tensorflow/core/platform/default/build_config:proto_parsing",
     ]
 
-def tf_lib_proto_compiler_deps():
-    return [
-        "@com_google_protobuf//:protoc_lib",
-    ]
-
 def tf_additional_numa_lib_defines():
     return select({
         "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
@@ -737,11 +732,17 @@ def tf_additional_tensor_coding_deps():
     return []
 
 def tf_protobuf_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )
 
 def tf_protobuf_compiler_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )
