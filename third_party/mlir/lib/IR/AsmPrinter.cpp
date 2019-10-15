@@ -1862,7 +1862,7 @@ void IntegerSet::print(raw_ostream &os) const {
 
 void Value::print(raw_ostream &os) {
   if (auto *op = getDefiningOp())
-    return getDefiningOp()->print(os);
+    return op->print(os);
   // TODO: Improve this.
   assert(isa<BlockArgument>(*this));
   os << "<block argument>\n";
