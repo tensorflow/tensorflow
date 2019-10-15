@@ -1094,7 +1094,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     }
 
 #elif TENSORFLOW_USE_ROCM
-    std::vector<AlgorithmDesc> algorithms;
+    std::vector<ProfileResult> algorithms;
     if (TestMIOpenBFloat16Support<T>()) {
       OP_REQUIRES(ctx,
                   stream->parent()->GetMIOpenConvolveAlgorithms(
@@ -1119,43 +1119,55 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     se::DeviceMemory<T> output_tensor = output_ptr;
 
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
-      // TODO(zhengxq): profile each algorithm multiple times to better
-      // accuracy.
-      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-      ProfileResult profile_result;
-      bool miopen_launch_status = false;
-      if (TestMIOpenBFloat16Support<T>()) {
-        miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, bfloat16_input_ptr, filter_desc,
-                    bfloat16_filter_ptr, conv_desc, output_desc,
-                    &bfloat16_output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-      } else {
-        miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-      }
-      if (miopen_launch_status && profile_result.is_valid()) {
-        results.emplace_back();
-        auto& result = results.back();
-        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-        result.mutable_conv()->set_tensor_ops_enabled(
-            profile_algorithm.tensor_ops_enabled());
+    if (algorithms.size() == 1) {
+      auto profile_result = algorithms[0];
+      results.emplace_back();
+      auto& result = results.back();
+      result.mutable_conv()->set_algorithm(
+          profile_result.algorithm().algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(
+          profile_result.algorithm().tensor_ops_enabled());
 
-        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-        *result.mutable_run_time() = proto_utils::ToDurationProto(
-            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      result.set_scratch_bytes(profile_result.scratch_size());
+      *result.mutable_run_time() = proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    } else {
+      for (auto miopen_algorithm : algorithms) {
+        auto profile_algorithm = miopen_algorithm.algorithm();
+        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        ProfileResult profile_result;
+        bool miopen_launch_status = false;
+        if (TestMIOpenBFloat16Support<T>()) {
+          miopen_launch_status =
+              stream
+                  ->ThenConvolveWithAlgorithm(
+                      input_desc, bfloat16_input_ptr, filter_desc,
+                      bfloat16_filter_ptr, conv_desc, output_desc,
+                      &bfloat16_output_ptr, &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm), &profile_result)
+                  .ok();
+        } else {
+          miopen_launch_status =
+              stream
+                  ->ThenConvolveWithAlgorithm(
+                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                      output_desc, &output_ptr, &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm), &profile_result)
+                  .ok();
+        }
+        if (miopen_launch_status && profile_result.is_valid()) {
+          results.emplace_back();
+          auto& result = results.back();
+          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+          result.mutable_conv()->set_tensor_ops_enabled(
+              profile_algorithm.tensor_ops_enabled());
+
+          result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+          *result.mutable_run_time() = proto_utils::ToDurationProto(
+              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+        }
       }
     }
-
 #endif
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
                            se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,

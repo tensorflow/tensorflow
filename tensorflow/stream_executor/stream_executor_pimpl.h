@@ -380,7 +380,7 @@ class StreamExecutor {
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms);
+      std::vector<dnn::ProfileResult>* out_algorithms);
 
   // Returns the list of supported algorithms for rnn operation.
   bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
