@@ -140,7 +140,7 @@ cc_library(
     srcs = ["transforms/lhlo_fuse_linalg.cc"],
     deps = [
         ":lhlo",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:Pass",
