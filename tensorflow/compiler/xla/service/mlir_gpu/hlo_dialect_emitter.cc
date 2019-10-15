@@ -119,8 +119,9 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   }
   TF_ASSIGN_OR_RETURN(
       auto inserted,
-      InsertMlirOp(instr->opcode(), builder_, builder_.getUnknownLoc(),
-                   res_type, arguments, name_attr));
+      InsertMlirOp(instr->opcode(), builder_,
+                   mlir::OpaqueLoc::get(instr, builder_.getContext()), res_type,
+                   arguments, name_attr));
   instruction_to_values_[instr] = inserted;
   return Status::OK();
 }
@@ -180,8 +181,8 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
 
-  auto const_value =
-      builder_.create<hlo::ConstOp>(builder_.getUnknownLoc(), type, value);
+  auto const_value = builder_.create<hlo::ConstOp>(
+      mlir::OpaqueLoc::get(constant, builder_.getContext()), type, value);
   instruction_to_values_[constant] = const_value;
   return Status::OK();
 }
@@ -202,7 +203,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
           llvm::makeArrayRef(dimensions))
           .cast<::mlir::DenseIntElementsAttr>();
   auto reduceOp = builder_.create<hlo::ReduceOp>(
-      builder_.getUnknownLoc(), return_type,
+      mlir::OpaqueLoc::get(reduce, builder_.getContext()), return_type,
       llvm::makeArrayRef(operands).take_front(num_inputs),
       llvm::makeArrayRef(operands).take_back(num_inputs), dimensions_attr);
   {
@@ -220,8 +221,9 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
     TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
     OpBuilder body_builder(block);
     body_builder.setInsertionPointToEnd(block);
-    body_builder.create<hlo::ReturnOp>(builder_.getUnknownLoc(),
-                                       ArrayRef<Value*>{result});
+    body_builder.create<hlo::ReturnOp>(
+        mlir::OpaqueLoc::get(reduce, builder_.getContext()),
+        ArrayRef<Value*>{result});
   }
   // TODO(b/137624192) Add support for multiple results.
   instruction_to_values_[reduce] = reduceOp.getResult(0);
@@ -241,8 +243,8 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
-      builder_.getUnknownLoc(), llvm::makeArrayRef(res_type), arguments,
-      attributes);
+      mlir::OpaqueLoc::get(compare, builder_.getContext()),
+      llvm::makeArrayRef(res_type), arguments, attributes);
   return Status::OK();
 }
 
