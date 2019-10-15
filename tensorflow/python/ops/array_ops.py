@@ -3963,8 +3963,8 @@ def reverse_sequence(input,
   >>> input = [[1, 2, 3, 4, 5, 0, 0, 0], [1, 2, 0, 0, 0, 0, 0, 0],
   ...          [1, 2, 3, 4, 0, 0, 0, 0], [1, 2, 3, 4, 5, 6, 7, 8]]
   >>> output = tf.reverse_sequence(input, seq_lengths, seq_axis=1, batch_axis=0)
-  >>> print(output)
-  <tf.Tensor: id=5, shape=(4, 8), dtype=int32, numpy=
+  >>> output
+  <tf.Tensor: shape=(4, 8), dtype=int32, numpy=
   array([[0, 0, 5, 4, 3, 2, 1, 0],
          [2, 1, 0, 0, 0, 0, 0, 0],
          [3, 2, 1, 4, 0, 0, 0, 0],
@@ -3995,12 +3995,6 @@ def reverse_sequence(input,
       name=name)
 
 
-reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
-    deprecation.rewrite_argument_docstring(
-        gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
-    "seq_dim", "seq_axis")
-
-
 @tf_export("reverse_sequence", v1=[])
 def reverse_sequence_v2(input,
                         seq_lengths,
@@ -4014,12 +4008,7 @@ def reverse_sequence_v2(input,
       batch_dim=batch_axis,
       name=name)
 
-
-reverse_sequence_v2.__doc__ = deprecation.rewrite_argument_docstring(
-    deprecation.rewrite_argument_docstring(
-        gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
-    "seq_dim", "seq_axis")
-
+reverse_sequence_v2.__doc__ = reverse_sequence.__doc__
 # pylint: enable=redefined-builtin
 
 
