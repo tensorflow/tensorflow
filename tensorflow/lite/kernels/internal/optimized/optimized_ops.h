@@ -2293,6 +2293,37 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
   }
 }
 
+// Broadcast mul that can often be used for inner loop of broadcast Mul.
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const float broadcast_value,
+                               const float* input2_data, float* output_data) {
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t output_activation_min_vector =
+      vdupq_n_f32(params.float_activation_min);
+  const float32x4_t output_activation_max_vector =
+      vdupq_n_f32(params.float_activation_max);
+  const float32x4_t broadcast_value_dup = vdupq_n_f32(broadcast_value);
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input2_val_original = vld1q_f32(input2_data + i);
+
+    const float32x4_t output =
+        vmulq_f32(input2_val_original, broadcast_value_dup);
+
+    const float32x4_t clamped =
+        vmaxq_f32(output_activation_min_vector,
+                  vminq_f32(output_activation_max_vector, output));
+    vst1q_f32(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    float x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8* input1_data,
                 const RuntimeShape& input2_shape, const uint8* input2_data,
@@ -2377,7 +2408,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
+inline void BroadcastMulFivefold(const ArithmeticParams& params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const float* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
@@ -2386,16 +2417,10 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  float* output_data) {
   gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/float");
 
-  ArithmeticParams switched_params = unswitched_params;
-  switched_params.input1_offset = unswitched_params.input2_offset;
-  switched_params.input2_offset = unswitched_params.input1_offset;
-
   const bool use_unswitched =
-      unswitched_params.broadcast_category ==
+      params.broadcast_category ==
       tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
 
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
   const float* input1_data =
       use_unswitched ? unswitched_input1_data : unswitched_input2_data;
   const float* input2_data =
@@ -2431,11 +2456,20 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   } else {
-    // TODO(renjieliu): Optimze for scalar broadcast case.
-    reference_ops::BroadcastMul4DSlow(
-        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
-        unswitched_input2_shape, unswitched_input2_data, output_shape,
-        output_data);
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          ++input1_data_ptr;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
