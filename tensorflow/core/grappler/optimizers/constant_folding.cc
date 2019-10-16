@@ -1971,14 +1971,12 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
       RemoveReverse(*properties, use_shape_info, optimized_graph, node));
   RETURN_IF_ERROR_OR_MODIFIED(
       SimplifySlice(*properties, use_shape_info, optimized_graph, node));
-
   RETURN_IF_ERROR_OR_MODIFIED(
       SimplifyStridedSlice(*properties, use_shape_info, optimized_graph, node));
   RETURN_IF_ERROR_OR_MODIFIED(
       SimplifyTile(*properties, use_shape_info, optimized_graph, node));
   RETURN_IF_ERROR_OR_MODIFIED(
       SimplifyPad(*properties, use_shape_info, optimized_graph, node));
-
   RETURN_IF_MODIFIED(
       SimplifySqueeze(*properties, use_shape_info, optimized_graph, node));
   SET_AND_RETURN_IF_MODIFIED(SimplifyPack(optimized_graph, node));
@@ -1991,10 +1989,8 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   RETURN_IF_ERROR_OR_MODIFIED(SimplifyArithmeticOperations(
       *properties, use_shape_info, optimized_graph, node));
   SET_AND_RETURN_IF_MODIFIED(ReduceDivToReciprocalMul(optimized_graph, node));
-
   SET_AND_RETURN_IF_MODIFIED(
       ConstantPushDown(properties, optimized_graph, node));
-
   SET_AND_RETURN_IF_MODIFIED(
       MulConvPushDown(optimized_graph, node, *properties));
   SET_AND_RETURN_IF_MODIFIED(PartialConstPropThroughIdentityN(node));
@@ -3093,6 +3089,14 @@ bool ConstantFolding::ConstantPushDown(GraphProperties* properties,
     return false;
   }
   const bool is_child_symmetric = is_child_add || is_child_mul;
+
+  if (!CheckAttrExists(*node, "T").ok()) return false;
+  DataType dtype = node->attr().at("T").type();
+  if (!(is_symmetric && is_child_symmetric) &&
+      !(DataTypeIsFloating(dtype) || DataTypeIsComplex(dtype))) {
+    return false;
+  }
+
   const NodeDef* y_node =
       ctx.left_leaf_is_const ? ctx.left_leaf : ctx.right_leaf;
   if (!IsReallyConstant(*y_node) && !ctx.parent_input_props->empty() &&
