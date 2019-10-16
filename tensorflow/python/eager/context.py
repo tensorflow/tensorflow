@@ -606,7 +606,7 @@ class Context(object):
 
     Args:
       collective_leader: a device string for collective leader, e.g.
-        "/job:worker/replica:0/task:"; empty string means local execution of
+        "/job:worker/replica:0/task:0"; empty string means local execution of
           collective ops.
       scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
         allocator to run with.
