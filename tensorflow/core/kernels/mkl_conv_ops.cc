@@ -24,8 +24,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -570,17 +570,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1002,9 +1000,6 @@ class MklConvOp : public OpKernel {
       output_tf_shape = output_mkl_shape->GetTfShape();
     }
 
-    AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                              output_tf_shape, *output_mkl_shape, eager_mode);
-
     if (fuse_add_) {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
@@ -1012,11 +1007,13 @@ class MklConvOp : public OpKernel {
 
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape) {
-        OP_REQUIRES(
-            context, (*output_tensor)->CopyFrom(add_tensor, output_tf_shape),
-            errors::Internal("MklConvOp: AddN fusion: Failed to forward "
-                             "input tensor to output"));
+        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
+                                            kOutputIndex_Dst, add_mkl_shape);
+        *output_tensor = context->mutable_output(kOutputIndex_Dst);
       } else {
+        AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                  output_tf_shape, *output_mkl_shape,
+                                  eager_mode);
 #ifdef ENABLE_MKLDNN_V1
         auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
             output_mkl_shape->GetTfDataFormat());
@@ -1044,6 +1041,9 @@ class MklConvOp : public OpKernel {
             REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
         CreateAndExecuteReorder(reorder_desc, *add, *dst, this->cpu_engine_);
       }
+    } else {
+      AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                output_tf_shape, *output_mkl_shape, eager_mode);
     }
   }
 
