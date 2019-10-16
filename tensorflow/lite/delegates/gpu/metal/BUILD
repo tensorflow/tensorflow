@@ -74,6 +74,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":common_test_lib"],
@@ -111,6 +112,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":compiled_model_test_lib"],
@@ -180,6 +182,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":environment_test_lib"],
@@ -221,6 +224,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":inference_context_test_lib"],

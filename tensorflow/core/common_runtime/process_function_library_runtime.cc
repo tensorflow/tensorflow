@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -52,25 +51,18 @@ namespace tensorflow {
 
 const char ProcessFunctionLibraryRuntime::kDefaultFLRDevice[] = "null";
 
-void ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
+Status ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
     DistributedFunctionLibraryRuntime* parent, const string& function_name,
     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-    const FunctionLibraryRuntime::InstantiateOptions& options,
-    FunctionLibraryRuntime::DoneCallback done) {
-  {
-    mutex_lock l(mu_);
-    if (init_started_) {
-      init_done_.WaitForNotification();
-      done(init_result_);
-      return;
-    }
+    const FunctionLibraryRuntime::InstantiateOptions& options) {
+  mutex_lock l(mu_);
+  is_cross_process_ = true;
+  if (!init_started_) {
     init_started_ = true;
+    init_result_ = parent->Instantiate(function_name, lib_def, attrs, options,
+                                       &local_handle_);
   }
-  parent->Instantiate(function_name, lib_def, attrs, options, &local_handle_,
-                      [this, done](const Status& s) {
-                        init_done_.Notify();
-                        done(s);
-                      });
+  return init_result_;
 }
 
 ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
@@ -793,7 +785,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     runner([this, &pair, comp_data, unique_name, data_lib_def, &control_ret,
-            &options, status, &counter] {
+            &options, status, &counter, &data] {
+      auto cleanup = gtl::MakeCleanup([&counter] { counter.DecrementCount(); });
       const string& target = pair.first;
 
       const string& device_type =
@@ -804,17 +797,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           subgraph, device_type, &comp_data->arg_indices_,
           &comp_data->ret_indices_, &comp_data->arg_alloc_attrs_,
           &comp_data->ret_alloc_attrs_));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
+      if (!status->ok()) return;
       FunctionDef shard;
       status->Update(
           GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
+      if (!status->ok()) return;
       status->Update(data_lib_def->AddFunctionDef(shard));
       FunctionLibraryRuntime::InstantiateOptions opts;
       opts.executor_type = options.executor_type;
@@ -822,36 +809,23 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       opts.lib_def = data_lib_def;
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
+      FunctionLibraryRuntime::Handle component_handle;
 
-      auto attrs = AttrSlice(&shard.attr());
-
-      VLOG(1) << "Start instantiating component function " << unique_name
-              << " on device " << target;
-      VLOG(2) << DebugString(shard);
-
-      auto* component_handle = new FunctionLibraryRuntime::Handle;
-      auto done = [status, unique_name, comp_data, component_handle,
-                   &counter](const Status& s) {
-        status->Update(s);
-
-        VLOG(1) << "Finished instantiating component function " << unique_name
-                << "with handle " << *component_handle << " status: " << s;
-        if (status->ok()) {
-          comp_data->handle_ = *component_handle;
+      // TODO(fishx): introduce an async version of this Instantiate method.
+      status->Update(Instantiate(unique_name, AttrSlice(&shard.attr()), opts,
+                                 &component_handle));
+      {
+        mutex_lock l(mu_);
+        if (function_data_[component_handle]->is_cross_process()) {
+          data->is_cross_process_ = true;
         }
-        delete component_handle;
-        counter.DecrementCount();
-      };
-
-      FunctionLibraryRuntime* flr = GetFLR(opts.target);
-      if (flr != nullptr) {
-        // Initialize local function synchronously.
-        Status s = flr->Instantiate(unique_name, attrs, opts, component_handle);
-        done(s);
-      } else {
-        // Initialize remote function asynchronously.
-        InstantiateRemote(unique_name, attrs, opts, component_handle, done);
       }
+      if (!status->ok()) return;
+      VLOG(1) << "Instantiated component function " << unique_name
+              << " on device " << target << " with component handle "
+              << component_handle;
+      VLOG(2) << DebugString(shard);
+      comp_data->handle_ = component_handle;
     });
     i += 1;
   }
@@ -960,6 +934,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  // Check whether we have the right rendezvous.
+  if (opts.rendezvous && data->is_cross_process_ &&
+      !opts.rendezvous->is_cross_process()) {
+    done(errors::InvalidArgument(
+        "Running a cross process function ", data->function_name_,
+        " without an appropriate cross process Rendezvous."));
+    return;
+  }
+
   auto* refcounted_done = new ReffedStatusCallback(std::move(done));
   for (int i = 0; i < data->glue_.size(); ++i) {
     refcounted_done->Ref();
@@ -1056,31 +1039,13 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
   if (flr != nullptr) {
     return flr->Instantiate(function_name, attrs, options, handle);
   }
-
-  Status status;
-  Notification notification;
-  InstantiateRemote(function_name, attrs, options, handle,
-                    [&status, &notification](const Status& s) {
-                      status = s;
-                      notification.Notify();
-                    });
-  notification.WaitForNotification();
-  return status;
-}
-
-void ProcessFunctionLibraryRuntime::InstantiateRemote(
-    const string& function_name, AttrSlice attrs,
-    const FunctionLibraryRuntime::InstantiateOptions& options,
-    FunctionLibraryRuntime::Handle* handle,
-    FunctionLibraryRuntime::DoneCallback done) {
   if (parent_ == nullptr) {
-    done(errors::Internal(
+    return errors::Internal(
         "Currently don't support instantiating functions on device: ",
-        options.target));
-    return;
+        options.target);
   }
-  auto target = options.target;
-  VLOG(1) << "ProcessFLR Instantiate: " << function_name << " on: " << target;
+  VLOG(1) << "ProcessFLR Instantiate: " << function_name
+          << " on: " << options.target;
   string function_key = Canonicalize(function_name, attrs, options);
   FunctionData* f;
   {
@@ -1088,20 +1053,20 @@ void ProcessFunctionLibraryRuntime::InstantiateRemote(
     FunctionLibraryRuntime::Handle h =
         gtl::FindWithDefault(table_, function_key, kInvalidHandle);
     if (h == kInvalidHandle || function_data_.count(h) == 0) {
-      h = AddHandleLocked(function_key, target, kInvalidHandle);
+      h = AddHandleLocked(function_key, options.target, kInvalidHandle);
     }
     f = function_data_[h].get();
     *handle = h;
   }
-  f->DistributedInit(
+  LOG(INFO) << "Running a distributed init on device: " << options.target;
+  TF_RETURN_IF_ERROR(f->DistributedInit(
       parent_, function_name,
-      options.lib_def == nullptr ? *lib_def_ : *options.lib_def, attrs, options,
-      [this, function_name, target, handle, done](const Status& s) {
-        VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
-                << " on: " << target << " with handle: " << *handle
-                << " (this: " << this << ")";
-        done(s);
-      });
+      options.lib_def == nullptr ? *lib_def_ : *options.lib_def, attrs,
+      options));
+  VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
+          << " on: " << options.target << " with handle: " << *handle
+          << " (this: " << this << ")";
+  return Status::OK();
 }
 
 Status ProcessFunctionLibraryRuntime::RemoveHandle(

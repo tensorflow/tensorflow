@@ -1,10 +1,10 @@
 llvm/llvm/projects/google_mlir/mlir_configure.bzl
-tensorflow/.bazelversion
 tensorflow/__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/core/public/version.h
 tensorflow/python/autograph/core/config.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py

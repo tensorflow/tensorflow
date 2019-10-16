@@ -127,7 +127,7 @@ void RegisterBitcastOp() {
   TF_DeleteStatus(status);
 }
 
-static bool IsBitcastOpRegistered = []() {
+[[maybe_unused]] static bool IsBitcastOpRegisteredUnused = []() {
   if (SHOULD_REGISTER_OP("Bitcast")) {
     RegisterBitcastOp();
   }

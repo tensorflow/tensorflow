@@ -81,7 +81,7 @@ class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
 
   // Verify the quantization specification is expected for quantizing the
   // current function.
-  bool IsIllegalQuantSpecs(FuncOp func) {
+  bool IsLegalQuantSpecs(FuncOp func) {
     if (func.getName() == quant_specs_.target_func) {
       return func.getNumArguments() == quant_specs_.input_ranges.size();
     }
@@ -115,7 +115,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   }
 
   // If the validation fails, the pass should stop immediately.
-  if (!IsIllegalQuantSpecs(func)) {
+  if (!IsLegalQuantSpecs(func)) {
     return true;
   }
 
@@ -167,11 +167,14 @@ using PrepareQuantStats =
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
-
   // Set the quantization parameters for the quantizable input nodes. If this
-  // failed, return the function immediately.
+  // failed, return the function immediately. This is only required for
+  // quantization aware training model conversion.
   // TODO(fengliuai): send the signal to the pass manager.
-  if (SetInputNodesQuantizationParams(func)) return;
+  if (!quant_specs_.post_training_quantization &&
+      SetInputNodesQuantizationParams(func)) {
+    return;
+  }
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -189,6 +192,8 @@ void PrepareQuantizePass::runOnFunction() {
   }
   applyPatternsGreedily(func, patterns);
 
+  // Finally, the quantization parameters can be propagated to the rest of the
+  // values (tensors).
   ApplyQuantizationParamsPropagation(func, is_signed, GetOpQuantSpec);
 }
 

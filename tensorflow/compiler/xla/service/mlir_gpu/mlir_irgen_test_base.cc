@@ -81,6 +81,19 @@ void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, printing_stage);
 }
 
+MlirCompiler::IRHook MlirIrGenTestBase::getIRHookBreakingLoweringStage(
+    LoweringStage breaking_stage) {
+  return {[](mlir::ModuleOp module) -> Status {
+            mlir::PassManager pm(module.getContext());
+            pm.addPass(::mlir::createInjectErrorsForTestingPass());
+            if (failed(pm.run(module))) {
+              return InternalError("InjectErrorsForTestingPass failed.");
+            }
+            return Status::OK();
+          },
+          breaking_stage};
+}
+
 StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
     std::unique_ptr<HloModule> hlo_module, LoweringStage breaking_stage) {
   string errors;
@@ -94,16 +107,7 @@ StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
   };
 
   MlirCompiler* compiler = GetMLIRCompiler();
-  compiler->SetModuleHook(
-      {[](mlir::ModuleOp module) -> Status {
-         mlir::PassManager pm(module.getContext());
-         pm.addPass(::mlir::createInjectErrorsForTestingPass());
-         if (failed(pm.run(module))) {
-           return InternalError("InjectErrorsForTestingPass failed.");
-         }
-         return Status::OK();
-       },
-       breaking_stage});
+  compiler->SetModuleHook(getIRHookBreakingLoweringStage(breaking_stage));
   compiler->SetErrorHandler(error_handler);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   compiler->RemoveModuleHook();

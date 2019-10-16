@@ -350,6 +350,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
   let results = (outs HLO_Tensor:$result);
 
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",

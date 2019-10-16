@@ -161,6 +161,9 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpBitwiseOr              : I32EnumAttrCase<"OpBitwiseOr", 197>;
+def SPV_OC_OpBitwiseXor             : I32EnumAttrCase<"OpBitwiseXor", 198>;
+def SPV_OC_OpBitwiseAnd             : I32EnumAttrCase<"OpBitwiseAnd", 199>;
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
@@ -201,6 +204,7 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
+      SPV_OC_OpBitwiseOr, SPV_OC_OpBitwiseXor, SPV_OC_OpBitwiseAnd,
       SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
       SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
       SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,

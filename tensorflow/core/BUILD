@@ -117,7 +117,6 @@ load(
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
     "tf_additional_test_deps",
-    "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
@@ -233,30 +232,6 @@ ERROR_CODES_PROTO_SRCS = [
 
 CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
-# Protos which are not needed on mobile builds, but should be included in
-# protos_all.
-#
-# Note that some protos are in neither core_proto_srcs nor this filegroup; e.g.
-# ones with individual proto_library targets.
-ADDITIONAL_CORE_PROTO_SRCS = [
-    "example/example_parser_configuration.proto",
-    "protobuf/trackable_object_graph.proto",
-    "protobuf/control_flow.proto",
-    "protobuf/data/experimental/snapshot.proto",
-    # TODO(ebrevdo): Re-enable once CriticalSection is in core.
-    # "protobuf/critical_section.proto",
-    "protobuf/debug_event.proto",
-    "protobuf/meta_graph.proto",
-    "protobuf/named_tensor.proto",
-    "protobuf/remote_tensor_handle.proto",
-    "protobuf/saved_model.proto",
-    "protobuf/saved_object_graph.proto",
-    "protobuf/struct.proto",
-    "protobuf/tensorflow_server.proto",
-    "protobuf/transport_options.proto",
-    "util/test_log.proto",
-]
-
 tf_proto_library(
     name = "protos_all",
     srcs = [],
@@ -348,6 +323,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -412,15 +388,9 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-cc_library(
+alias(
     name = "grpc_services",
-    srcs = [],
-    hdrs = [
-        "//tensorflow/core/platform:grpc_services.h",
-    ],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = tf_grpc_service_all(),
+    actual = "//tensorflow/core/platform:grpc_services",
 )
 
 cc_library(
@@ -1428,6 +1398,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_batch_matmul_op",
         "//tensorflow/core/kernels:mkl_matmul_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
@@ -2301,9 +2272,13 @@ cc_library(
                "//tensorflow/core/lib/math:math_util",
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
+               "//tensorflow/core/platform:context",
+               "//tensorflow/core/platform:cord",
+               "//tensorflow/core/platform:cpu_feature_guard",
                "//tensorflow/core/platform:cpu_info",
                "//tensorflow/core/platform:denormal",
                "//tensorflow/core/platform:dynamic_annotations",
+               "//tensorflow/core/platform:file_statistics",
                "//tensorflow/core/platform:mutex",
                "//tensorflow/core/platform:notification",
                "//tensorflow/core/platform:numbers",
@@ -2544,7 +2519,29 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all_proto",
-    srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    srcs = COMMON_PROTO_SRCS + [
+        # Protos which are not needed on mobile builds, but should be included
+        # in protos_all.
+        #
+        # Note that some protos are in neither core_proto_srcs nor this
+        # filegroup; e.g. ones with individual proto_library targets.
+        "example/example_parser_configuration.proto",
+        "protobuf/trackable_object_graph.proto",
+        "protobuf/control_flow.proto",
+        "protobuf/data/experimental/snapshot.proto",
+        # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+        # "protobuf/critical_section.proto",
+        "protobuf/debug_event.proto",
+        "protobuf/meta_graph.proto",
+        "protobuf/named_tensor.proto",
+        "protobuf/remote_tensor_handle.proto",
+        "protobuf/saved_model.proto",
+        "protobuf/saved_object_graph.proto",
+        "protobuf/struct.proto",
+        "protobuf/tensorflow_server.proto",
+        "protobuf/transport_options.proto",
+        "util/test_log.proto",
+    ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
@@ -4172,6 +4169,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_transpose_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]),
 )
 

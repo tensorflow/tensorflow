@@ -193,6 +193,8 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     # Invalid tensor index passed.
     with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
+    with self.assertRaisesRegexp(ValueError, 'Invalid node index'):
+      interpreter._get_op_details(4)
 
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):

@@ -208,7 +208,15 @@ def run(proc_func,
       except Exception:
         # Capture all exceptions to be reported to parent process.
         finish_wrapper_func_properly(ExcInfoWrapper(sys.exc_info()))
-        return
+
+        # Re-raise the exception in addition to reporting it to the parent
+        # process, so that even if `--test_timeout` flag is set and the
+        # error doesn't make it to be shown in parent process before bazel's
+        # timeout, the log would still show what happens in this subprocess,
+        # instead of silently suppressing the error due to early bazel timeout.
+        # Raising an error in the subprocess produces stack trace in the log,
+        # but the program continues running.
+        raise
 
       finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
 

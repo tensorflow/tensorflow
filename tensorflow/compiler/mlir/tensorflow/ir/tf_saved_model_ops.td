@@ -52,10 +52,34 @@ def TfSavedModel_Dialect : Dialect {
     If an object in the object graph is reachable via multiple paths
     from the root of the object graph, then this array can have multiple
     entries.
+    TODO(silvasean): This design should be reconsidered after
+    SavedModel/tf.Module and MLIR linkage semantics are better solidified.
+    In particular, it would be great if we could assume a single exported name,
+    and use the standardized MLIR `sym_name` attribute to hold it.
 
-    This dialect provides a function arg attribute
-    `tf_saved_model.bound_input = @some_symbol_name` which can reference a
-    `tf_saved_model.global_tensor` that is bound to that function argument.
+    This dialect annotates func ops with two argument attributes
+    `tf_saved_model.index_path` and `tf_saved_model.bound_input` in order to
+    model the calling API of a function with SavedModel semantics.
+    In particular, func's in SavedModel are called with a structured value,
+    which can consist of arbitrarily nested dicts/lists with tensors as leaves
+    (composite tensors here mostly count as just dicts holding other tensors).
+    The arity of the Python-level function is modeled as an outer list.
+    Additionally, any variables or constants used by the function are implicitly
+    appended to the argument list of the underlying func in a way that is
+    transparent to the caller.
+
+    The function arg attribute
+    `tf_saved_model.index_path = [...some list of strings and integers...]}`
+    represents the path which one would use to index into a structured
+    value to reach a given tensor. For example, given the structured value
+    `[ {"x": leaf0} ]`, the "index path" needed to reach `leaf0` is [0, "x"], as
+    it would be if you were indexing in Python into such an object
+    (i.e. `obj[0]["x"]`).
+
+    The function arg attribute
+    `tf_saved_model.bound_input = @some_symbol_name` references a
+    `tf_saved_model.global_tensor` that is bound to that function argument
+    and implicitly passed in when the function is invoked from a user-level API.
   }];
 
   let cppNamespace = "tf_saved_model";

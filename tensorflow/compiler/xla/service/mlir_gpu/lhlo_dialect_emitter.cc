@@ -236,7 +236,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   llvm::SmallVector<Value*, 4> arg_values;
   for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
     arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
-        builder_.getUnknownLoc(), function.getArgument(i)));
+        getLocation(fusion), function.getArgument(i)));
   }
   HloDialectEmitter hlo_emitter(body_builder, arg_values);
 
@@ -248,7 +248,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
   Value* result_memref = function.getArgument(function.getNumArguments() - 1);
-  body_builder.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), result,
+  body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
                                              result_memref);
 
   return Status::OK();
@@ -273,7 +273,7 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
   OpBuilder func_builder(function.getBody());
   llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
                                           function.args_end()};
-  func_builder.create<lhlo::CompareOp>(builder_.getUnknownLoc(), llvm::None,
+  func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
                                        arg_values, attributes);
   return Status::OK();
 }

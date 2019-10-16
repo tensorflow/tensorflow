@@ -745,12 +745,14 @@ class TFETest(test_util.TensorFlowTestCase):
                'container', '', 'shared_name', ''))
 
   def testExecuteShapeAttrBadValue(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Expecting a Dimension for attr shape, got object'):
       execute(
           b'VarHandleOp',
           num_outputs=1,
           inputs=[],
-          attrs=('shape', 1, 'dtype', dtypes.int32.as_datatype_enum,
+          attrs=('shape', [object()], 'dtype', dtypes.int32.as_datatype_enum,
                  'container', '', 'shared_name', ''))
 
   def testExecuteListStringAttr(self):
@@ -1049,16 +1051,17 @@ class SendRecvTest(test_util.TensorFlowTestCase):
     configure_virtual_cpus()
 
   def testBasic(self):
-    t0 = constant_op.constant(1.0)
-    t1 = constant_op.constant(2.0)
-    self._send(t0, 't0', self.cpu_device)
-    self._send(t1, 't1', self.cpu_device)
-    self.assertAllEqual(
-        self._recv(dtypes.float32, 't0', self.cpu_device),
-        1.0)
-    self.assertAllEqual(
-        self._recv(dtypes.float32, 't1', self.cpu_device),
-        2.0)
+    with ops.device(self.cpu_device):
+      t0 = constant_op.constant(1.0)
+      t1 = constant_op.constant(2.0)
+      self._send(t0, 't0', self.cpu_device)
+      self._send(t1, 't1', self.cpu_device)
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't0', self.cpu_device),
+          1.0)
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't1', self.cpu_device),
+          2.0)
 
   @test_util.run_gpu_only
   def testLocalCrossDevice(self):

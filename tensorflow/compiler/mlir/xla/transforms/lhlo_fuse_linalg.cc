@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering HLO dialect to LHLO dialect.
+// This file implements logic for fusing linalg ops obtained after LHLO
+// lowering.
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 
@@ -31,15 +32,20 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     auto func = getFunction();
     OperationFolder state(func.getContext());
 
-    // Tile linalg ops that write to output buffers of the function.
-    absl::flat_hash_set<const Value*> func_args(func.getArguments().begin(),
-                                                func.getArguments().end());
+    // The fusion in Linalg is currently possible only when the consumer op is
+    // tiled. In order to greedily fuse the ops, we have to start from the tiled
+    // root linalg ops, i.e. linalg ops that write to output buffers of the
+    // function.
+    llvm::SmallDenseSet<Value*> func_args;
+    for (auto func_arg : func.getArguments()) {
+      func_args.insert(func_arg);
+    }
     func.walk([&](linalg::GenericOp generic_op) {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const auto result : op.getOutputs()) {
-        if (!func_args.contains(result)) continue;
+      for (const Value* result : op.getOutputs()) {
+        if (!func_args.count(result)) continue;
         if (linalg::tileLinalgOp(op, tile_sizes, state)) {
           generic_op.erase();
           return;
@@ -48,8 +54,12 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     });
 
     // Fuse producers of tiled linalg ops.
-    absl::flat_hash_set<Operation*> erase_set;
+    llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
+    // TODO(pifon): Remove assumption that the function has a single block.
+    if (func.getBlocks().size() != 1) {
+      emitError(func.getLoc(), "The function needs to have a single block.");
+    }
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     linalg::Aliases aliases;
     linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
@@ -60,9 +70,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
         }
       }
     }
-    for (auto* e : erase_set) {
-      e->erase();
-    }
+    for (auto* e : erase_set) e->erase();
   }
 };
 

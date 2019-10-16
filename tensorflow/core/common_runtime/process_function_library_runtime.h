@@ -248,7 +248,8 @@ class ProcessFunctionLibraryRuntime {
           instantiation_counter_(1),
           lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
-          ret_types_(std::move(ret_types)) {}
+          ret_types_(std::move(ret_types)),
+          is_cross_process_(false) {}
 
     const string function_name_;
     const string function_key_;
@@ -259,6 +260,9 @@ class ProcessFunctionLibraryRuntime {
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
+
+    // Indicates whether this function needs to execute cross process.
+    bool is_cross_process_;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -341,12 +345,6 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
-  void InstantiateRemote(
-      const string& function_name, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options,
-      FunctionLibraryRuntime::Handle* handle,
-      FunctionLibraryRuntime::DoneCallback done);
-
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
@@ -392,11 +390,15 @@ class ProcessFunctionLibraryRuntime {
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
-    void DistributedInit(
+    Status DistributedInit(
         DistributedFunctionLibraryRuntime* parent, const string& function_name,
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-        const FunctionLibraryRuntime::InstantiateOptions& options,
-        FunctionLibraryRuntime::DoneCallback done);
+        const FunctionLibraryRuntime::InstantiateOptions& options);
+
+    bool is_cross_process() {
+      mutex_lock l(mu_);
+      return is_cross_process_;
+    }
 
    private:
     mutex mu_;
@@ -404,6 +406,7 @@ class ProcessFunctionLibraryRuntime {
     const string target_device_;
     FunctionLibraryRuntime::LocalHandle local_handle_ GUARDED_BY(mu_);
     const string function_key_;
+    bool is_cross_process_ GUARDED_BY(mu_) = false;
     bool init_started_ GUARDED_BY(mu_) = false;
     Status init_result_ GUARDED_BY(mu_);
     Notification init_done_;

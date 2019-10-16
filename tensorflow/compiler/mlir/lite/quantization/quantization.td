@@ -24,7 +24,10 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+#ifdef DIALECT_QUANTOPS_QUANT_PREDICATES_
+#else
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
+#endif // DIALECT_QUANTOPS_QUANT_PREDICATES_
 
 
 //===----------------------------------------------------------------------===//

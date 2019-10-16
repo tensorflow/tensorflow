@@ -465,17 +465,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
         &existing_workers, context_id, ctx->context->GetContextViewId(),
         server_def, remote_eager_workers.get(), &replaced_workers));
-    if (!replaced_workers.empty()) {
-      // Also adding replaced workers so that we recreate remote devices and
-      // contexts, and re-register functions on those workers
-      added_workers.insert(added_workers.end(), replaced_workers.begin(),
-                           replaced_workers.end());
-      for (const string& w : replaced_workers) {
-        existing_workers.erase(
-            std::remove(existing_workers.begin(), existing_workers.end(), w),
-            existing_workers.end());
-      }
-    }
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Updating cluster with following changes";
       for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
@@ -484,10 +473,21 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       for (const string& w : replaced_workers)
         VLOG(1) << "  Replaced worker " << w;
     }
+    if (!replaced_workers.empty()) {
+      // Treat replaced workers as removed then added back, so that we recreate
+      // remote devices and contexts, and re-register functions on those workers
+      removed_workers.insert(removed_workers.end(), replaced_workers.begin(),
+                             replaced_workers.end());
+      added_workers.insert(added_workers.end(), replaced_workers.begin(),
+                           replaced_workers.end());
+      for (const string& w : replaced_workers) {
+        existing_workers.erase(
+            std::remove(existing_workers.begin(), existing_workers.end(), w),
+            existing_workers.end());
+      }
+    }
     LOG_AND_RETURN_IF_ERROR(
         RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
-    LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(replaced_workers, remote_device_mgr.get()));
     LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
         added_workers, grpc_server->master_env()->worker_cache,
         remote_device_mgr.get()));

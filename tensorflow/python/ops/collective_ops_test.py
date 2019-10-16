@@ -40,10 +40,10 @@ from tensorflow.python.platform import tf_logging as logging
 class CollectiveOpTest(test.TestCase):
 
   def _testCollectiveReduce(self, inputs, expected, set_graph_key,
-                            communication_hint='auto', fp16=False):
+                            communication_hint='auto', fp16=False,
+                            instance_key=1, merge_op='Add', final_op='Div'):
     group_key = 1
     group_size = len(inputs)
-    instance_key = 1
     device_type = 'CPU'
     config = config_pb2.ConfigProto(device_count={device_type: group_size})
     devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
@@ -55,7 +55,7 @@ class CollectiveOpTest(test.TestCase):
           tensor = constant_op.constant(inputs[i], dtype=(
               dtypes.float16 if fp16 else dtypes.float32))
           colred.append(collective_ops.all_reduce(
-              tensor, group_size, group_key, instance_key, 'Add', 'Div',
+              tensor, group_size, group_key, instance_key, merge_op, final_op,
               communication_hint=communication_hint))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
@@ -222,6 +222,26 @@ class CollectiveOpTest(test.TestCase):
   def testCollectiveReduceScalar(self):
     self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
                                set_graph_key=True)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveReduceMaximum(self):
+    self._testCollectiveReduce(
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[10., 20., 30., 40., 50.],
+        set_graph_key=True,
+        instance_key=30,
+        merge_op='Max',
+        final_op='Id')
+
+  @test_util.run_deprecated_v1
+  def testCollectiveReduceMinimum(self):
+    self._testCollectiveReduce(
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[1., 2., 3., 4., 5.],
+        set_graph_key=True,
+        instance_key=40,
+        merge_op='Min',
+        final_op='Id')
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1

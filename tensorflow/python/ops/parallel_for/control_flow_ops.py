@@ -386,9 +386,9 @@ def vectorized_map(fn, elems):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
     return fn(gathered_elems)
   batch_size = None
-  first_elem_shape = nest.flatten(elems)[0].shape
-  if first_elem_shape.rank is not None:
-    batch_size = first_elem_shape.as_list()[0]
+  first_elem = ops.convert_to_tensor(nest.flatten(elems)[0])
+  if first_elem.shape.rank is not None:
+    batch_size = first_elem.shape.as_list()[0]
   if batch_size is None:
-    batch_size = array_ops.shape()[0]
+    batch_size = array_ops.shape(first_elem)[0]
   return pfor(loop_fn, batch_size)

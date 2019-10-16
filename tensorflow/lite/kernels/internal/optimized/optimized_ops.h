@@ -1226,78 +1226,6 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                                    output_data);
 }
 
-inline void HybridConvPerChannel(
-    const ConvParams& params, float* scaling_factors_ptr,
-    const RuntimeShape& input_shape, const int8_t* input_data,
-    const RuntimeShape& filter_shape, const int8_t* filter_data,
-    const RuntimeShape& bias_shape, const float* bias_data,
-    const RuntimeShape& output_shape, float* output_data,
-    const RuntimeShape& im2col_shape, int8_t* im2col_data,
-    const float* per_channel_scale, int32_t* input_offset) {
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const float output_activation_min = params.float_activation_min;
-  const float output_activation_max = params.float_activation_max;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-
-  const int batch_size = input_shape.Dims(0);
-  const int filter_width = filter_shape.Dims(2);
-  const int filter_height = filter_shape.Dims(1);
-
-  const int8_t* gemm_input_data = nullptr;
-  int num_input;
-  const bool need_im2col = stride_width != 1 || stride_height != 1 ||
-                           filter_width != 1 || filter_height != 1;
-
-  if (need_im2col) {
-    TFLITE_DCHECK(im2col_data);
-    Im2col(params, filter_height, filter_width, input_offset, input_shape,
-           input_data, im2col_shape, im2col_data);
-    gemm_input_data = im2col_data;
-    num_input = im2col_shape.FlatSize();
-  } else {
-    TFLITE_DCHECK(!im2col_data);
-    gemm_input_data = input_data;
-    num_input = input_shape.FlatSize();
-  }
-
-  const int filter_rows = filter_shape.Dims(0);
-  const int filter_cols = FlatSizeSkipDim(filter_shape, 0);
-
-  const int gemm_input_cols = filter_cols;
-  const int gemm_input_rows = num_input / gemm_input_cols;
-
-  const int output_cols = output_shape.Dims(3);
-  const int output_rows = FlatSizeSkipDim(output_shape, 3);
-  TFLITE_DCHECK_EQ(output_cols, filter_rows);
-  TFLITE_DCHECK_EQ(output_rows, gemm_input_rows);
-  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_cols);
-
-  const int rows_per_batch = gemm_input_rows / batch_size;
-
-  // MatrixBatchVectorMultiplyAccumulate assumes that each row of the second
-  // input matrix has its own scale factor and zero point.
-  // This code duplicates the scale factors and zero point for each row in the
-  // same batch.
-  for (int i = gemm_input_rows - 1; i >= 0; --i) {
-    scaling_factors_ptr[i] = scaling_factors_ptr[i / rows_per_batch];
-    input_offset[i] = input_offset[i / rows_per_batch];
-  }
-
-  std::fill_n(output_data, output_rows * output_cols, 0.0f);
-
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      filter_data, filter_rows, filter_cols, gemm_input_data,
-      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
-      /*result_stride=*/1, per_channel_scale, input_offset);
-
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
-}
-
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* input_data, const RuntimeShape& filter_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,
@@ -2365,6 +2293,37 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
   }
 }
 
+// Broadcast mul that can often be used for inner loop of broadcast Mul.
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const float broadcast_value,
+                               const float* input2_data, float* output_data) {
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t output_activation_min_vector =
+      vdupq_n_f32(params.float_activation_min);
+  const float32x4_t output_activation_max_vector =
+      vdupq_n_f32(params.float_activation_max);
+  const float32x4_t broadcast_value_dup = vdupq_n_f32(broadcast_value);
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input2_val_original = vld1q_f32(input2_data + i);
+
+    const float32x4_t output =
+        vmulq_f32(input2_val_original, broadcast_value_dup);
+
+    const float32x4_t clamped =
+        vmaxq_f32(output_activation_min_vector,
+                  vminq_f32(output_activation_max_vector, output));
+    vst1q_f32(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    float x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8* input1_data,
                 const RuntimeShape& input2_shape, const uint8* input2_data,
@@ -2449,7 +2408,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
+inline void BroadcastMulFivefold(const ArithmeticParams& params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const float* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
@@ -2458,16 +2417,10 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  float* output_data) {
   gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/float");
 
-  ArithmeticParams switched_params = unswitched_params;
-  switched_params.input1_offset = unswitched_params.input2_offset;
-  switched_params.input2_offset = unswitched_params.input1_offset;
-
   const bool use_unswitched =
-      unswitched_params.broadcast_category ==
+      params.broadcast_category ==
       tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
 
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
   const float* input1_data =
       use_unswitched ? unswitched_input1_data : unswitched_input2_data;
   const float* input2_data =
@@ -2503,11 +2456,20 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   } else {
-    // TODO(renjieliu): Optimze for scalar broadcast case.
-    reference_ops::BroadcastMul4DSlow(
-        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
-        unswitched_input2_shape, unswitched_input2_data, output_shape,
-        output_data);
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          ++input1_data_ptr;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
@@ -3722,14 +3684,19 @@ inline void LocalResponseNormalization(
   }
 }
 
-inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const float* input_data,
-                    const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Softmax");
+inline void SoftmaxImpl(const SoftmaxParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data,
+                        int start_batch, int end_batch) {
+  gemmlowp::ScopedProfilingLabel label("Softmax/Impl");
   MatchingFlatSize(input_shape, output_shape);
 
-  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
-  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+  const int logit_size = input_shape.Dims(input_shape.DimensionsCount() - 1);
+  const MatrixMap<const float> in_mat(input_data + logit_size * start_batch,
+                                      logit_size, end_batch - start_batch);
+  MatrixMap<float> out_mat(output_data + logit_size * start_batch, logit_size,
+                           end_batch - start_batch);
   // Compute the exponential first, removing the max coefficient for numerical
   // stability.
   out_mat =
@@ -3740,6 +3707,72 @@ inline void Softmax(const SoftmaxParams& params,
   Eigen::Array<float, 1, Eigen::Dynamic> scale =
       out_mat.array().colwise().sum().inverse();
   out_mat.array().rowwise() *= scale;
+}
+
+struct SoftmaxWorkerTask : cpu_backend_threadpool::Task {
+  SoftmaxWorkerTask(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    int start_batch, int end_batch)
+      : params(params),
+        input_shape(input_shape),
+        input_data(input_data),
+        output_shape(output_shape),
+        output_data(output_data),
+        start_batch(start_batch),
+        end_batch(end_batch) {}
+  void Run() override {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data,
+                start_batch, end_batch);
+  }
+
+ private:
+  const tflite::SoftmaxParams& params;
+  const RuntimeShape& input_shape;
+  const float* input_data;
+  const RuntimeShape& output_shape;
+  float* output_data;
+  int start_batch;
+  int end_batch;
+};
+
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    CpuBackendContext* cpu_backend_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("Softmax");
+
+  // We picture softmax input as a 2-D matrix while the last dim is the logit
+  // dim, and the rest dims will be the batch dim for the 2-D matrix.
+  const int batch_size =
+      FlatSizeSkipDim(input_shape, input_shape.DimensionsCount() - 1);
+  constexpr int kMinBatchPerThread = 8;
+  int thread_count = batch_size / kMinBatchPerThread;
+  thread_count = thread_count > 0 ? thread_count : 1;
+  const int capped_thread_count =
+      cpu_backend_context == nullptr
+          ? 1
+          : std::min(thread_count, cpu_backend_context->max_num_threads());
+  if (capped_thread_count == 1) {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data, 0,
+                batch_size);
+  } else {
+    std::vector<SoftmaxWorkerTask> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(capped_thread_count);
+    int batch_start = 0;
+    for (int i = 0; i < capped_thread_count; ++i) {
+      // Try to distribute the tasks as even as possible.
+      int batch_end =
+          batch_start + (batch_size - batch_start) / (capped_thread_count - i);
+      tasks.emplace_back(params, input_shape, input_data, output_shape,
+                         output_data, batch_start, batch_end);
+      batch_start = batch_end;
+    }
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
+  }
 }
 
 inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
