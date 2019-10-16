@@ -76,8 +76,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
                         /*scale=*/0,
                         /*zero_point=*/0,
                         true,
-                        /*per_channel_scale=*/bias_scale,
-                        /*per_channel_zero_point=*/bias_zero_points,
+                        /*per_channel_quantization_scales=*/bias_scale,
+                        /*per_channel_quantization_offsets=*/bias_zero_points,
                         /*channel_index==*/0};
         bias_ = AddInput(bias);
       } else {
@@ -356,10 +356,10 @@ TEST_P(ConvolutionOpTest, StrideTest) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  18, 2, 5,  // first batch, left
-                                 22, 3, 6,  // first batch, right
-                                 21, 1, 6,  // second batch, left
-                                 17, 4, 3,  // second batch, right
-                                 31, 5, 4,  // second batch, right
+                                 22, 3, 6,  // first batch, middle
+                                 21, 1, 6,  // first batch, right
+                                 17, 4, 3,  // second batch, left
+                                 31, 5, 4,  // second batch, middle
                                  40, 3, 4,  // second batch, right
                              }));
 }
@@ -387,12 +387,14 @@ TEST_P(ConvolutionOpTest, PaddingTest) {
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 18, 2,  5,  22,  // first batch, left
-                                 3,  6,  21, 1,   // first batch, right
-                                 6,  8,  -1, 4,   // second batch, left
-                                 7,  2,  -1, 9,   // second batch, right
-                                 3,  -2, 8,  1,   // second batch, right
-                                 -2, 3,  0,  1,   // second batch, right
+                                 18, 2,  5,   // first row, left
+                                 22, 3,  6,   //
+                                 21, 1,  6,   //
+                                 8,  -1, 4,   // first row, right
+                                 7,  2,  -1,  // second row, left
+                                 9,  3,  -2,  //
+                                 8,  1,  -2,  //
+                                 3,  0,  1,   // second row, right
                              }));
 }
 
@@ -1350,9 +1352,9 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
        0,
        0,
        0,
-       /*per_channel=*/true,
-       /*per_channel_scales=*/{1, 2},
-       /*per_channel_zeros=*/{0, 0},
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
        /*channel_index=*/0},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1},
       /*stride_width=*/1, /*stride_height=*/1);
