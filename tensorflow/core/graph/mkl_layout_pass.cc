@@ -2759,6 +2759,7 @@ void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -2768,7 +2769,6 @@ void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
     nb->Attr("strides", strides);
     nb->Attr("ksize", ksize);
 
-    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
     nb->Attr("data_format", data_format);
   } else {
     std::vector<int32> new_strides;

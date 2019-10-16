@@ -1344,7 +1344,6 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
   InitGraph(
       "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Input1' op: 'Input'}                                     \
        node { name: 'Const0' op: 'Const'                                      \
          attr { key: 'dtype' value { type: DT_INT32 } }                       \
          attr {                                                               \
@@ -1402,8 +1401,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
         }                  \
       }"
       "node {                 \
-        name: 'MaxPool3D'        \
-        op: 'MaxPool3D'          \
+        name: 'MaxPool3D'     \
+        op: 'MaxPool3D'       \
         input: 'Transpose0'   \
         attr {                \
           key: 'T'            \
@@ -1457,7 +1456,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
       "node {              \
         name: 'Transpose1' \
         op: 'Transpose'    \
-        input: 'MaxPool3D'    \
+        input: 'MaxPool3D' \
         input: 'Const1'    \
         attr {             \
           key: 'T'         \
@@ -1477,7 +1476,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
       " input: ['Transpose1'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "Const0(Const);Const1(Const);DMT/_0(Const);Input0(Input);"
-            "Input1(Input);MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)"
+            "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)"
             "|DMT/_0->MaxPool3D:1;Input0->MaxPool3D;"
             "Input0:control->DMT/_0:control;MaxPool3D->Relu;"
             "MaxPool3D:2->Relu:1");
@@ -1486,7 +1485,6 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
   InitGraph(
       "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Input1' op: 'Input'}                                     \
        node { name: 'Const0' op: 'Const'                                      \
          attr { key: 'dtype' value { type: DT_INT32 } }                       \
          attr {                                                               \
@@ -1544,8 +1542,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
         }                  \
       }"
       "node {                 \
-        name: 'MaxPool3D'        \
-        op: 'MaxPool3D'          \
+        name: 'MaxPool3D'     \
+        op: 'MaxPool3D'       \
         input: 'Transpose0'   \
         attr {                \
           key: 'T'            \
@@ -1593,7 +1591,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
       "node {              \
         name: 'Transpose1' \
         op: 'Transpose'    \
-        input: 'MaxPool3D'    \
+        input: 'MaxPool3D' \
         input: 'Const1'    \
         attr {             \
           key: 'T'         \
@@ -1614,7 +1612,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
   EXPECT_EQ(
       DoMklLayoutOptimizationPass(),
       "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
-      "Input1(Input);MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
+      "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
       "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:"
       "1;"
       "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
