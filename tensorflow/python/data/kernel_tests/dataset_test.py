@@ -59,7 +59,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda _: random_ops.random_uniform(()))
     with self.assertRaises(errors.FailedPreconditionError):
-      self.evaluate(dataset._as_serialized_graph())
+      self.evaluate(dataset._as_serialized_graph(external_state_policy=2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):

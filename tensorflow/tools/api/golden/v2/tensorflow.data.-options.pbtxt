@@ -31,6 +31,10 @@ tf_class {
     name: "experimental_threading"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "external_state_policy"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
