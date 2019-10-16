@@ -248,7 +248,8 @@ class ProcessFunctionLibraryRuntime {
           instantiation_counter_(1),
           lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
-          ret_types_(std::move(ret_types)) {}
+          ret_types_(std::move(ret_types)),
+          is_cross_process_(false) {}
 
     const string function_name_;
     const string function_key_;
@@ -259,6 +260,9 @@ class ProcessFunctionLibraryRuntime {
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
+
+    // Indicates whether this function needs to execute cross process.
+    bool is_cross_process_;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -391,12 +395,18 @@ class ProcessFunctionLibraryRuntime {
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
         const FunctionLibraryRuntime::InstantiateOptions& options);
 
+    bool is_cross_process() {
+      mutex_lock l(mu_);
+      return is_cross_process_;
+    }
+
    private:
     mutex mu_;
 
     const string target_device_;
     FunctionLibraryRuntime::LocalHandle local_handle_ GUARDED_BY(mu_);
     const string function_key_;
+    bool is_cross_process_ GUARDED_BY(mu_) = false;
     bool init_started_ GUARDED_BY(mu_) = false;
     Status init_result_ GUARDED_BY(mu_);
     Notification init_done_;
