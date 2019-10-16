@@ -78,15 +78,27 @@ $ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/progra
 For a detailed usage example, see the
 [auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
-### Use `xla.compile`
+### Explicit compilation
 
-The `xla.compile` API offers a more fine-grained control for choosing which
+Explicit compilation API offers a more fine-grained control for choosing which
 functions should be compiled with XLA. However, it requires restructuring source
-code, as not all TensorFlow operations can be represented in XLA. That is, when
-using `xla.compile` you pass it the functions which should be compiled using
-XLA; a failure to compile results in an exception.
+code, as not all TensorFlow operations can be represented in XLA. That is, using
+explicit compilation on API on functions which can not be represented in XLA
+results in an exception.
 
-See the [`xla.compile` tutorial colab](./tutorials/xla_compile.ipynb) for usage
+#### TF2: Use `@tf.function(experimental_compile=True)`
+
+Optimizing sections of the program using
+[`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) is a
+standard approach for
+[improving performance](https://www.tensorflow.org/tutorials/customization/performance)
+of TF2 programs. You can enable compilation with XLA by setting the
+`experimental_compile` argument of `tf.function` to `True`.
+
+#### TF1: Use `xla.compile`
+
+If you are using TF1, you can use the `xla.compile` API for explicit compilation
+using XLA. See the [tutorial colab](./tutorials/xla_compile.ipynb) for usage
 examples.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
