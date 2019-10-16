@@ -295,7 +295,7 @@ def dilation2d_v2(
     A `Tensor`. Has the same type as `input`.
   """
   if data_format != "NHWC":
-    raise TypeError("Data formats other than NHWC are not yet supported")
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
