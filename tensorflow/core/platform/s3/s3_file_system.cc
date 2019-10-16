@@ -31,6 +31,7 @@ limitations under the License.
 #include <aws/s3/model/PutObjectRequest.h>
 
 #include <cstdlib>
+#include <mutex>
 
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -45,6 +46,9 @@ namespace {
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
+static const int kMaxTempFileIndex = 1000;
+static int tmp_file_index_;
+static std::mutex tmp_file_suffix_lock_;
 
 Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   static mutex cfg_lock(LINKER_INITIALIZED);
@@ -212,7 +216,7 @@ class S3WritableFile : public WritableFile {
         s3_client_(s3_client),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
-            kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
+            kS3FileSystemAllocationTag, GetTempFileSuffix().c_str(),
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
@@ -275,6 +279,18 @@ class S3WritableFile : public WritableFile {
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
   bool sync_needed_;
   std::shared_ptr<Aws::Utils::TempFile> outfile_;
+
+  static std::string GetTempFileSuffix() {
+    int tmp_file_index;
+    {
+      std::lock_guard<std::mutex> lock(tmp_file_suffix_lock_);
+      tmp_file_index = tmp_file_index_;
+      tmp_file_index_ = (tmp_file_index_ + 1) % kMaxTempFileIndex;
+    }
+    std::ostringstream tmp_file_suffix;
+    tmp_file_suffix << "/tmp/s3_filesystem_" << tmp_file_index << "_";
+    return tmp_file_suffix.str();
+  }
 };
 
 class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
