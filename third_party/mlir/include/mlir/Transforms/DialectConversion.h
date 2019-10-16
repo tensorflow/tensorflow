@@ -262,6 +262,11 @@ public:
                  ArrayRef<Value *> valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
 
+  /// PatternRewriter hook for erasing a dead operation. The uses of this
+  /// operation *must* be made dead by the end of the conversion process,
+  /// otherwise an assert will be issued.
+  void eraseOp(Operation *op) override;
+
   /// PatternRewriter hook for splitting a block into two parts.
   Block *splitBlock(Block *block, Block::iterator before) override;
 

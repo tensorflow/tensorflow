@@ -583,9 +583,11 @@ void ConversionPatternRewriterImpl::discardRewrites() {
 void ConversionPatternRewriterImpl::applyRewrites() {
   // Apply all of the rewrites replacements requested during conversion.
   for (auto &repl : replacements) {
-    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
-      repl.op->getResult(i)->replaceAllUsesWith(
-          mapping.lookupOrDefault(repl.newValues[i]));
+    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i) {
+      if (auto *newValue = repl.newValues[i])
+        repl.op->getResult(i)->replaceAllUsesWith(
+            mapping.lookupOrDefault(newValue));
+    }
 
     // If this operation defines any regions, drop any pending argument
     // rewrites.
@@ -637,12 +639,9 @@ void ConversionPatternRewriterImpl::replaceOp(
   assert(newValues.size() == op->getNumResults());
 
   // Create mappings for each of the new result values.
-  for (unsigned i = 0, e = newValues.size(); i < e; ++i) {
-    assert((newValues[i] || op->getResult(i)->use_empty()) &&
-           "result value has remaining uses that must be replaced");
-    if (newValues[i])
-      mapping.map(op->getResult(i), newValues[i]);
-  }
+  for (unsigned i = 0, e = newValues.size(); i < e; ++i)
+    if (auto *repl = newValues[i])
+      mapping.map(op->getResult(i), repl);
 
   // Record the requested operation replacement.
   replacements.emplace_back(op, newValues);
@@ -716,6 +715,16 @@ void ConversionPatternRewriter::replaceOp(
   LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
                           << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
+}
+
+/// PatternRewriter hook for erasing a dead operation. The uses of this
+/// operation *must* be made dead by the end of the conversion process,
+/// otherwise an assert will be issued.
+void ConversionPatternRewriter::eraseOp(Operation *op) {
+  LLVM_DEBUG(llvm::dbgs() << "** Erasing operation : " << op->getName()
+                          << "\n");
+  SmallVector<Value *, 1> nullRepls(op->getNumResults(), nullptr);
+  impl->replaceOp(op, nullRepls, /*valuesToRemoveIfDead=*/llvm::None);
 }
 
 /// Apply a signature conversion to the entry block of the given region.
@@ -1397,7 +1406,7 @@ struct FuncOpSignatureConversion : public ConversionPattern {
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 

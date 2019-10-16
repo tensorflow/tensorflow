@@ -363,7 +363,7 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
       }
     }
 
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -474,7 +474,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
     // If the operation produced 0 or 1 result, return them immediately.
     if (numResults == 0)
-      return rewriter.replaceOp(op, llvm::None), this->matchSuccess();
+      return rewriter.eraseOp(op), this->matchSuccess();
     if (numResults == 1)
       return rewriter.replaceOp(op, newOp.getOperation()->getResult(0)),
              this->matchSuccess();

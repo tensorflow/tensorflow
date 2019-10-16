@@ -156,7 +156,7 @@ struct TerminatorLowering : public OpRewritePattern<TerminatorOp> {
 
   PatternMatchResult matchAndRewrite(TerminatorOp op,
                                      PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
