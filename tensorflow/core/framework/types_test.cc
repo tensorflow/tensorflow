@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -25,6 +26,7 @@ namespace {
 TEST(TypesTest, DeviceTypeName) {
   EXPECT_EQ("CPU", DeviceTypeString(DeviceType(DEVICE_CPU)));
   EXPECT_EQ("GPU", DeviceTypeString(DeviceType(DEVICE_GPU)));
+  EXPECT_EQ("SYCL", DeviceTypeString(DeviceType(DEVICE_SYCL)));
 }
 
 TEST(TypesTest, kDataTypeRefOffset) {
@@ -69,8 +71,8 @@ TEST(TypesTest, kDataTypeRefOffset) {
       << "Extra reference enum "
       << enum_descriptor->FindValueByNumber(e_ref)->name()
       << " without corresponding base enum with value " << e;
-  ASSERT_LT(DataType_MAX, e_ref) << "Gap in reference types, missing value for "
-                                 << e_ref;
+  ASSERT_LT(DataType_MAX, e_ref)
+      << "Gap in reference types, missing value for " << e_ref;
 
   // Make sure there are no enums defined after the last regular type before
   // the first reference type.
@@ -127,6 +129,22 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT32));
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
+}
+
+TEST(TypesTest, ComplexTypes) {
+  EXPECT_TRUE(DataTypeIsComplex(DT_COMPLEX64));
+  EXPECT_TRUE(DataTypeIsComplex(DT_COMPLEX128));
+  EXPECT_FALSE(DataTypeIsComplex(DT_FLOAT));
+  EXPECT_FALSE(DataTypeIsComplex(DT_DOUBLE));
+}
+
+TEST(TypesTest, IntegerTypes) {
+  for (auto dt : AllTypes()) {
+    const string name = DataTypeString(dt);
+    EXPECT_EQ(DataTypeIsInteger(dt),
+              absl::StartsWith(name, "int") || absl::StartsWith(name, "uint"))
+        << "DataTypeInteger failed for " << name;
+  }
 }
 
 }  // namespace

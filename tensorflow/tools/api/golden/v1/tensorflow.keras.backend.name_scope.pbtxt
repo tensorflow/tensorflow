@@ -1,0 +1,13 @@
+path: "tensorflow.keras.backend.name_scope"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.ops.name_scope_v1\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

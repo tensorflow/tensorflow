@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package tensorflow.tf2xla;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "Tf2XlaProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.tf2xla";
+
+// TensorId identifies a tensor in a TensorFlow graph, by specifying the output
+// index of a particular node in the graph.  If the output of the named node
+// feeds into other node(s), this corresponds to one or more edges.  Otherwise
+// it doesn't correspond to any existing edges at all, e.g. for output nodes.
+message TensorId {
+  string node_name = 1;
+  int64 output_index = 2;
+}
+
+// Feed represents a single feed tensor in the graph, which corresponds to an
+// input argument for the generated computation.
+message Feed {
+  TensorId id = 1;
+  TensorShapeProto shape = 2;
+  string name = 3;  // Optional name for generated code.
+
+  // Optional data type. This is not normally required, as the graph itself
+  // contains this information. However, if the node being fed is an op that is
+  // not linked into the binary, then the type cannot be inferred from the node;
+  // in this case, the type should be set here.
+  DataType type = 4;
+}
+
+// Fetch represents a single fetch tensor in the graph, which corresponds to an
+// output argument for the generated computation.
+message Fetch {
+  TensorId id = 1;
+  string name = 2;  // Optional name for generated code.
+
+  // Optional shape and data type. If specified, may be used for validation.
+  TensorShapeProto shape = 3;
+  DataType type = 4;
+}
+
+// Variable represents a resource variable with the given name, shape and type.
+message Variable {
+  string node_name = 1;
+  string name =
+      2;  // Optional name for generated code. If empty, node_name will be used.
+  TensorShapeProto shape = 3;
+  DataType type = 4;
+
+  // Flag for variables that are never assigned. Assigments to a read-only
+  // variable or unassigned variables that are not read-only are invalid.
+  bool readonly = 5;
+}
+
+// Options used during the conversion and compilation process.
+message ConversionOptions {
+  // When true tf.fake_quant_* ops will be emitted as custom calls to a
+  // 'fake_quant_with_min_max_vars' function accepting the input, min, max,
+  // num_bits, and narrow_range values as runtime arguments.
+  bool custom_fake_quant_op_calls = 1;
+}
+
+// Config represents configuration information for tf2xla conversion.
+message Config {
+  // Each feed is a positional input argument for the generated computation.
+  // The order of each entry matches the order of each input argument.
+  repeated Feed feed = 1;
+  // Each fetch is a positional output argument for the generated computation.
+  // The order of each entry matches the order of each output argument.
+  repeated Fetch fetch = 2;
+  // Each variable is a named input and output of the generated computation.
+  repeated Variable variable = 3;
+  // Optional conversion options.
+  ConversionOptions conversion_options = 4;
+}

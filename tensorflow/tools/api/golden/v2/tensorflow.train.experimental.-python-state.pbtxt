@@ -1,0 +1,17 @@
+path: "tensorflow.train.experimental.PythonState"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.tracking.python_state.PythonState\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'self\', \'string_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

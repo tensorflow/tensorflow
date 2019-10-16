@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "GeneratorDataset"
+  visibility: HIDDEN
+  summary: "Creates a dataset that invokes a function to generate elements."
+}

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,8 +36,6 @@ namespace tensorflow {
 // TODO(andydavis) Remove some of the code duplicated between this module
 // and that in 'common_runtime/function.cc'.
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 
@@ -66,16 +65,37 @@ struct NodeOutEq {
 static Node* AddZerosLike(Graph* g, NodeOut input) {
   DCHECK_LT(0, input.dtype());
   DCHECK_LT(input.dtype(), DT_FLOAT_REF);
-  NodeDef ndef;
-  ndef.set_name(g->NewName(kNodeLabel));
-  ndef.set_op("ZerosLike");
-  ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
-  Status s;
-  Node* ret = g->AddNode(ndef, &s);
-  TF_CHECK_OK(s);
-  g->AddEdge(input.node, input.index, ret, 0);
-  return ret;
+  if (input.dtype() == DT_RESOURCE) {
+    NodeDef read_def;
+    read_def.set_name(g->NewName("Read"));
+    read_def.set_op("ReadVariableOp");
+    read_def.add_input(input.name());
+    AddNodeAttr("dtype", DT_FLOAT, &read_def);
+    Status s;
+    Node* read = g->AddNode(read_def, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(input.node, input.index, read, 0);
+    NodeDef ndef;
+    ndef.set_name(g->NewName(kNodeLabel));
+    ndef.set_op("ZerosLike");
+    ndef.add_input(read_def.name());
+    AddNodeAttr("T", DT_FLOAT, &ndef);
+    Node* ret = g->AddNode(ndef, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(read, 0, ret, 0);
+    return ret;
+  } else {
+    NodeDef ndef;
+    ndef.set_name(g->NewName(kNodeLabel));
+    ndef.set_op("ZerosLike");
+    ndef.add_input(input.name());
+    AddNodeAttr("T", input.dtype(), &ndef);
+    Status s;
+    Node* ret = g->AddNode(ndef, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(input.node, input.index, ret, 0);
+    return ret;
+  }
 }
 
 static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
@@ -107,11 +127,20 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
   AddNodeAttr("Tin", in_types, &ndef);
 
   // The gradient node's outputs have the same types as the node 'n's
-  // inputs.
-  AddNodeAttr("Tout", n->input_types(), &ndef);
+  // inputs, except for resources.
+  DataTypeVector out_types = n->input_types();
+  for (int i = 0; i < out_types.size(); ++i) {
+    if (out_types[i] == DT_RESOURCE) {
+      // TODO(apassos): figure out how to get the right dtype
+      out_types[i] = DT_FLOAT;
+    }
+  }
+  AddNodeAttr("Tout", out_types, &ndef);
   NameAttrList func;
   func.set_name(n->type_string());
-  *(func.mutable_attr()) = n->def().attr();
+  for (const auto& attr : n->attrs()) {
+    (*func.mutable_attr())[attr.first] = attr.second;
+  }
   AddNodeAttr("f", func, &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);
@@ -169,6 +198,9 @@ class SymbolicGradientBuilder {
   void BackpropAlongEdge(const NodeOut& dst_grad, const NodeOut& src);
   void BackpropZerosAlongEdge(const NodeOut& src);
 
+  // Returns a node representing the sum of any backpropped gradients for 'src'.
+  // This will be an AddN node if there is more than one accumulated gradient.
+  // Returns zeros if there are no gradients, or the dtype is DT_BOOL.
   NodeOut SumGradients(const NodeOut& src);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
@@ -222,30 +254,35 @@ void SymbolicGradientBuilder::InitBackprop() {
     backprops_.clear();
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
-    for (const NodeOut& nout : x_node_outputs_) {
+    for (const NodeOut& nout : y_node_outputs_) {
       queue.push_back(nout.node);
       visited.insert(nout.node);
     }
 
     // Going forward to figure out which endpoints need backprop-ed.
     // A node's endpoints need to be backprop-ed only if one of the
-    // arg node can reach the node via data edges.
+    // return nodes can reach backwards to the node via data edges.
     while (!queue.empty()) {
       Node* n = queue.front();
       queue.pop_front();
       for (int i = 0; i < n->num_outputs(); ++i) {
         backprops_[{n, i}].clear();
       }
-      int num_expected_backprops = 0;
-      for (const Edge* e : n->out_edges()) {
+      for (const Edge* e : n->in_edges()) {
         if (e->IsControlEdge()) continue;
-        ++num_expected_backprops;
-        if (visited.find(e->dst()) == visited.end()) {
-          queue.push_back(e->dst());
-          visited.insert(e->dst());
+        pending_[e->src()->id()]++;
+        if (visited.find(e->src()) == visited.end()) {
+          queue.push_back(e->src());
+          visited.insert(e->src());
         }
       }
-      pending_[n->id()] = num_expected_backprops;
+    }
+
+    // Create entries in backprops_ for all x_node_outputs_, because they will
+    // not be added in above loop if they are not reverse reachable from
+    // y_node_outputs_.
+    for (const NodeOut& nout : x_node_outputs_) {
+      backprops_[{nout.node, nout.index}].clear();
     }
   }
 
@@ -267,7 +304,7 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   auto iter = backprops_.find(src);
   CHECK(iter != backprops_.end());
   const auto& grads = iter->second;
-  if (grads.empty()) {
+  if (grads.empty() || dtype == DT_BOOL) {
     // Nothing propagated back. The best we can come up is zeros.
     Node* zero_like = AddZerosLike(graph_, src);
     return {zero_like, 0};

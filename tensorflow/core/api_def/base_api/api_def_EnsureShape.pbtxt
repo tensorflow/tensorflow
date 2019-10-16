@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "EnsureShape"
+  in_arg {
+  name: "input"
+  description: <<END
+A tensor, whose shape is to be validated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A tensor with the same shape and contents as the input tensor or value.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The expected (possibly partially specified) shape of the input tensor.
+END
+  }
+  summary: "Ensures that the tensor's shape matches the expected shape."
+  description: <<END
+Raises an error if the input tensor's shape does not match the specified shape.
+Returns the input tensor otherwise.
+END
+}

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,11 +62,66 @@ class FakeAllocator {
   int millis_to_wait_;
 };
 
+// GPUAllocatorRetry is a mechanism to deal with race conditions which
+// are inevitable in the TensorFlow runtime where parallel Nodes can
+// execute in any order.  Properly testing this feature would use real
+// multi-threaded race conditions, but that leads to flaky tests as
+// the expected outcome fails to occur with low but non-zero
+// probability.  To make these tests reliable we simulate real race
+// conditions by forcing parallel threads to take turns in the
+// interesting part of their interaction with the allocator.  This
+// class is the mechanism that imposes turn taking.
+class AlternatingBarrier {
+ public:
+  explicit AlternatingBarrier(int num_users)
+      : num_users_(num_users), next_turn_(0), done_(num_users, false) {}
+
+  void WaitTurn(int user_index) {
+    mutex_lock l(mu_);
+    int wait_cycles = 0;
+    // A user is allowed to proceed out of turn if it waits too long.
+    while (next_turn_ != user_index && wait_cycles++ < 10) {
+      cv_.wait_for(l, std::chrono::milliseconds(1));
+    }
+    if (next_turn_ == user_index) {
+      IncrementTurn();
+      cv_.notify_all();
+    }
+  }
+
+  // When a user quits, stop reserving it a turn.
+  void Done(int user_index) {
+    mutex_lock l(mu_);
+    done_[user_index] = true;
+    if (next_turn_ == user_index) {
+      IncrementTurn();
+      cv_.notify_all();
+    }
+  }
+
+ private:
+  void IncrementTurn() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int skipped = 0;
+    while (skipped < num_users_) {
+      next_turn_ = (next_turn_ + 1) % num_users_;
+      if (!done_[next_turn_]) return;
+      ++skipped;
+    }
+  }
+
+  mutex mu_;
+  condition_variable cv_;
+  int num_users_;
+  int next_turn_ GUARDED_BY(mu_);
+  std::vector<bool> done_ GUARDED_BY(mu_);
+};
+
 class GPUAllocatorRetryTest : public ::testing::Test {
  protected:
   GPUAllocatorRetryTest() {}
 
   void LaunchConsumerThreads(int num_consumers, int cap_needed) {
+    barrier_.reset(new AlternatingBarrier(num_consumers));
     consumer_count_.resize(num_consumers, 0);
     for (int i = 0; i < num_consumers; ++i) {
       consumers_.push_back(Env::Default()->StartThread(
@@ -74,18 +129,22 @@ class GPUAllocatorRetryTest : public ::testing::Test {
             do {
               void* ptr = nullptr;
               for (int j = 0; j < cap_needed; ++j) {
+                barrier_->WaitTurn(i);
                 ptr = alloc_->AllocateRaw(16, 1);
                 if (ptr == nullptr) {
                   mutex_lock l(mu_);
                   has_failed_ = true;
+                  barrier_->Done(i);
                   return;
                 }
               }
               ++consumer_count_[i];
               for (int j = 0; j < cap_needed; ++j) {
+                barrier_->WaitTurn(i);
                 alloc_->DeallocateRaw(ptr);
               }
             } while (!notifier_.HasBeenNotified());
+            barrier_->Done(i);
           }));
     }
   }
@@ -110,6 +169,7 @@ class GPUAllocatorRetryTest : public ::testing::Test {
   }
 
   std::unique_ptr<FakeAllocator> alloc_;
+  std::unique_ptr<AlternatingBarrier> barrier_;
   std::vector<Thread*> consumers_;
   std::vector<int> consumer_count_;
   Notification notifier_;
@@ -121,9 +181,9 @@ class GPUAllocatorRetryTest : public ::testing::Test {
 // Verifies correct retrying when memory is slightly overcommitted but
 // we allow retry.
 TEST_F(GPUAllocatorRetryTest, RetrySuccess) {
-  // Support up to 2 allocations simultaneously, waits up to 10 msec for
+  // Support up to 2 allocations simultaneously, waits up to 1000 msec for
   // a chance to alloc.
-  alloc_.reset(new FakeAllocator(2, 10000));
+  alloc_.reset(new FakeAllocator(2, 1000));
   // Launch 3 consumers, each of whom needs 1 unit at a time.
   LaunchConsumerThreads(3, 1);
   // This should be enough time for each consumer to be satisfied many times.
@@ -141,9 +201,10 @@ TEST_F(GPUAllocatorRetryTest, RetrySuccess) {
   EXPECT_GT(consumer_count_[2], 0);
 }
 
-/* Disabled due to flakiness.  b/24738751
 // Verifies OutOfMemory failure when memory is slightly overcommitted
-// and retry is not allowed.
+// and retry is not allowed.  Note that this test will fail, i.e. no
+// memory alloc failure will be detected, if it is run in a context that
+// does not permit real multi-threaded execution.
 TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
   // Support up to 2 allocations simultaneously, waits up to 0 msec for
   // a chance to alloc.
@@ -162,21 +223,20 @@ TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
     EXPECT_TRUE(has_failed_);
   }
 }
-*/
 
 // Verifies OutOfMemory failure when retry is allowed but memory capacity
 // is too low even for retry.
 TEST_F(GPUAllocatorRetryTest, RetryInsufficientFail) {
-  // Support up to 2 allocations simultaneously, waits up to 10 msec for
+  // Support up to 2 allocations simultaneously, waits up to 1000 msec for
   // a chance to alloc.
-  alloc_.reset(new FakeAllocator(2, 10000));
+  alloc_.reset(new FakeAllocator(2, 1000));
   // Launch 3 consumers, each of whom needs 2 units at a time.  We expect
   // deadlock where 2 consumers each hold 1 unit, and timeout trying to
   // get the second.
   LaunchConsumerThreads(3, 2);
   Env::Default()->SleepForMicroseconds(50000);
-  // Will wait up to 10 seconds for proper race condition to occur, resulting
-  // in failure.
+  // We're forcing a race condition, so this will fail quickly, but
+  // give it 10 seconds anyway.
   JoinConsumerThreads(true, 10000000);
   for (int i = 0; i < 3; ++i) {
     LOG(INFO) << "Consumer " << i << " is " << consumer_count_[i];

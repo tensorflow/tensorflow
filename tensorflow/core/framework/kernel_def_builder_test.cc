@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -68,6 +69,86 @@ TEST(KernelDefBuilderTest, TypeConstraint) {
     constraint { name: 'W'
         allowed_values { list { type: [DT_DOUBLE, DT_STRING] } } } )proto",
                                         &expected);
+  EXPECT_EQ(def->DebugString(), expected.DebugString());
+  delete def;
+}
+
+TEST(KernelDefBuilderTest, Int64Constraint) {
+  const KernelDef* def =
+      KernelDefBuilder("B").Device(DEVICE_GPU).AttrConstraint("T", 5ll).Build();
+  KernelDef expected;
+  protobuf::TextFormat::ParseFromString(R"proto(
+                                          op: 'B'
+                                          device_type: 'GPU'
+                                          constraint {
+                                            name: 'T'
+                                            allowed_values { list { i: 5 } }
+                                          })proto",
+                                        &expected);
+
+  EXPECT_EQ(def->DebugString(), expected.DebugString());
+  delete def;
+
+  def = KernelDefBuilder("C")
+            .Device(DEVICE_GPU)
+            .AttrConstraint("U", gtl::ArraySlice<int64>{5ll, 17ll})
+            .AttrConstraint("V", string("proto"))
+            .Build();
+
+  protobuf::TextFormat::ParseFromString(
+      R"proto(
+        op: 'C'
+        device_type: 'GPU'
+        constraint {
+          name: 'U'
+          allowed_values { list { i: [ 5, 17 ] } }
+        }
+        constraint {
+          name: 'V'
+          allowed_values { list { s: 'proto' } }
+        })proto",
+      &expected);
+  EXPECT_EQ(def->DebugString(), expected.DebugString());
+  delete def;
+}
+
+TEST(KernelDefBuilderTest, StringConstraint) {
+  const KernelDef* def = KernelDefBuilder("B")
+                             .Device(DEVICE_GPU)
+                             .AttrConstraint("T", "hi")
+                             .Build();
+  KernelDef expected;
+  protobuf::TextFormat::ParseFromString(R"proto(
+                                          op: 'B'
+                                          device_type: 'GPU'
+                                          constraint {
+                                            name: 'T'
+                                            allowed_values { list { s: 'hi' } }
+                                          })proto",
+                                        &expected);
+
+  EXPECT_EQ(def->DebugString(), expected.DebugString());
+  delete def;
+
+  def = KernelDefBuilder("C")
+            .Device(DEVICE_GPU)
+            .AttrConstraint("U", gtl::ArraySlice<const char*>{"boo", "ya"})
+            .AttrConstraint("V", string("proto"))
+            .Build();
+
+  protobuf::TextFormat::ParseFromString(
+      R"proto(
+        op: 'C'
+        device_type: 'GPU'
+        constraint {
+          name: 'U'
+          allowed_values { list { s: [ 'boo', 'ya' ] } }
+        }
+        constraint {
+          name: 'V'
+          allowed_values { list { s: 'proto' } }
+        })proto",
+      &expected);
   EXPECT_EQ(def->DebugString(), expected.DebugString());
   delete def;
 }

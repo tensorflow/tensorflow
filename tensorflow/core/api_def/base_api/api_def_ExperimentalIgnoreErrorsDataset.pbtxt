@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "ExperimentalIgnoreErrorsDataset"
+  summary: <<END
+Creates a dataset that contains the elements of `input_dataset` ignoring errors.
+END
+  visibility: HIDDEN
+}
+

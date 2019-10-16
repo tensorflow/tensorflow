@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "ConjugateTranspose"
+  summary: "Shuffle dimensions of x according to a permutation and conjugate the result."
+  description: <<END
+The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+  `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`
+END
+}

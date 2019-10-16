@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rng {
 
 bool RngSupport::CheckSeed(const uint8 *seed, uint64 seed_bytes) {
@@ -41,11 +40,10 @@ bool RngSupport::CheckSeed(const uint8 *seed, uint64 seed_bytes) {
   return true;
 }
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__FreeBSD__)
 const int RngSupport::kMinSeedBytes;
 const int RngSupport::kMaxSeedBytes;
 #endif
 
 }  // namespace rng
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

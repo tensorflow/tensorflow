@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -24,18 +24,23 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC(T, dims)                       \
-  template class generator::ReverseGenerator<T, dims>; \
-  template struct functor::ReverseSequence<GPUDevice, T, dims>;
+#define DEFINE_GPU_SPEC(T, Tlen, dims)                       \
+  template class generator::ReverseGenerator<T, Tlen, dims>; \
+  template struct functor::ReverseSequence<GPUDevice, T, Tlen, dims>;
 
-#define DEFINE_GPU_SPECS(T) \
-  DEFINE_GPU_SPEC(T, 2);    \
-  DEFINE_GPU_SPEC(T, 3);    \
-  DEFINE_GPU_SPEC(T, 4);    \
-  DEFINE_GPU_SPEC(T, 5);
+#define DEFINE_GPU_SPEC_LEN(T, dims) \
+  DEFINE_GPU_SPEC(T, int32, dims);   \
+  DEFINE_GPU_SPEC(T, int64, dims);
+
+#define DEFINE_GPU_SPECS(T)  \
+  DEFINE_GPU_SPEC_LEN(T, 2); \
+  DEFINE_GPU_SPEC_LEN(T, 3); \
+  DEFINE_GPU_SPEC_LEN(T, 4); \
+  DEFINE_GPU_SPEC_LEN(T, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_bool(DEFINE_GPU_SPECS);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

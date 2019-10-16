@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,12 +22,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+
 namespace tensorflow {
 namespace {
 
 static mutex* get_session_factory_lock() {
-  static mutex session_factory_lock;
+  static mutex session_factory_lock(LINKER_INITIALIZED);
   return &session_factory_lock;
 }
 
@@ -55,7 +57,11 @@ const string RegisteredFactoriesErrorMessageLocked() {
     factory_types.push_back(session_factory.first);
   }
   return strings::StrCat("Registered factories are {",
-                         str_util::Join(factory_types, ", "), "}.");
+                         absl::StrJoin(factory_types, ", "), "}.");
+}
+string SessionOptionsToString(const SessionOptions& options) {
+  return strings::StrCat("target: \"", options.target,
+                         "\" config: ", options.config.ShortDebugString());
 }
 }  // namespace
 
@@ -88,17 +94,20 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
     // TODO(mrry): Consider providing a system-default fallback option
     // in this case.
     std::vector<string> factory_types;
+    factory_types.reserve(candidate_factories.size());
     for (const auto& candidate_factory : candidate_factories) {
       factory_types.push_back(candidate_factory.first);
     }
     return errors::Internal(
-        "Multiple session factories registered for the given session options. "
-        "Candidate factories are {",
-        str_util::Join(factory_types, ", "), "}. ",
+        "Multiple session factories registered for the given session "
+        "options: {",
+        SessionOptionsToString(options), "} Candidate factories are {",
+        absl::StrJoin(factory_types, ", "), "}. ",
         RegisteredFactoriesErrorMessageLocked());
   } else {
     return errors::NotFound(
-        "No session factory registered for the given session options. ",
+        "No session factory registered for the given session options: {",
+        SessionOptionsToString(options), "} ",
         RegisteredFactoriesErrorMessageLocked());
   }
 }

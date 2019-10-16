@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,32 +15,19 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
-// -- CUDA
-
-StreamExecutorFactory* MakeCUDAExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
+// The default implementation just calls the other HostCallback method.
+// It should make all existing code that uses a void() callback still work.
+bool StreamExecutorInterface::HostCallback(Stream* stream,
+                                           std::function<void()> callback) {
+  return HostCallback(
+      stream, std::function<port::Status()>([callback]() -> port::Status {
+        callback();
+        return port::Status::OK();
+      }));
 }
-
-// -- OpenCL
-
-StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
-}
-
-// -- Host
-
-StreamExecutorFactory MakeHostExecutorImplementation;
-
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -58,9 +57,9 @@ namespace {
 
 class GatherNdOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType index_type) {
+  void MakeOp(DataType param_type, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "GatherNd")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(param_type))
                      .Input(FakeInput(index_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -68,7 +67,7 @@ class GatherNdOpTest : public OpsTestBase {
 };
 
 TEST_F(GatherNdOpTest, Simple) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
@@ -81,13 +80,39 @@ TEST_F(GatherNdOpTest, Simple) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(GatherNdOpTest, Quantized_UINT8) {
+  MakeOp(DT_QUINT8, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<quint8>(TensorShape({5}), {0, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({2}));
+  test::FillValues<quint8>(&expected, {8, 4});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherNdOpTest, Quantized_INT8) {
+  MakeOp(DT_QINT8, DT_INT32);
+
+  AddInputFromArray<qint8>(TensorShape({5}), {0, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_QINT8, TensorShape({2}));
+  test::FillValues<qint8>(&expected, {8, 4});
+  test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+}
+
 constexpr int kLookups = 2000;
 
 template <typename Index>
 static Graph* GatherNd(int dim) {
   Graph* g = new Graph(OpRegistry::Global());
   // Always use a 512MB buffer.
-  //const int kRows = ((512 << 20) / sizeof(float)) / dim;
+  // const int kRows = ((512 << 20) / sizeof(float)) / dim;
   Tensor params(DT_FLOAT, TensorShape({dim, 8, 16, 32}));
   params.flat<float>().setRandom();
 
@@ -109,20 +134,17 @@ static Graph* GatherNd(int dim) {
 
 #define BM_GATHER_ND(DEVICE, INDEX)                                 \
   static void BM_##DEVICE##_gather_nd_##INDEX(int iters, int dim) { \
-    const int64 tot = static_cast<int64>(iters) * kLookups * dim;   \
+    const int64 tot = static_cast<int64>(iters) * kLookups * 4;     \
     testing::ItemsProcessed(tot);                                   \
     testing::BytesProcessed(tot * sizeof(float));                   \
     testing::UseRealTime();                                         \
     test::Benchmark(#DEVICE, GatherNd<INDEX>(dim)).Run(iters);      \
   }                                                                 \
   BENCHMARK(BM_##DEVICE##_gather_nd_##INDEX)                        \
-      ->Arg(1)                                                      \
       ->Arg(10)                                                     \
-      ->Arg(20)                                                     \
-      ->Arg(64)                                                     \
       ->Arg(100)                                                    \
-      ->Arg(200)                                                    \
-      ->Arg(1000)
+      ->Arg(1000)                                                   \
+      ->Arg(10000)
 
 BM_GATHER_ND(cpu, int32);
 BM_GATHER_ND(gpu, int32);

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ void* AllocatorRetry::AllocateRaw(
         alloc_func,
     int max_millis_to_wait, size_t alignment, size_t num_bytes) {
   if (num_bytes == 0) {
-    LOG(WARNING) << "Request to allocate 0 bytes";
     return nullptr;
   }
   uint64 deadline_micros = 0;

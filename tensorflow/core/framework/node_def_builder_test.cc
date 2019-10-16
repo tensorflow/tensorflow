@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -32,7 +33,9 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    TF_EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    OpRegistrationData op_reg_data;
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_reg_data));
+    op_def_ = op_reg_data.op_def;
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call
@@ -45,7 +48,7 @@ class NodeDefBuilderTest : public ::testing::Test {
 
   // Calls Finalize() and verifies it returns success and the result matches
   // expectations.
-  void ExpectSuccess(const NodeDefBuilder& builder,
+  void ExpectSuccess(NodeDefBuilder& builder,  // NOLINT
                      DataTypeSlice expected_in_types,
                      DataTypeSlice expected_out_types, StringPiece proto) {
     NodeDef node_def;
@@ -73,27 +76,29 @@ class NodeDefBuilderTest : public ::testing::Test {
 
   // Calls Finalize() and verifies it returns an error.
   // Each message must appear as a substring of the error.
-  void ExpectFailures(const NodeDefBuilder& builder,
+  void ExpectFailures(NodeDefBuilder& builder,  // NOLINT
                       const std::vector<string>& messages) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
     for (const string& message : messages) {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+      EXPECT_TRUE(absl::StrContains(status.error_message(), message))
           << status << ", " << message;
     }
   }
 
   // Calls Finalize() and verifies it returns an error.
   // Message must appear as a substring of the error.
-  void ExpectFailure(const NodeDefBuilder& builder, const string& message) {
+  void ExpectFailure(NodeDefBuilder& builder,  // NOLINT
+                     const string& message) {
     ExpectFailures(builder, {message});
   }
 
   // Like ExpectFailure(), except that the error can come from
   // ValidateNodeDef().
-  void ExpectInvalid(const NodeDefBuilder& builder, const string& message) {
+  void ExpectInvalid(NodeDefBuilder& builder,  // NOLINT
+                     const string& message) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
     if (status.ok()) {
@@ -101,7 +106,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     }
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
-    EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+    EXPECT_TRUE(absl::StrContains(status.error_message(), message))
         << "Actual error: " << status.error_message()
         << "\nDoes not contain: " << message;
   }
@@ -153,7 +158,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
 
   {  // Finalize() twice.
     NodeDefBuilder& builder = Builder();
-    builder.Input(FakeInput()).Finalize(nullptr);  // First call to Finalize()
+    // First call to Finalize()
+    TF_EXPECT_OK(builder.Input(FakeInput()).Finalize(nullptr));
     // ExpectSuccess() also calls Finalize().
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
         op: "Simple" input: "a" )proto");
@@ -205,9 +211,8 @@ TEST_F(NodeDefBuilderTest, OpDoesNotExist) {
       .ControlInput("y")
       .Attr("foo", 12)
       .Device("device");
-  ExpectFailure(
-      builder,
-      "Op type not registered 'Op Does Not Exist' while building NodeDef 'n'");
+  ExpectFailures(builder, {"Op type not registered 'Op Does Not Exist'",
+                           "while building NodeDef 'n'"});
 }
 
 TEST_F(NodeDefBuilderTest, Polymorphic) {
@@ -232,7 +237,7 @@ TEST_F(NodeDefBuilderTest, Polymorphic) {
       op: "Polymorphic" input: "a"
       attr { key: "T" value { type: DT_BOOL } } )proto");
 
-  // Conficting Attr()
+  // Conflicting Attr()
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL)).Attr("T", DT_STRING),
                 "Inconsistent values for attr 'T' DT_BOOL vs. DT_STRING while");
 

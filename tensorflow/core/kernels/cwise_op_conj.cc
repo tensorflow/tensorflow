@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_CPU),
-                        UnaryOp<CPUDevice, functor::conj<complex64>>);
-#if GOOGLE_CUDA
-// REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU),
-//                         UnaryOp<GPUDevice, functor::conj<complex64>>);
+
+REGISTER2(UnaryOp, CPU, "Conj", functor::conj, complex64, complex128);
+
+REGISTER_VARIANT(UnaryVariantOp, CPU, "Conj", CONJ_VARIANT_UNARY_OP);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(
+    Name("Conj").Device(DEVICE_GPU).TypeConstraint<Variant>("T"),
+    UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
+    UnaryOp<GPUDevice, functor::conj<complex64>>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex128>("T"),
+    UnaryOp<GPUDevice, functor::conj<complex128>>);
 #endif
 }  // namespace tensorflow

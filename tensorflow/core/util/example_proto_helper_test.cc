@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_helper.h"
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -55,7 +57,7 @@ class SingleExampleProtoToTensorsTest : public ::testing::Test {
     string_dense_config.dtype = DT_STRING;
     string_dense_config.shape = TensorShape({1});
     string_dense_config.default_value = Tensor(DT_STRING, TensorShape({1}));
-    string_dense_config.default_value.scalar<string>()() = "default";
+    string_dense_config.default_value.scalar<tstring>()() = "default";
     dense_vec_.push_back(string_dense_config);
 
     // Setup sparse feature configuration.
@@ -99,8 +101,9 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
   }
 
   std::vector<FixedLenFeature> empty_dense_vec;
-  SingleExampleProtoToTensors(ex, "", 0, empty_dense_vec, sparse_vec_,
-                              &output_dense_values, &output_sparse_values_tmp);
+  TF_EXPECT_OK(SingleExampleProtoToTensors(ex, "", 0, empty_dense_vec,
+                                           sparse_vec_, &output_dense_values,
+                                           &output_sparse_values_tmp));
 
   const std::vector<Tensor>& int64_tensor_vec = output_sparse_values_tmp[0];
   EXPECT_EQ(1, int64_tensor_vec.size());
@@ -112,7 +115,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
 
   const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
-  EXPECT_EQ("forty-two", string_tensor_vec[0].vec<string>()(0));
+  EXPECT_EQ("forty-two", string_tensor_vec[0].vec<tstring>()(0));
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
@@ -124,8 +127,9 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
   }
 
   std::vector<FixedLenFeature> empty_dense_vec;
-  SingleExampleProtoToTensors(empty, "", 0, empty_dense_vec, sparse_vec_,
-                              &output_dense_values, &output_sparse_values_tmp);
+  TF_EXPECT_OK(SingleExampleProtoToTensors(empty, "", 0, empty_dense_vec,
+                                           sparse_vec_, &output_dense_values,
+                                           &output_sparse_values_tmp));
 
   // Each feature will still have a tensor vector, however the tensor
   // in the vector will be empty.
@@ -139,7 +143,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
 
   const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
-  EXPECT_EQ(0, string_tensor_vec[0].vec<string>().size());
+  EXPECT_EQ(0, string_tensor_vec[0].vec<tstring>().size());
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
@@ -167,8 +171,9 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
 
   std::vector<VarLenFeature> empty_sparse_vec;
   std::vector<std::vector<Tensor>> output_sparse_values_tmp;
-  SingleExampleProtoToTensors(ex, "", 0, dense_vec_, empty_sparse_vec,
-                              &output_dense_values, &output_sparse_values_tmp);
+  TF_EXPECT_OK(SingleExampleProtoToTensors(
+      ex, "", 0, dense_vec_, empty_sparse_vec, &output_dense_values,
+      &output_sparse_values_tmp));
   EXPECT_TRUE(output_sparse_values_tmp.empty());
 
   EXPECT_EQ(1, int64_dense_output.matrix<int64>().size());
@@ -177,8 +182,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(4.2, float_dense_output.matrix<float>()(0, 0), 0.001);
 
-  EXPECT_EQ(1, str_dense_output.matrix<string>().size());
-  EXPECT_EQ("forty-two", str_dense_output.matrix<string>()(0, 0));
+  EXPECT_EQ(1, str_dense_output.matrix<tstring>().size());
+  EXPECT_EQ("forty-two", str_dense_output.matrix<tstring>()(0, 0));
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
@@ -196,8 +201,9 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
 
   std::vector<VarLenFeature> empty_sparse_vec;
   std::vector<std::vector<Tensor>> output_sparse_values_tmp;
-  SingleExampleProtoToTensors(empty, "", 0, dense_vec_, empty_sparse_vec,
-                              &output_dense_values, &output_sparse_values_tmp);
+  TF_EXPECT_OK(SingleExampleProtoToTensors(
+      empty, "", 0, dense_vec_, empty_sparse_vec, &output_dense_values,
+      &output_sparse_values_tmp));
 
   EXPECT_EQ(1, int64_dense_output.matrix<int64>().size());
   EXPECT_EQ(0, int64_dense_output.matrix<int64>()(0, 0));
@@ -205,8 +211,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(0.0, float_dense_output.matrix<float>()(0, 0), 0.001);
 
-  EXPECT_EQ(1, str_dense_output.matrix<string>().size());
-  EXPECT_EQ("default", str_dense_output.matrix<string>()(0, 0));
+  EXPECT_EQ(1, str_dense_output.matrix<tstring>().size());
+  EXPECT_EQ("default", str_dense_output.matrix<tstring>()(0, 0));
 }
 
 }  // namespace

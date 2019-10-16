@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "LoadTPUEmbeddingADAMParameters"
+  visibility: HIDDEN
+  in_arg {
+    name: "parameters"
+    description: <<END
+Value of parameters used in the ADAM optimization algorithm.
+END
+  }
+  in_arg {
+    name: "momenta"
+    description: <<END
+Value of momenta used in the ADAM optimization algorithm.
+END
+  }
+  in_arg {
+    name: "velocities"
+    description: <<END
+Value of velocities used in the ADAM optimization algorithm.
+END
+  }
+  summary: "Load ADAM embedding parameters."
+  description: <<END
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+END
+}

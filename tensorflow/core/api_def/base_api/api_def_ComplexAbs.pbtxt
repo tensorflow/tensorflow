@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "ComplexAbs"
+  summary: "Computes the complex absolute value of a tensor."
+  description: <<END
+Given a tensor `x` of complex numbers, this operation returns a tensor of type
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
+END
+}

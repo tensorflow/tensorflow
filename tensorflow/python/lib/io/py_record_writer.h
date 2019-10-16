@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 #define TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include <memory>
+
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,17 +37,20 @@ class RecordWriter;
 // by multiple threads.
 class PyRecordWriter {
  public:
-  static PyRecordWriter* New(const string& filename);
+  static PyRecordWriter* New(const string& filename,
+                             const io::RecordWriterOptions& compression_options,
+                             TF_Status* out_status);
   ~PyRecordWriter();
 
-  bool WriteRecord(tensorflow::StringPiece record);
-  void Close();
+  void WriteRecord(tensorflow::StringPiece record, TF_Status* out_status);
+  void Flush(TF_Status* out_status);
+  void Close(TF_Status* out_status);
 
  private:
   PyRecordWriter();
 
-  WritableFile* file_;        // Owned
-  io::RecordWriter* writer_;  // Owned
+  std::unique_ptr<io::RecordWriter> writer_;
+  std::unique_ptr<WritableFile> file_;
   TF_DISALLOW_COPY_AND_ASSIGN(PyRecordWriter);
 };
 

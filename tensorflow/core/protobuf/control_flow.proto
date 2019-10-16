@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "ControlFlowProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
+// Control flow context related protocol buffers.
+
+// Protocol buffer representing the values in ControlFlowContext.
+message ValuesDef {
+  // Value names that have been seen in this context.
+  repeated string values = 1;
+
+  // Value names referenced by but external to this context.
+  map<string, string> external_values = 2;
+}
+
+// Container for any kind of control flow context. Any other control flow
+// contexts that are added below should also be added here.
+message ControlFlowContextDef {
+  oneof ctxt {
+    CondContextDef cond_ctxt = 1;
+    WhileContextDef while_ctxt = 2;
+  }
+}
+
+// Protocol buffer representing a CondContext object.
+message CondContextDef {
+  // Name of the context.
+  string context_name = 1;
+
+  // Name of the pred tensor.
+  string pred_name = 2;
+
+  // Name of the pivot tensor.
+  string pivot_name = 3;
+
+  // Branch prediction. 0 or 1.
+  int32 branch = 4;
+
+  // Values and external values in control flow context.
+  ValuesDef values_def = 5;
+
+  // Contexts contained inside this context (e.g. nested conds).
+  repeated ControlFlowContextDef nested_contexts = 6;
+}
+
+// Protocol buffer representing a WhileContext object.
+message WhileContextDef {
+  // Name of the context.
+  string context_name = 1;
+
+  // The number of iterations allowed to run in parallel.
+  int32 parallel_iterations = 2;
+
+  // Whether backprop is enabled for this while loop.
+  bool back_prop = 3;
+
+  // Whether GPU-CPU memory swap is enabled for this loop.
+  bool swap_memory = 4;
+
+  // Name of the pivot tensor.
+  string pivot_name = 5;
+
+  // Name of the pivot_for_pred tensor.
+  string pivot_for_pred_name = 6;
+
+  // Name of the pivot_for_body tensor.
+  string pivot_for_body_name = 7;
+
+  // List of names for exit tensors.
+  repeated string loop_exit_names = 8;
+
+  // List of names for enter tensors.
+  repeated string loop_enter_names = 10;
+
+  // Values and external values in control flow context.
+  ValuesDef values_def = 9;
+
+  // Optional name of the maximum_iterations tensor.
+  string maximum_iterations_name = 11;
+
+  // Contexts contained inside this context (e.g. nested whiles).
+  repeated ControlFlowContextDef nested_contexts = 12;
+
+  // Next available id: 13.
+}

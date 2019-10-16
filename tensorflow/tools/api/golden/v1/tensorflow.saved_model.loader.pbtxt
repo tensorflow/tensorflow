@@ -1,0 +1,11 @@
+path: "tensorflow.saved_model.loader"
+tf_module {
+  member_method {
+    name: "load"
+    argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "maybe_saved_model_directory"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Reciprocal"
+  endpoint {
+    name: "math.reciprocal"
+  }
+  endpoint {
+    name: "reciprocal"
+    deprecation_version: 2
+  }
+}

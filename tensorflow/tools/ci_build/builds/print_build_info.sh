@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ fi
 # Print info
 echo "TF_BUILD_INFO = {"\
 "container_type: \"${CONTAINER_TYPE}\", "\
-"command: \"${COMMAND[@]}\", "\
+"command: \"${COMMAND[*]}\", "\
 "source_HEAD: \"${TF_HEAD}\", "\
 "source_remote_origin: \"${TF_FETCH_URL}\", "\
 "OS: \"${OS}\", "\

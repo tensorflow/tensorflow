@@ -1,0 +1,11 @@
+op {
+  name: "OptionalHasValue"
+  input_arg {
+    name: "optional"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "has_value"
+    type: DT_BOOL
+  }
+}

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,14 @@ void GuardedPhiloxRandom::Init(int64 seed, int64 seed2) {
   }
   mutex_lock lock(mu_);
   generator_ = random::PhiloxRandom(seed, seed2);
+  initialized_ = true;
+}
+
+void GuardedPhiloxRandom::Init(random::PhiloxRandom::ResultType counter,
+                               random::PhiloxRandom::Key key) {
+  CHECK(!initialized_);
+  mutex_lock lock(mu_);
+  generator_ = random::PhiloxRandom(counter, key);
   initialized_ = true;
 }
 

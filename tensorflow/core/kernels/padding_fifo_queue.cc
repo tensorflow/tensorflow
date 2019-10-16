@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -67,13 +69,6 @@ Status PaddingFIFOQueue::GetElementComponent(
 void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                                       bool allow_small_batch,
                                       CallbackWithTuple callback) {
-  if (allow_small_batch) {
-    ctx->SetStatus(
-        errors::Unimplemented("Dequeue: Queue does not support small batches"));
-    callback(Tuple());
-    return;
-  }
-
   if (num_elements == 0) {
     Tuple tuple;
     tuple.reserve(num_components());
@@ -83,7 +78,8 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       Tensor element;
       // Here, ManyOutShape returns zeros for undetermined shapes,
       // which is exactly what we want to use.
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(component_dtypes_[i],
+                                             ManyOutShape(i, 0), &element));
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -101,16 +97,12 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 s = queues_[0].size();
-            if (closed_ && s < attempt->elements_requested) {
-              attempt->context->SetStatus(errors::OutOfRange(
-                  "PaddingFIFOQueue '", name_, "' is closed and has ",
-                  "insufficient elements (requested ",
-                  attempt->elements_requested, ", current size ", s, ")"));
-
-              // TODO(mrry): Add support for producing a partial batch as
-              // output when the queue is closed.
+          [callback, allow_small_batch,
+           this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            int32 queue_size = queues_[0].size();
+            if (closed_ && queue_size < attempt->elements_requested) {
+              // If we don't have enough for a full dequeue, we have
+              // to reset the attempt tuple.
               if (!attempt->tuples.empty()) {
                 // Restore already-dequeued elements to the front of the queue.
                 for (int64 i = attempt->tuples.size() - 1; i >= 0; --i) {
@@ -129,11 +121,31 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
                 }
               }
-              return kComplete;
+              if (allow_small_batch && !queues_[0].empty()) {
+                // Request all remaining elements in the queue.
+                queue_size = queues_[0].size();
+                attempt->tuples.clear();
+                attempt->elements_requested = queue_size;
+              } else {
+                if (allow_small_batch) {
+                  // There may be some enqueue attempts containing
+                  // values.  If so, we'll yield and wait for them
+                  // to add elements to the queue.
+                  if (!enqueue_attempts_.empty()) return kProgress;
+                }
+                if (attempt->context->status().ok()) {
+                  attempt->context->SetStatus(errors::OutOfRange(
+                      "PaddingFIFOQueue '", name_, "' is closed and has ",
+                      "insufficient elements (requested ",
+                      attempt->elements_requested, ", current size ",
+                      queue_size, ")"));
+                }
+                return kComplete;
+              }
             }
 
             RunResult result = kNoProgress;
-            for (; s > 0; --s) {
+            for (; queue_size > 0; --queue_size) {
               result = kProgress;
               Tuple tuple;
               DequeueLocked(attempt->context, &tuple);
@@ -145,7 +157,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Finished.  Allocate attempt->tuple and
                 // copy from attempt->tuples to attempt->tuple.
                 attempt->tuple.reserve(num_components());
-                const std::vector<Tuple>& tuples = attempt->tuples;
+                std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
                 const int64 batch_size = tuples.size();
@@ -170,8 +182,9 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
 
                   Tensor element;
-                  attempt->context->allocate_temp(component_dtypes_[i], shape,
-                                                  &element);
+                  attempt->context->SetStatus(attempt->context->allocate_temp(
+                      component_dtypes_[i], shape, &element));
+                  if (!attempt->context->status().ok()) return kComplete;
 
                   bool has_dynamic_shape = !partial_shape.IsFullyDefined();
                   if (has_dynamic_shape) {
@@ -194,8 +207,10 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(CopyElementToLargerSlice(
                           tuples[index][i], &attempt->tuple[i], index));
                     } else {
-                      attempt->context->SetStatus(CopyElementToSlice(
-                          tuples[index][i], &attempt->tuple[i], index));
+                      attempt->context->SetStatus(
+                          batch_util::CopyElementToSlice(
+                              std::move(tuples[index][i]), &attempt->tuple[i],
+                              index));
                     }
                     if (!attempt->context->status().ok()) return kComplete;
                   }
@@ -267,7 +282,11 @@ Status PaddingFIFOQueue::CompatibleNodeDefShapes(
 }
 
 Status PaddingFIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "PaddingFIFOQueue"));
+  if (!MatchesNodeDefOp(node_def, "PaddingFIFOQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "PaddingFIFOQueueV2").ok()) {
+    return errors::InvalidArgument("Expected PaddingFIFOQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(CompatibleNodeDefShapes(node_def));
@@ -328,7 +347,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
     default:
       return errors::Unimplemented(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          element.dtype());
+          DataTypeString(element.dtype()));
   }
 }
 
@@ -373,7 +392,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               element->dtype());
+                               DataTypeString(element->dtype()));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

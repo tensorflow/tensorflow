@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 Timer::Timer(StreamExecutor *parent)
     : parent_(parent),
@@ -34,5 +33,4 @@ uint64 Timer::Microseconds() const { return implementation_->Microseconds(); }
 
 uint64 Timer::Nanoseconds() const { return implementation_->Nanoseconds(); }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

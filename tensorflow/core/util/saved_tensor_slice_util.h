@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utilities for saving/restoring tensor slice checkpoints.
 
-#ifndef TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
-#define TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
 #include <string>  // for string
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -49,6 +49,12 @@ string EncodeTensorNameSlice(const string& name,
 // Parse out the name and the slice from string encoded as an ordered code.
 Status DecodeTensorNameSlice(const string& code, string* name,
                              tensorflow::TensorSlice* slice);
+
+// Extracts the full shape, slice spec, and shape of the slice from
+// "shape_and_slice".  On non-OK return, caller must clear the out-arguments
+// before reusing.
+Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
+                          TensorSlice* slice, TensorShape* shape_slice);
 
 template <typename T>
 struct SaveTypeTraits;
@@ -110,12 +116,14 @@ TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(int64, int64, int64);
+TENSOR_PROTO_EXTRACT_TYPE(int64, int64, protobuf_int64);
+TENSOR_PROTO_EXTRACT_TYPE(uint16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(qint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32);
+TENSOR_PROTO_EXTRACT_TYPE(quint16, int, int32);
 
 #undef TENSOR_PROTO_EXTRACT_TYPE_COMPLEX
 #undef TENSOR_PROTO_EXTRACT_TYPE_HELPER
@@ -171,29 +179,29 @@ inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
 // Custom implementation for string.
 
 template <>
-struct SaveTypeTraits<string> {
+struct SaveTypeTraits<tstring> {
   static constexpr bool supported = true;
   typedef const string* SavedType;
   typedef protobuf::RepeatedPtrField<string> RepeatedField;
 };
 
 template <>
-inline const string* const* TensorProtoData<string>(const TensorProto& t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Restore");
+inline const string* const* TensorProtoData<tstring>(const TensorProto& t) {
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Restore");
   return t.string_val().data();
 }
 
 template <>
-inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<string>(
+inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<tstring>(
     TensorProto* t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Save");
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Save");
   return t->mutable_string_val();
 }
 
 template <>
-inline void Fill(const string* data, size_t n, TensorProto* t) {
+inline void Fill(const tstring* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedPtrField<string> copy(data, data + n);
   t->mutable_string_val()->Swap(&copy);
 }
@@ -202,4 +210,4 @@ inline void Fill(const string* data, size_t n, TensorProto* t) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_

@@ -1,0 +1,14 @@
+op {
+  graph_op_name: "FFT3D"
+  endpoint {
+    name: "signal.fft3d"
+  }
+  endpoint {
+    name: "spectral.fft3d"
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "fft3d"
+    deprecation_version: 2
+  }
+}

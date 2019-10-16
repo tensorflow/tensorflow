@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "FFT"
+  in_arg {
+    name: "input"
+    description: <<END
+A complex tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A complex tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its 1D Fourier transform.
+
+@compatibility(numpy)
+Equivalent to np.fft.fft
+@end_compatibility
+END
+  }
+  summary: "Fast Fourier transform."
+  description: <<END
+Computes the 1-dimensional discrete Fourier transform over the inner-most
+dimension of `input`.
+END
+}

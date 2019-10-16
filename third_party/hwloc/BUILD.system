@@ -1,0 +1,22 @@
+# hwloc: Portable Hardware Locality Library
+
+licenses(["notice"])
+
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+)
+
+filegroup(
+    name = "COPYING",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "hwloc",
+    linkopts = select({
+        ":with_numa_support": ["-lhwloc"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+)

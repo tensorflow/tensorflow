@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 bool safe_strto32(const char* str, int32* value) {
@@ -38,5 +37,4 @@ bool safe_strto32(const string& str, int32* value) {
 }
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

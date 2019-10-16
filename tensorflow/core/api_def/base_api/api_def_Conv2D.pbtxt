@@ -1,0 +1,91 @@
+op {
+  graph_op_name: "Conv2D"
+  in_arg {
+    name: "input"
+    description: <<END
+A 4-D tensor. The dimension order is interpreted according to the value
+of `data_format`, see below for details.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+A 4-D tensor of shape
+`[filter_height, filter_width, in_channels, out_channels]`
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A 4-D tensor. The dimension order is determined by the value of
+`data_format`, see below for details.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D tensor of length 4.  The stride of the sliding window for each
+dimension of `input`. The dimension order is determined by the value of
+`data_format`, see below for details.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "explicit_paddings"
+    description: <<END
+If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+dimension, the amount of padding inserted before and after the dimension is
+`explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+`padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+Specify the data format of the input and output data. With the
+default format "NHWC", the data is stored in the order of:
+    [batch, height, width, channels].
+Alternatively, the format could be "NCHW", the data storage order of:
+    [batch, channels, height, width].
+END
+  }
+  attr {
+    name: "dilations"
+    description: <<END
+1-D tensor of length 4.  The dilation factor for each dimension of
+`input`. If set to k > 1, there will be k-1 skipped cells between each
+filter element on that dimension. The dimension order is determined by the
+value of `data_format`, see above for details. Dilations in the batch and
+depth dimensions must be 1.
+END
+  }
+  summary: "Computes a 2-D convolution given 4-D `input` and `filter` tensors."
+  description: <<END
+Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+and a filter / kernel tensor of shape
+`[filter_height, filter_width, in_channels, out_channels]`, this op
+performs the following:
+
+1. Flattens the filter to a 2-D matrix with shape
+   `[filter_height * filter_width * in_channels, output_channels]`.
+2. Extracts image patches from the input tensor to form a *virtual*
+   tensor of shape `[batch, out_height, out_width,
+   filter_height * filter_width * in_channels]`.
+3. For each patch, right-multiplies the filter matrix and the image patch
+   vector.
+
+In detail, with the default NHWC format,
+
+    output[b, i, j, k] =
+        sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
+                        filter[di, dj, q, k]
+
+Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+END
+}

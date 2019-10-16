@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "Qr"
+  in_arg {
+    name: "input"
+    description: <<END
+A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
+END
+  }
+  out_arg {
+    name: "q"
+    description: <<END
+Orthonormal basis for range of `a`. If `full_matrices` is `False` then
+shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
+`[..., M, M]`.
+END
+  }
+  out_arg {
+    name: "r"
+    description: <<END
+Triangular factor. If `full_matrices` is `False` then shape is
+`[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`.
+END
+  }
+  attr {
+    name: "full_matrices"
+    description: <<END
+If true, compute full-sized `q` and `r`. If false
+(the default), compute only the leading `P` columns of `q`.
+END
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: <<END
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```python
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+END
+}

@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "IsNan"
+  summary: "Returns which elements of x are NaN."
+  description: <<END
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, np.nan, 6.8, np.nan, np.inf])
+tf.math.is_nan(x) ==> [False, True, False, True, False]
+```
+END
+}

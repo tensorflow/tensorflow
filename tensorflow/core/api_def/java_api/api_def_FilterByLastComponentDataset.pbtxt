@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FilterByLastComponentDataset"
+  endpoint {
+    name: "data.FilterByLastComponentDataset"
+  }
+}

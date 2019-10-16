@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,10 +37,9 @@ std::pair<EdgeSet::const_iterator, bool> EdgeSet::insert(value_type value) {
       }
     }
     // array is full. convert to set.
-    s = new std::set<const Edge*>;
-    for (int i = 0; i < kInline; i++) {
-      s->insert(static_cast<const Edge*>(ptrs_[i]));
-    }
+    s = new gtl::FlatSet<const Edge*>;
+    s->insert(reinterpret_cast<const Edge**>(std::begin(ptrs_)),
+              reinterpret_cast<const Edge**>(std::end(ptrs_)));
     ptrs_[0] = this;
     ptrs_[1] = s;
     // fall through.

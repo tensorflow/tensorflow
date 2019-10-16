@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "RFFT3D"
+  in_arg {
+    name: "input"
+    description: <<END
+A float32 tensor.
+END
+  }
+  in_arg {
+    name: "fft_length"
+    description: <<END
+An int32 tensor of shape [3]. The FFT length for each dimension.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A complex64 tensor of the same rank as `input`. The inner-most 3
+  dimensions of `input` are replaced with the their 3D Fourier transform. The
+  inner-most dimension contains `fft_length / 2 + 1` unique frequency
+  components.
+
+@compatibility(numpy)
+Equivalent to np.fft.rfftn with 3 dimensions.
+@end_compatibility
+END
+  }
+  summary: "3D real-valued fast Fourier transform."
+  description: <<END
+Computes the 3-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 3 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+END
+}

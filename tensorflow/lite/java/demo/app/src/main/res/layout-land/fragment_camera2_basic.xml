@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+ Copyright 2014 The Android Open Source Project
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#bb7700"
+    android:orientation="horizontal">
+
+    <com.example.android.tflitecamerademo.AutoFitTextureView
+      android:id="@+id/texture"
+      android:layout_width="0dp"
+      android:layout_height="match_parent"
+      android:layout_weight=".8"/>
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="match_parent"
+      android:layout_weight=".2"
+      android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/logoview"
+            android:layout_width="wrap_content"
+            android:layout_height="47dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/logo"/>
+
+        <TextView
+            android:id="@+id/text"
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:paddingTop="20dp"
+            android:textColor="#FFF"
+            android:textSize="20sp"
+            android:textStyle="bold"/>
+        <LinearLayout
+            android:id="@+id/modelLayout"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/modelLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
+
+            <ListView
+                android:id="@+id/model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+            </ListView>
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/deviceLayout"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView2"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/deviceLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
+
+            <ListView
+                android:id="@+id/device"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+        >
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Threads"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
+
+            <NumberPicker
+                android:id="@+id/np"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:theme="@style/AppTheme.Picker"
+                android:visibility="visible"/>
+
+        </LinearLayout>
+
+    </LinearLayout>
+</LinearLayout>
+

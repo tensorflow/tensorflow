@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -35,14 +37,17 @@ namespace tensorflow {
 class GrpcChannelSpec {
  public:
   struct HostPortsJob {
-    string job_id;
-    std::vector<string> host_ports;
-    int tasks_per_replica;
+    HostPortsJob(const string& job_id, const std::map<int, string>& host_ports)
+        : job_id(job_id), host_ports(host_ports) {}
+    const string job_id;
+    const std::map<int, string> host_ports;
   };
 
   Status AddHostPortsJob(const string& job_id,
-                         const std::vector<string>& host_ports,
-                         int tasks_per_replica);
+                         const std::vector<string>& host_ports);
+
+  Status AddHostPortsJob(const string& job_id,
+                         const std::map<int, string>& host_ports);
 
   const std::vector<HostPortsJob>& host_ports_jobs() const {
     return host_ports_jobs_;
@@ -62,6 +67,8 @@ class GrpcChannelCache {
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
   virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following
@@ -75,27 +82,21 @@ class GrpcChannelCache {
 
 typedef std::function<SharedGrpcChannelPtr(string)> ChannelCreationFunction;
 
-GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& p,
+GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& channel_spec,
                                       ChannelCreationFunction channel_func);
 
 // Below here are internal-only functions.
 
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target);
+::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options);
 
-// Returns a ChannelCache that uses a set of known host:port pairs. E.g., say,
-// job_id = 'mnist', 'host_ports' = {"h0:0", "h1:1", ..., "h11:11", "h12:12"},
-// tasks_per_replica = 8, /job:mnist/replica:1/task:3 is mapped to host:port
-// "h11:11" (11 = 8 * 1 + 3).
-//
-// The caller takes ownership of the returned object.
-GrpcChannelCache* NewHostPortsGrpcChannelCache(
-    const string& job_id, const std::vector<string>& host_ports,
-    int tasks_per_replica, ChannelCreationFunction channel_func);
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, const RPCOptions*,
+                               SharedGrpcChannelPtr*)>& new_channel_func_ptr);
 
-// Returns a ChannelCache that is the union of a number of other ChannelCaches.
-GrpcChannelCache* NewMultiGrpcChannelCache(
-    const std::vector<GrpcChannelCache*>& caches);
+Status NewHostPortGrpcChannel(const string& target,
+                              const RPCOptions* rpc_options,
+                              SharedGrpcChannelPtr* channel_pointer);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_

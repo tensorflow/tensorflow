@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_BCAST_H_
-#define TENSORFLOW_UTIL_BCAST_H_
+#ifndef TENSORFLOW_CORE_UTIL_BCAST_H_
+#define TENSORFLOW_CORE_UTIL_BCAST_H_
 
 #include <algorithm>
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -73,7 +74,15 @@ class BCast {
   // it's more convenient to manipulate Vec directly for this module.
   typedef gtl::InlinedVector<int64, 4> Vec;
 
-  BCast(const Vec& x, const Vec& y);
+  // Constructs all helper shapes, following the aforementioned rules.
+  //
+  // If "fewer_dims_optimization" is set to true (the default), the
+  // implementation tries to reduce intermediate dimensions needed to be more
+  // efficient.  This is transparent to the caller.
+  //
+  // If false, all intermediate shapes (except for grad_{x,y}_reduce_idx()) have
+  // the same number of dimensions as the larger of the two inputs.
+  BCast(const Vec& x, const Vec& y, const bool fewer_dims_optimization = true);
   ~BCast() {}
 
   // Returns true iff two operands are compatible according to the
@@ -91,6 +100,25 @@ class BCast {
   const Vec& output_shape() const { return output_; }
   const Vec& grad_x_reduce_idx() const { return grad_x_reduce_idx_; }
   const Vec& grad_y_reduce_idx() const { return grad_y_reduce_idx_; }
+
+  // Static helpers.
+  static Vec FromShape(const TensorShape& shape);
+  static TensorShape ToShape(const BCast::Vec& vec);
+
+  template <typename IndexType, int NDIMS>
+  static Eigen::array<IndexType, NDIMS> ToIndexArrayType(
+      const BCast::Vec& vec) {
+    CHECK_EQ(vec.size(), NDIMS);
+    Eigen::array<IndexType, NDIMS> ret;
+    for (int i = 0; i < NDIMS; ++i) ret[i] = vec[i];
+    return ret;
+  }
+
+  template <int NDIMS>
+  static Eigen::array<Eigen::DenseIndex, NDIMS> ToIndexArray(
+      const BCast::Vec& vec) {
+    return ToIndexArrayType<Eigen::DenseIndex, NDIMS>(vec);
+  }
 
  private:
   bool valid_ = true;
@@ -110,4 +138,4 @@ class BCast {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_BCAST_H_
+#endif  // TENSORFLOW_CORE_UTIL_BCAST_H_

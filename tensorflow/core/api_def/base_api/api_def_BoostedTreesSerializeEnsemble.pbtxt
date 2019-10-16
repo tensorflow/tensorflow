@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "BoostedTreesSerializeEnsemble"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_ensemble_handle"
+    description: <<END
+Handle to the tree ensemble.
+END
+  }
+  out_arg {
+    name: "stamp_token"
+    description: <<END
+Stamp token of the tree ensemble resource.
+END
+  }
+  out_arg {
+    name: "tree_ensemble_serialized"
+    description: <<END
+Serialized proto of the ensemble.
+END
+  }
+  summary: "Serializes the tree ensemble to a proto."
+}

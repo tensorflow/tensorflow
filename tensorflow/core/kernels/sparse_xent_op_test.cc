@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,14 +41,15 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                                \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(int iters) {       \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                          \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(int iters) { \
     testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS); \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS)).Run(iters);            \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS)).Run(iters);      \
   }                                                                     \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_SparseXentDev(8, 1000000, gpu);
 
 BM_SparseXentDev(16, 10000, gpu);
@@ -62,6 +63,7 @@ BM_SparseXentDev(32, 100000, gpu);
 BM_SparseXentDev(64, 10000, gpu);
 BM_SparseXentDev(64, 30000, gpu);
 BM_SparseXentDev(64, 100000, gpu);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CPU
 BM_SparseXentDev(8, 1000000, cpu);

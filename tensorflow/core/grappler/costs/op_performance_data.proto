@@ -1,0 +1,123 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/protobuf/device_properties.proto";
+
+// Description of the session when an op is run.
+message SessionInfo {
+  int64 intra_op_parallelism = 1;
+}
+
+// Description of an operation as well as the parameters expected to impact its
+// performance.
+message OpInfo {
+  // The operation name.  There may be custom parameters in attrs.
+  string op = 1;
+
+  // Custom parameters impacting the behavior of the op.
+  map<string, AttrValue> attr = 2;
+
+  // Input data types, shapes and values if known.
+  message TensorProperties {
+    DataType dtype = 1;
+    TensorShapeProto shape = 2;
+    TensorProto value = 3;
+  };
+  repeated TensorProperties inputs = 3;
+
+  // Optional description of the op outputs
+  repeated TensorProperties outputs = 5;
+
+  // Device on which the operation is run.
+  DeviceProperties device = 4;
+
+  // Information about the session configs.
+  SessionInfo session_info = 6;
+}
+
+message NormalDistribution {
+  double mu = 1;
+  double sigma = 2;
+}
+
+message LogNormalDistribution {
+  double mu = 1;
+  double sigma = 2;
+}
+
+// Performance data for tensorflow operations
+message OpPerformance {
+  // The op
+  OpInfo op = 1;
+
+  // Information about the session configs.
+  SessionInfo session_info = 12 [deprecated = true];
+
+  // The node name (optional). Makes it easier to associate the performance data
+  // with a specific graph node.
+  string node = 5;
+
+  // Temporary memory used by this node (in bytes).
+  int64 temporary_memory_size = 2;
+
+  // Time it takes to run the op (in nanoseconds).
+  int64 compute_cost = 3;
+
+  // Analytical compute cost (in nanoseconds).
+  int64 compute_time = 6;
+
+  // Analytical memory access cost (in nanoseconds).
+  int64 memory_time = 7;
+
+  // Percentage of theoretical compute performance.
+  double compute_efficiency = 4;
+
+  // Percentage of theoretical memory performance.
+  double memory_efficiency = 8;
+
+  // Expected execution time, modeled using one of 2 possible distributions.
+  oneof execution_time {
+    NormalDistribution execution_time_normal = 10;
+    LogNormalDistribution execution_time_log_normal = 11;
+  };
+
+  // Memory usage data for a tensorflow operation.
+  message OpMemory {
+    // The output information may have memory usage and output shapes.
+    repeated int64 output_memory = 1;
+
+    // Temp and persistent memory allocated by this node.
+    int64 temp_memory = 2;
+    int64 persistent_memory = 4;
+
+    int64 device_temp_memory = 3 [deprecated = true];
+    int64 device_persistent_memory = 5 [deprecated = true];
+  }
+  OpMemory op_memory = 9;
+}
+
+// A collection of OpPerformance data points.
+message OpPerformanceList {
+  repeated OpPerformance op_performance = 1;
+}

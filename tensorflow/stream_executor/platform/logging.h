@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,15 +21,7 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 
-// A CHECK() macro that lets you assert the success of a function that
-// returns -1 and sets errno in case of an error. E.g.
-//
-// CHECK_ERR(mkdir(path, 0700));
-//
-// or
-//
-// int fd = open(filename, flags); CHECK_ERR(fd) << ": open " << filename;
-#define CHECK_ERR(invocation) CHECK((invocation) != -1) << #invocation
+#define PCHECK(invocation) CHECK(invocation)
 
 #endif
 

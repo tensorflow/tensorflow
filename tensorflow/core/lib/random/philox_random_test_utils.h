@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ void FillRandoms(PhiloxRandom gen, typename Distribution::ResultElementType* p,
                  int64 size) {
   const int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   Distribution dist;
   for (int i = 0; i < size; i += granularity) {

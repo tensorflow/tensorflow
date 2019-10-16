@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "ZerosLike"
+  in_arg {
+    name: "x"
+    description: <<END
+a tensor of type T.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+a tensor of the same shape and type as x but filled with zeros.
+END
+  }
+  summary: "Returns a tensor of zeros with the same shape and type as x."
+}

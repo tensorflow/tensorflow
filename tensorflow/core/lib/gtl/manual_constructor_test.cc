@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,9 +94,6 @@ TEST(ManualConstructorTest, Alignment) {
             reinterpret_cast<char*>(&control2.b) - &control2.a);
 #ifdef ARCH_K8
   EXPECT_EQ(reinterpret_cast<intptr_t>(test2.b.get()) % 16, 0);
-#endif
-#ifdef ARCH_PIII
-  EXPECT_EQ(reinterpret_cast<intptr_t>(test2.b.get()) % 4, 0);
 #endif
 }
 

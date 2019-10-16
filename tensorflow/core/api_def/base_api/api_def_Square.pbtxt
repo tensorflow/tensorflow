@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "Square"
+  summary: "Computes square of x element-wise."
+  description: <<END
+I.e., \\(y = x * x = x^2\\).
+END
+}

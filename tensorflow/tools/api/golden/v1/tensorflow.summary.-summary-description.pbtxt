@@ -1,0 +1,12 @@
+path: "tensorflow.summary.SummaryDescription"
+tf_proto {
+  descriptor {
+    name: "SummaryDescription"
+    field {
+      name: "type_hint"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+  }
+}

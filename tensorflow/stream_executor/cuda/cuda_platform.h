@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,22 +24,21 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
-
 // Opaque and unique identifier for the CUDA platform plugin.
 // This is needed so that plugins can refer to/identify this platform without
 // instantiating a CudaPlatform object.
 extern const Platform::Id kCudaPlatformId;
+}  // namespace cuda
 
+namespace gpu {
 // Cuda-specific platform plugin, registered as a singleton value via module
 // initializer.
 class CudaPlatform : public Platform {
@@ -66,6 +65,9 @@ class CudaPlatform : public Platform {
 
   const string& Name() const override;
 
+  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+      int ordinal) const override;
+
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
@@ -88,9 +90,6 @@ class CudaPlatform : public Platform {
   // This platform's name.
   string name_;
 
-  // mutex that guards internal state.
-  mutable mutex mu_;
-
   // Cache of created executors.
   ExecutorCache executor_cache_;
 
@@ -106,8 +105,13 @@ class CudaPlatform : public Platform {
   SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
 };
 
+}  // namespace gpu
+
+namespace cuda {
+
+using CudaPlatform = gpu::CudaPlatform;
+
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_H_

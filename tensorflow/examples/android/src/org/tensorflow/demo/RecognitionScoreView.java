@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.tensorflow.demo.Classifier.Recognition;
 
 import java.util.List;
 
-public class RecognitionScoreView extends View {
+public class RecognitionScoreView extends View implements ResultsView {
   private static final float TEXT_SIZE_DIP = 24;
   private List<Recognition> results;
   private final float textSizePx;
@@ -46,6 +46,7 @@ public class RecognitionScoreView extends View {
     bgPaint.setColor(0xcc4285f4);
   }
 
+  @Override
   public void setResults(final List<Recognition> results) {
     this.results = results;
     postInvalidate();

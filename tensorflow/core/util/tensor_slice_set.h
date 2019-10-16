@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,8 @@ limitations under the License.
 // A class to manage slices of a tensor. You can "register" set of slices for a
 // tensor and then "query" if we have data for a given slice.
 
-// TODO(yangke): consider moving it to a more private place so that we don't
-// need to expose the API.
-
-#ifndef TENSORFLOW_UTIL_TENSOR_SLICE_SET_H_
-#define TENSORFLOW_UTIL_TENSOR_SLICE_SET_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_SET_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_SET_H_
 
 #include <string>  // for string
 #include <unordered_map>
@@ -49,18 +46,7 @@ class TensorSliceSet {
   // associated with the slice (in one application it denotes the name of the
   // file that contains the slice); the "data" points to the data of the tensor
   // slice (it can be a nullptr).
-  // We don't take the ownership of "data" and the caller needs to make sure
-  // the data is always available during the life time of the tensor slice set
-  // if it is not nullptr.
-  Status Register(const TensorSlice& slice, const string& tag,
-                  const float* data);
-
-  // Query about a new slice: checks if we have data for "slice" and if we have
-  // the data and "data" is not nullptr, fill "data" with the slice data. The
-  // caller needs to make sure "data" point to a large enough buffer.
-  // TODO(yangke): avoid unnecessary copying by using a core::RefCounted
-  // pointer.
-  bool Query(const TensorSlice& slice, float* data) const;
+  Status Register(const TensorSlice& slice, const string& tag);
 
   // Alternative way of querying about a new slice: instead of copying the
   // data, it returns a list of meta data about the stored slices that will
@@ -72,7 +58,6 @@ class TensorSliceSet {
   struct SliceInfo {
     TensorSlice slice;
     const string tag;
-    const float* data;
     int64 num_floats;
   };
 
@@ -92,8 +77,17 @@ class TensorSliceSet {
   TensorSlice slices_hull_;
 };
 
+// Registers "slice" in the TensorSliceSet stored in "tensor_slices", under key
+// "name".  Other arguments are used for validations.  Does not modify the map
+// or its values on non-OK.
+// REQUIRES: tensor_slices != nullptr
+Status RegisterTensorSlice(
+    const string& name, const TensorShape& shape, DataType type,
+    const string& tag, const TensorSlice& slice,
+    std::unordered_map<string, TensorSliceSet*>* tensor_slices);
+
 }  // namespace checkpoint
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_TENSOR_SLICE_SET_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_SLICE_SET_H_

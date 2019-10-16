@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,34 @@
 
 set -e
 
+
+# Determine the number of cores, for parallel make.
+N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+if [[ -z ${N_JOBS} ]]; then
+  # The Linux way didn't work. Try the Mac way.
+  N_JOBS=$(sysctl -n hw.ncpu)
+fi
+if [[ -z ${N_JOBS} ]]; then
+  N_JOBS=1
+  echo ""
+  echo "WARNING: Failed to determine the number of CPU cores. "\
+"Will use --jobs=1 for make."
+fi
+
+echo ""
+echo "make will use ${N_JOBS} concurrent job(s)."
+echo ""
+
+
+# Run TensorFlow cmake build.
+# Clean up, because certain modules, e.g., highwayhash, seem to be sensitive
+# to state.
+rm -rf build
+
 mkdir -p build
-cd build
+pushd build
+
 cmake -DCMAKE_BUILD_TYPE=Release ../tensorflow/contrib/cmake
-make all
+make --jobs=${N_JOBS} all
+
+popd

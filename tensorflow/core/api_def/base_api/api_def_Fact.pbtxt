@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Fact"
+  summary: "Output a fact about factorials."
+}

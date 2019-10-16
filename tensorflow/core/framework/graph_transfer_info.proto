@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "GraphTransferInfoProto";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+import "tensorflow/core/framework/types.proto";
+
+message GraphTransferNodeInput {
+  int32 node_id = 1;
+  int32 output_port = 2;
+}
+message GraphTransferNodeInfo {
+  string name = 1;
+  int32 node_id = 2;
+  string type_name = 3;
+  int32 soc_op_id = 4;
+  int32 padding_id = 5;
+  int32 input_count = 6;
+  int32 output_count = 7;
+};
+message GraphTransferConstNodeInfo {
+  string name = 1;
+  int32 node_id = 2;
+  repeated int64 shape = 3;
+  bytes data = 4;
+  DataType dtype = 5;
+};
+message GraphTransferNodeInputInfo {
+  int32 node_id = 1;
+  repeated GraphTransferNodeInput node_input = 2;
+};
+message GraphTransferNodeOutputInfo {
+  int32 node_id = 1;
+  repeated int32 max_byte_size = 2;
+};
+message GraphTransferGraphInputNodeInfo {
+  string name = 1;
+  repeated int64 shape = 2;
+  DataType dtype = 3;
+}
+
+message GraphTransferGraphOutputNodeInfo {
+  string name = 1;
+  repeated int64 shape = 2;
+  DataType dtype = 3;
+}
+
+// Protocol buffer representing a handle to a tensorflow resource. Handles are
+// not valid across executions, but can be serialized back and forth from within
+// a single run.
+message GraphTransferInfo {
+  enum Destination {
+    NOP = 0;
+    HEXAGON = 1;
+  }
+
+  repeated GraphTransferNodeInfo node_info = 1;
+  repeated GraphTransferConstNodeInfo const_node_info = 2;
+  repeated GraphTransferNodeInputInfo node_input_info = 3;
+  repeated GraphTransferNodeOutputInfo node_output_info = 4;
+  // Input Node parameters of transferred graph
+  repeated GraphTransferGraphInputNodeInfo graph_input_node_info = 5;
+  repeated GraphTransferGraphOutputNodeInfo graph_output_node_info = 6;
+  // Destination of graph transfer
+  Destination destination = 7;
+};

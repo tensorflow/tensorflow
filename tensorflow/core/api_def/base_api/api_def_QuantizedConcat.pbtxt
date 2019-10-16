@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "QuantizedConcat"
+  in_arg {
+    name: "concat_dim"
+    description: <<END
+0-D.  The dimension along which to concatenate.  Must be in the
+range [0, rank(values)).
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+The `N` Tensors to concatenate. Their ranks and types must match,
+and their sizes must match in all dimensions except `concat_dim`.
+END
+  }
+  in_arg {
+    name: "input_mins"
+    description: <<END
+The minimum scalar values for each of the input tensors.
+END
+  }
+  in_arg {
+    name: "input_maxes"
+    description: <<END
+The maximum scalar values for each of the input tensors.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A `Tensor` with the concatenation of values stacked along the
+`concat_dim` dimension.  This tensor's shape matches that of `values` except
+in `concat_dim` where it has the sum of the sizes.
+END
+  }
+  out_arg {
+    name: "output_min"
+    description: <<END
+The float value that the minimum quantized output value represents.
+END
+  }
+  out_arg {
+    name: "output_max"
+    description: <<END
+The float value that the maximum quantized output value represents.
+END
+  }
+  summary: "Concatenates quantized tensors along one dimension."
+}

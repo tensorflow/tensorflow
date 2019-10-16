@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "IFFT"
+  in_arg {
+    name: "input"
+    description: <<END
+A complex tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A complex tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its inverse 1D Fourier transform.
+
+@compatibility(numpy)
+Equivalent to np.fft.ifft
+@end_compatibility
+END
+  }
+  summary: "Inverse fast Fourier transform."
+  description: <<END
+Computes the inverse 1-dimensional discrete Fourier transform over the
+inner-most dimension of `input`.
+END
+}

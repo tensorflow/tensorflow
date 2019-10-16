@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "RandomPoisson"
+  summary: "Use RandomPoissonV2 instead."
+}

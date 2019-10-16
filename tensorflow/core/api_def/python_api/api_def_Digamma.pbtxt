@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Digamma"
+  endpoint {
+    name: "math.digamma"
+  }
+  endpoint {
+    name: "digamma"
+    deprecation_version: 2
+  }
+}

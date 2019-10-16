@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Div"
+  endpoint {
+    name: "math.Div"
+  }
+}

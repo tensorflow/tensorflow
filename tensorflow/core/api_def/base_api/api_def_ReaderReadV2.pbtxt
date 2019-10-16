@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "ReaderReadV2"
+  endpoint {
+    name: "ReaderRead"
+  }
+  in_arg {
+    name: "reader_handle"
+    description: <<END
+Handle to a Reader.
+END
+  }
+  in_arg {
+    name: "queue_handle"
+    description: <<END
+Handle to a Queue, with string work items.
+END
+  }
+  out_arg {
+    name: "key"
+    description: <<END
+A scalar.
+END
+  }
+  out_arg {
+    name: "value"
+    description: <<END
+A scalar.
+END
+  }
+  summary: "Returns the next record (key, value pair) produced by a Reader."
+  description: <<END
+Will dequeue from the input queue if necessary (e.g. when the
+Reader needs to start reading from a new file since it has finished
+with the previous file).
+END
+}

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" toolsVersion="10117" systemVersion="15G31" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES">
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="10085"/>
+    </dependencies>
+    <objects>
+        <placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner" customClass="BenchmarkViewController">
+            <connections>
+                <outlet property="urlContentTextView" destination="quY-AK-ZCn" id="YjW-BO-1Ta"/>
+                <outlet property="urlTextField" destination="hPw-q5-vh5" id="wmc-b6-2CV"/>
+                <outlet property="view" destination="1" id="iHm-Rr-4wj"/>
+            </connections>
+        </placeholder>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder"/>
+        <view contentMode="scaleToFill" id="1">
+            <rect key="frame" x="0.0" y="0.0" width="320" height="568"/>
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+            <subviews>
+                <textView clipsSubviews="YES" contentMode="scaleToFill" fixedFrame="YES" editable="NO" text="The results of running the model will appear here." selectable="NO" translatesAutoresizingMaskIntoConstraints="NO" id="quY-AK-ZCn">
+                    <rect key="frame" x="40" y="99" width="240" height="168"/>
+                    <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                    <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                    <textInputTraits key="textInputTraits" autocapitalizationType="sentences"/>
+                </textView>
+                <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="AAC-Bk-PCC">
+                    <rect key="frame" x="76" y="37" width="168" height="30"/>
+                    <color key="backgroundColor" white="0.33333333333333331" alpha="1" colorSpace="calibratedWhite"/>
+                    <state key="normal" title="Benchmark Model">
+                        <color key="titleShadowColor" white="0.5" alpha="1" colorSpace="calibratedWhite"/>
+                    </state>
+                    <connections>
+                        <action selector="getUrl:" destination="-1" eventType="touchUpInside" id="mdP-nK-k9T"/>
+                    </connections>
+                </button>
+            </subviews>
+            <color key="backgroundColor" red="0.78314738357315861" green="0.79869981749999996" blue="0.56305065858222869" alpha="1" colorSpace="calibratedRGB"/>
+        </view>
+        <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" text="http://localhost:8080" borderStyle="roundedRect" placeholder="Enter URL" minimumFontSize="17" id="hPw-q5-vh5">
+            <rect key="frame" x="0.0" y="0.0" width="280" height="30"/>
+            <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+            <fontDescription key="fontDescription" type="system" pointSize="14"/>
+            <textInputTraits key="textInputTraits"/>
+            <point key="canvasLocation" x="795" y="44"/>
+        </textField>
+    </objects>
+</document>

@@ -1,0 +1,119 @@
+path: "tensorflow.keras.initializers"
+tf_module {
+  member {
+    name: "Constant"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Initializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Ones"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Orthogonal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TruncatedNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "VarianceScaling"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Zeros"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "constant"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "glorot_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "glorot_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ones"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "orthogonal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "random_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "random_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "truncated_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "zeros"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "he_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "he_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'initializer\'], varargs=None, keywords=None, defaults=None"
+  }
+}

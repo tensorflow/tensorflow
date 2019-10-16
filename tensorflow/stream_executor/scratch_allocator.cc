@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,25 +18,22 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 ScratchAllocator::~ScratchAllocator() {}
 
-OneTimeScratchAllocator::OneTimeScratchAllocator() {}
+OneTimeScratchAllocator::OneTimeScratchAllocator(Stream* stream)
+    : stream_(stream) {}
 OneTimeScratchAllocator::~OneTimeScratchAllocator() {}
 
-int64 OneTimeScratchAllocator::GetMemoryLimitInBytes(Stream* stream) {
-  return -1;
-}
+int64 OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
 
 port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
-    Stream* stream, int64 byte_size) {
+    int64 byte_size) {
   CHECK(temporary_ == nullptr);
   SE_ASSIGN_OR_RETURN(temporary_,
-                      stream->AllocateTemporaryArray<uint8>(byte_size));
+                      stream_->AllocateTemporaryArray<uint8>(byte_size));
   return temporary_->device_memory();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

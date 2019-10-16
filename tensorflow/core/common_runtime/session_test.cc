@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 #include "tensorflow/core/common_runtime/session_factory.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -31,10 +32,9 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
   Session* session;
   Status s = tensorflow::NewSession(options, &session);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains(
-              "No session factory registered for the given session options."));
+  EXPECT_TRUE(absl::StrContains(
+      s.error_message(),
+      "No session factory registered for the given session options"));
 }
 
 // Register a fake session factory to test error handling paths in
@@ -44,11 +44,13 @@ class FakeSessionFactory : public SessionFactory {
   FakeSessionFactory() {}
 
   bool AcceptsOptions(const SessionOptions& options) override {
-    return StringPiece(options.target).starts_with("fake");
+    return absl::StartsWith(options.target, "fake");
   }
 
-  Session* NewSession(const SessionOptions& options) override {
-    return nullptr;
+  Status NewSession(const SessionOptions& options,
+                    Session** out_session) override {
+    *out_session = nullptr;
+    return Status::OK();
   }
 };
 class FakeSessionRegistrar {
@@ -68,9 +70,9 @@ TEST(SessionTest, MultipleFactoriesForTarget) {
   Status s = tensorflow::NewSession(options, &session);
   EXPECT_EQ(s.code(), error::INTERNAL);
   EXPECT_TRUE(
-      StringPiece(s.error_message()).contains("Multiple session factories"));
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("FAKE_SESSION_1"));
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("FAKE_SESSION_2"));
+      absl::StrContains(s.error_message(), "Multiple session factories"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "FAKE_SESSION_1"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "FAKE_SESSION_2"));
 }
 
 }  // namespace

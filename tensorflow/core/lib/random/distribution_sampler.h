@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ limitations under the License.
 //
 // The algorithm used is Walker's Aliasing algorithm, described in Knuth, Vol 2.
 
-#ifndef TENSORFLOW_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
-#define TENSORFLOW_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
 
 #include <memory>
 #include <utility>
@@ -91,4 +91,4 @@ class DistributionSampler {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_

@@ -1,0 +1,33 @@
+path: "tensorflow.train.Feature"
+tf_proto {
+  descriptor {
+    name: "Feature"
+    field {
+      name: "bytes_list"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.BytesList"
+      oneof_index: 0
+    }
+    field {
+      name: "float_list"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.FloatList"
+      oneof_index: 0
+    }
+    field {
+      name: "int64_list"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Int64List"
+      oneof_index: 0
+    }
+    oneof_decl {
+      name: "kind"
+    }
+  }
+}

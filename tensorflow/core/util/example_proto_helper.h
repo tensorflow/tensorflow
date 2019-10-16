@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
+#ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
+#define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
@@ -37,12 +42,16 @@ struct FixedLenFeature {
   DataType dtype;
   TensorShape shape;
   Tensor default_value;
+  string values_output_tensor_name;
 };
 
 // "Sparse" feature configuration.
 struct VarLenFeature {
   string key;
   DataType dtype;
+  string values_output_tensor_name;
+  string indices_output_tensor_name;
+  string shapes_output_tensor_name;
 };
 
 // Given a single tensorflow::Example, with an optional example name
@@ -99,7 +108,8 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 // Note that unlike SingleExampleProtoToTensors, output tensors are
 // allocated using a provided Allocator within this method.
 Status BatchExampleProtoToTensors(
-    const std::vector<Example>& examples, const std::vector<string>& names,
+    const std::vector<const Example*>& examples,
+    const std::vector<string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
     std::vector<Tensor>* output_dense_values_tensor,
@@ -140,6 +150,218 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
 int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
                            const int64 offset, Tensor* indices, Tensor* values);
 
+// Check that each dense_shape has known rank and inner dimensions; and
+// update variable_length (whether the outer dimension is None) and
+// elements_per_stride for each denes_shape.
+Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
+                      std::vector<bool>* variable_length,
+                      std::vector<std::size_t>* elements_per_stride);
+
+// Parses the attributes passed to ParseExample.
+// REQUIRES: Init must be called after construction.
+struct ParseExampleAttrs {
+ public:
+  template <typename ContextType>
+  Status Init(ContextType* ctx, int op_version = 1) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
+    TF_RETURN_IF_ERROR(
+        GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride));
+    switch (op_version) {
+      case 1:
+        TF_RETURN_IF_ERROR(ctx->GetAttr("Nsparse", &num_sparse));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("Ndense", &num_dense));
+        break;
+      case 2:
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("ragged_value_types", &ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("ragged_split_types", &ragged_split_types));
+        break;
+      default:
+        return errors::InvalidArgument("Unexpected op_version", op_version);
+    }
+    return FinishInit(op_version);
+  }
+
+  int64 num_sparse;
+  int64 num_dense;
+  int64 num_ragged;
+  std::vector<DataType> sparse_types;
+  std::vector<DataType> dense_types;
+  std::vector<DataType> ragged_value_types;
+  std::vector<DataType> ragged_split_types;
+  std::vector<PartialTensorShape> dense_shapes;
+  std::vector<bool> variable_length;
+  std::vector<std::size_t> elements_per_stride;
+
+ private:
+  Status FinishInit(int op_version);  // for context-independent parts of Init.
+};
+
+// Parses the attributes passed to ParseSingleExample.
+// REQUIRES: Init must be called after construction.
+struct ParseSingleExampleAttrs {
+ public:
+  template <typename ContextType>
+  Status Init(ContextType* ctx) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_keys", &sparse_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_keys", &dense_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
+
+    int num_sparse;
+    TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+    if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
+      return errors::InvalidArgument(
+          "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
+          sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
+    }
+
+    TF_RETURN_IF_ERROR(
+        GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride));
+    return FinishInit();
+  }
+
+  std::vector<string> sparse_keys;
+  std::vector<DataType> sparse_types;
+  std::vector<string> dense_keys;
+  std::vector<DataType> dense_types;
+  std::vector<PartialTensorShape> dense_shapes;
+  std::vector<bool> variable_length;
+  std::vector<std::size_t> elements_per_stride;
+
+ private:
+  Status FinishInit();  // for context-independent parts of Init.
+};
+
+// Parses the attributes passed to ParseSequenceExample.
+// REQUIRES: Init must be called after construction.
+struct ParseSequenceExampleAttrs {
+ public:
+  template <typename ContextType>
+  Status Init(ContextType* ctx, int op_version = 1) {
+    switch (op_version) {
+      case 1: {
+        std::vector<string> missing_empty_vector;
+        TF_RETURN_IF_ERROR(ctx->GetAttr(
+            "feature_list_dense_missing_assumed_empty", &missing_empty_vector));
+        for (const string& feature : missing_empty_vector) {
+          feature_list_dense_missing_assumed_empty.insert(feature);
+        }
+      }
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("context_sparse_keys", &context_sparse_keys));
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("context_dense_keys", &context_dense_keys));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_sparse_keys",
+                                        &feature_list_sparse_keys));
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("feature_list_dense_keys", &feature_list_dense_keys));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_dense", &num_context_dense));
+        break;
+      case 2:
+        TF_RETURN_IF_ERROR(ctx->GetAttr("context_ragged_value_types",
+                                        &context_ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("context_ragged_split_types",
+                                        &context_ragged_split_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_ragged_value_types",
+                                        &feature_list_ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_ragged_split_types",
+                                        &feature_list_ragged_split_types));
+        break;
+      default:
+        return errors::InvalidArgument("Unexpected op_version", op_version);
+    }
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("context_sparse_types", &context_sparse_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_sparse", &num_context_sparse));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Tcontext_dense", &context_dense_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_sparse_types", &feature_list_sparse_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_dense_types", &feature_list_dense_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("context_dense_shapes", &context_dense_shapes));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_dense_shapes", &feature_list_dense_shapes));
+    return FinishInit(op_version);
+  }
+
+  std::unordered_set<string> feature_list_dense_missing_assumed_empty;
+  int64 num_context_sparse;
+  int64 num_context_dense;
+  int64 num_context_ragged;
+  int64 num_feature_list_sparse;
+  int64 num_feature_list_dense;
+  int64 num_feature_list_ragged;
+  std::vector<string> context_sparse_keys;
+  std::vector<string> context_dense_keys;
+  std::vector<string> feature_list_sparse_keys;
+  std::vector<string> feature_list_dense_keys;
+  std::vector<DataType> context_sparse_types;
+  std::vector<DataType> context_dense_types;
+  std::vector<TensorShape> context_dense_shapes;
+  std::vector<DataType> feature_list_sparse_types;
+  std::vector<DataType> feature_list_dense_types;
+  std::vector<TensorShape> feature_list_dense_shapes;
+  std::vector<DataType> context_ragged_value_types;
+  std::vector<DataType> context_ragged_split_types;
+  std::vector<DataType> feature_list_ragged_value_types;
+  std::vector<DataType> feature_list_ragged_split_types;
+
+ private:
+  Status FinishInit(int op_version);  // for context-independent parts of Init.
+};
+
+// Parses the attributes passed to ParseSingleSequenceExample.
+// REQUIRES: Init must be called after construction.
+struct ParseSingleSequenceExampleAttrs {
+ public:
+  template <typename ContextType>
+  Status Init(ContextType* ctx) {
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("context_sparse_types", &context_sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_dense", &num_context_dense));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_sparse", &num_context_sparse));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Tcontext_dense", &context_dense_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_sparse_types", &feature_list_sparse_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_dense_types", &feature_list_dense_types));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("context_dense_shapes", &context_dense_shapes));
+    TF_RETURN_IF_ERROR(
+        ctx->GetAttr("feature_list_dense_shapes", &feature_list_dense_shapes));
+    return FinishInit();
+  }
+
+  int64 num_context_sparse;
+  int64 num_context_dense;
+  int64 num_feature_list_sparse;
+  int64 num_feature_list_dense;
+  std::vector<DataType> context_sparse_types;
+  std::vector<DataType> context_dense_types;
+  std::vector<TensorShape> context_dense_shapes;
+  std::vector<DataType> feature_list_sparse_types;
+  std::vector<DataType> feature_list_dense_types;
+  std::vector<TensorShape> feature_list_dense_shapes;
+
+ private:
+  Status FinishInit();  // for context-independent parts of Init.
+};
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
+#endif  // TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_

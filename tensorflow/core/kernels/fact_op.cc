@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -73,25 +73,48 @@ static void E(string* s) {
   }
 }
 
-template <const char* const FACTS[], uint64 N>
 class FactOpKernel : public OpKernel {
  public:
   explicit FactOpKernel(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* context) override {
-    Tensor* output_tensor = NULL;
+  void Compute(OpKernelContext* context) override = 0;
+
+ protected:
+  void Compute(OpKernelContext* context, const char* const facts[],
+               uint64 count) {
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({}), &output_tensor));
-    auto output = output_tensor->template scalar<string>();
+    auto output = output_tensor->template scalar<tstring>();
 
-    string coded = FACTS[context->env()->NowMicros() % N];
+    string coded = facts[context->env()->NowMicros() % count];
     E(&coded);
     output() = coded;
   }
 };
 
+class FactOpKernel1 : public FactOpKernel {
+ public:
+  explicit FactOpKernel1(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    FactOpKernel::Compute(context, kFacts1, kNum1);
+  }
+};
+
+class FactOpKernel2 : public FactOpKernel {
+ public:
+  explicit FactOpKernel2(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    FactOpKernel::Compute(context, kFacts2, kNum2);
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("Fact").Device(DEVICE_GPU).HostMemory("fact"),
-                        FactOpKernel<kFacts1, kNum1>);
+                        FactOpKernel1);
 
 static string D(const char* s) {
   string ret(s);
@@ -99,13 +122,9 @@ static string D(const char* s) {
   return ret;
 }
 
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("Yoxmos").c_str()),
-                        FactOpKernel<kFacts2, kNum2>);
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("yoxmos").c_str()),
-                        FactOpKernel<kFacts2, kNum2>);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("Yoxmos").c_str()), FactOpKernel2);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("yoxmos").c_str()), FactOpKernel2);
 
 }  // namespace tensorflow

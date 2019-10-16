@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,16 @@ class DimensionDivTest(test_util.TensorFlowTestCase):
       for x in values:
         for y in values:
           self.assertEqual((x / y).value, (x // y).value)
+
+  def testRDivFail(self):
+    # Note: This test is related to GitHub issue 25790.
+    """Without from __future__ import division, __rdiv__ is used."""
+    if six.PY2:  # Old division exists only in Python 2
+      two = tensor_shape.Dimension(2)
+      message = (r"unsupported operand type\(s\) for /: "
+                 r"'int' and 'Dimension', please use // instead")
+      with self.assertRaisesRegexp(TypeError, message):
+        _ = 6 / two
 
 
 if __name__ == "__main__":

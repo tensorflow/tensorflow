@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
-#define TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
 
 #include <string>
 #include <vector>
@@ -35,34 +35,38 @@ namespace test {
 
 class Benchmark {
  public:
-  // "device" must be either "cpu" or "gpu".  Takes ownership of "g"
-  // and "init".
+  // "device" must be either "cpu" or "gpu".  Takes ownership of "g",
+  // "init", and one reference on "rendez" (if not null).
   Benchmark(const string& device, Graph* g,
-            const SessionOptions* options = nullptr, Graph* init = nullptr);
+            const SessionOptions* options = nullptr, Graph* init = nullptr,
+            Rendezvous* rendez = nullptr, const char* executor_type = "");
   ~Benchmark();
 
   // Executes the graph for "iters" times.
   void Run(int iters);
 
   // If "g" contains send/recv nodes, before each execution, we send
-  // inputs to the corresponding recv nodes in the graph, after each
-  // execution, we recv outputs from the corresponding send nodes in
+  // inputs to the corresponding recv keys in the graph, after each
+  // execution, we recv outputs from the corresponding send keys in
   // the graph. In the benchmark, we throw away values returned by the
   // graph.
-  void RunWithArgs(const std::vector<std::pair<const Node*, Tensor>>& inputs,
-                   const std::vector<const Node*>& outputs, int iters);
+  void RunWithRendezvousArgs(
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<string>& outputs, int iters);
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-  thread::ThreadPool* non_blocking_pool_ = nullptr;
-  Device* device_ = nullptr;
+  std::unique_ptr<Device> device_ = nullptr;
   Rendezvous* rendez_ = nullptr;
-  Executor* exec_ = nullptr;
+  std::unique_ptr<Executor> exec_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
 };
 
+// Returns the rendezvous key associated with the given Send/Recv node.
+string GetRendezvousKey(const Node* node);
+
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_

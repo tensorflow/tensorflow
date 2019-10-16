@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,32 +19,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-namespace perftools {
-namespace gputools {
-namespace cuda {
+namespace stream_executor {
+namespace gpu {
 
-CUDAEvent::CUDAEvent(CUDAExecutor* parent)
-    : parent_(parent), cuda_event_(nullptr) {}
-
-CUDAEvent::~CUDAEvent() {}
-
-port::Status CUDAEvent::Init() {
-  return CUDADriver::CreateEvent(parent_->cuda_context(), &cuda_event_,
-                                 CUDADriver::EventFlags::kDisableTiming);
-}
-
-port::Status CUDAEvent::Destroy() {
-  return CUDADriver::DestroyEvent(parent_->cuda_context(), &cuda_event_);
-}
-
-port::Status CUDAEvent::Record(CUDAStream* stream) {
-  return CUDADriver::RecordEvent(parent_->cuda_context(), cuda_event_,
-                                 stream->cuda_stream());
-}
-
-Event::Status CUDAEvent::PollForStatus() {
+Event::Status GpuEvent::PollForStatus() {
   port::StatusOr<CUresult> status =
-      CUDADriver::QueryEvent(parent_->cuda_context(), cuda_event_);
+      GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
                << status.status().error_message();
@@ -63,10 +43,5 @@ Event::Status CUDAEvent::PollForStatus() {
   }
 }
 
-const CUevent& CUDAEvent::cuda_event() {
-  return cuda_event_;
-}
-
-}  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace gpu
+}  // namespace stream_executor

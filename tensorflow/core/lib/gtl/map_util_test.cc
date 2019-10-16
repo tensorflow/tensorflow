@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,6 @@ TEST(MapUtil, Find) {
   m["foo"] = "bar";
   EXPECT_EQ("bar", gtl::FindWithDefault(m, "foo", ""));
   EXPECT_EQ("bar", *gtl::FindOrNull(m, "foo"));
-  string str;
   EXPECT_TRUE(m.count("foo") > 0);
   EXPECT_EQ(m["foo"], "bar");
 }

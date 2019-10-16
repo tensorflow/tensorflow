@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Timestamp"
+  summary: "Provides the time since epoch in seconds."
+  description: <<END
+Returns the timestamp as a `float64` for seconds since the Unix epoch.
+
+Note: the timestamp is computed when the op is executed, not when it is added
+to the graph.
+END
+}

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringToHashBucketStrong"
+  endpoint {
+    name: "strings.to_hash_bucket_strong"
+  }
+  endpoint {
+    name: "string_to_hash_bucket_strong"
+    deprecation_version: 2
+  }
+}

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/framework/register_types.h"
+#define EIGEN_USE_GPU
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
 namespace tensorflow {
 namespace functor {
+
+template <typename T, int NDIMS>
+struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<T, NDIMS>::Tensor output_tensor,
+                  typename TTypes<bool, NDIMS>::ConstTensor cond_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor then_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor else_tensor,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast) {
+    output_tensor.device(d) = cond_tensor.broadcast(cond_bcast)
+                                  .select(then_tensor.broadcast(then_bcast),
+                                          else_tensor.broadcast(else_bcast));
+  }
+};
 
 template <typename T>
 struct SelectFunctor<GPUDevice, T> {
@@ -29,6 +47,26 @@ struct SelectFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat else_flat) {
     To32Bit(out).device(d) =
         To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
+  }
+};
+
+template <typename T>
+struct SelectScalarFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<bool>::ConstScalar cond,
+                  typename TTypes<T>::ConstFlat then_flat,
+                  typename TTypes<T>::ConstFlat else_flat) {
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> rank1{1};
+#else
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
+#endif
+    const int size = then_flat.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
+
+    To32Bit(out).device(d) = cond.reshape(rank1)
+                                 .broadcast(broadcast_dims)
+                                 .select(then_flat, else_flat);
   }
 };
 
@@ -67,20 +105,31 @@ struct BatchSelectFunctor<GPUDevice, T> {
   }
 };
 
-#define SELECT_FUNCTOR(T)                      \
-  template struct SelectFunctor<GPUDevice, T>; \
-  template struct BatchSelectFunctor<GPUDevice, T>;
+#define SELECT_FUNCTOR(T)                              \
+  template struct SelectFunctor<GPUDevice, T>;         \
+  template struct SelectScalarFunctor<GPUDevice, T>;   \
+  template struct BatchSelectFunctor<GPUDevice, T>;    \
+  template struct BCastSelectFunctor<GPUDevice, T, 1>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 2>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 3>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 4>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 5>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 6>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 7>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 8>;
 
+SELECT_FUNCTOR(bool);
 SELECT_FUNCTOR(Eigen::half);
 SELECT_FUNCTOR(float);
 SELECT_FUNCTOR(double);
 SELECT_FUNCTOR(int32);
 SELECT_FUNCTOR(int64);
 SELECT_FUNCTOR(complex64);
+SELECT_FUNCTOR(complex128);
 
 #undef SELECT_FUNCTOR
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

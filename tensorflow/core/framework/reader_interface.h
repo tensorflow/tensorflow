@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_READER_INTERFACE_H_
-#define TENSORFLOW_FRAMEWORK_READER_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_READER_INTERFACE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_READER_INTERFACE_H_
 
 #include <memory>
 #include <string>
@@ -48,8 +48,21 @@ class ReaderInterface : public ResourceBase {
   // *context with an OutOfRange Status if the current work is
   // complete and the queue is done (closed and empty).
   // This method may block.
-  virtual void Read(QueueInterface* queue, string* key, string* value,
+  virtual void Read(QueueInterface* queue, tstring* key, tstring* value,
                     OpKernelContext* context) = 0;
+
+  // Read up to num_records records into keys / values. May get more work from
+  // *queue if the current work is complete.  Sets the status on
+  // *context with an OutOfRange Status if the current work is
+  // complete and the queue is done (closed and empty).
+  // This method may block.
+  // The std::vector keys/value pointers are assumed to point to empty
+  // structures (that have most likely been reserve(num_records)).
+  // Returns how many records were actually read.
+  virtual int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
+                         std::vector<tstring>* keys,
+                         std::vector<tstring>* value,
+                         OpKernelContext* context) = 0;
 
   // Restore this reader to its newly-constructed state.
   virtual Status Reset() = 0;
@@ -60,11 +73,11 @@ class ReaderInterface : public ResourceBase {
 
   // -- Serialization/Restoration support --
   // Not all readers will support saving and restoring state.
-  virtual Status SerializeState(string* state) = 0;
+  virtual Status SerializeState(tstring* state) = 0;
   // Note: Must Reset on error.
-  virtual Status RestoreState(const string& state) = 0;
+  virtual Status RestoreState(const tstring& state) = 0;
 
-  string DebugString() override { return "a reader"; }
+  string DebugString() const override { return "a reader"; }
 
  protected:
   virtual ~ReaderInterface() {}
@@ -72,4 +85,4 @@ class ReaderInterface : public ResourceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_READER_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_READER_INTERFACE_H_

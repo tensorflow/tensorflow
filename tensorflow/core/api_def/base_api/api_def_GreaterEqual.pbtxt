@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "GreaterEqual"
+  summary: "Returns the truth value of (x >= y) element-wise."
+  description: <<END
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5, 2, 5, 10])
+tf.math.greater_equal(x, y) ==> [True, True, True, False]
+
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5])
+tf.math.greater_equal(x, y) ==> [True, False, True, True]
+```
+END
+}

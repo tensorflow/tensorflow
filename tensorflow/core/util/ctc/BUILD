@@ -2,14 +2,15 @@
 # is a type of seq2seq loss.  The libraries in this directory
 # implement the CTC loss and a number of CTC decoders.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "ctc_beam_entry.h",
         "ctc_beam_scorer.h",
@@ -19,16 +20,9 @@ filegroup(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 cc_library(
@@ -55,7 +49,6 @@ cc_library(
     ],
     deps = [
         ":ctc_loss_util_lib",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
@@ -63,8 +56,9 @@ cc_library(
 )
 
 tf_cc_tests(
+    name = "ctc_beam_search_test",
     size = "small",
-    tests = [
+    srcs = [
         "ctc_beam_search_test.cc",
     ],
     deps = [
@@ -85,6 +79,7 @@ cc_library(
     ],
     deps = [
         ":ctc_loss_util_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -95,5 +90,4 @@ cc_library(
     hdrs = [
         "ctc_loss_util.h",
     ],
-    deps = ["//tensorflow/core:lib"],
 )

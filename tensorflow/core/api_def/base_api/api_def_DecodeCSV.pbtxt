@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "DecodeCSV"
+  in_arg {
+    name: "records"
+    description: <<END
+Each string is a record/row in the csv and all records should have
+the same format.
+END
+  }
+  in_arg {
+    name: "record_defaults"
+    description: <<END
+One tensor per column of the input record, with either a
+scalar default value for that column or an empty vector if the column is
+required.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Each tensor will have the same shape as records.
+END
+  }
+  attr {
+    name: "field_delim"
+    description: <<END
+char delimiter to separate fields in a record.
+END
+  }
+  attr {
+    name: "use_quote_delim"
+    description: <<END
+If false, treats double quotation marks as regular
+characters inside of the string fields (ignoring RFC 4180, Section 2,
+Bullet 5).
+END
+  }
+  attr {
+    name: "na_value"
+    description: <<END
+Additional string to recognize as NA/NaN.
+END
+  }
+  summary: "Convert CSV records to tensors. Each column maps to one tensor."
+  description: <<END
+RFC 4180 format is expected for the CSV records.
+(https://tools.ietf.org/html/rfc4180)
+Note that we allow leading and trailing spaces with int or float field.
+END
+}

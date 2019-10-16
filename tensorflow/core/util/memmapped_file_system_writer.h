@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class MemmappedFileSystemWriter {
 
  private:
   Status AdjustAlignment(uint64 alignment);
-  void AddToDirectoryElement(const string& element_name);
+  void AddToDirectoryElement(const string& element_name, uint64 length);
   MemmappedFileSystemDirectory directory_;
   // The current offset in the file, to support alignment.
   uint64 output_file_offset_ = 0;

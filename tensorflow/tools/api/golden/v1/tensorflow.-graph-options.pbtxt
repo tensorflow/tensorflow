@@ -1,0 +1,67 @@
+path: "tensorflow.GraphOptions"
+tf_proto {
+  descriptor {
+    name: "GraphOptions"
+    field {
+      name: "enable_recv_scheduling"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "optimizer_options"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.OptimizerOptions"
+    }
+    field {
+      name: "build_cost_model"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "build_cost_model_after"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "infer_shapes"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "place_pruned_graph"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "enable_bfloat16_sendrecv"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "timeline_step"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "rewrite_options"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.RewriterConfig"
+    }
+    reserved_range {
+      start: 1
+      end: 2
+    }
+    reserved_name: "skip_common_subexpression_elimination"
+  }
+}

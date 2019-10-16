@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_PORT_H_
-#define TENSORFLOW_UTIL_PORT_H_
+#ifndef TENSORFLOW_CORE_UTIL_PORT_H_
+#define TENSORFLOW_CORE_UTIL_PORT_H_
 
 namespace tensorflow {
 
 // Returns true if GOOGLE_CUDA is defined.
 bool IsGoogleCudaEnabled();
 
+// Returns true if TENSORFLOW_USE_ROCM is defined. (i.e. TF is built with ROCm)
+bool IsBuiltWithROCm();
+
+// Returns true if either
+//
+//   GOOGLE_CUDA is defined, and the given CUDA version supports
+//   half-precision matrix multiplications and convolution operations.
+//
+//     OR
+//
+//   TENSORFLOW_USE_ROCM is defined
+//
+bool GpuSupportsHalfMatMulAndConv();
+
+// Returns true if INTEL_MKL is defined
+bool IsMklEnabled();
+
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_PORT_H_
+#endif  // TENSORFLOW_CORE_UTIL_PORT_H_
