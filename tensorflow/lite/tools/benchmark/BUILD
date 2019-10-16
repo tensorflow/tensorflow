@@ -81,9 +81,13 @@ cc_test(
     name = "benchmark_test",
     srcs = ["benchmark_test.cc"],
     args = [
-        "--graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
+        "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
+        "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
     ],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
