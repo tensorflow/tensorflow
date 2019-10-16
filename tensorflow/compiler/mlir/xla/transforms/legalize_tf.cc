@@ -525,7 +525,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 template <typename OpT, int num_spatial_dims>
 class ConvertConv : public OpRewritePattern<OpT> {
  public:
-  explicit ConvertConv(MLIRContext *context) : OpRewritePattern<OpT>(context) {}
+  using OpRewritePattern<OpT>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(OpT op,
                                      PatternRewriter &rewriter) const override {
@@ -651,8 +651,7 @@ using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
 // Required to manually specify the intermediate types.
 class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
  public:
-  explicit ConvertBF16FloorDivOp(MLIRContext *context)
-      : OpRewritePattern<TF::FloorDivOp>(context) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::FloorDivOp op,
                                      PatternRewriter &rewriter) const override {
@@ -697,8 +696,7 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
 //
 class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
  public:
-  explicit ConvertMaxPoolOp(MLIRContext *context)
-      : OpRewritePattern<TF::MaxPoolOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::MaxPoolOp op,
                                      PatternRewriter &rewriter) const override {
@@ -746,8 +744,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
 //
 class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
  public:
-  explicit ConvertSigmoidOp(MLIRContext *context)
-      : OpRewritePattern<TF::SigmoidOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::SigmoidOp op,
                                      PatternRewriter &rewriter) const override {
@@ -820,8 +817,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 template <typename OpTy, bool use_log = true>
 class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
  public:
-  explicit ConvertSoftmaxOp(MLIRContext *context)
-      : OpRewritePattern<OpTy>(context, 1) {}
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(OpTy op,
                                      PatternRewriter &rewriter) const override {
@@ -913,8 +909,7 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 //
 class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
  public:
-  explicit ConvertStridedSliceOp(MLIRContext *context)
-      : OpRewritePattern<TF::StridedSliceOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::StridedSliceOp op,
                                      PatternRewriter &rewriter) const override {
