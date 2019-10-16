@@ -261,6 +261,22 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "texture2d_test",
+    srcs = ["texture2d_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":texture2d",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tensor",
     srcs = ["tensor.cc"],
