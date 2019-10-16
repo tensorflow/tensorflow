@@ -206,6 +206,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
