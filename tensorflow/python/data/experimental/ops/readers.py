@@ -26,7 +26,6 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
-from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -206,13 +205,10 @@ def _get_sorted_col_indices(select_columns, column_names):
 def _maybe_shuffle_and_repeat(
     dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
   """Optionally shuffle and repeat dataset, as requested."""
-  if num_epochs != 1 and shuffle:
-    return shuffle_ops._ShuffleAndRepeatDataset(dataset, shuffle_buffer_size,
-                                                num_epochs, shuffle_seed)
-  elif shuffle:
-    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    return dataset.repeat(num_epochs)
+  if shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
   return dataset
 
 
@@ -531,14 +527,17 @@ def make_csv_dataset_v2(
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
-    dataset = core_readers.ParallelInterleaveDataset(
-        dataset,
-        filename_to_dataset,
-        cycle_length=num_parallel_reads,
-        block_length=1,
-        sloppy=sloppy,
-        buffer_output_elements=None,
-        prefetch_input_elements=None)
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
+          filename_to_dataset,
+          cycle_length=num_parallel_reads,
+          block_length=1,
+          sloppy=sloppy,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -884,14 +883,17 @@ def make_batched_features_dataset_v2(file_pattern,
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel
-    dataset = core_readers.ParallelInterleaveDataset(
-        dataset,
-        lambda filename: reader(filename, *reader_args),
-        cycle_length=reader_num_threads,
-        block_length=1,
-        sloppy=sloppy_ordering,
-        buffer_output_elements=None,
-        prefetch_input_elements=None)
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
+          lambda filename: reader(filename, *reader_args),
+          cycle_length=reader_num_threads,
+          block_length=1,
+          sloppy=sloppy_ordering,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
