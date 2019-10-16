@@ -64,6 +64,7 @@ extern bool did_test_fail;
 extern tflite::ErrorReporter* reporter;
 }  // namespace micro_test
 
+
 #define TF_LITE_MICRO_TESTS_BEGIN              \
   namespace micro_test {                       \
   int tests_passed;                            \
@@ -73,6 +74,7 @@ extern tflite::ErrorReporter* reporter;
   tflite::ErrorReporter* reporter;             \
   }                                            \
                                                \
+  _Pragma("stackfunction 15000")               \
   int main(int argc, char** argv) {            \
     micro_test::tests_passed = 0;              \
     micro_test::tests_failed = 0;              \
