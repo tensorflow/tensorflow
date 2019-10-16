@@ -244,7 +244,7 @@ LogicalResult lowerAsEntryFunction(FuncOp funcOp,
     for (auto origArg : enumerate(funcOp.getArguments())) {
       auto replacement = createAndLoadGlobalVarForEntryFnArg(
           rewriter, origArg.index(), origArg.value());
-      rewriter.replaceUsesOfBlockArgument(origArg.value(), replacement);
+      signatureConverter.remapInput(origArg.index(), replacement);
     }
   }
   newFuncOp = applySignatureConversion(funcOp, rewriter, signatureConverter);

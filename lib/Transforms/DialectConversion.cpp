@@ -288,8 +288,17 @@ void ArgConverter::applySignatureConversion(
   rewriter.setInsertionPointToStart(block);
   for (unsigned i = 0; i != origArgCount; ++i) {
     ArrayRef<Value *> remappedValues;
-    if (auto inputMap = signatureConversion.getInputMapping(i))
-      remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    if (auto &inputMap = signatureConversion.getInputMapping(i)) {
+      // If inputMap->replacementValue is not nullptr, then the argument is
+      // dropped and a replacement value is provided to be the remappedValue.
+      if (inputMap->replacementValue) {
+        assert(inputMap->size == 0 &&
+               "invalid to provide a replacement value when the argument isn't "
+               "dropped");
+        remappedValues = inputMap->replacementValue;
+      } else
+        remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    }
 
     BlockArgument *arg = block->getArgument(i);
     newArgMapping.push_back(convertArgument(arg, remappedValues, mapping));
@@ -1314,7 +1323,17 @@ void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
                                                     unsigned newInputCount) {
   assert(!remappedInputs[origInputNo] && "input has already been remapped");
   assert(newInputCount != 0 && "expected valid input count");
-  remappedInputs[origInputNo] = InputMapping{newInputNo, newInputCount};
+  remappedInputs[origInputNo] =
+      InputMapping{newInputNo, newInputCount, /*replacementValue=*/nullptr};
+}
+
+/// Remap an input of the original signature to another `replacementValue`
+/// value. This would make the signature converter drop this argument.
+void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
+                                                    Value *replacementValue) {
+  assert(!remappedInputs[origInputNo] && "input has already been remapped");
+  remappedInputs[origInputNo] =
+      InputMapping{origInputNo, /*size=*/0, replacementValue};
 }
 
 /// This hooks allows for converting a type.

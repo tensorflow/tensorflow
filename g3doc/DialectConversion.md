@@ -222,6 +222,10 @@ public:
     /// new signature.
     void remapInput(unsigned origInputNo, unsigned newInputNo,
                     unsigned newInputCount = 1);
+
+    /// Remap an input of the original signature to another `replacement`
+    /// value. This drops the original argument.
+    void remapInput(unsigned origInputNo, Value *replacement);
 };
 ```
 
