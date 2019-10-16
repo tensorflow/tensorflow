@@ -92,7 +92,7 @@ def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   let verifier = [{ return ::verify(*this); }];
 }
 
-def AddOp : Toy_Op<"add", [NoSideEffect]> {
+def AddOp : Toy_Op<"add"> {
   let summary = "element-wise addition operation";
   let description = [{
     The "add" operation performs element-wise addition between two tensors.
@@ -144,7 +144,7 @@ def GenericCallOp : Toy_Op<"generic_call"> {
   ];
 }
 
-def MulOp : Toy_Op<"mul", [NoSideEffect]> {
+def MulOp : Toy_Op<"mul"> {
   let summary = "element-wise multiplication operation";
   let description = [{
     The "mul" operation performs element-wise multiplication between two
@@ -173,7 +173,7 @@ def PrintOp : Toy_Op<"print"> {
   let arguments = (ins F64Tensor:$input);
 }
 
-def ReshapeOp : Toy_Op<"reshape", [NoSideEffect]> {
+def ReshapeOp : Toy_Op<"reshape"> {
   let summary = "tensor reshape operation";
   let description = [{
     Reshape operation is transforming its input tensor into a new tensor with
@@ -224,7 +224,7 @@ def ReturnOp : Toy_Op<"return", [Terminator, HasParent<"FuncOp">]> {
   let verifier = [{ return ::verify(*this); }];
 }
 
-def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {
+def TransposeOp : Toy_Op<"transpose"> {
   let summary = "transpose operation";
 
   let arguments = (ins F64Tensor:$input);
