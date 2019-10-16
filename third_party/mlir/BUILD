@@ -210,6 +210,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/AffineOps/AffineOps.td",
         "include/mlir/Dialect/AffineOps/AffineOpsBase.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -238,6 +239,7 @@ filegroup(
     name = "LoopOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/LoopOps/LoopOps.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -310,15 +312,18 @@ cc_library(
     name = "AffineOps",
     srcs = [
         "include/mlir/Transforms/InliningUtils.h",
+        "include/mlir/Transforms/LoopLikeInterface.h",
         "lib/Dialect/AffineOps/AffineOps.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/AffineOps/AffineOps.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOpsIncGen",
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":StandardOps",
         ":Support",
         "@llvm//:support",
@@ -368,10 +373,13 @@ cc_library(
     ],
     hdrs = [
         "include/mlir/Dialect/LoopOps/LoopOps.h",
+        "include/mlir/Transforms/LoopLikeInterface.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":LoopOpsIncGen",
         ":StandardOps",
         ":Support",
@@ -1134,10 +1142,31 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "LoopLikeOpInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Transforms/LoopLikeInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Transforms/LoopLikeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Transforms/LoopLikeInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "Transforms",
     srcs = [
         "lib/Transforms/AffineDataCopyGeneration.cpp",
+        "lib/Transforms/AffineLoopInvariantCodeMotion.cpp",
         "lib/Transforms/CSE.cpp",
         "lib/Transforms/Canonicalizer.cpp",
         "lib/Transforms/DialectConversion.cpp",
@@ -1161,6 +1190,7 @@ cc_library(
         "include/mlir/Transforms/DialectConversion.h",
         "include/mlir/Transforms/LowerAffine.h",
         "include/mlir/Transforms/Passes.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
@@ -1168,6 +1198,7 @@ cc_library(
         ":Analysis",
         ":EDSC",
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":LoopOps",
         ":Pass",
         ":StandardOps",
