@@ -1556,7 +1556,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     Args:
       sensitivity: A scalar value in range `[0, 1]`.
       num_thresholds: (Optional) Defaults to 200. The number of thresholds to
-        use for matching the given specificity.
+        use for matching the given sensitivity.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -1573,7 +1573,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
         self.true_positives, self.true_positives + self.false_negatives)
 
     # Find the index of the threshold where the sensitivity is closest to the
-    # given specificity.
+    # requested value.
     min_index = math_ops.argmin(
         math_ops.abs(sensitivities - self.value), axis=0)
     min_index = math_ops.cast(min_index, dtypes.int32)
@@ -1589,6 +1589,79 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
         'sensitivity': self.sensitivity
     }
     base_config = super(SpecificityAtSensitivity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.metrics.PrecisionAtRecall')
+class PrecisionAtRecall(SensitivitySpecificityBase):
+  """Computes the precision at a given recall.
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  precision at the given recall. The threshold for the given recall
+  value is computed and used to evaluate the corresponding precision.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.PrecisionAtRecall(0.8, num_thresholds=1)
+  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.PrecisionAtRecall()])
+  ```
+  """
+
+  def __init__(self, recall, num_thresholds=200, name=None, dtype=None):
+    """Creates a `PrecisionAtRecall` instance.
+
+    Args:
+      recall: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given recall.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if recall < 0 or recall > 1:
+      raise ValueError('`recall` must be in the range [0, 1].')
+    self.recall = recall
+    self.num_thresholds = num_thresholds
+    super(PrecisionAtRecall, self).__init__(
+        value=recall,
+        num_thresholds=num_thresholds,
+        name=name,
+        dtype=dtype)
+
+  def result(self):
+    # Calculate recall at all the thresholds.
+    recalls = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_negatives)
+
+    # Find the index of the threshold where the recall is closest to the
+    # requested value.
+    min_index = math_ops.argmin(
+        math_ops.abs(recalls - self.value), axis=0)
+    min_index = math_ops.cast(min_index, dtypes.int32)
+
+    # Compute precision at that index.
+    return math_ops.div_no_nan(
+        self.true_positives[min_index],
+        self.true_positives[min_index] + self.false_positives[min_index])
+
+  def get_config(self):
+    config = {'num_thresholds': self.num_thresholds, 'recall': self.recall}
+    base_config = super(PrecisionAtRecall, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 

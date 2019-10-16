@@ -920,6 +920,103 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
+
+  def test_config(self):
+    s_obj = metrics.PrecisionAtRecall(
+        0.4, num_thresholds=100, name='precision_at_recall_1')
+    self.assertEqual(s_obj.name, 'precision_at_recall_1')
+    self.assertLen(s_obj.variables, 4)
+    self.assertEqual(s_obj.recall, 0.4)
+    self.assertEqual(s_obj.num_thresholds, 100)
+
+    # Check save and restore config
+    s_obj2 = metrics.PrecisionAtRecall.from_config(s_obj.get_config())
+    self.assertEqual(s_obj2.name, 'precision_at_recall_1')
+    self.assertLen(s_obj2.variables, 4)
+    self.assertEqual(s_obj2.recall, 0.4)
+    self.assertEqual(s_obj2.num_thresholds, 100)
+
+  def test_value_is_idempotent(self):
+    s_obj = metrics.PrecisionAtRecall(0.7)
+    y_pred = random_ops.random_uniform((10, 3),
+                                       maxval=1,
+                                       dtype=dtypes.float32,
+                                       seed=1)
+    y_true = random_ops.random_uniform((10, 3),
+                                       maxval=2,
+                                       dtype=dtypes.int64,
+                                       seed=1)
+    update_op = s_obj.update_state(y_true, y_pred)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+
+    # Run several updates.
+    for _ in range(10):
+      self.evaluate(update_op)
+
+    # Then verify idempotency.
+    initial_specificity = self.evaluate(s_obj.result())
+    for _ in range(10):
+      self.assertAlmostEqual(initial_specificity, self.evaluate(s_obj.result()),
+                             1e-3)
+
+  def test_unweighted_all_correct(self):
+    s_obj = metrics.PrecisionAtRecall(0.7)
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    y_pred = constant_op.constant(inputs, dtype=dtypes.float32)
+    y_true = constant_op.constant(inputs)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+
+  def test_unweighted_high_recall(self):
+    s_obj = metrics.PrecisionAtRecall(0.8)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.5, 0.4, 0.5, 0.6, 0.8, 0.9]
+    label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    # For a score between 0.4 and 0.5, we expect 0.8 precision, 0.8 recall.
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.8, self.evaluate(result))
+
+  def test_unweighted_low_recall(self):
+    s_obj = metrics.PrecisionAtRecall(0.4)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.15, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
+  def test_weighted(self, label_dtype):
+    s_obj = metrics.PrecisionAtRecall(0.4)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+    weight_values = [2, 2, 1, 1, 1, 1, 1, 2, 2, 2]
+
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = math_ops.cast(label_values, dtype=label_dtype)
+    weights = constant_op.constant(weight_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred, sample_weight=weights)
+    self.assertAlmostEqual(2./3., self.evaluate(result))
+
+  def test_invalid_sensitivity(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'`recall` must be in the range \[0, 1\].'):
+      metrics.PrecisionAtRecall(-1)
+
+  def test_invalid_num_thresholds(self):
+    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+      metrics.PrecisionAtRecall(0.4, num_thresholds=-1)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class AUCTest(test.TestCase):
 
   def setup(self):
