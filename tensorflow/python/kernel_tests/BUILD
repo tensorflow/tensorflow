@@ -1272,7 +1272,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_oss",  # TODO(b/142818120): Re-enable.
+        "no_rocm",
+    ],
 )
 
 tf_py_test(
