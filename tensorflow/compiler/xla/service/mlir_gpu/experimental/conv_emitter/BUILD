@@ -50,4 +50,5 @@ tf_cc_test(
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
+    tags = ["no_rocm"],
 )
