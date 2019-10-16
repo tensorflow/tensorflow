@@ -1,4 +1,4 @@
-//===- ShapeInferenceInterface.td - Operation Interface for Shape Inference ----------*- tablegen -*-===//
+//===- ShapeInferenceInterface.h - Interface definitions for ShapeInference -=//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,24 +15,23 @@
 // limitations under the License.
 // =============================================================================
 //
-// Defines the operations of the Shape Inference Op Interface.
+// This file contains the declarations of the shape inference interfaces defined
+// in ShapeInferenceInterface.td.
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SHAPE_INFERENCE_INTERFACE
-#else
-#define SHAPE_INFERENCE_INTERFACE
+#ifndef MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_
+#define MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_
 
-#ifdef OP_BASE
-#else
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+#include "mlir/IR/OpDefinition.h"
 
-def ShapeInferenceOpInterface : OpInterface<"ShapeInference"> {
-  let methods = [
-    InterfaceMethod<"Infer and set the output shape for the current operation.",
-                    "void", "inferShapes">
-  ];
-}
+namespace mlir {
+namespace toy {
 
-#endif // SHAPE_INFERENCE_INTERFACE
+/// Include the auto-generated declarations.
+#include "toy/ShapeInferenceOpInterfaces.h.inc"
+
+} // end namespace toy
+} // end namespace mlir
+
+#endif // MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_

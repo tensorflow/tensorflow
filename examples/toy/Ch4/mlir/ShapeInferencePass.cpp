@@ -23,67 +23,47 @@
 #include "mlir/Pass/Pass.h"
 #include "toy/Dialect.h"
 #include "toy/Passes.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSet.h"
+#include "toy/ShapeInferenceInterface.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
 
 #define DEBUG_TYPE "shape-inference"
 
-using llvm::MutableArrayRef;
-using llvm::raw_ostream;
-using llvm::SmallVector;
-using llvm::SmallVectorImpl;
-using llvm::StringRef;
-using llvm::Twine;
 using namespace mlir;
+using namespace toy;
 
-namespace {
-
-// clang-format off
-#include "toy/ShapeInferenceOpInterfaces.h.inc"
+/// Include the auto-generated definitions for the shape inference interfaces.
 #include "toy/ShapeInferenceOpInterfaces.cpp.inc"
 
+namespace {
 /// The ShapeInferencePass is a FunctionPass that performs intra-procedural
 /// shape inference.
 ///
 ///    Algorithm:
 ///
-///   1) Build a worklist containing all the operations that are returning
-///      a generic Toy array: these are the operations that need shape
+///   1) Build a worklist containing all the operations that return a
+///      dynamically shaped tensor: these are the operations that need shape
 ///      inference.
 ///   2) Iterate on the worklist:
 ///     a) find an operation to process: the next ready operation in the
 ///        worklist has all of its arguments non-generic,
 ///     b) if no operation is found, break out of the loop,
 ///     c) remove the operation from the worklist,
-///     d) infer the shape of its output from the arguments type.
-///   3) If the worklist is empty, the algorithm succeeded and we infer the
-///      return type for the function from the return operation.
+///     d) infer the shape of its output from the argument types.
+///   3) If the worklist is empty, the algorithm succeeded.
 ///
 class ShapeInferencePass : public mlir::FunctionPass<ShapeInferencePass> {
 public:
-  bool returnsGenericArray(Operation *op) {
-    if (op->getNumResults() == 1) {
-      if (!op->getResult(0)->getType().isa<ShapedType>())
-        return true;
-    }
-    return false;
-  }
-
   void runOnFunction() override {
     auto f = getFunction();
 
     // Populate the worklist with the operations that need shape inference:
-    // these are operations that return a generic array.
+    // these are operations that return a dynamic shape.
     llvm::SmallPtrSet<mlir::Operation *, 16> opWorklist;
     f.walk([&](mlir::Operation *op) {
-      if (returnsGenericArray(op)) {
+      if (returnsDynamicShape(op))
         opWorklist.insert(op);
-      }
     });
 
     // Iterate on the operations in the worklist until all operations have been
@@ -91,15 +71,14 @@ public:
     while (!opWorklist.empty()) {
       // Find the next operation ready for inference, that is an operation
       // with all operands already resolved (non-generic).
-      auto nextop = llvm::find_if(opWorklist, [this](Operation *op) {
-        return this->returnsGenericArray(op);
-      });
-
+      auto nextop = llvm::find_if(opWorklist, returnsDynamicShape);
       if (nextop == opWorklist.end())
-        break; // failure: no operations can be inferred.
+        break;
 
       Operation *op = *nextop;
       opWorklist.erase(op);
+
+      // Ask the operation to infer its output shapes.
       LLVM_DEBUG(llvm::dbgs() << "Inferring shape for: " << *op << "\n");
       auto shapeOp = dyn_cast<ShapeInference>(op);
       shapeOp.inferShapes();
@@ -107,10 +86,18 @@ public:
 
     // If the operation worklist isn't empty, this indicates a failure.
     if (!opWorklist.empty()) {
+      f.emitError("Shape inference failed, ")
+          << opWorklist.size() << " operations couldn't be inferred\n";
       signalPassFailure();
-      auto diag = f.emitError("Shape inference failed, ")
-                  << opWorklist.size() << " operations couldn't be inferred\n";
     }
+  }
+
+  /// A utility method that returns if the given operation has a dynamically
+  /// shaped result.
+  static bool returnsDynamicShape(Operation *op) {
+    return llvm::any_of(op->getResultTypes(), [](Type resultType) {
+      return !resultType.isa<RankedTensorType>();
+    });
   }
 };
 } // end anonymous namespace

@@ -126,6 +126,10 @@ static void buildAddOp(mlir::Builder *builder, mlir::OperationState &state,
   state.addOperands({lhs, rhs});
 }
 
+/// Infer the output shape of the AddOp, this is required by the shape inference
+/// interface.
+void AddOp::inferShapes() { getResult()->setType(getOperand(0)->getType()); }
+
 static void buildGenericCallOp(mlir::Builder *builder,
                                mlir::OperationState &state, StringRef callee,
                                ArrayRef<mlir::Value *> arguments) {
@@ -139,6 +143,29 @@ static void buildMulOp(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::Value *lhs, mlir::Value *rhs) {
   state.addTypes(builder->getTensorType(builder->getF64Type()));
   state.addOperands({lhs, rhs});
+}
+
+/// Infer the output shape of the MulOp, this is required by the shape inference
+/// interface.
+void MulOp::inferShapes() {
+  auto lhs = getOperand(0)->getType().cast<RankedTensorType>();
+  auto rhs = getOperand(1)->getType().cast<RankedTensorType>();
+  auto lhsRank = lhs.getShape().size();
+  auto rhsRank = rhs.getShape().size();
+  if (lhsRank != rhsRank)
+    return;
+
+  SmallVector<int64_t, 2> dims;
+  if (lhsRank == 1) {
+    // dot product, result shape is <1>
+    dims.push_back(1);
+  } else if (lhsRank == 2) {
+    dims.push_back(lhs.getShape()[0]);
+    dims.push_back(rhs.getShape()[1]);
+  } else {
+    return;
+  }
+  getResult()->setType(RankedTensorType::get(dims, lhs.getElementType()));
 }
 
 static mlir::LogicalResult verify(ReturnOp op) {
@@ -180,6 +207,15 @@ static void buildTransposeOp(mlir::Builder *builder,
                              mlir::OperationState &state, mlir::Value *value) {
   state.addTypes(builder->getTensorType(builder->getF64Type()));
   state.addOperands(value);
+}
+
+void TransposeOp::inferShapes() {
+  SmallVector<int64_t, 2> dims;
+  auto arrayTy = getOperand()->getType().cast<RankedTensorType>();
+  dims.insert(dims.end(), arrayTy.getShape().begin(), arrayTy.getShape().end());
+  if (dims.size() == 2)
+    std::swap(dims[0], dims[1]);
+  getResult()->setType(RankedTensorType::get(dims, arrayTy.getElementType()));
 }
 
 //===----------------------------------------------------------------------===//

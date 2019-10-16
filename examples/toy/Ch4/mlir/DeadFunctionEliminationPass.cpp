@@ -40,20 +40,27 @@
 #include <algorithm>
 
 namespace {
+/// This is a simple function DCE pass that deletes all non-main functions after
+/// inlining.
+/// TODO(riverriddle) This is only necessary because MLIR currently does not
+/// have generic DCE support for functions.
 class DeadFunctionEliminationPass
     : public mlir::ModulePass<DeadFunctionEliminationPass> {
 public:
   void runOnModule() override {
-    std::string str = "main";
-    auto module = getModule();
-    for (auto &f : module) {
-      // eliminate dead functions that are not main
-      if (str.find(f.getName().getStringRef()) == std::string::npos)
-        f.erase();
+    mlir::ModuleOp module = getModule();
+    mlir::SymbolTable moduleSymTable(module);
+
+    // Eliminate non-main functions.
+    auto mainFn = moduleSymTable.lookup<mlir::FuncOp>("main");
+    for (mlir::FuncOp func :
+         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+      if (func != mainFn)
+        func.erase();
     }
   }
 };
-} // namespace
+} // end anonymous namespace
 
 /// Create a pass that eliminates inlined functions in toy.
 std::unique_ptr<mlir::Pass> mlir::toy::createDeadFunctionEliminationPass() {

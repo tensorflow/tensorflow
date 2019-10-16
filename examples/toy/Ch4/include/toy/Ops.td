@@ -92,7 +92,8 @@ def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   let verifier = [{ return ::verify(*this); }];
 }
 
-def AddOp : Toy_Op<"add", [NoSideEffect]> {
+def AddOp : Toy_Op<"add",
+    [NoSideEffect, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>]> {
   let summary = "element-wise addition operation";
   let description = [{
     The "add" operation performs element-wise addition between two tensors.
@@ -108,12 +109,6 @@ def AddOp : Toy_Op<"add", [NoSideEffect]> {
       buildAddOp(b, result, lhs, rhs);
     }]
   >];
-  let extraClassDeclaration = [{
-  void inferShapes() {
-    getResult()->setType(getOperand(0)->getType());
-    return;
-  }
-  }];
 }
 
 def GenericCallOp : Toy_Op<"generic_call"> {
@@ -150,7 +145,8 @@ def GenericCallOp : Toy_Op<"generic_call"> {
   ];
 }
 
-def MulOp : Toy_Op<"mul", [NoSideEffect]> {
+def MulOp : Toy_Op<"mul",
+    [NoSideEffect, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>]> {
   let summary = "element-wise multiplication operation";
   let description = [{
     The "mul" operation performs element-wise multiplication between two
@@ -166,30 +162,6 @@ def MulOp : Toy_Op<"mul", [NoSideEffect]> {
       buildMulOp(b, result, lhs, rhs);
     }]
   >];
-  let extraClassDeclaration = [{
-  void inferShapes() {
-    auto lhs = getOperand(0)->getType().cast<RankedTensorType>();
-    auto rhs = getOperand(1)->getType().cast<RankedTensorType>();
-    auto lhsRank = lhs.getShape().size();
-    auto rhsRank = rhs.getShape().size();
-    if (lhsRank != rhsRank) {
-      return;
-    }
-    SmallVector<int64_t, 2> dims;
-    if (lhsRank == 1) {
-      // dot product, result shape is <1>
-      dims.push_back(1);
-      } else {
-      if (lhsRank != 2) {
-        return;
-      }
-      dims.push_back(lhs.getShape()[0]);
-      dims.push_back(rhs.getShape()[1]);
-    }
-    getResult()->setType(RankedTensorType::get(dims, lhs.getElementType()));
-    return;
-  }
-  }];
 }
 
 def PrintOp : Toy_Op<"print"> {
@@ -255,7 +227,8 @@ def ReturnOp : Toy_Op<"return", [Terminator, HasParent<"FuncOp">]> {
   let verifier = [{ return ::verify(*this); }];
 }
 
-def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {
+def TransposeOp : Toy_Op<"transpose",
+    [NoSideEffect, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>]> {
   let summary = "transpose operation";
 
   let arguments = (ins F64Tensor:$input);
@@ -268,18 +241,6 @@ def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {
       buildTransposeOp(b, result, input);
     }]
   >];
-  let extraClassDeclaration = [{
-  void inferShapes() {
-    SmallVector<int64_t, 2> dims;
-    auto arrayTy = getOperand()->getType().cast<RankedTensorType>();
-    dims.insert(dims.end(), arrayTy.getShape().begin(),
-                arrayTy.getShape().end());
-    if (dims.size() == 2)
-      std::swap(dims[0], dims[1]);
-    getResult()->setType(RankedTensorType::get(dims, arrayTy.getElementType()));
-    return;
-  }
-  }];
 }
 
 #endif // TOY_OPS
