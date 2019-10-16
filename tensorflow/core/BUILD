@@ -117,7 +117,6 @@ load(
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
     "tf_additional_test_deps",
-    "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
@@ -389,15 +388,9 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-cc_library(
+alias(
     name = "grpc_services",
-    srcs = [],
-    hdrs = [
-        "//tensorflow/core/platform:grpc_services.h",
-    ],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = tf_grpc_service_all(),
+    actual = "//tensorflow/core/platform:grpc_services",
 )
 
 cc_library(

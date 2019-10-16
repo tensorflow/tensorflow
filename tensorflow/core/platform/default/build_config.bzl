@@ -559,12 +559,6 @@ def tf_protos_all():
 def tf_profiler_all_protos():
     return ["//tensorflow/core/profiler:protos_all"]
 
-def tf_grpc_service_all():
-    return [
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-    ]
-
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
 
