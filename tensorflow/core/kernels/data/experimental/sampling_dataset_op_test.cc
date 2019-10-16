@@ -33,8 +33,9 @@ class SamplingDatasetParams : public DatasetParams {
                       std::move(node_name)),
         rate_(rate) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -57,7 +58,9 @@ class SamplingDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return SamplingDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return SamplingDatasetOp::kDatasetType;
+  }
 
  private:
   // Target sample rate, range (0,1], wrapped in a scalar Tensor

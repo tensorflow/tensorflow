@@ -244,6 +244,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     new_diag = self._diag + x_diag
     return array_ops.matrix_set_diag(x, new_diag)
 
+  def _eigvals(self):
+    return ops.convert_to_tensor(self.diag)
+
   @property
   def diag(self):
     return self._diag

@@ -8,7 +8,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
@@ -18,7 +17,6 @@ load(
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_platform_hdrs",
     "tf_platform_srcs",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
@@ -107,19 +105,16 @@ cc_library(
 cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
-    deps = [
-        # See call to tf_instantiate_platform_libraries() above.
-        ":context_impl",
-    ],
+    # See call to tf_instantiate_platform_libraries() above.
+    deps = tf_mobile_aware_deps("context_impl"),
 )
 
 cc_library(
     name = "cord",
     hdrs = ["cord.h"],
     deps = [
-        ":cord_impl",
         ":platform",
-    ],
+    ] + tf_mobile_aware_deps("cord_impl"),
 )
 
 cc_library(
@@ -128,8 +123,21 @@ cc_library(
     hdrs = ["cpu_feature_guard.h"],
     deps = [
         ":byte_order",
+        ":cpu_info",
         ":logging",
-        ":platform_port",
+    ],
+)
+
+cc_library(
+    name = "cpu_info",
+    srcs = ["cpu_info.cc"],
+    hdrs = ["cpu_info.h"],
+    copts = tf_copts(),
+    deps = [
+        ":byte_order",
+        ":logging",
+        ":platform",
+        ":types",
     ],
 )
 
@@ -145,9 +153,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = [
-        ":cuda_libdevice_path_impl",
-    ],
+    deps = tf_mobile_aware_deps("cuda_libdevice_path_impl"),
 )
 
 cc_library(
@@ -156,10 +162,10 @@ cc_library(
     hdrs = ["denormal.h"],
     deps = [
         ":byte_order",
+        ":cpu_info",
         ":logging",
         ":macros",
         ":platform",
-        ":platform_port",
     ],
 )
 
@@ -227,9 +233,7 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
-    deps = [
-        ":human_readable_json_impl",
-    ],
+    deps = tf_mobile_aware_deps("human_readable_json_impl"),
 )
 
 cc_library(
@@ -321,6 +325,10 @@ cc_library(
 
 cc_library(
     name = "platform_port",
+    srcs = [
+        "cpu_info.cc",
+    ],
+    copts = tf_copts(),
     textual_hdrs = [
         "cpu_info.h",
         "demangle.h",
@@ -330,12 +338,11 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_platform_helper_deps("platform_port_impl"),
-)
-
-build_test(
-    name = "platform_port_build_test",
-    targets = [":platform_port"],
+    deps = [
+        ":logging",
+        ":platform",
+        ":types",
+    ] + tf_platform_helper_deps("platform_port_impl"),
 )
 
 cc_library(
@@ -407,9 +414,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = [
-        ":rocm_rocdl_path_impl",
-    ],
+    deps = tf_mobile_aware_deps("rocm_rocdl_path_impl"),
 )
 
 cc_library(
@@ -505,9 +510,8 @@ cc_library(
     hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
-        ":strong_hash_impl",
         ":types",
-    ],
+    ] + tf_mobile_aware_deps("strong_hash_impl"),
 )
 
 cc_library(
@@ -537,7 +541,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = [":test_impl"],
+    deps = tf_platform_helper_deps("test_impl"),
 )
 
 cc_library(
@@ -566,9 +570,7 @@ cc_library(
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    deps = [
-        ":tracing_impl",
-    ],
+    deps = tf_mobile_aware_deps("tracing_impl"),
 )
 
 cc_library(
@@ -590,7 +592,57 @@ cc_library(
     hdrs = ["unbounded_work_queue.h"],
     deps = [
         ":platform",
-        ":unbounded_work_queue_impl",
+    ] + tf_mobile_aware_deps("unbounded_work_queue_impl"),
+)
+
+# This is a hacky, do-nothing, binary that makes it easy to verify ability to
+# build, link, and in some cases run all of the libraries under platform.
+# Realistically, most of this would be covered by tests but at this point
+# keeping things building correctly is step one.
+cc_binary(
+    name = "build_test",
+    testonly = 1,
+    srcs = ["build_test.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":abi",
+        ":annotation",
+        ":byte_order",
+        ":cord",
+        ":cpu_feature_guard",
+        ":denormal",
+        ":dynamic_annotations",
+        ":env_time",
+        ":file_statistics",
+        ":gif",
+        ":jpeg",
+        ":macros",
+        ":mutex",
+        ":net",
+        ":numbers",
+        ":platform",
+        ":platform_port",
+        ":platform_strings",
+        ":png",
+        ":prefetch",
+        ":protobuf",
+        ":rocm_rocdl_path",
+        ":scanner",
+        ":setround",
+        ":stacktrace",
+        ":stacktrace_handler",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":subprocess",
+        ":tensor_coding",
+        ":test",
+        ":thread_annotations",
+        ":threadpool_interface",
+        ":threadpool_options",
+        ":tstring",
+        ":types",
     ],
 )
 
@@ -623,7 +675,6 @@ filegroup(
             "**/logger.cc",
             "**/mutex.cc",
             "**/logging.cc",
-            "**/port.cc",
             "**/human_readable_json.cc",
             "**/rocm.h",
             "**/rocm_rocdl_path.cc",
@@ -727,16 +778,17 @@ filegroup(
             "**/logger.cc",
             "**/mutex.cc",
             "**/logging.cc",
-            "**/port.cc",
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "cpu_feature_guard.cc",
             "denormal.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "protobuf_util.cc",
             "scanner.cc",
             "setround.cc",
             "strcat.cc",

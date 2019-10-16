@@ -139,6 +139,7 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = [
+        "no_rocm",  # calls BLAS ops for complex types
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],

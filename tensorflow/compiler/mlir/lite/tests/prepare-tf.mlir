@@ -342,28 +342,6 @@ func @perChannelFakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor
 // CHECK: return %[[CONV]]
 }
 
-// CHECK-LABEL: prepareStatistics
-func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
-  %0 = "quant.stats"(%arg0) {
-    layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>
-  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
-  %1 = "quant.stats"(%0) {
-    layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>,
-    axisStats = dense<[
-      [-1.0, 1.0],
-      [-8.0, 8.0],
-      [-0.5, 0.5]
-    ]> : tensor<3x2xf32>, axis = 2 : i64
-  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
-  return %1 : tensor<8x4x3xf32>
-
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<8x4x3x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
-// CHECK: %[[dq1:.*]] = "tfl.dequantize"(%[[q1]])
-// CHECK: %[[q2:.*]] = "tfl.quantize"(%[[dq1]]) {qtype = tensor<8x4x3x!quant.uniform<u8:f32:2, {0.0078431372549019607:128,0.062745098039215685:128,0.0039215686274509803:128}>>}
-// CHECK: %[[dq2:.*]] = "tfl.dequantize"(%[[q2]])
-// CHECK: return %[[dq2]]
-}
-
 func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>) {
   %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<10xi32>
   %1:2 = "tf.IdentityN"(%arg1,%arg2) : (tensor<20xi32>, tensor<30xi32>) -> (tensor<20xi32>, tensor<30xi32>)

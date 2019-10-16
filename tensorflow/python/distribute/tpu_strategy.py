@@ -502,17 +502,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
-      # Return in a deterministic order.
-      return tuple(val.get(device=d) for d in sorted(val.devices))
-    elif isinstance(val, list):
-      # TODO(josh11b): We need to remove this case; per device values should
-      # be represented using a PerReplica wrapper instead of a list with
-      # one entry per device.
-      return tuple(val)
-    elif isinstance(val, values.TPUMirroredVariable):
-      # pylint: disable=protected-access
-      if values._enclosing_tpu_context() is not None:
-        return (val,)
       return val.values
     return (val,)
 

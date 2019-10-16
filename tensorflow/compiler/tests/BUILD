@@ -1035,6 +1035,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["nomsan"],  # b/142562986
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

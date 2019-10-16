@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <iterator>
 #include <tuple>
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -80,6 +82,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -121,7 +124,7 @@ class NameUniquifier : public OpNameMapper {
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
-// This is the base class that contains common utilties shared between the
+// This is the base class that contains common utilities shared between the
 // GraphDef importer and SavedModel importer.
 //
 // A subclass is expected to call `PrepareConvert` first to perform necessary
@@ -522,7 +525,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     if (it != specs_.inputs.end()) {
       auto node_name = node->op_def().name();
       if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
-          node_name != "_Arg") {
+          node_name != FunctionLibraryDefinition::kArgOp) {
         // We do not handle the case where the input node has multple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
@@ -542,6 +545,19 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
                                     GetLocationStr(*node));
 
+    auto set_shape_from_list_attr = [&](const AttrValue* attr) {
+      auto& list = attr->list();
+      for (auto shape : llvm::enumerate(list.shape())) {
+        auto* node_context = shape_refiner_->GetContext(node);
+        shape_inference::ShapeHandle handle;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            node_context->MakeShapeFromShapeProto(shape.value(), &handle),
+            GetLocationStr(*node));
+        node_context->set_output(shape.index(), handle);
+      }
+      return Status::OK();
+    };
+
     // We currently have no other way to get shapes from ReadVariableOp's.
     // Some graphs seem to have _output_shapes attributes on them, so use that
     // if possible.
@@ -558,17 +574,8 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
       // (which checks for exact type equality; _output_shapes results in
       // us shoehorning in the more-precise type on the output).
-      if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
-        auto& list = attr->list();
-        for (auto shape : llvm::enumerate(list.shape())) {
-          auto* node_context = shape_refiner_->GetContext(node);
-          shape_inference::ShapeHandle handle;
-          TF_RETURN_WITH_CONTEXT_IF_ERROR(
-              node_context->MakeShapeFromShapeProto(shape.value(), &handle),
-              GetLocationStr(*node));
-          node_context->set_output(shape.index(), handle);
-        }
-      }
+      if (const AttrValue* attr = node->attrs().Find("_output_shapes"))
+        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
     }
 
     // If it is the argument node, the shape handle is set explicitly, so it
@@ -576,13 +583,14 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     if (StringPiece(node->type_string()) == FunctionLibraryDefinition::kArgOp) {
       auto* node_context = shape_refiner_->GetContext(node);
       DCHECK(node_context != nullptr);
-      auto it = node->def().attr().find("shape");
-      if (it != node->def().attr().end()) {
+      if (const AttrValue* attr = node->attrs().Find("shape")) {
         shape_inference::ShapeHandle handle;
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            node_context->MakeShapeFromShapeProto(it->second.shape(), &handle),
+            node_context->MakeShapeFromShapeProto(attr->shape(), &handle),
             GetLocationStr(*node));
         node_context->set_output(0, handle);
+      } else if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
       } else {
         node_context->set_output(0, node_context->UnknownShape());
       }
@@ -708,15 +716,15 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
   TF_ASSIGN_OR_RETURN(auto subtypes,
                       ConvertSubtypes(handle_subtypes, context, builder));
 
-  // TODO(hinsu): Store subtypes information for DT_RESOURCE element type as
-  // well.
   mlir::Type element_type;
-  if (dtype == DT_VARIANT) {
+  if (dtype == DT_VARIANT)
     element_type = mlir::TF::VariantType::get(subtypes, context_);
-  } else {
+  else if (dtype == DT_RESOURCE)
+    element_type = mlir::TF::ResourceType::get(subtypes, context_);
+  else
     TF_RETURN_IF_ERROR(
         ::tensorflow::ConvertDataType(dtype, builder, &element_type));
-  }
+
   return ConvertElementTypeAndShape(element_type, handle, context, builder);
 }
 
@@ -1147,7 +1155,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   // For NextIteration nodes, location is used to pair source and sink nodes.
   // Hence, we use node name as location to keep it unique.
   // TODO(prakalps): In future the plan is to use tokens to pair source/sink
-  // nodes. Then NextIteration nodes would not need to be handled seprately.
+  // nodes. Then NextIteration nodes would not need to be handled separately.
   if (node_def.op() == "NextIteration")
     return create_location(node_def.name(), function_name_for_debug_info_);
 
@@ -1982,6 +1990,135 @@ Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
   return Status::OK();
 }
 
+// Recursively traverses a StructuredValue, linearizing all the leaves.
+//
+// This currently only handles the subset of StructuredValue that is needed for
+// signatures.
+//
+// Given a StructuredValue with structure [{"x": leaf0}], the "index path"
+// needed to reach leaf0 is `[0, "x"]`, as it would be if you were operating on
+// a Python object (`obj[0]["x"] is leaf0`). Each leaf corresponds to a
+// linearized function argument or return on a FunctionDef, and hence to an
+// mlir::FuncOp argument / return.
+//
+// This must match the linearization that happens in `tf.nest.flatten`.
+// In particular, dict values should be linearized in sorted key order.
+//
+// The linearized index paths can be returned back to a structured
+// representation (e.g. to emit C structs matching a signature) with a simple
+// algorithm that recurses on each run of index paths with identical first
+// elements.
+class StructuredValueLinearizer {
+ public:
+  StructuredValueLinearizer(const StructuredValue& value,
+                            mlir::MLIRContext* context);
+
+  // Returns the list of index paths to each leaf of the StructuredValue,
+  // in a linearized order matching `tf.nest.flatten`.
+  llvm::ArrayRef<mlir::ArrayAttr> GetLeafIndexPaths() const;
+
+ private:
+  // Main function that recursively traverses the StructuredValue.
+  void RecursivelyFindLeaves(const StructuredValue& value);
+
+  mlir::Builder builder_;
+  // The current index path. We push/pop this during recursive traversal of the
+  // StructuredValue.
+  llvm::SmallVector<mlir::Attribute, 4> current_index_path_;
+  // The list of leaf index paths we have discovered so far.
+  llvm::SmallVector<mlir::ArrayAttr, 4> leaf_index_paths_;
+};
+
+StructuredValueLinearizer::StructuredValueLinearizer(
+    const StructuredValue& value, mlir::MLIRContext* context)
+    : builder_(context) {
+  RecursivelyFindLeaves(value);
+}
+
+llvm::ArrayRef<mlir::ArrayAttr> StructuredValueLinearizer::GetLeafIndexPaths()
+    const {
+  return leaf_index_paths_;
+}
+
+void StructuredValueLinearizer::RecursivelyFindLeaves(
+    const StructuredValue& value) {
+  switch (value.kind_case()) {
+    case StructuredValue::kDictValue: {
+      // Dict values must be linearized in sorted order of keys.
+      const DictValue& dict = value.dict_value();
+      using FieldTy = protobuf::MapPair<std::string, StructuredValue>;
+      llvm::SmallVector<const FieldTy*, 4> fields;
+      for (auto& field : dict.fields()) {
+        fields.push_back(&field);
+      }
+      llvm::sort(fields, [](const FieldTy* a, const FieldTy* b) {
+        return a->first < b->first;
+      });
+      for (auto& field : fields) {
+        current_index_path_.push_back(builder_.getStringAttr(field->first));
+        RecursivelyFindLeaves(field->second);
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    case StructuredValue::kTupleValue: {
+      const TupleValue& tuple = value.tuple_value();
+      for (int i = 0, e = tuple.values_size(); i < e; i++) {
+        current_index_path_.push_back(builder_.getI64IntegerAttr(i));
+        RecursivelyFindLeaves(tuple.values(i));
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    // We don't differentiate between tuples and lists.
+    case StructuredValue::kListValue: {
+      const ListValue& list = value.list_value();
+      for (int i = 0, e = list.values_size(); i < e; i++) {
+        current_index_path_.push_back(builder_.getI64IntegerAttr(i));
+        RecursivelyFindLeaves(list.values(i));
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    case StructuredValue::kTensorSpecValue: {
+      // Base case: record the current path stack as the index path needed to
+      // get to this leaf.
+      leaf_index_paths_.push_back(builder_.getArrayAttr(current_index_path_));
+      return;
+    }
+    default: {
+      llvm_unreachable("Unhandled StructuredValue kind!");
+    }
+  }
+}
+
+// Move all exported functions to the end of the module, sorted by (first)
+// exported name.
+//
+// This makes testing easier and less dependent on implementation
+// details such as the order of functions in the FunctionDefLibrary.
+void SortFuncsByExportedNames(mlir::ModuleOp module) {
+  struct NamedFunc {
+    llvm::StringRef name;
+    mlir::FuncOp func;
+  };
+  llvm::SmallVector<NamedFunc, 8> named_funcs;
+  for (auto func : module.getOps<mlir::FuncOp>()) {
+    auto exported_names = mlir::tf_saved_model::GetExportedNames(func);
+    if (exported_names.empty()) {
+      continue;
+    }
+    named_funcs.push_back({exported_names.front(), func});
+  }
+  llvm::sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
+    return a.name < b.name;
+  });
+  auto terminator = module.getBody()->getTerminator();
+  for (auto named_func : named_funcs) {
+    named_func.func.getOperation()->moveBefore(terminator);
+  }
+}
+
 Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
@@ -2012,8 +2149,34 @@ Status CreateSavedModelIR(
       const SavedConcreteFunction& concrete_function =
           object_graph.concrete_functions().at(function.concrete_functions(0));
 
+      // We do not handle the other element of this tuple, which corresponds to
+      // Python kwonlyargs, since currently TensorFlow prohibits this in
+      // combination with input_signature:
+      // https://github.com/tensorflow/tensorflow/blob/8cb8627abb5ef83a6fba34f8fd0e4ee430562eb1/tensorflow/python/eager/function.py#L2027-L2030
+      // Our SavedModel import requires input_signature on the tf.function, so
+      // we never need to handle the kwonlyargs.
+      auto positional_arg_structure =
+          concrete_function.canonicalized_input_signature()
+              .tuple_value()
+              .values(0);
+      // TODO(b/142500921): Add index_path attributes on return values too.
+      StructuredValueLinearizer input_linearizer(positional_arg_structure,
+                                                 builder.getContext());
+
       int bound_input_base =
           func.getNumArguments() - concrete_function.bound_inputs_size();
+      auto input_index_paths = input_linearizer.GetLeafIndexPaths();
+      if (bound_input_base != input_index_paths.size()) {
+        return errors::InvalidArgument(
+            "Argument mismatch between concrete function input signature "
+            "vs underlying FunctionDef for concrete function '",
+            function.concrete_functions(0), "' (", input_index_paths.size(),
+            " vs ", bound_input_base, ")");
+      }
+      for (auto index_path : llvm::enumerate(input_index_paths)) {
+        func.setArgAttr(index_path.index(), "tf_saved_model.index_path",
+                        index_path.value());
+      }
 
       for (auto& bound_input :
            llvm::enumerate(concrete_function.bound_inputs())) {
@@ -2053,6 +2216,7 @@ Status CreateSavedModelIR(
     }
   }
   module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+  SortFuncsByExportedNames(module);
   return Status::OK();
 }
 

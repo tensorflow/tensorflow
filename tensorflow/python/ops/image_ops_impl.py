@@ -218,14 +218,14 @@ def _CheckAtLeast3DImage(image, require_static=True):
     raise ValueError("'image' must be at least three-dimensional.")
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
-  if any(x == 0 for x in image_shape):
-    raise ValueError('all dims of \'image.shape\' must be > 0: %s' %
+  if any(x == 0 for x in image_shape[-3:]):
+    raise ValueError('inner 3 dims of \'image.shape\' must be > 0: %s' %
                      image_shape)
-  if not image_shape.is_fully_defined():
+  if not image_shape[-3:].is_fully_defined():
     return [
         check_ops.assert_positive(
-            array_ops.shape(image),
-            ["all dims of 'image.shape' "
+            array_ops.shape(image)[-3:],
+            ["inner 3 dims of 'image.shape' "
              'must be > 0.']),
         check_ops.assert_greater_equal(
             array_ops.rank(image),

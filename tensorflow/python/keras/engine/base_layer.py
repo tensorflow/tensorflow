@@ -1021,8 +1021,12 @@ class Layer(module.Module):
         (e.g. weight regularization losses).
     """
     def _tag_unconditional(loss):
+      """Process the loss and tag it by setting loss._unconditional_loss."""
       if callable(loss):
-        loss = loss()
+        # We run the loss without autocasting, as regularizers are often
+        # numerically unstable in float16.
+        with base_layer_utils.autocast_context_manager(None):
+          loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):

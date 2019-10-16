@@ -108,15 +108,17 @@ load(
     "tf_additional_all_protos",
     "tf_additional_core_deps",
     "tf_additional_human_readable_json_deps",
+    "tf_additional_lib_defines",
     "tf_additional_lib_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_monitoring_hdrs",
+    "tf_additional_numa_copts",
+    "tf_additional_numa_deps",
+    "tf_additional_numa_lib_defines",
     "tf_additional_test_deps",
-    "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
-    "tf_lib_proto_compiler_deps",
     "tf_lib_proto_parsing_deps",
     "tf_proto_library",
     "tf_proto_library_cc",
@@ -230,30 +232,6 @@ ERROR_CODES_PROTO_SRCS = [
 
 CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
-# Protos which are not needed on mobile builds, but should be included in
-# protos_all.
-#
-# Note that some protos are in neither core_proto_srcs nor this filegroup; e.g.
-# ones with individual proto_library targets.
-ADDITIONAL_CORE_PROTO_SRCS = [
-    "example/example_parser_configuration.proto",
-    "protobuf/trackable_object_graph.proto",
-    "protobuf/control_flow.proto",
-    "protobuf/data/experimental/snapshot.proto",
-    # TODO(ebrevdo): Re-enable once CriticalSection is in core.
-    # "protobuf/critical_section.proto",
-    "protobuf/debug_event.proto",
-    "protobuf/meta_graph.proto",
-    "protobuf/named_tensor.proto",
-    "protobuf/remote_tensor_handle.proto",
-    "protobuf/saved_model.proto",
-    "protobuf/saved_object_graph.proto",
-    "protobuf/struct.proto",
-    "protobuf/tensorflow_server.proto",
-    "protobuf/transport_options.proto",
-    "util/test_log.proto",
-]
-
 tf_proto_library(
     name = "protos_all",
     srcs = [],
@@ -345,6 +323,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -409,15 +388,9 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-cc_library(
+alias(
     name = "grpc_services",
-    srcs = [],
-    hdrs = [
-        "//tensorflow/core/platform:grpc_services.h",
-    ],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = tf_grpc_service_all(),
+    actual = "//tensorflow/core/platform:grpc_services",
 )
 
 cc_library(
@@ -507,9 +480,6 @@ tf_cc_test(
 # don't have to depend on lib/platformlib.
 cc_library(
     name = "lib_proto_parsing",
-    srcs = [
-        "//tensorflow/core/platform:protobuf.cc",
-    ],
     hdrs = [
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
@@ -530,23 +500,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
         "//tensorflow/core/lib/bfloat16",
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:cpu_info",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:platform",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "lib_proto_compiler",
-    hdrs = [
-        "//tensorflow/core/platform:protobuf_compiler.h",
-    ],
-    copts = tf_copts(),
-    deps = tf_lib_proto_compiler_deps() + [
-        ":lib_proto_parsing",
     ],
 )
 
@@ -939,7 +899,6 @@ cc_library(
             "//third_party/eigen3",
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
-            "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
             "//tensorflow/core/platform/default/build_config:minimal",
@@ -1439,6 +1398,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_batch_matmul_op",
         "//tensorflow/core/kernels:mkl_matmul_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
@@ -2242,11 +2202,19 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "util/env_var.h",
 ]
 
+# Replicated for lib_internal and lib_internal_impl.
+LIB_INTERNAL_DEFINES = (
+    tf_additional_lib_defines() + [
+        "TF_USE_SNAPPY",
+    ] + tf_additional_numa_lib_defines()
+)
+
 cc_library(
     name = "lib_internal",
     srcs = LIB_INTERNAL_PRIVATE_HEADERS,
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
+    defines = LIB_INTERNAL_DEFINES,
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
@@ -2292,37 +2260,43 @@ cc_library(
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
+    defines = LIB_INTERNAL_DEFINES,
     deps = tf_additional_lib_deps() + [
-        ":core_stringpiece",
-        ":lib_hash_crc32c_accelerate_internal",
-        ":lib_proto_parsing",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
-        "//tensorflow/core/lib/bfloat16",
-        "//tensorflow/core/lib/math:math_util",
-        "//tensorflow/core/platform:abi",
-        "//tensorflow/core/platform:annotation",
-        "//tensorflow/core/platform:denormal",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:notification",
-        "//tensorflow/core/platform:numbers",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:platform_strings",
-        "//tensorflow/core/platform:scanner",
-        "//tensorflow/core/platform:setround",
-        "//tensorflow/core/platform:strong_hash",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/platform/default/build_config:platformlib",
-        "@snappy",
-        "@zlib_archive//:zlib",
-        "@double_conversion//:double-conversion",
-        "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
+               ":core_stringpiece",
+               ":lib_hash_crc32c_accelerate_internal",
+               ":lib_proto_parsing",
+               "@com_google_absl//absl/memory",
+               "@com_google_absl//absl/strings",
+               "//third_party/eigen3",
+               "//tensorflow/core/lib/bfloat16",
+               "//tensorflow/core/lib/math:math_util",
+               "//tensorflow/core/platform:abi",
+               "//tensorflow/core/platform:annotation",
+               "//tensorflow/core/platform:context",
+               "//tensorflow/core/platform:cord",
+               "//tensorflow/core/platform:cpu_feature_guard",
+               "//tensorflow/core/platform:cpu_info",
+               "//tensorflow/core/platform:denormal",
+               "//tensorflow/core/platform:dynamic_annotations",
+               "//tensorflow/core/platform:file_statistics",
+               "//tensorflow/core/platform:mutex",
+               "//tensorflow/core/platform:notification",
+               "//tensorflow/core/platform:numbers",
+               "//tensorflow/core/platform:platform_strings",
+               "//tensorflow/core/platform:scanner",
+               "//tensorflow/core/platform:setround",
+               "//tensorflow/core/platform:strong_hash",
+               "//tensorflow/core/platform:strcat",
+               "//tensorflow/core/platform:stringprintf",
+               "//tensorflow/core/platform:str_util",
+               "//tensorflow/core/platform:thread_annotations",
+               "//tensorflow/core/platform/default/build_config:platformlib",
+               "@snappy",
+               "@zlib_archive//:zlib",
+               "@double_conversion//:double-conversion",
+               "@com_google_protobuf//:protobuf",
+           ] + tf_protos_all_impl() + tf_protos_grappler_impl() +
+           tf_additional_numa_deps(),
     alwayslink = 1,
 )
 
@@ -2545,7 +2519,29 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all_proto",
-    srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    srcs = COMMON_PROTO_SRCS + [
+        # Protos which are not needed on mobile builds, but should be included
+        # in protos_all.
+        #
+        # Note that some protos are in neither core_proto_srcs nor this
+        # filegroup; e.g. ones with individual proto_library targets.
+        "example/example_parser_configuration.proto",
+        "protobuf/trackable_object_graph.proto",
+        "protobuf/control_flow.proto",
+        "protobuf/data/experimental/snapshot.proto",
+        # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+        # "protobuf/critical_section.proto",
+        "protobuf/debug_event.proto",
+        "protobuf/meta_graph.proto",
+        "protobuf/named_tensor.proto",
+        "protobuf/remote_tensor_handle.proto",
+        "protobuf/saved_model.proto",
+        "protobuf/saved_object_graph.proto",
+        "protobuf/struct.proto",
+        "protobuf/tensorflow_server.proto",
+        "protobuf/transport_options.proto",
+        "util/test_log.proto",
+    ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
@@ -4173,6 +4169,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_transpose_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]),
 )
 

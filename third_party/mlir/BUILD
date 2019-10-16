@@ -19,6 +19,7 @@ package_group(
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = [
         "//...",
+        "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
         "//tensorflow/core/tfrt_delegate/...",
@@ -158,7 +159,6 @@ cc_library(
     name = "EDSC",
     srcs = [
         "lib/EDSC/Builders.cpp",
-        "lib/EDSC/CoreAPIs.cpp",
         "lib/EDSC/Helpers.cpp",
         "lib/EDSC/Intrinsics.cpp",
     ],
@@ -177,6 +177,23 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":VectorOps",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
+    name = "EDSCInterface",
+    srcs = [
+        "lib/EDSC/CoreAPIs.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Core.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
         "@llvm//:support",
     ],
 )
@@ -853,6 +870,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+        "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -68,6 +69,7 @@ class FusedBatchNormOp : public XlaOpKernel {
 
  protected:
   virtual void CompileImpl(XlaOpKernelContext* ctx) {
+    xla::XlaBuilder* const b = ctx->builder();
     xla::PrimitiveType input_type;
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
@@ -113,9 +115,23 @@ class FusedBatchNormOp : public XlaOpKernel {
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);
 
+      constexpr int kVarianceOutputIndex = 2;
       xla::XlaOp corrected =
           xla::Mul(variance, xla::ScalarLike(variance, factor));
-      ctx->SetOutput(2, corrected);
+      if (input_shape.num_elements() == 0) {
+        auto status_or_output_shape = b->GetShape(corrected);
+        OP_REQUIRES_OK(ctx, status_or_output_shape.status());
+
+        ctx->SetOutput(
+            kVarianceOutputIndex,
+            xla::Broadcast(
+                xla::NanValue(b, ctx->output_xla_type(kVarianceOutputIndex)),
+                xla::AsInt64Slice(
+                    status_or_output_shape.ValueOrDie().dimensions())));
+
+      } else {
+        ctx->SetOutput(2, corrected);
+      }
 
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
       // space 1 & 2". They are used to pass the per-batch mean and

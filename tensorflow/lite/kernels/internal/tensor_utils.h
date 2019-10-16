@@ -43,6 +43,14 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min_value,
                              float* max_value, float* scaling_factor);
 
+// Quantizes a buffer of floating point values using a symmetric quantization
+// (i.e. linear quantization without an offset) to 8-bit signed integers.
+// It uses the range (min, max) provided to the function to calculate the
+// appropriate scaling factor to quantize the values.
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float min_value,
+                             float max_value, float* scaling_factor);
+
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.

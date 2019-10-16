@@ -244,6 +244,17 @@ class BASE_HLO_MulOp {
   }];
 }
 
+class BASE_HLO_RemOp {
+  string summary = "Remainder operator";
+
+  string description = [{
+    Returns `lhs % rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_SubOp {
   string summary = "Subtraction operator";
 
@@ -549,6 +560,21 @@ class BASE_HLO_SelectOp {
     `on_false`.
 
     See https://www.tensorflow.org/xla/operation_semantics#select.
+  }];
+}
+
+class BASE_HLO_SelectAndScatterOp {
+  string summary = "SelectAndScatter operator";
+
+  string description = [{
+    Runs a windowed selection `select` function over `operand` with shape
+    `window_dimensions` and stride `window_strides`. This will produce an amount
+    of selected locations whose shape matches `source`. These are then scattered
+    to the output which is initialized with `init_value`.
+    Multiple scattered elements which land in the same output location are
+    combined using the `scatter` function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
   }];
 }
 

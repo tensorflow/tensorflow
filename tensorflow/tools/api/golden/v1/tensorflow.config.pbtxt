@@ -21,6 +21,10 @@ tf_module {
     argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
   }
   member_method {
+    name: "experimental_functions_run_eagerly"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_list_devices"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

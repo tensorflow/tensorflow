@@ -202,3 +202,6 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _to_dense(self):
     return self._get_tril()
+
+  def _eigvals(self):
+    return self._get_diag()

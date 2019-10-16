@@ -8,6 +8,11 @@ Build targets for default implementations of tf/core/platform libraries.
 # tensorflow/core/platform/windows after the refactoring is complete.
 
 load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_additional_numa_copts",
+    "tf_additional_numa_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
 )
@@ -63,6 +68,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:default/env.cc",
@@ -383,6 +389,7 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:windows/env.cc",
@@ -534,7 +541,6 @@ def tf_instantiate_platform_libraries(names = []):
             native.cc_library(
                 name = "platform_port_impl",
                 srcs = [
-                    "//tensorflow/core/platform:cpu_info.cc",
                     "//tensorflow/core/platform:default/port.cc",
                 ],
                 hdrs = [
@@ -546,12 +552,7 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:numa.h",
                     "//tensorflow/core/platform:snappy.h",
                 ],
-                defines = ["TF_USE_SNAPPY"] + select({
-                    # TF Additional NUMA defines
-                    "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
-                    "//conditions:default": [],
-                }),
-                copts = tf_copts(),
+                copts = tf_copts() + tf_additional_numa_copts(),
                 deps = [
                     "@com_google_absl//absl/base",
                     "//tensorflow/core/platform:byte_order",
@@ -560,22 +561,13 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:types",
                     "//tensorflow/core/platform",
                     "@snappy",
-                ] + select({
-                    # TF Additional NUMA dependencies
-                    "//tensorflow:android": [],
-                    "//tensorflow:ios": [],
-                    "//tensorflow:macos": [],
-                    "//conditions:default": [
-                        "@hwloc",
-                    ],
-                }),
+                ] + tf_additional_numa_deps(),
                 visibility = ["//visibility:private"],
                 tags = ["no_oss", "manual"],
             )
             native.cc_library(
                 name = "windows_platform_port_impl",
                 srcs = [
-                    "//tensorflow/core/platform:cpu_info.cc",
                     "//tensorflow/core/platform:windows/port.cc",
                 ],
                 hdrs = [
@@ -587,7 +579,6 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:numa.h",
                     "//tensorflow/core/platform:snappy.h",
                 ],
-                defines = ["TF_USE_SNAPPY"],
                 copts = tf_copts(),
                 deps = [
                     "//tensorflow/core/platform",

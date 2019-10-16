@@ -1114,21 +1114,46 @@ class CondV2Test(test.TestCase):
   @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
     x = constant_op.constant(1.0, name="x")
-    output = cond_v2.cond_v2(constant_op.constant(True),
-                             lambda: x * 2.0,
-                             lambda: x)
+    y = constant_op.constant(1.0, name="y")
+
+    def true_fn():
+      y_plus_one = y + 1.
+      return x * y_plus_one
+
+    output = cond_v2.cond_v2(constant_op.constant(True), true_fn, lambda: x)
     if_op = output.op.inputs[0].op
     self.assertEqual(if_op.type, "StatelessIf")
     # pylint: disable=g-deprecated-assert
     self.assertEqual(len(if_op.outputs), 1)
 
     gradients_impl.gradients(output, x)
-    # if_op should have been rewritten to output 2.0 intermediate.
+    # if_op should have been rewritten to output `y_plus_one`.
     self.assertEqual(len(if_op.outputs), 2)
 
     gradients_impl.gradients(output, x)
     # Computing the gradient again shouldn't rewrite if_op again.
     self.assertEqual(len(if_op.outputs), 2)
+    # pylint: enable=g-deprecated-assert
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateConstants(self):
+    x = constant_op.constant(1.0, name="x")
+    output = cond_v2.cond_v2(
+        constant_op.constant(True), lambda: x * 2.0, lambda: x)
+    if_op = output.op.inputs[0].op
+    self.assertEqual(if_op.type, "StatelessIf")
+    # pylint: disable=g-deprecated-assert
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # Number of outputs does change because
+    # 1. `x` is a loop input so does not need to be accumulated.
+    # 2. 2.0 is a constant so it is not accumulated.
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # Computing the gradient again shouldn't rewrite if_op again.
+    self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
 

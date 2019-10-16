@@ -56,6 +56,7 @@ Status ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options) {
   mutex_lock l(mu_);
+  is_cross_process_ = true;
   if (!init_started_) {
     init_started_ = true;
     init_result_ = parent->Instantiate(function_name, lib_def, attrs, options,
@@ -784,7 +785,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     runner([this, &pair, comp_data, unique_name, data_lib_def, &control_ret,
-            &options, status, &counter] {
+            &options, status, &counter, &data] {
       auto cleanup = gtl::MakeCleanup([&counter] { counter.DecrementCount(); });
       const string& target = pair.first;
 
@@ -813,6 +814,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       // TODO(fishx): introduce an async version of this Instantiate method.
       status->Update(Instantiate(unique_name, AttrSlice(&shard.attr()), opts,
                                  &component_handle));
+      {
+        mutex_lock l(mu_);
+        if (function_data_[component_handle]->is_cross_process()) {
+          data->is_cross_process_ = true;
+        }
+      }
       if (!status->ok()) return;
       VLOG(1) << "Instantiated component function " << unique_name
               << " on device " << target << " with component handle "
@@ -924,6 +931,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
   if (data->glue_.empty()) {
     // Trivial case where the function body is empty.
     done(Status::OK());
+    return;
+  }
+
+  // Check whether we have the right rendezvous.
+  if (opts.rendezvous && data->is_cross_process_ &&
+      !opts.rendezvous->is_cross_process()) {
+    done(errors::InvalidArgument(
+        "Running a cross process function ", data->function_name_,
+        " without an appropriate cross process Rendezvous."));
     return;
   }
 
@@ -1042,6 +1058,7 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
     f = function_data_[h].get();
     *handle = h;
   }
+  LOG(INFO) << "Running a distributed init on device: " << options.target;
   TF_RETURN_IF_ERROR(f->DistributedInit(
       parent_, function_name,
       options.lib_def == nullptr ? *lib_def_ : *options.lib_def, attrs,

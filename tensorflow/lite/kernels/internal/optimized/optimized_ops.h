@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/add.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -1485,14 +1486,11 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Add");
-
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const float* input1_data, const float* input2_data,
+                           float* output_data) {
   int i = 0;
-  const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
+
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(params.float_activation_min);
   const auto activation_max = vdupq_n_f32(params.float_activation_max);
@@ -1537,6 +1535,16 @@ inline void Add(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
   }
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const float* input1_data,
+                const RuntimeShape& input2_shape, const float* input2_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Add");
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
 // Element-wise add that can often be used for inner loop of broadcast add as
@@ -1907,16 +1915,83 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul");
+inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/float");
+
+  ArithmeticParams switched_params = unswitched_params;
+
+  const bool use_unswitched =
+      unswitched_params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const float* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const float* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  float* output_data_ptr = output_data;
+  const float* input1_data_ptr = input1_data;
+  const float* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
+        }
+      }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    // TODO(renjieliu): Optimze for scalar broadcast case.
+    reference_ops::BroadcastAdd4DSlow(
+        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
+        unswitched_input2_shape, unswitched_input2_data, output_shape,
+        output_data);
+  }
+}
+
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const float* input1_data, const float* input2_data,
+                           float* output_data) {
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
 
   int i = 0;
-  const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(output_activation_min);
   const auto activation_max = vdupq_n_f32(output_activation_max);
@@ -1965,6 +2040,17 @@ inline void Mul(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(x, output_activation_min,
                                                   output_activation_max);
   }
+}
+
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const float* input1_data,
+                const RuntimeShape& input2_shape, const float* input2_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Mul");
+
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
 inline void Mul(const ArithmeticParams& params,
@@ -2207,6 +2293,37 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
   }
 }
 
+// Broadcast mul that can often be used for inner loop of broadcast Mul.
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const float broadcast_value,
+                               const float* input2_data, float* output_data) {
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t output_activation_min_vector =
+      vdupq_n_f32(params.float_activation_min);
+  const float32x4_t output_activation_max_vector =
+      vdupq_n_f32(params.float_activation_max);
+  const float32x4_t broadcast_value_dup = vdupq_n_f32(broadcast_value);
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input2_val_original = vld1q_f32(input2_data + i);
+
+    const float32x4_t output =
+        vmulq_f32(input2_val_original, broadcast_value_dup);
+
+    const float32x4_t clamped =
+        vmaxq_f32(output_activation_min_vector,
+                  vminq_f32(output_activation_max_vector, output));
+    vst1q_f32(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    float x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8* input1_data,
                 const RuntimeShape& input2_shape, const uint8* input2_data,
@@ -2276,6 +2393,71 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   } else {
     for (int i0 = 0; i0 < y0; ++i0) {
       const uint8* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          ++input1_data_ptr;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  }
+}
+
+inline void BroadcastMulFivefold(const ArithmeticParams& params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/float");
+
+  const bool use_unswitched =
+      params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const float* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const float* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise Mul of
+  // sections of the arrays.
+  float* output_data_ptr = output_data;
+  const float* input1_data_ptr = input1_data;
+  const float* input2_data_reset = input2_data;
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            MulElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          input1_data_ptr += y4;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3502,14 +3684,19 @@ inline void LocalResponseNormalization(
   }
 }
 
-inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const float* input_data,
-                    const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Softmax");
+inline void SoftmaxImpl(const SoftmaxParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data,
+                        int start_batch, int end_batch) {
+  gemmlowp::ScopedProfilingLabel label("Softmax/Impl");
   MatchingFlatSize(input_shape, output_shape);
 
-  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
-  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+  const int logit_size = input_shape.Dims(input_shape.DimensionsCount() - 1);
+  const MatrixMap<const float> in_mat(input_data + logit_size * start_batch,
+                                      logit_size, end_batch - start_batch);
+  MatrixMap<float> out_mat(output_data + logit_size * start_batch, logit_size,
+                           end_batch - start_batch);
   // Compute the exponential first, removing the max coefficient for numerical
   // stability.
   out_mat =
@@ -3520,6 +3707,72 @@ inline void Softmax(const SoftmaxParams& params,
   Eigen::Array<float, 1, Eigen::Dynamic> scale =
       out_mat.array().colwise().sum().inverse();
   out_mat.array().rowwise() *= scale;
+}
+
+struct SoftmaxWorkerTask : cpu_backend_threadpool::Task {
+  SoftmaxWorkerTask(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    int start_batch, int end_batch)
+      : params(params),
+        input_shape(input_shape),
+        input_data(input_data),
+        output_shape(output_shape),
+        output_data(output_data),
+        start_batch(start_batch),
+        end_batch(end_batch) {}
+  void Run() override {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data,
+                start_batch, end_batch);
+  }
+
+ private:
+  const tflite::SoftmaxParams& params;
+  const RuntimeShape& input_shape;
+  const float* input_data;
+  const RuntimeShape& output_shape;
+  float* output_data;
+  int start_batch;
+  int end_batch;
+};
+
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    CpuBackendContext* cpu_backend_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("Softmax");
+
+  // We picture softmax input as a 2-D matrix while the last dim is the logit
+  // dim, and the rest dims will be the batch dim for the 2-D matrix.
+  const int batch_size =
+      FlatSizeSkipDim(input_shape, input_shape.DimensionsCount() - 1);
+  constexpr int kMinBatchPerThread = 8;
+  int thread_count = batch_size / kMinBatchPerThread;
+  thread_count = thread_count > 0 ? thread_count : 1;
+  const int capped_thread_count =
+      cpu_backend_context == nullptr
+          ? 1
+          : std::min(thread_count, cpu_backend_context->max_num_threads());
+  if (capped_thread_count == 1) {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data, 0,
+                batch_size);
+  } else {
+    std::vector<SoftmaxWorkerTask> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(capped_thread_count);
+    int batch_start = 0;
+    for (int i = 0; i < capped_thread_count; ++i) {
+      // Try to distribute the tasks as even as possible.
+      int batch_end =
+          batch_start + (batch_size - batch_start) / (capped_thread_count - i);
+      tasks.emplace_back(params, input_shape, input_data, output_shape,
+                         output_data, batch_start, batch_end);
+      batch_start = batch_end;
+    }
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
+  }
 }
 
 inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,

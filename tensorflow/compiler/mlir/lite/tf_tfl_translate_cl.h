@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 
 // The commandline options are defined in LLVM style, so the caller should
-// use llvm::InitLLVM to initilize the options.
+// use llvm::InitLLVM to initialize the options.
 //
 // Please see the implementation file for documentation of details of these
 // options.

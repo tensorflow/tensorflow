@@ -2684,10 +2684,14 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T2", &T2));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Toutput", &Toutput));
 
+  Node* weight_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(1, &weight_node));
+
   // Add attributes to new node.
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
+  nb->Attr("is_weight_const", weight_node->IsConstant());
   nb->Attr("T", Toutput);  // added "T" for facilitating MklToTf conversion.
 
   // Requantization attr Tbias

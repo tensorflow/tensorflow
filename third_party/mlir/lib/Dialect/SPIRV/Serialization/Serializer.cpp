@@ -296,6 +296,15 @@ private:
     return op.emitError("unsupported op serialization");
   }
 
+  //===--------------------------------------------------------------------===//
+  // Utilities
+  //===--------------------------------------------------------------------===//
+
+  /// Emits an OpDecorate instruction to decorate the given `target` with the
+  /// given `decoration`.
+  LogicalResult emitDecoration(uint32_t target, spirv::Decoration decoration,
+                               ArrayRef<uint32_t> params = {});
+
 private:
   /// The SPIR-V module to be serialized.
   spirv::ModuleOp module;
@@ -452,6 +461,12 @@ LogicalResult Serializer::processConstantOp(spirv::ConstantOp op) {
 LogicalResult Serializer::processSpecConstantOp(spirv::SpecConstantOp op) {
   if (auto resultID = prepareConstantScalar(op.getLoc(), op.default_value(),
                                             /*isSpec=*/true)) {
+    // Emit the OpDecorate instruction for SpecId.
+    if (auto specID = op.getAttrOfType<IntegerAttr>("spec_id")) {
+      auto val = static_cast<uint32_t>(specID.getInt());
+      emitDecoration(resultID, spirv::Decoration::SpecId, {val});
+    }
+
     specConstIDMap[op.sym_name()] = resultID;
     return processName(resultID, op.sym_name());
   }
@@ -486,8 +501,6 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
            << attrName;
   }
   SmallVector<uint32_t, 1> args;
-  args.push_back(resultID);
-  args.push_back(static_cast<uint32_t>(decoration.getValue()));
   switch (decoration.getValue()) {
   case spirv::Decoration::DescriptorSet:
   case spirv::Decoration::Binding:
@@ -510,7 +523,7 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
   default:
     return emitError(loc, "unhandled decoration ") << decorationName;
   }
-  return encodeInstructionInto(decorations, spirv::Opcode::OpDecorate, args);
+  return emitDecoration(resultID, decoration.getValue(), args);
 }
 
 LogicalResult Serializer::processName(uint32_t resultID, StringRef name) {
@@ -530,11 +543,8 @@ LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
     Location loc, spirv::ArrayType type, uint32_t resultID) {
   if (type.hasLayout()) {
     // OpDecorate %arrayTypeSSA ArrayStride strideLiteral
-    SmallVector<uint32_t, 3> args;
-    args.push_back(resultID);
-    args.push_back(static_cast<uint32_t>(spirv::Decoration::ArrayStride));
-    args.push_back(type.getArrayStride());
-    return encodeInstructionInto(decorations, spirv::Opcode::OpDecorate, args);
+    return emitDecoration(resultID, spirv::Decoration::ArrayStride,
+                          {static_cast<uint32_t>(type.getArrayStride())});
   }
   return success();
 }
@@ -623,11 +633,8 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
                           .cast<spirv::PointerType>()
                           .getPointeeType()
                           .cast<spirv::StructType>();
-    SmallVector<uint32_t, 2> args{
-        findTypeID(structType),
-        static_cast<uint32_t>(spirv::Decoration::Block)};
-    if (failed(encodeInstructionInto(decorations, spirv::Opcode::OpDecorate,
-                                     args))) {
+    if (failed(
+            emitDecoration(findTypeID(structType), spirv::Decoration::Block))) {
       return varOp.emitError("cannot decorate ")
              << structType << " with Block decoration";
     }
@@ -1675,6 +1682,18 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
 #define GET_SERIALIZATION_FNS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 } // namespace
+
+LogicalResult Serializer::emitDecoration(uint32_t target,
+                                         spirv::Decoration decoration,
+                                         ArrayRef<uint32_t> params) {
+  uint32_t wordCount = 3 + params.size();
+  decorations.push_back(
+      spirv::getPrefixedOpcode(wordCount, spirv::Opcode::OpDecorate));
+  decorations.push_back(target);
+  decorations.push_back(static_cast<uint32_t>(decoration));
+  decorations.append(params.begin(), params.end());
+  return success();
+}
 
 LogicalResult spirv::serialize(spirv::ModuleOp module,
                                SmallVectorImpl<uint32_t> &binary) {

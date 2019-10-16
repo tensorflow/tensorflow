@@ -95,6 +95,8 @@ public:
   static LLVMType getDoubleTy(LLVMDialect *dialect);
   static LLVMType getFloatTy(LLVMDialect *dialect);
   static LLVMType getHalfTy(LLVMDialect *dialect);
+  static LLVMType getFP128Ty(LLVMDialect *dialect);
+  static LLVMType getX86_FP80Ty(LLVMDialect *dialect);
 
   /// Utilities used to generate integer types.
   static LLVMType getIntNTy(LLVMDialect *dialect, unsigned numBits);

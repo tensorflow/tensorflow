@@ -2797,6 +2797,10 @@ output =
     TF_Tensor:$output
   );
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
@@ -3044,7 +3048,7 @@ This op determines the maximum scale_factor that would map the initial
 quantized range.
 
 It determines the scale from one of input_min and input_max, then updates the
-other one to maximize the respresentable range.
+other one to maximize the representable range.
 
 e.g.
 
@@ -3848,6 +3852,10 @@ whose values are extracted from 'input' starting at the offsets in
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {

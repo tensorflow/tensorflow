@@ -199,11 +199,14 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<MultiplyScalarAttributes>(node->operation.attributes),
           options);
       break;
-    case OperationType::PAD:
-      *tasks =
-          Padding(node_id, inputs[0], outputs[0],
-                  absl::any_cast<PadAttributes>(node->operation.attributes));
+    case OperationType::PAD: {
+      auto attr = absl::any_cast<PadAttributes>(node->operation.attributes);
+      if (attr.appended.b != 0 || attr.prepended.b != 0) {
+        return UnimplementedError("Padding for BATCH is not supported.");
+      }
+      *tasks = Padding(node_id, inputs[0], outputs[0], attr);
       break;
+    }
     case OperationType::POOLING_2D:
       *tasks = Pooling(
           node_id, inputs[0], outputs,
@@ -267,6 +270,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::MUL:
     case OperationType::RESIZE:
     case OperationType::SPACE_TO_BATCH:
+    case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
       return UnimplementedError("Unsupported op: " + node->operation.type);
   }

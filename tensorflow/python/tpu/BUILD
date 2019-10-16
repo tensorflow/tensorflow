@@ -222,6 +222,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:training",

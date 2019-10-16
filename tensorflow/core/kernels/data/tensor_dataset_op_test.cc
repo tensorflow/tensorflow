@@ -46,7 +46,7 @@ class TensorDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return TensorDatasetOp::kDatasetType; }
+  string dataset_type() const override { return TensorDatasetOp::kDatasetType; }
 
  private:
   DataTypeVector TensorDtypes(const std::vector<Tensor>& input_components) {

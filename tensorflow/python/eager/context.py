@@ -729,6 +729,8 @@ class Context(object):
     """
     if isinstance(name, LogicalDevice):
       name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -1240,7 +1242,7 @@ class Context(object):
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
           raise ValueError(
-              "Setting memory limit is required for GPU virtual devices is")
+              "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
                        dev.device_type())

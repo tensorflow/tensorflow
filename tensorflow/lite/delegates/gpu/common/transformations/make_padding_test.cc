@@ -66,8 +66,8 @@ TEST(MakePadding, Smoke) {
   auto pad_node = graph.nodes()[0];
   ASSERT_EQ(ToString(OperationType::PAD), pad_node->operation.type);
   auto pad_attr = absl::any_cast<PadAttributes>(pad_node->operation.attributes);
-  EXPECT_EQ(HWC(0, 0, 0), pad_attr.prepended);
-  EXPECT_EQ(HWC(5, 0, 0), pad_attr.appended);
+  EXPECT_EQ(BHWC(0, 0, 0, 0), pad_attr.prepended);
+  EXPECT_EQ(BHWC(0, 5, 0, 0), pad_attr.appended);
 }
 
 }  // namespace

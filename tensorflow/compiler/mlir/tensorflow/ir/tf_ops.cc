@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <numeric>
 #include <string>
@@ -59,10 +60,22 @@ namespace TF {
 // TF op helper functions
 //===----------------------------------------------------------------------===//
 
+// Returns the RankedTensorType for the given operand. TensorFlow constant ops
+// may have non-static shape because the shape is not propagated during constant
+// folding. If the defining op for the given operand is a constant op, this
+// routine uses the constant op's attribute to get the actual shape.
+static RankedTensorType GetRankedTensorTypeForOperand(Value *operand) {
+  DenseElementsAttr attr;
+  if (matchPattern(operand, m_Constant(&attr))) {
+    return attr.getType().dyn_cast<RankedTensorType>();
+  }
+  return operand->getType().dyn_cast<RankedTensorType>();
+}
+
 // Returns true if the given `value` is of ranked float tensor type with the
 // given `rank`.
 static inline bool isOfRankedFloatTensorType(Value *value, int rank) {
-  auto type = value->getType().dyn_cast<RankedTensorType>();
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
   return type && type.getRank() == rank &&
          type.getElementType().isa<FloatType>();
 }
@@ -70,28 +83,22 @@ static inline bool isOfRankedFloatTensorType(Value *value, int rank) {
 // Returns true if the given `value` has the specified rank or has unranked
 // type.
 static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
-  if (auto type = value->getType().dyn_cast<RankedTensorType>()) {
-    return type.getRank() == rank;
-  }
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() == rank;
 }
 
 // Returns true if the given `value` has at least the specified rank or has
 // unranked type.
 static inline bool HasRankAtLeast(Value *value, int64_t rank) {
-  Type type = value->getType();
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
-    return ranked_type.getRank() >= rank;
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() >= rank;
 }
 
 // Returns true if the given `value` has at most the specified rank or has
 // unranked type.
 static inline bool HasRankAtMost(Value *value, int64_t rank) {
-  Type type = value->getType();
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
-    return ranked_type.getRank() <= rank;
-  return true;
+  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+  return !type || type.getRank() <= rank;
 }
 
 // Returns true if the given pair of TensorFlow types can be cast to one
@@ -821,6 +828,50 @@ void NotEqualOp::build(Builder *builder, OperationState &result, Value *x,
 }
 
 //===----------------------------------------------------------------------===//
+// OneHotOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(OneHotOp op) {
+  int64_t axis = op.axis().getSExtValue();
+
+  auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+  if (indices_ty &&
+      !(axis == -1 || (axis >= 0 && axis <= indices_ty.getShape().size()))) {
+    return op.emitOpError()
+           << "expected axis (" << axis << ") to be -1 or between [0, "
+           << indices_ty.getShape().size() << "]";
+  }
+
+  if (axis < -1) {
+    return op.emitOpError() << "expected axis (" << axis
+                            << ") to be -1 or between [0, rank(indices()))";
+  }
+
+  if (!IsOfRankOrUnranked(op.depth(), 0)) {
+    return op.emitOpError() << "requires depth to be a scalar";
+  }
+  if (!IsOfRankOrUnranked(op.on_value(), 0)) {
+    return op.emitOpError() << "requires on_value to be a scalar";
+  }
+  if (!IsOfRankOrUnranked(op.off_value(), 0)) {
+    return op.emitOpError() << "requires off_value to be a scalar";
+  }
+
+  DenseIntElementsAttr depth_attr;
+  if (matchPattern(op.depth(), m_Constant(&depth_attr))) {
+    if (depth_attr.getType().getRank() != 0) {
+      return op.emitOpError() << "requires depth to be a scalar";
+    }
+    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    if (depth < 0) {
+      return op.emitOpError() << "depth must be non-negative, got: " << depth;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // PackOp
 //===----------------------------------------------------------------------===//
 
@@ -1044,7 +1095,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
       const_shape.push_back(val);
     }
 
-    // Compute the value of the uknown dimension.
+    // Compute the value of the unknown dimension.
     if (flatten) {
       // Compute number of elements in tensor shape.
       auto tshape = ttype.getShape();
@@ -1157,6 +1208,70 @@ static LogicalResult Verify(ShapeNOp op) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - operands begin and size are 1D with the same number of elements.
+// - if the input is a ranked tensor, the rank of the input equals the number
+//   of elements in operands begin and size.
+// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+//
+static LogicalResult Verify(SliceOp op) {
+  RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
+  if (begin_ty && begin_ty.getRank() != 1) {
+    return op.emitOpError() << "requires begin operand to be 1D tensor";
+  }
+
+  RankedTensorType size_ty = GetRankedTensorTypeForOperand(op.size());
+  if (size_ty && size_ty.getRank() != 1) {
+    return op.emitOpError() << "requires size operand to be 1D tensor";
+  }
+
+  if (!begin_ty || !size_ty || !begin_ty.hasStaticShape() ||
+      !size_ty.hasStaticShape())
+    return success();
+
+  if (begin_ty.getNumElements() != size_ty.getNumElements()) {
+    return op.emitOpError() << "requires begin and size operands to have the"
+                               " same number of elements";
+  }
+
+  auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+  if (input_ty && begin_ty.getNumElements() != input_ty.getRank()) {
+    return op.emitOpError() << "requires number of elements in begin and size"
+                               "are equal to input rank";
+  }
+
+  DenseIntElementsAttr begin_indices;
+  if (matchPattern(op.begin(), m_Constant(&begin_indices))) {
+    DenseIntElementsAttr slice_sizes;
+    bool constant_slice_sizes =
+        matchPattern(op.size(), m_Constant(&slice_sizes));
+    int dim = 0;
+    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+      int64_t begin_index = raw_begin_index.getSExtValue();
+      int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
+      int64_t slice_size = constant_slice_sizes
+                               ? slice_sizes.getValue<APInt>(dim).getSExtValue()
+                               : 0;
+      if (slice_size == -1 && input_size != -1) {
+        slice_size = input_size - begin_index;
+      }
+      if (begin_index < 0 ||
+          (input_size != -1 && begin_index + slice_size > input_size)) {
+        return op.emitOpError()
+               << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
+      }
+      ++dim;
+    }
   }
 
   return success();

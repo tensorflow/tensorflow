@@ -967,6 +967,24 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
 
+class FloatElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseElementsAttr>().getType()."
+      "getElementType().isF" # width # "()">,
+  width # "-bit float elements attribute"> {
+
+  let storageType = [{ DenseElementsAttr }];
+  let returnType = [{ DenseElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({}, $_builder.getF" # width # "Type()),"
+    "llvm::makeArrayRef($0))";
+  let convertFromStorage = "$_self";
+}
+
+def F64ElementsAttr : FloatElementsAttr<64>;
+
 // A `width`-bit floating point elements attribute. The attribute should be
 // ranked and has a shape as specified in `dims`.
 class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<

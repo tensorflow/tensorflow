@@ -571,7 +571,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // Set RemoteMgr to ctx.
   auto remote_mgr =
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
-  TF_ASSERT_OK(ctx->InitializeRemoteWorker(nullptr, nullptr, {}, context_id,
+  TF_ASSERT_OK(ctx->InitializeRemoteWorker(nullptr, nullptr, {}, context_id, 0,
                                            nullptr, std::move(remote_mgr)));
 
   TestEagerServiceImpl eager_service_impl(&worker_env_);
