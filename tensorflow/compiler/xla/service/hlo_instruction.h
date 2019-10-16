@@ -239,6 +239,27 @@ class HloPrintOptions {
     return *this;
   }
 
+  // A callback which takes an HloInstruction*, its string representation,
+  // the indentation level of the resulting block, and a
+  // bool variable indicating whether the instruction is root or not. The return
+  // value is a string which is used for this instruction during printing.
+  using FormatInstructionFunc =
+      std::function<string(const HloInstruction*, const string&, int, bool)>;
+
+  HloPrintOptions& set_format_instruction(FormatInstructionFunc callback) {
+    format_instruction_ = callback;
+    return *this;
+  }
+
+  using HloComputationPredicate = std::function<bool(const HloComputation*)>;
+
+  // A callback which takes an HloComputation* and returns whether it should be
+  // printed or not.
+  HloPrintOptions& set_print_computation(HloComputationPredicate callback) {
+    print_computation_ = callback;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   PrintSubcomputationMode print_subcomputation_mode() const {
     return print_subcomputation_mode_;
@@ -261,6 +282,14 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
+  string format_instruction(const HloInstruction* instr,
+                            const string& instr_name, int indent,
+                            bool is_root) const {
+    return format_instruction_(instr, instr_name, indent, is_root);
+  }
+  bool print_computation(const HloComputation* comp) const {
+    return print_computation_(comp);
+  }
 
  private:
   bool print_large_constants_;
@@ -279,6 +308,18 @@ class HloPrintOptions {
   bool is_in_nested_computation_;
   bool print_ids_;
   bool canonicalize_computations_;
+  FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
+                                                 const string& instr_name,
+                                                 int indent, bool is_root) {
+    string tab;
+    for (int i = 0; i < indent; i++) {
+      tab += "  ";
+    }
+    return tab + (is_root ? "ROOT " : "") + instr_name;
+  };
+  HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
+    return true;
+  };
 };
 
 // For canonical string output, we need to have a canonical way to rename
