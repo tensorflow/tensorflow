@@ -998,11 +998,11 @@ class LayerNormalization(Layer):
     if axis[-1] == ndims-1 and axis[-1] - axis[0] == len(axis) - 1:
       can_use_fused = True
 
-    # Fused layer norm may have numeric issues when epsilon < 1.001e-5 (see
-    # cudnn.h). Also, the gamma dtype needs to be float32 when using fused
-    # layer norm.
-    if self.epsilon < 1.001e-5 or (self.gamma is not None and
-                                   self.gamma.dtype == 'float16'):
+    # fused_batch_norm will silently raise epsilon to be at least 1.001e-5, so
+    # we cannot used the fused version if epsilon is below that value. Also, the
+    # variable dtype must be float32, as fused_batch_norm only supports float32
+    # variables.
+    if self.epsilon < 1.001e-5 or self.dtype != 'float32':
       can_use_fused = False 
 
     return can_use_fused 
@@ -1073,8 +1073,7 @@ class LayerNormalization(Layer):
         return array_ops.reshape(v, broadcast_shape)
       return v
 
-    # Fused layer normalization doesn't support float64 yet.
-    if not self._fused or inputs.dtype == 'float64':
+    if not self._fused:
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
