@@ -84,9 +84,6 @@ cc_test(
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":input_generator",
         "@com_google_googletest//:gtest_main",
