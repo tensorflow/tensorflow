@@ -4104,7 +4104,8 @@ def tensordot(a, b, axes, name=None):
       a_free_dims = ops.convert_to_tensor(a_free_dims, dtype=dtypes.int32)
       b_free_dims = ops.convert_to_tensor(b_free_dims, dtype=dtypes.int32)
       product = array_ops.reshape(
-          ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)
+          ab_matmul, array_ops.concat(
+          [a_free_dims, b_free_dims], 0), name=name)
       if a_free_dims_static is not None and b_free_dims_static is not None:
         product.set_shape(a_free_dims_static + b_free_dims_static)
       return product
@@ -4114,8 +4115,8 @@ def tensordot(a, b, axes, name=None):
 def polyval(coeffs, x, name=None):
   r"""Computes the elementwise value of a polynomial.
 
-  If `x` is a tensor and `coeffs` is a list n + 1 tensors, this function returns
-  the value of the n-th order polynomial
+  If `x` is a tensor and `coeffs` is a list n + 1 tensors,
+  this function returns the value of the n-th order polynomial
 
      p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)
 
@@ -4130,8 +4131,8 @@ def polyval(coeffs, x, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `tensor` of the shape as the expression p(x) with usual broadcasting rules
-    for element-wise addition and multiplication applied.
+    A `tensor` of the shape as the expression p(x) with usual broadcasting
+    rules for element-wise addition and multiplication applied.
 
   @compatibility(numpy)
   Equivalent to numpy.polyval.
