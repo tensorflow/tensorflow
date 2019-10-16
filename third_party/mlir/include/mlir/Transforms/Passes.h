@@ -141,6 +141,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createStripDebugInfoPass();
 /// Creates a pass which tests loop fusion utilities.
 std::unique_ptr<OpPassBase<FuncOp>> createTestLoopFusionPass();
 
+/// Creates a pass which inlines calls and callable operations as defined by the
+/// CallGraph.
+std::unique_ptr<Pass> createInlinerPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
