@@ -3684,14 +3684,19 @@ inline void LocalResponseNormalization(
   }
 }
 
-inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const float* input_data,
-                    const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Softmax");
+inline void SoftmaxImpl(const SoftmaxParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data,
+                        int start_batch, int end_batch) {
+  gemmlowp::ScopedProfilingLabel label("Softmax/Impl");
   MatchingFlatSize(input_shape, output_shape);
 
-  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
-  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+  const int logit_size = input_shape.Dims(input_shape.DimensionsCount() - 1);
+  const MatrixMap<const float> in_mat(input_data + logit_size * start_batch,
+                                      logit_size, end_batch - start_batch);
+  MatrixMap<float> out_mat(output_data + logit_size * start_batch, logit_size,
+                           end_batch - start_batch);
   // Compute the exponential first, removing the max coefficient for numerical
   // stability.
   out_mat =
@@ -3702,6 +3707,72 @@ inline void Softmax(const SoftmaxParams& params,
   Eigen::Array<float, 1, Eigen::Dynamic> scale =
       out_mat.array().colwise().sum().inverse();
   out_mat.array().rowwise() *= scale;
+}
+
+struct SoftmaxWorkerTask : cpu_backend_threadpool::Task {
+  SoftmaxWorkerTask(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    int start_batch, int end_batch)
+      : params(params),
+        input_shape(input_shape),
+        input_data(input_data),
+        output_shape(output_shape),
+        output_data(output_data),
+        start_batch(start_batch),
+        end_batch(end_batch) {}
+  void Run() override {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data,
+                start_batch, end_batch);
+  }
+
+ private:
+  const tflite::SoftmaxParams& params;
+  const RuntimeShape& input_shape;
+  const float* input_data;
+  const RuntimeShape& output_shape;
+  float* output_data;
+  int start_batch;
+  int end_batch;
+};
+
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data,
+                    CpuBackendContext* cpu_backend_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("Softmax");
+
+  // We picture softmax input as a 2-D matrix while the last dim is the logit
+  // dim, and the rest dims will be the batch dim for the 2-D matrix.
+  const int batch_size =
+      FlatSizeSkipDim(input_shape, input_shape.DimensionsCount() - 1);
+  constexpr int kMinBatchPerThread = 8;
+  int thread_count = batch_size / kMinBatchPerThread;
+  thread_count = thread_count > 0 ? thread_count : 1;
+  const int capped_thread_count =
+      cpu_backend_context == nullptr
+          ? 1
+          : std::min(thread_count, cpu_backend_context->max_num_threads());
+  if (capped_thread_count == 1) {
+    SoftmaxImpl(params, input_shape, input_data, output_shape, output_data, 0,
+                batch_size);
+  } else {
+    std::vector<SoftmaxWorkerTask> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(capped_thread_count);
+    int batch_start = 0;
+    for (int i = 0; i < capped_thread_count; ++i) {
+      // Try to distribute the tasks as even as possible.
+      int batch_end =
+          batch_start + (batch_size - batch_start) / (capped_thread_count - i);
+      tasks.emplace_back(params, input_shape, input_data, output_shape,
+                         output_data, batch_start, batch_end);
+      batch_start = batch_end;
+    }
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
+  }
 }
 
 inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
