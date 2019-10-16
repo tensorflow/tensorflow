@@ -646,9 +646,18 @@ Status InsertUnpadsForModuleOutputs(
             }
           }
           // This is a dynamic output, add unpad operation.
+          //
+          // Write the backend config in the format of
+          // 'dynamic_index'-'output_index'.
+          //
+          // dynamic_index indicates the position of this output in all dynamic
+          // outputs.
+          //
+          // output_index indicates the position of this output in all outputs
+          // (including static inputs).
           auto unpad = HloInstruction::CreateCustomCall(
               subshape, unpad_operands, "Unpad",
-              absl::StrFormat("%i", dynamic_index++));
+              absl::StrFormat("%d-%d", dynamic_index++, index[0]));
           new_root_operands.push_back(
               module->entry_computation()->AddInstruction(std::move(unpad)));
         } else {
