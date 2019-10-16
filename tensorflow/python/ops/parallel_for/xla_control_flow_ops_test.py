@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -54,7 +53,7 @@ class PForTest(PForTestCase):
       outputs = [z1, z2, z3, z4, z5]
       return outputs
 
-    self._test_loop_fn(loop_fn, num_loop, loop_fn_dtypes=[dtypes.float32] * 5)
+    self._test_loop_fn(loop_fn, num_loop)
 
   def test_xla(self):
 
@@ -100,6 +99,23 @@ class PForTest(PForTestCase):
     result = xla.compile(while_compute, inputs=[array_ops.ones((10, 5, 3))])
     expected = array_ops.ones([5, 1]) * 10
     self.run_and_assert_equal(expected, result)
+
+  def test_reduce_mean(self):
+    x = random_ops.random_uniform([8, 3])
+
+    @def_function.function(experimental_compile=True)
+    def f():
+
+      def loop_fn(i, pfor_config):
+        x_i = array_ops.gather(x, i)
+        return x_i - pfor_config.reduce_mean(x_i)
+
+      return pfor_control_flow_ops.pfor(loop_fn, 8)
+
+    output = f()
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
 
 
 if __name__ == '__main__':

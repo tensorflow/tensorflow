@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -56,6 +57,11 @@ port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
                                             DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return port::Status::OK();
+}
+
+port::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
+  CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
+  return stream_;
 }
 
 }  // namespace stream_executor

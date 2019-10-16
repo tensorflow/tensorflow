@@ -54,14 +54,18 @@ The following examples are available:
   * Colab walkthrough of model training and conversion
 
 - [micro_speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech)
-  * Uses a 20kb model to recognize keywords in spoken audio
+  * Uses a 20 KB model to recognize keywords in spoken audio
   * Application code for Arduino, SparkFun Edge, and STM32F746
   * Python scripts for model training and conversion
 
-- [micro_vision](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_vision)
-  * Uses a 250kb model to recognize presence or absence of a person in images
+- [person_detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/person_detection)
+  * Uses a 250 KB model to recognize presence or absence of a person in images
     captured by a camera
   * Application code for SparkFun Edge
+
+- [magic_wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/magic_wand)
+  * Uses a 20 KB model to recognize gestures using accelerometer data
+  * Application code for Arduino and SparkFun Edge
 
 ## Pre-generated Project Files
 
@@ -425,9 +429,10 @@ conv in this example), follow these steps:
 5.  Compile and flash. The 'auto' flag requires your target to be plugged in.
     `mbed compile -m auto -t GCC_ARM -f --source . --source
     <CUSTOM_LOCATION>/CMSIS/NN/Include --source
-    <CUSTOM_LOCATION>/CMSIS/NN/Source/ConvolutionFunctions --source
+    <CUSTOM_LOCATION>/CMSIS/NN/Source --source
     <CUSTOM_LOCATION>/CMSIS/DSP/Include --source
-    <CUSTOM_LOCATION>/CMSIS/Core/Include -j8`
+    <CUSTOM_LOCATION>/CMSIS/Core/Include -DARM_MATH_DSP -DARM_MATH_LOOPUNROLL
+    -j8`
 
 ## Goals
 

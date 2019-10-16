@@ -27,9 +27,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
@@ -56,17 +54,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
-  """Mock the strategy to allow cluster resolver as an argument."""
-
-  def __init__(self, cluster_resolver):
-    super(MockCollectiveAllReduceStrategy, self).__init__(
-        collective_all_reduce_strategy.CollectiveAllReduceExtended(
-            self,
-            communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
-            cluster_resolver=cluster_resolver))
-
-
 def create_test_objects(cluster_spec=None,
                         task_type=None,
                         task_id=None,
@@ -87,7 +74,8 @@ def create_test_objects(cluster_spec=None,
         ClusterSpec({}), num_accelerators={'GPU': num_gpus})
     target = ''
 
-  strategy = MockCollectiveAllReduceStrategy(cluster_resolver)
+  strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+      cluster_resolver=cluster_resolver)
   sess_config = strategy.update_config_proto(sess_config)
 
   return strategy, target, sess_config
@@ -584,8 +572,10 @@ class LocalCollectiveAllReduceStrategy(
     num_gpus = 2
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    strategy, _, _ = self._get_test_object(None, None, num_gpus=num_gpus)
-    self._test_numpy_dataset(strategy)
+    strategy, target, config = self._get_test_object(
+        None, None, num_gpus=num_gpus)
+    self._test_numpy_dataset(
+        strategy, session=self.cached_session(config=config, target=target))
 
 
 if __name__ == '__main__':

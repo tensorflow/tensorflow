@@ -26,6 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -788,6 +789,9 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     # Raw intermediates captured from the forward graph. Populated iff we're in
     # an XLA context.
     self._xla_intermediates = []
+    # Maps forward intermediate constant valued tensor's id to the constant
+    # created in this graph for that tensor.
+    self._captured_constants = {}
 
   @property
   def wrapped_intermediates(self):
@@ -805,6 +809,17 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         any(tensor is t for t in self._forward_graph.outputs)):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
+    tensor_id = ops.tensor_id(tensor)
+
+    # If `tensor` is a graph-building time constant, we create a constant with
+    # the same value in the backward graph instead of capturing it.
+    if tensor_id in self._captured_constants:
+      return self._captured_constants[tensor_id]
+    elif constant_op.is_constant(tensor):
+      self._captured_constants[tensor_id] = constant_op.constant(
+          tensor_util.constant_value(tensor), dtype=tensor.dtype)
+      return self._captured_constants[tensor_id]
+
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -813,7 +828,6 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    tensor_id = ops.tensor_id(tensor)
     captured_tensor = self._indirect_captures.get(tensor_id)
     if captured_tensor is not None:
       return captured_tensor

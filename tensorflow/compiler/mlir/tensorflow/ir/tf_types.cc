@@ -99,5 +99,17 @@ Type TensorFlowRefType::RemoveRef() {
   }
 }
 
+Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
+  MLIRContext* ctx = getContext();
+  switch (getKind()) {
+    case TensorFlowTypes::VARIANT:
+      return VariantType::get(ctx);
+    case TensorFlowTypes::RESOURCE:
+      return ResourceType::get(ctx);
+    default:
+      llvm_unreachable("unexpected tensorflow type with subtypes kind");
+  }
+}
+
 }  // namespace TF
 }  // namespace mlir

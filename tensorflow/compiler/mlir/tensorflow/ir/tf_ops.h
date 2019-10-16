@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 
+#include "mlir/Analysis/CallInterfaces.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -55,6 +56,12 @@ class TensorFlowDialect : public Dialect {
 
   // Prints a type registered to this dialect.
   void printType(Type ty, raw_ostream &os) const override;
+
+  // Parses resource type with potential subtypes.
+  Type ParseResourceType(StringRef spec, Location loc) const;
+
+  // Prints resource type with potential subtypes.
+  void PrintResourceType(ResourceType ty, raw_ostream &os) const;
 
   // Parse and print variant type. It may have subtypes inferred using shape
   // inference.

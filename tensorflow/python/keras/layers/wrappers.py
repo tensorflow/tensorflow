@@ -232,6 +232,7 @@ class TimeDistributed(Wrapper):
           inputs,
           initial_states=[],
           input_length=input_shape[1],
+          mask=mask,
           unroll=False)
       y = outputs
     else:

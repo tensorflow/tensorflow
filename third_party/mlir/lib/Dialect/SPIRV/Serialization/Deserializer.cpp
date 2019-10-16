@@ -155,6 +155,10 @@ private:
     return specConstMap.lookup(id);
   }
 
+  /// Creates a spirv::SpecConstantOp.
+  spirv::SpecConstantOp createSpecConstant(Location loc, uint32_t resultID,
+                                           Attribute defaultValue);
+
   /// Processes the OpVariable instructions at current `offset` into `binary`.
   /// It is expected that this method is used for variables that are to be
   /// defined at module scope and will be deserialized into a spv.globalVariable
@@ -172,6 +176,9 @@ private:
 
   /// Gets type for a given result <id>.
   Type getType(uint32_t id) { return typeMap.lookup(id); }
+
+  /// Get the type associated with the result <id> of an OpUndef.
+  Type getUndefType(uint32_t id) { return undefMap.lookup(id); }
 
   /// Returns true if the given `type` is for SPIR-V void type.
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
@@ -241,12 +248,11 @@ private:
   /// A struct for containing a header block's merge and continue targets.
   struct BlockMergeInfo {
     Block *mergeBlock;
-    Block *continueBlock;
+    Block *continueBlock; // nullptr for spv.selection
 
     BlockMergeInfo() : mergeBlock(nullptr), continueBlock(nullptr) {}
-    BlockMergeInfo(Block *m, Block *c) : mergeBlock(m), continueBlock(c) {}
-
-    operator bool() const { return continueBlock && mergeBlock; }
+    BlockMergeInfo(Block *m, Block *c = nullptr)
+        : mergeBlock(m), continueBlock(c) {}
   };
 
   /// Returns the merge and continue target info for the given `block` if it is
@@ -265,6 +271,9 @@ private:
 
   /// Processes a SPIR-V OpLabel instruction with the given `operands`.
   LogicalResult processLabel(ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpSelectionMerge instruction with the given `operands`.
+  LogicalResult processSelectionMerge(ArrayRef<uint32_t> operands);
 
   /// Processes a SPIR-V OpLoopMerge instruction with the given `operands`.
   LogicalResult processLoopMerge(ArrayRef<uint32_t> operands);
@@ -293,9 +302,6 @@ private:
   sliceInstruction(spirv::Opcode &opcode, ArrayRef<uint32_t> &operands,
                    Optional<spirv::Opcode> expectedOpcode = llvm::None);
 
-  /// Returns the next instruction's opcode if exists.
-  Optional<spirv::Opcode> peekOpcode();
-
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
@@ -306,6 +312,13 @@ private:
   LogicalResult processInstruction(spirv::Opcode opcode,
                                    ArrayRef<uint32_t> operands,
                                    bool deferInstructions = true);
+
+  /// Processes a OpUndef instruction. Adds a spv.Undef operation at the current
+  /// insertion point.
+  LogicalResult processUndef(ArrayRef<uint32_t> operands);
+
+  /// Processes an OpBitcast instruction.
+  LogicalResult processBitcast(ArrayRef<uint32_t> words);
 
   /// Method to dispatch to the specialized deserialization function for an
   /// operation in SPIR-V dialect that is a mirror of an instruction in the
@@ -396,6 +409,9 @@ private:
 
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
+
+  // Mapping from result <id> to undef value of a type.
+  DenseMap<uint32_t, Type> undefMap;
 
   // Result <id> to name mapping.
   DenseMap<uint32_t, StringRef> nameMap;
@@ -596,6 +612,7 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     return emitError(unknownLoc, "invalid Decoration code : ") << words[1];
   }
   auto attrName = convertToSnakeCase(decorationName);
+  auto symbol = opBuilder.getIdentifier(attrName);
   switch (static_cast<spirv::Decoration>(words[1])) {
   case spirv::Decoration::DescriptorSet:
   case spirv::Decoration::Binding:
@@ -604,31 +621,43 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
              << decorationName << " needs a single integer literal";
     }
     decorations[words[0]].set(
-        opBuilder.getIdentifier(attrName),
-        opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
+        symbol, opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
   case spirv::Decoration::BuiltIn:
     if (words.size() != 3) {
       return emitError(unknownLoc, "OpDecorate with ")
              << decorationName << " needs a single integer literal";
     }
-    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
-                              opBuilder.getStringAttr(stringifyBuiltIn(
-                                  static_cast<spirv::BuiltIn>(words[2]))));
+    decorations[words[0]].set(
+        symbol, opBuilder.getStringAttr(
+                    stringifyBuiltIn(static_cast<spirv::BuiltIn>(words[2]))));
     break;
   case spirv::Decoration::ArrayStride:
     if (words.size() != 3) {
       return emitError(unknownLoc, "OpDecorate with ")
              << decorationName << " needs a single integer literal";
     }
-    typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
+    typeDecorations[words[0]] = words[2];
     break;
   case spirv::Decoration::Block:
+  case spirv::Decoration::BufferBlock:
     if (words.size() != 2) {
       return emitError(unknownLoc, "OpDecoration with ")
              << decorationName << "needs a single target <id>";
     }
-    // Block decoration does not affect spv.struct type.
+    // Block decoration does not affect spv.struct type, but is still stored for
+    // verification.
+    // TODO: Update StructType to contain this information since
+    // it is needed for many validation rules.
+    decorations[words[0]].set(symbol, opBuilder.getUnitAttr());
+    break;
+  case spirv::Decoration::SpecId:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecoration with ")
+             << decorationName << "needs a single integer literal";
+    }
+    decorations[words[0]].set(
+        symbol, opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
@@ -780,8 +809,9 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
   if (opcode == spirv::Opcode::OpFunctionEnd) {
-    LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
-                            << fnType << ", id=" << operands[1] << ")\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[fn] completed function '" << fnName << "' (type=" << fnType
+               << ", id=" << operands[1] << ")\n");
     return processFunctionEnd(instOperands);
   }
   if (opcode != spirv::Opcode::OpLabel) {
@@ -808,7 +838,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
+  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function '" << fnName << "' (type="
                           << fnType << ", id=" << operands[1] << ")\n");
   return processFunctionEnd(instOperands);
 }
@@ -851,6 +881,20 @@ std::string Deserializer::getSpecConstantSymbol(uint32_t id) {
     constName = "spirv_spec_const_" + std::to_string(id);
   }
   return constName;
+}
+
+spirv::SpecConstantOp Deserializer::createSpecConstant(Location loc,
+                                                       uint32_t resultID,
+                                                       Attribute defaultValue) {
+  auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
+  auto op = opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName,
+                                                    defaultValue);
+  if (decorations.count(resultID)) {
+    for (auto attr : decorations[resultID].getAttrs())
+      op.setAttr(attr.first, attr.second);
+  }
+  specConstMap[resultID] = op;
+  return op;
 }
 
 LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
@@ -985,9 +1029,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(
           unknownLoc, "OpTypeInt must have bitwidth and signedness parameters");
     }
-    if (operands[2] == 0) {
-      return emitError(unknownLoc, "unhandled unsigned OpTypeInt");
-    }
+    // TODO: Ignoring the signedness right now. Need to handle this effectively
+    // in the MLIR representation.
     typeMap[operands[0]] = opBuilder.getIntegerType(operands[1]);
     break;
   case spirv::Opcode::OpTypeFloat: {
@@ -1246,10 +1289,7 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
     auto attr = opBuilder.getIntegerAttr(intType, value);
 
     if (isSpec) {
-      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-      auto op =
-          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-      specConstMap[resultID] = op;
+      createSpecConstant(unknownLoc, resultID, attr);
     } else {
       // For normal constants, we just record the attribute (and its type) for
       // later materialization at use sites.
@@ -1284,10 +1324,7 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
 
     auto attr = opBuilder.getFloatAttr(floatType, value);
     if (isSpec) {
-      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-      auto op =
-          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-      specConstMap[resultID] = op;
+      createSpecConstant(unknownLoc, resultID, attr);
     } else {
       // For normal constants, we just record the attribute (and its type) for
       // later materialization at use sites.
@@ -1314,10 +1351,7 @@ LogicalResult Deserializer::processConstantBool(bool isTrue,
   auto attr = opBuilder.getBoolAttr(isTrue);
   auto resultID = operands[1];
   if (isSpec) {
-    auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
-    auto op =
-        opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
-    specConstMap[resultID] = op;
+    createSpecConstant(unknownLoc, resultID, attr);
   } else {
     // For normal constants, we just record the attribute (and its type) for
     // later materialization at use sites.
@@ -1483,6 +1517,34 @@ LogicalResult Deserializer::processLabel(ArrayRef<uint32_t> operands) {
   return success();
 }
 
+LogicalResult Deserializer::processSelectionMerge(ArrayRef<uint32_t> operands) {
+  if (!curBlock) {
+    return emitError(unknownLoc, "OpSelectionMerge must appear in a block");
+  }
+
+  if (operands.size() < 2) {
+    return emitError(
+        unknownLoc,
+        "OpLoopMerge must specify merge target and selection control");
+  }
+
+  if (static_cast<uint32_t>(spirv::LoopControl::None) != operands[1]) {
+    return emitError(unknownLoc,
+                     "unimplmented OpSelectionMerge selection control: ")
+           << operands[2];
+  }
+
+  auto *mergeBlock = getOrCreateBlock(operands[0]);
+
+  if (!blockMergeInfo.try_emplace(curBlock, mergeBlock).second) {
+    return emitError(
+        unknownLoc,
+        "a block cannot have more than one OpSelectionMerge instruction");
+  }
+
+  return success();
+}
+
 LogicalResult Deserializer::processLoopMerge(ArrayRef<uint32_t> operands) {
   if (!curBlock) {
     return emitError(unknownLoc, "OpLoopMerge must appear in a block");
@@ -1511,8 +1573,9 @@ LogicalResult Deserializer::processLoopMerge(ArrayRef<uint32_t> operands) {
 }
 
 namespace {
-/// A class for putting all blocks in a structured loop in a spv.loop op.
-class LoopStructurizer {
+/// A class for putting all blocks in a structured selection/loop in a
+/// spv.selection/spv.loop op.
+class ControlFlowStructurizer {
 public:
   /// Structurizes the loop at the given `headerBlock`.
   ///
@@ -1521,14 +1584,18 @@ public:
   /// the `headerBlock` will be redirected to the `mergeBlock`.
   static LogicalResult structurize(Location loc, Block *headerBlock,
                                    Block *mergeBlock, Block *continueBlock) {
-    return LoopStructurizer(loc, headerBlock, mergeBlock, continueBlock)
+    return ControlFlowStructurizer(loc, headerBlock, mergeBlock, continueBlock)
         .structurizeImpl();
   }
 
 private:
-  LoopStructurizer(Location loc, Block *header, Block *merge, Block *cont)
+  ControlFlowStructurizer(Location loc, Block *header, Block *merge,
+                          Block *cont)
       : location(loc), headerBlock(header), mergeBlock(merge),
         continueBlock(cont) {}
+
+  /// Creates a new spv.selection op at the beginning of the `mergeBlock`.
+  spirv::SelectionOp createSelectionOp();
 
   /// Creates a new spv.loop op at the beginning of the `mergeBlock`.
   spirv::LoopOp createLoopOp();
@@ -1543,13 +1610,26 @@ private:
 
   Block *headerBlock;
   Block *mergeBlock;
-  Block *continueBlock;
+  Block *continueBlock; // nullptr for spv.selection
 
   llvm::SetVector<Block *> constructBlocks;
 };
 } // namespace
 
-spirv::LoopOp LoopStructurizer::createLoopOp() {
+spirv::SelectionOp ControlFlowStructurizer::createSelectionOp() {
+  // Create a builder and set the insertion point to the beginning of the
+  // merge block so that the newly created SelectionOp will be inserted there.
+  OpBuilder builder(&mergeBlock->front());
+
+  auto control = builder.getI32IntegerAttr(
+      static_cast<uint32_t>(spirv::SelectionControl::None));
+  auto selectionOp = builder.create<spirv::SelectionOp>(location, control);
+  selectionOp.addMergeBlock();
+
+  return selectionOp;
+}
+
+spirv::LoopOp ControlFlowStructurizer::createLoopOp() {
   // Create a builder and set the insertion point to the beginning of the
   // merge block so that the newly created LoopOp will be inserted there.
   OpBuilder builder(&mergeBlock->front());
@@ -1562,7 +1642,7 @@ spirv::LoopOp LoopStructurizer::createLoopOp() {
   return loopOp;
 }
 
-void LoopStructurizer::collectBlocksInConstruct() {
+void ControlFlowStructurizer::collectBlocksInConstruct() {
   assert(constructBlocks.empty() && "expected empty constructBlocks");
 
   // Put the header block in the work list first.
@@ -1571,35 +1651,45 @@ void LoopStructurizer::collectBlocksInConstruct() {
   // For each item in the work list, add its successors under conditions.
   for (unsigned i = 0; i < constructBlocks.size(); ++i) {
     for (auto *successor : constructBlocks[i]->getSuccessors())
-      if (successor != mergeBlock && successor != continueBlock &&
-          constructBlocks.count(successor) == 0) {
+      if (successor != mergeBlock && successor != continueBlock)
         constructBlocks.insert(successor);
-      }
   }
 }
 
-LogicalResult LoopStructurizer::structurizeImpl() {
-  auto loopOp = createLoopOp();
-  if (!loopOp)
+LogicalResult ControlFlowStructurizer::structurizeImpl() {
+  Operation *op = nullptr;
+  bool isLoop = continueBlock != nullptr;
+  if (isLoop) {
+    if (auto loopOp = createLoopOp())
+      op = loopOp.getOperation();
+  } else {
+    if (auto selectionOp = createSelectionOp())
+      op = selectionOp.getOperation();
+  }
+  if (!op)
     return failure();
+  Region &body = op->getRegion(0);
 
   BlockAndValueMapping mapper;
-  // All references to the old merge block should be directed to the loop
-  // merge block in the LoopOp's region.
-  mapper.map(mergeBlock, &loopOp.body().back());
+  // All references to the old merge block should be directed to the
+  // selection/loop merge block in the SelectionOp/LoopOp's region.
+  mapper.map(mergeBlock, &body.back());
 
   collectBlocksInConstruct();
-  // Add the loop continue block at the last so it's the second to last block
-  // in LoopOp's region.
-  constructBlocks.insert(continueBlock);
+  if (isLoop) {
+    // Add the loop continue block at the last so it's the second to last block
+    // in LoopOp's region.
+    constructBlocks.insert(continueBlock);
+  }
 
-  // We've identified all blocks belonging to the loop's region. Now need to
-  // "move" them into the loop. Instead of really moving the blocks, in the
-  // following we copy them and remap all values and branches. This is because:
+  // We've identified all blocks belonging to the selection/loop's region. Now
+  // need to "move" them into the selection/loop. Instead of really moving the
+  // blocks, in the following we copy them and remap all values and branches.
+  // This is because:
   // * Inserting a block into a region requires the block not in any region
-  //   before. But loops can nest so we can create loop ops in a nested manner,
-  //   which means some blocks may already be in a loop region when to be moved
-  //   again.
+  //   before. But selections/loops can nest so we can create selection/loop ops
+  //   in a nested manner, which means some blocks may already be in a
+  //   selection/loop region when to be moved again.
   // * It's much trickier to fix up the branches into and out of the loop's
   //   region: we need to treat not-moved blocks and moved blocks differently:
   //   Not-moved blocks jumping to the loop header block need to jump to the
@@ -1609,17 +1699,16 @@ LogicalResult LoopStructurizer::structurizeImpl() {
   //   We cannot use replaceAllUsesWith clearly and it's harder to follow the
   //   logic.
 
-  // Create a corresponding block in the LoopOp's region for each block in
-  // this loop construct.
-  OpBuilder loopBuilder(loopOp.body());
+  // Create a corresponding block in the SelectionOp/LoopOp's region for each
+  // block in this loop construct.
+  OpBuilder builder(body);
   for (auto *block : constructBlocks) {
-    assert(block->getNumArguments() == 0 &&
-           "block in loop construct should not have arguments");
-
-    // Create an block and insert it before the loop merge block in the
-    // LoopOp's region.
-    auto *newBlock = loopBuilder.createBlock(&loopOp.body().back());
+    // Create a block and insert it before the selection/loop merge block in the
+    // SelectionOp/LoopOp's region.
+    auto *newBlock = builder.createBlock(&body.back());
     mapper.map(block, newBlock);
+    LLVM_DEBUG(llvm::dbgs() << "[cf] cloned block " << newBlock
+                            << " from block " << block << "\n");
 
     for (auto &op : *block)
       newBlock->push_back(op.clone(mapper));
@@ -1634,55 +1723,76 @@ LogicalResult LoopStructurizer::structurizeImpl() {
       if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
         succOp.set(mappedOp);
   };
-  for (auto &block : loopOp.body()) {
+  for (auto &block : body) {
     block.walk(remapOperands);
   }
 
-  // We have created the LoopOp and "moved" all blocks belonging to the loop
-  // construct into its region. Next we need to fix the connections between
-  // this new LoopOp with existing blocks.
+  // We have created the SelectionOp/LoopOp and "moved" all blocks belonging to
+  // the selection/loop construct into its region. Next we need to fix the
+  // connections between this new SelectionOp/LoopOp with existing blocks.
 
   // All existing incoming branches should go to the merge block, where the
-  // LoopOp resides right now.
+  // SelectionOp/LoopOp resides right now.
   headerBlock->replaceAllUsesWith(mergeBlock);
 
-  // The loop entry block should have a unconditional branch jumping to the
-  // loop header block.
-  loopBuilder.setInsertionPointToEnd(&loopOp.body().front());
-  loopBuilder.create<spirv::BranchOp>(location,
-                                      mapper.lookupOrNull(headerBlock));
+  if (isLoop) {
+    // The loop entry block should have a unconditional branch jumping to the
+    // loop header block.
+    builder.setInsertionPointToEnd(&body.front());
+    builder.create<spirv::BranchOp>(location, mapper.lookupOrNull(headerBlock));
+  }
 
-  // All the blocks cloned into the LoopOp's region can now be deleted.
+  // All the blocks cloned into the SelectionOp/LoopOp's region can now be
+  // cleaned up.
+  LLVM_DEBUG(llvm::dbgs() << "[cf] cleaning up blocks after clone\n");
+  // First we need to drop all uses on ops inside all blocks. This is needed
+  // because we can have blocks referencing SSA values from one another.
+  for (auto *block : constructBlocks)
+    block->dropAllReferences();
+
+  // Then erase all blocks except the old header block.
   for (auto *block : constructBlocks) {
-    block->clear();
-    block->erase();
+    // The structured selection/loop's entry block does not have arguments.
+    // If the function's header block is also part of the structured control
+    // flow, we cannot just simply erase it because it may contain arguments
+    // matching the function signature and used by the cloned blocks.
+    if (block->isEntryBlock() && isa<FuncOp>(block->getParentOp())) {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] changing entry block " << block
+                              << " to only contain a spv.Branch op\n");
+      // Still keep the function entry block for the potential block arguments,
+      // but replace all ops inside with a branch to the merge block.
+      block->clear();
+      builder.setInsertionPointToEnd(block);
+      builder.create<spirv::BranchOp>(location, mergeBlock);
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] erasing block " << block << "\n");
+      block->erase();
+    }
   }
 
   return success();
 }
 
 LogicalResult Deserializer::structurizeControlFlow() {
-  LLVM_DEBUG(llvm::dbgs() << "[cf] structurizing control flow\n");
+  LLVM_DEBUG(llvm::dbgs() << "[cf] start structurizing control flow\n");
 
   while (!blockMergeInfo.empty()) {
     auto *headerBlock = blockMergeInfo.begin()->first;
-    const auto &mergeInfo = blockMergeInfo.begin()->second;
+    LLVM_DEBUG(llvm::dbgs() << "[cf] header block @ " << headerBlock << "\n");
 
+    const auto &mergeInfo = blockMergeInfo.begin()->second;
     auto *mergeBlock = mergeInfo.mergeBlock;
     auto *continueBlock = mergeInfo.continueBlock;
-    LLVM_DEBUG(llvm::dbgs() << "[cf] header block @ " << headerBlock << "\n");
     assert(mergeBlock && "merge block cannot be nullptr");
     LLVM_DEBUG(llvm::dbgs() << "[cf] merge block @ " << mergeBlock << "\n");
-    if (!continueBlock) {
-      return emitError(unknownLoc, "structurizing selection unimplemented");
+    if (continueBlock) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[cf] continue block @ " << continueBlock << "\n");
     }
-    LLVM_DEBUG(llvm::dbgs()
-               << "[cf] continue block @ " << continueBlock << "\n");
 
-    if (failed(LoopStructurizer::structurize(unknownLoc, headerBlock,
-                                             mergeBlock, continueBlock))) {
+    if (failed(ControlFlowStructurizer::structurize(unknownLoc, headerBlock,
+                                                    mergeBlock, continueBlock)))
       return failure();
-    }
 
     blockMergeInfo.erase(headerBlock);
   }
@@ -1712,6 +1822,9 @@ Value *Deserializer::getValue(uint32_t id) {
         unknownLoc, constOp.default_value().getType(),
         opBuilder.getSymbolRefAttr(constOp.getOperation()));
     return referenceOfOp.reference();
+  }
+  if (auto undef = getUndefType(id)) {
+    return opBuilder.create<spirv::UndefOp>(unknownLoc, undef);
   }
   return valueMap.lookup(id);
 }
@@ -1746,12 +1859,6 @@ Deserializer::sliceInstruction(spirv::Opcode &opcode,
   return success();
 }
 
-Optional<spirv::Opcode> Deserializer::peekOpcode() {
-  if (curOffset >= binary.size())
-    return llvm::None;
-  return extractOpcode(binary[curOffset]);
-}
-
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands,
                                                bool deferInstructions) {
@@ -1761,6 +1868,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   // First dispatch all the instructions whose opcode does not correspond to
   // those that have a direct mirror in the SPIR-V dialect
   switch (opcode) {
+  case spirv::Opcode::OpBitcast:
+    return processBitcast(operands);
   case spirv::Opcode::OpCapability:
     return processCapability(operands);
   case spirv::Opcode::OpExtension:
@@ -1787,6 +1896,14 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     break;
   case spirv::Opcode::OpName:
     return processName(operands);
+  case spirv::Opcode::OpModuleProcessed:
+  case spirv::Opcode::OpString:
+  case spirv::Opcode::OpSource:
+  case spirv::Opcode::OpSourceContinued:
+  case spirv::Opcode::OpSourceExtension:
+    // TODO: This is debug information embedded in the binary which should be
+    // translated into the spv.module.
+    return success();
   case spirv::Opcode::OpTypeVoid:
   case spirv::Opcode::OpTypeBool:
   case spirv::Opcode::OpTypeInt:
@@ -1826,12 +1943,98 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processBranch(operands);
   case spirv::Opcode::OpBranchConditional:
     return processBranchConditional(operands);
+  case spirv::Opcode::OpSelectionMerge:
+    return processSelectionMerge(operands);
   case spirv::Opcode::OpLoopMerge:
     return processLoopMerge(operands);
+  case spirv::Opcode::OpUndef:
+    return processUndef(operands);
   default:
     break;
   }
   return dispatchToAutogenDeserialization(opcode, operands);
+}
+
+LogicalResult Deserializer::processUndef(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpUndef instruction must have two operands");
+  }
+  auto type = getType(operands[0]);
+  if (!type) {
+    return emitError(unknownLoc, "unknown type <id> with OpUndef instruction");
+  }
+  undefMap[operands[1]] = type;
+  return success();
+}
+
+// TODO(b/130356985): This method is copied from the auto-generated
+// deserialization function for OpBitcast instruction. This is to avoid
+// generating a Bitcast operations for cast from signed integer to unsigned
+// integer and viceversa. MLIR doesn't have native support for this so they both
+// end up mapping to the same type right now which is illegal according to
+// OpBitcast semantics (and enforced by the SPIR-V dialect).
+LogicalResult Deserializer::processBitcast(ArrayRef<uint32_t> words) {
+  SmallVector<Type, 1> resultTypes;
+  size_t wordIndex = 0;
+  (void)wordIndex;
+  uint32_t valueID = 0;
+  (void)valueID;
+  {
+    if (wordIndex >= words.size()) {
+      return emitError(
+          unknownLoc,
+          "expected result type <id> while deserializing spirv::BitcastOp");
+    }
+    auto ty = getType(words[wordIndex]);
+    if (!ty) {
+      return emitError(unknownLoc, "unknown type result <id> : ")
+             << words[wordIndex];
+    }
+    resultTypes.push_back(ty);
+    wordIndex++;
+    if (wordIndex >= words.size()) {
+      return emitError(
+          unknownLoc,
+          "expected result <id> while deserializing spirv::BitcastOp");
+    }
+  }
+  valueID = words[wordIndex++];
+  SmallVector<Value *, 4> operands;
+  SmallVector<NamedAttribute, 4> attributes;
+  if (wordIndex < words.size()) {
+    auto arg = getValue(words[wordIndex]);
+    if (!arg) {
+      return emitError(unknownLoc, "unknown result <id> : ")
+             << words[wordIndex];
+    }
+    operands.push_back(arg);
+    wordIndex++;
+  }
+  if (wordIndex != words.size()) {
+    return emitError(unknownLoc,
+                     "found more operands than expected when deserializing "
+                     "spirv::BitcastOp, only ")
+           << wordIndex << " of " << words.size() << " processed";
+  }
+  if (resultTypes[0] == operands[0]->getType() &&
+      resultTypes[0].isa<IntegerType>()) {
+    // TODO(b/130356985): This check is added to ignore error in Op verification
+    // due to both signed and unsigned integers mapping to the same
+    // type. Without this check this method is same as what is auto-generated.
+    valueMap[valueID] = operands[0];
+    return success();
+  }
+
+  auto op = opBuilder.create<spirv::BitcastOp>(unknownLoc, resultTypes,
+                                               operands, attributes);
+  (void)op;
+  valueMap[valueID] = op.getResult();
+
+  if (decorations.count(valueID)) {
+    auto attrs = decorations[valueID].getAttrs();
+    attributes.append(attrs.begin(), attrs.end());
+  }
+  return success();
 }
 
 LogicalResult Deserializer::processExtInst(ArrayRef<uint32_t> operands) {

@@ -319,6 +319,32 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
             b);
     result->params.zero_point =
         flatbuffers::EndianScalar(result->params.zero_point);
+
+    // Populate per-channel quantization params.
+    int channels = src_quantization->scale()->size();
+    TfLiteAffineQuantization* quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            memory_allocator_.AllocateFromTail(sizeof(TfLiteAffineQuantization),
+                                               sizeof(int)));
+    int* zero_point_array =
+        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
+            channels * sizeof(int) + sizeof(int), sizeof(int)));
+    int* scale_array =
+        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
+            channels * sizeof(float) + sizeof(int), sizeof(int)));
+    zero_point_array[0] = channels;
+    scale_array[0] = channels;
+    int* zero_point_data = &zero_point_array[1];
+    float* scale_data = reinterpret_cast<float*>(&scale_array[1]);
+    for (int i = 0; i < channels; i++) {
+      zero_point_data[i] = src_quantization->zero_point()->Get(i);
+      scale_data[i] = src_quantization->scale()->Get(i);
+    }
+    quantization->scale = reinterpret_cast<TfLiteFloatArray*>(scale_array);
+    quantization->zero_point =
+        reinterpret_cast<TfLiteIntArray*>(zero_point_array);
+
+    result->quantization = {kTfLiteAffineQuantization, quantization};
   }
   // Copy the name, if there is one.
   if (flatbuffer_tensor.name()->c_str() != nullptr) {

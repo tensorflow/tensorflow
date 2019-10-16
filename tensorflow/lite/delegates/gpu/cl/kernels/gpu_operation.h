@@ -56,6 +56,7 @@ struct OperationDef {
   CalculationsPrecision precision;
   std::vector<TensorDescriptor> src_tensors;
   std::vector<TensorDescriptor> dst_tensors;
+  bool batch_support = false;
 
   // returns FLOAT32 for F32 precision and FLOAT16 for F16 precision
   DataType GetDataType() const;

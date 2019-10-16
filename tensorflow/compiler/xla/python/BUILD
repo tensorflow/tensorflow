@@ -56,7 +56,6 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -69,6 +68,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
@@ -81,7 +81,6 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -214,6 +213,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -228,7 +228,6 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -247,7 +246,6 @@ pybind_extension(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     module_name = "xla_extension",

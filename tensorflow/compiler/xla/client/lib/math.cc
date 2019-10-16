@@ -340,8 +340,10 @@ XlaOp ErfInv(XlaOp x) {
       -0.00367342844f,  0.00573950773f,  -0.0076224613f,
       0.00943887047f,   1.00167406f,     2.83297682f};
 
-  auto one = ScalarLike(x, 1.0);
-  auto w = -Log((one - x) * (one + x));
+  // Compute logarithm of (1+arg) using log1p(arg) which is more precise than
+  // log(1+arg) when arg is close to zero. For more details, see
+  // https://en.cppreference.com/w/cpp/numeric/math/log1p
+  auto w = -Log1p(-x * x);
 
   auto lt = Lt(w, ScalarLike(x, 5.0));
   auto coefficient = [&](int i) {

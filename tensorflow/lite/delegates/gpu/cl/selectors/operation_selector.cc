@@ -96,11 +96,16 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context, op_def, gpu_op);
+      return SelectFullyConnected(attr, creation_context, op_def,
+                                  inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::HARD_SWISH:
       *gpu_op = HardSwish::Create(op_def);
       return OkStatus();
+    case OperationType::LSTM: {
+      SelectLSTM(op_def, gpu_op);
+      return OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
@@ -149,6 +154,12 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::SOFTMAX: {
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
+      return OkStatus();
+    }
+    case OperationType::TRANSPOSE: {
+      auto attr =
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, gpu_op);
       return OkStatus();
     }
     case OperationType::UPSAMPLE_2D: {

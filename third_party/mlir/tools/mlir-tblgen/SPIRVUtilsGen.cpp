@@ -110,7 +110,7 @@ static void emitAttributeSerialization(const Attribute &attr,
 }
 
 /// Generates code to serialize the operands of a SPV_Op `op` into `os`. The
-/// generated querries the SSA-ID if operand is a SSA-Value, or serializes the
+/// generated queries the SSA-ID if operand is a SSA-Value, or serializes the
 /// attributes. The `operands` vector is updated appropriately. `elidedAttrs`
 /// updated as well to include the serialized attributes.
 static void emitOperandSerialization(const Operator &op, ArrayRef<SMLoc> loc,
@@ -512,10 +512,18 @@ static void finalizeDispatchDeserializationFn(StringRef opcode,
   os << "  default:\n";
   os << "    ;\n";
   os << "  }\n";
-  os << formatv(
-      "  return emitError(unknownLoc, \"unhandled deserialization of \") << "
-      "spirv::stringifyOpcode({0});\n",
-      opcode);
+  StringRef opcodeVar("opcodeString");
+  os << formatv("  auto {0} = spirv::stringifyOpcode({1});\n", opcodeVar,
+                opcode);
+  os << formatv("  if (!{0}.empty()) {{\n", opcodeVar);
+  os << formatv("    return emitError(unknownLoc, \"unhandled deserialization "
+                "of \") << {0};\n",
+                opcodeVar);
+  os << "  } else {\n";
+  os << formatv("   return emitError(unknownLoc, \"unhandled opcode \") << "
+                "static_cast<uint32_t>({0});\n",
+                opcode);
+  os << "  }\n";
   os << "}\n";
 }
 
@@ -598,7 +606,7 @@ static bool emitSerializationFns(const RecordKeeper &recordKeeper,
       serFn(serFnString), deserFn(deserFnString), utils(utilsString);
   auto attrClass = recordKeeper.getClass("Attr");
 
-  // Emit the serialization and deserialization functions simulataneously.
+  // Emit the serialization and deserialization functions simultaneously.
   declareOpcodeFn(utils);
   StringRef opVar("op");
   StringRef opcode("opcode"), words("words");
@@ -799,7 +807,7 @@ static void emitStrToSymFnForBitEnum(const Record &enumDef, raw_ostream &os) {
     // Skip the special enumerant for None.
     if (auto val = enumerant.getValue())
       os.indent(6) << formatv(".Case(\"{0}\", {1})\n", enumerant.getSymbol(),
-                              enumerant.getValue());
+                              val);
   }
   os.indent(6) << ".Default(llvm::None);\n";
 

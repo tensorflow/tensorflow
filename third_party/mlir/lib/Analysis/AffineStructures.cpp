@@ -2220,7 +2220,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         (*ub)[c] = atIneq(minUbPosition, getNumDimIds() + c);
     }
     // The lower bound leads to a ceildiv while the upper bound is a floordiv
-    // whenever the cofficient at pos != 1. ceildiv (val / d) = floordiv (val +
+    // whenever the coefficient at pos != 1. ceildiv (val / d) = floordiv (val +
     // d - 1 / d); hence, the addition of 'atIneq(minLbPosition, pos) - 1' to
     // the constant term for the lower bound.
     (*lb)[getNumSymbolIds()] += atIneq(minLbPosition, pos) - 1;
@@ -2298,7 +2298,7 @@ FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
   return tmpCst.computeConstantLowerOrUpperBound</*isLower=*/false>(pos);
 }
 
-// A simple (naive and conservative) check for hyper-rectangularlity.
+// A simple (naive and conservative) check for hyper-rectangularity.
 bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
                                                unsigned num) const {
   assert(pos < getNumCols() - 1);

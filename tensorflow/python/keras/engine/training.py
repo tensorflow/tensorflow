@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -41,7 +42,6 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
@@ -291,6 +291,22 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
+    # Prepare Session arguments (legacy).
+    kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
+    unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
+    if unknown_kwargs:
+      raise TypeError(
+          'Invalid keyword argument(s) in `compile`: %s' % (unknown_kwargs,))
+    self._function_kwargs = kwargs
+    if self._function_kwargs:
+      self._experimental_run_tf_function = False
+      if self.run_eagerly:
+        raise ValueError(
+            'Session keyword arguments are not supported '
+            'when `run_eagerly=True`. You passed the following '
+            'Session arguments: %s' % (self._function_kwargs,))
+
     self._set_optimizer(optimizer)
     is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                               for opt in nest.flatten(self.optimizer))
@@ -416,8 +432,6 @@ class Model(network.Network):
       # Functions for train, test and predict will
       # be compiled lazily when required.
       # This saves time when the user is not using all functions.
-      self._function_kwargs = kwargs
-
       self.train_function = None
       self.test_function = None
       self.predict_function = None
@@ -534,18 +548,11 @@ class Model(network.Network):
 
     # Experiment training loop with default DS path.
     if context.executing_eagerly() and self._experimental_run_tf_function:
-      try:
-        valid_adapter = data_adapter.select_data_adapter(inputs, None)
-      except ValueError as data_failure_exception:
-        valid_adapter = None
-        logging.warning('Falling back from v2 loop because of error: '
-                        '%s' % data_failure_exception)
-      if valid_adapter:
-        if self._in_multi_worker_mode():
-          return training_distributed.DistributionMultiWorkerTrainingLoop(
-              training_v2.Loop())
-        else:
-          return training_v2.Loop()
+      if self._in_multi_worker_mode():
+        return training_distributed.DistributionMultiWorkerTrainingLoop(
+            training_v2.Loop())
+      else:
+        return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -653,7 +660,7 @@ class Model(network.Network):
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
             For the first two cases, `batch_size` must be provided.
-            For the last case, `validation_steps` must be provided.
+            For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -695,9 +702,13 @@ class Model(network.Network):
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
-            at the end of every epoch. If validation_data is a `tf.data` dataset
-            and 'validation_steps' is None, validation
-            will run until the `validation_data` dataset is exhausted.
+            at the end of every epoch. If 'validation_steps' is None, validation
+            will run until the `validation_data` dataset is exhausted. In the
+            case of a infinite dataset, it will run into a infinite loop.
+            If 'validation_steps' is specified and only part of the dataset
+            will be consumed, the evaluation will start from the beginning of
+            the dataset at each epoch. This ensures that the same validation
+            samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
@@ -800,7 +811,7 @@ class Model(network.Network):
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
-            Do not specify the `batch_size` is your data is in the
+            Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
@@ -894,7 +905,7 @@ class Model(network.Network):
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
-            Do not specify the `batch_size` is your data is in the
+            Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
@@ -2532,7 +2543,19 @@ class Model(network.Network):
       for (a, b) in zip(flat_inputs, flat_expected_inputs):
         converted_x.append(_convert_scipy_sparse_tensor(a, b))
       x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
-      x_shapes = nest.map_structure(type_spec.type_spec_from_value, x)
+
+      def _type_spec_from_value(value):
+        """Grab type_spec without converting array-likes to tensors."""
+        if isinstance(value, composite_tensor.CompositeTensor):
+          return value._type_spec  # pylint: disable=protected-access
+        # Get a TensorSpec for array-like data without
+        # converting the data to a Tensor
+        if hasattr(value, 'shape') and hasattr(value, 'dtype'):
+          return tensor_spec.TensorSpec(value.shape, value.dtype)
+        else:
+          return type_spec.type_spec_from_value(value)
+
+      x_shapes = nest.map_structure(_type_spec_from_value, x)
 
     flat_inputs = nest.flatten(x_shapes, expand_composites=False)
     flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
@@ -2778,6 +2801,10 @@ class Model(network.Network):
       else:
         input_shape = (None,) + tuple(inputs.shape[1:])
       self._build_input_shape = input_shape
+
+    # Cast inputs to the compute dtype. This is primarily used
+    # when saving to determine the correct dtype in the input signature.
+    inputs = self._maybe_cast_inputs(inputs)
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).

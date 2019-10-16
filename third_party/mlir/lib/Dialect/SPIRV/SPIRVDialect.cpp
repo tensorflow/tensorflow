@@ -17,6 +17,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
+#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -49,6 +50,10 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 
   // Allow unknown operations because SPIR-V is extensible.
   allowUnknownOperations();
+}
+
+std::string SPIRVDialect::getAttributeName(Decoration decoration) {
+  return convertToSnakeCase(stringifyDecoration(decoration));
 }
 
 //===----------------------------------------------------------------------===//
@@ -91,7 +96,7 @@ static bool isValidSPIRVIntType(IntegerType type) {
                             type.getWidth());
 }
 
-static bool isValidSPIRVScalarType(Type type) {
+bool SPIRVDialect::isValidScalarType(Type type) {
   if (type.isa<FloatType>()) {
     return !type.isBF16();
   }
@@ -102,7 +107,8 @@ static bool isValidSPIRVScalarType(Type type) {
 }
 
 static bool isValidSPIRVVectorType(VectorType type) {
-  return type.getRank() == 1 && isValidSPIRVScalarType(type.getElementType()) &&
+  return type.getRank() == 1 &&
+         SPIRVDialect::isValidScalarType(type.getElementType()) &&
          type.getNumElements() >= 2 && type.getNumElements() <= 4;
 }
 
@@ -112,7 +118,7 @@ bool SPIRVDialect::isValidType(Type type) {
       type.getKind() <= TypeKind::LAST_SPIRV_TYPE) {
     return true;
   }
-  if (isValidSPIRVScalarType(type)) {
+  if (SPIRVDialect::isValidScalarType(type)) {
     return true;
   }
   if (auto vectorType = type.dyn_cast<VectorType>()) {
@@ -191,6 +197,13 @@ static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
   if (!parseNumberX(spec, count)) {
     emitError(loc, "expected array element count followed by 'x' but found '")
         << spec << "'";
+    return Type();
+  }
+
+  // According to the SPIR-V spec:
+  // "Length is the number of elements in the array. It must be at least 1."
+  if (!count) {
+    emitError(loc, "expected array length greater than 0");
     return Type();
   }
 

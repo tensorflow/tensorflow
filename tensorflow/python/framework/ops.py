@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import re
 import sys
 import threading
@@ -572,6 +571,14 @@ class Tensor(_TensorLike):
     """
     return self.shape.ndims
 
+  def _maybe_constant_shape(self, gen_array_ops):
+    """The shape tuple if fully defined, otherwise op to get shape."""
+
+    shape = self._shape_as_list()
+    if shape is not None and all(x is not None for x in shape):
+      return shape
+    return gen_array_ops.shape(self)
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -862,10 +869,7 @@ class _EagerTensorBase(Tensor):
     return float(self._numpy())
 
   def __index__(self):
-    maybe_arr = self._numpy()
-    if isinstance(maybe_arr, np.ndarray):
-      return maybe_arr.__index__()
-    return int(maybe_arr)  # Must be a NumPy scalar.
+    return self._numpy().__index__()
 
   def __bool__(self):
     return bool(self._numpy())
@@ -892,8 +896,8 @@ class _EagerTensorBase(Tensor):
                                                   self.dtype.name)
 
   def __repr__(self):
-    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+    return "<tf.Tensor: shape=%s, dtype=%s, numpy=%s>" % (
+        self.shape, self.dtype.name, numpy_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""
@@ -968,6 +972,9 @@ class _EagerTensorBase(Tensor):
       tuple with the shape.
     """
     raise NotImplementedError()
+
+  def _maybe_constant_shape(self, _):
+    return self.shape
 
   def _rank(self):
     """Integer rank of this Tensor.
@@ -1136,11 +1143,11 @@ register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor(value,
-                      dtype=None,
-                      name=None,
-                      preferred_dtype=None,
-                      dtype_hint=None):
+def convert_to_tensor_v1(value,
+                         dtype=None,
+                         name=None,
+                         preferred_dtype=None,
+                         dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1245,7 +1252,7 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
-  return internal_convert_to_tensor(
+  return convert_to_tensor(
       value=value,
       dtype=dtype,
       name=name,
@@ -1257,14 +1264,17 @@ def _error_prefix(name):
   return "" if name is None else "%s: " % name
 
 
-def internal_convert_to_tensor(value,
-                               dtype=None,
-                               name=None,
-                               as_ref=False,
-                               preferred_dtype=None,
-                               ctx=None,
-                               accepted_result_types=(Tensor,)):
+def convert_to_tensor(value,
+                      dtype=None,
+                      name=None,
+                      as_ref=False,
+                      preferred_dtype=None,
+                      dtype_hint=None,
+                      ctx=None,
+                      accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
+  # TODO(b/142518781): Fix all call-sites and remove redundant arg
+  preferred_dtype = preferred_dtype or dtype_hint
   if isinstance(value, EagerTensor):
     if ctx is None:
       ctx = context.context()
@@ -1326,6 +1336,9 @@ def internal_convert_to_tensor(value,
                   (_error_prefix(name), value, type(value)))
 
 
+internal_convert_to_tensor = convert_to_tensor
+
+
 def internal_convert_n_to_tensor(values,
                                  dtype=None,
                                  name=None,
@@ -1364,7 +1377,7 @@ def internal_convert_n_to_tensor(values,
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
-        internal_convert_to_tensor(
+        convert_to_tensor(
             value,
             dtype=dtype,
             name=n,
@@ -1459,7 +1472,7 @@ def internal_convert_to_tensor_or_composite(value,
           (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return internal_convert_to_tensor(
+    return convert_to_tensor(
         value,
         dtype=dtype,
         name=name,
@@ -1619,22 +1632,19 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
-  An `Operation` is a node in a TensorFlow `Graph` that takes zero or
-  more `Tensor` objects as input, and produces zero or more `Tensor`
-  objects as output. Objects of type `Operation` are created by
-  calling a Python op constructor (such as
-  `tf.matmul`)
-  or `tf.Graph.create_op`.
+  An `Operation` is a node in a `tf.Graph` that takes zero or more `Tensor`
+  objects as input, and produces zero or more `Tensor` objects as output.
+  Objects of type `Operation` are created by calling a Python op constructor
+  (such as `tf.matmul`) within a `tf.function` or under a `tf.Graph.as_default`
+  context manager.
 
-  For example `c = tf.matmul(a, b)` creates an `Operation` of type
-  "MatMul" that takes tensors `a` and `b` as input, and produces `c`
-  as output.
+  For example, within a `tf.function`, `c = tf.matmul(a, b)` creates an
+  `Operation` of type "MatMul" that takes tensors `a` and `b` as input, and
+  produces `c` as output.
 
-  After the graph has been launched in a session, an `Operation` can
-  be executed by passing it to
-  `tf.Session.run`.
-  `op.run()` is a shortcut for calling
-  `tf.compat.v1.get_default_session().run(op)`.
+  If a `tf.compat.v1.Session` is used, an `Operation` of a `tf.Graph` can be
+  executed by passing it to `tf.Session.run`. `op.run()` is a shortcut for
+  calling `tf.compat.v1.get_default_session().run(op)`.
   """
 
   def __init__(self,
@@ -1757,6 +1767,13 @@ class Operation(object):
     # context managers.
     self._colocation_code_locations = None
     self._control_flow_context = self.graph._get_control_flow_context()
+
+    # Gradient function for this op. There are three ways to specify gradient
+    # function, and first available gradient gets used, in the following order.
+    # 1. self._gradient_function
+    # 2. Gradient name registered by "_gradient_op_type" attribute.
+    # 3. Gradient name registered by op.type.
+    self._gradient_function = None
 
     # Initialize self._c_op.
     if c_op:
@@ -2153,16 +2170,6 @@ class Operation(object):
     return self._inputs_val
 
   @property
-  def _inputs(self):
-    logging.warning("Operation._inputs is private, use Operation.inputs "
-                    "instead. Operation._inputs will eventually be removed.")
-    return self.inputs
-
-  @_inputs.setter
-  def _inputs(self, value):
-    raise ValueError("Cannot assign _inputs")
-
-  @property
   def _input_types(self):
     num_inputs = c_api.TF_OperationNumInputs(self._c_op)
     input_types = [
@@ -2170,10 +2177,6 @@ class Operation(object):
         for i in xrange(num_inputs)
     ]
     return input_types
-
-  @_input_types.setter
-  def _input_types(self, value):
-    raise ValueError("Cannot assign _input_types")
 
   @property
   def control_inputs(self):
@@ -2217,25 +2220,6 @@ class Operation(object):
     # pylint: enable=protected-access
 
   @property
-  def _control_inputs(self):
-    logging.warning("Operation._control_inputs is private, use "
-                    "Operation.control_inputs instead. "
-                    "Operation._control_inputs will eventually be removed.")
-    return self.control_inputs
-
-  @_control_inputs.setter
-  def _control_inputs(self, value):
-    logging.warning("Operation._control_inputs is private, use "
-                    "Operation.control_inputs instead. "
-                    "Operation._control_inputs will eventually be removed.")
-    # Copy value because it may be self._control_inputs_val (in particular if
-    # this is called from self._control_inputs += ...), and we don't want to
-    # clear value below.
-    value = copy.copy(value)
-    self._remove_all_control_inputs()
-    self._add_control_inputs(value)
-
-  @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
     return c_api.TF_OperationOpType(self._c_op)
@@ -2264,12 +2248,6 @@ class Operation(object):
     return node_def
 
   @property
-  def _node_def(self):
-    logging.warning("Operation._node_def is private, use Operation.node_def "
-                    "instead. Operation._node_def will eventually be removed.")
-    return self.node_def
-
-  @property
   def op_def(self):
     # pylint: disable=line-too-long
     """Returns the `OpDef` proto that represents the type of this op.
@@ -2283,12 +2261,6 @@ class Operation(object):
     return self._graph._get_op_def(self.type)
 
   @property
-  def _op_def(self):
-    logging.warning("Operation._op_def is private, use Operation.op_def "
-                    "instead. Operation._op_def will eventually be removed.")
-    return self.op_def
-
-  @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
     return self._traceback
@@ -2298,11 +2270,15 @@ class Operation(object):
     buf = c_api.TF_NewBufferFromString(
         compat.as_bytes(attr_value.SerializeToString()))
     try:
-      # pylint: disable=protected-access
-      c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf)
-      # pylint: enable=protected-access
+      self._set_attr_with_buf(attr_name, buf)
     finally:
       c_api.TF_DeleteBuffer(buf)
+
+  def _set_attr_with_buf(self, attr_name, attr_buf):
+    """Set an attr in the node_def with a pre-allocated buffer."""
+    # pylint: disable=protected-access
+    c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, attr_buf)
+    # pylint: enable=protected-access
 
   def _set_func_attr(self, attr_name, func_name):
     """Private method used to set a function attribute in the node_def."""
@@ -2512,6 +2488,11 @@ def get_gradient_function(op):
   """Returns the function that computes gradients for "op"."""
   if not op.inputs:
     return None
+
+  gradient_function = op._gradient_function  # pylint: disable=protected-access
+  if gradient_function:
+    return gradient_function
+
   try:
     op_type = op.get_attr("_gradient_op_type")
   except ValueError:
@@ -2682,26 +2663,22 @@ _SESSION_RUN_LOCK_GROUP = 1
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
-  A `Graph` contains a set of
-  `tf.Operation` objects,
-  which represent units of computation; and
-  `tf.Tensor` objects, which represent
-  the units of data that flow between operations.
+  Graphs are used by `tf.function`s to represent the function's computations.
+  Each graph contains a set of `tf.Operation` objects, which represent units of
+  computation; and `tf.Tensor` objects, which represent the units of data that
+  flow between operations.
 
-  A default `Graph` is always registered, and accessible by calling
-  `tf.compat.v1.get_default_graph`.
-  To add an operation to the default graph, simply call one of the functions
-  that defines a new `Operation`:
+  ### Using graphs directly (deprecated)
 
-  ```python
-  c = tf.constant(4.0)
-  assert c.graph is tf.compat.v1.get_default_graph()
-  ```
+  A `tf.Graph` can be constructed and used directly without a `tf.function`, as
+  was required in TensorFlow 1, but this is deprecated and it is recommended to
+  use a `tf.function` instead. If a graph is directly used, other deprecated
+  TensorFlow 1 classes are also required to execute the graph, such as a
+  `tf.compat.v1.Session`.
 
-  Another typical usage involves the
-  `tf.Graph.as_default`
-  context manager, which overrides the current default graph for the
-  lifetime of the context:
+  A default graph can be registered with the `tf.Graph.as_default` context
+  manager. Then, operations will be added to the graph instead of being executed
+  eagerly. For example:
 
   ```python
   g = tf.Graph()
@@ -2710,6 +2687,8 @@ class Graph(object):
     c = tf.constant(30.0)
     assert c.graph is g
   ```
+
+  `tf.compat.v1.get_default_graph()` can be used to obtain the default graph.
 
   Important note: This class *is not* thread-safe for graph construction. All
   operations should be created from a single thread, or external
@@ -2774,6 +2753,8 @@ class Graph(object):
     # A map from op type to an alternative op type that should be used when
     # computing gradients.
     self._gradient_override_map = {}
+    # A map from op type to a gradient function that should be used instead.
+    self._gradient_function_map = {}
     # True if the graph is considered "finalized".  In that case no
     # new operations can be added.
     self._finalized = False
@@ -3391,6 +3372,8 @@ class Graph(object):
                    attr_value_pb2.AttrValue(s=compat.as_bytes(kernel_label)))
     except KeyError:
       pass
+
+    op._gradient_function = self._gradient_function_map.get(op.type)  # pylint: disable=protected-access
 
     # Apply the overriding op type for gradients if one has been specified for
     # this op type.
@@ -4734,6 +4717,16 @@ class Graph(object):
           del self._op_to_kernel_label_map[op_type]
 
   # pylint: enable=g-doc-return-or-yield
+
+  @tf_contextlib.contextmanager
+  def _override_gradient_function(self, gradient_function_map):
+    """Specify gradient function for the given op type."""
+
+    # This is an internal API and we don't need nested context for this.
+    assert not self._gradient_function_map
+    self._gradient_function_map = gradient_function_map
+    yield
+    self._gradient_function_map = {}
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager

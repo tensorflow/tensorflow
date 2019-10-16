@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -192,6 +193,8 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     # Invalid tensor index passed.
     with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
+    with self.assertRaisesRegexp(ValueError, 'Invalid node index'):
+      interpreter._get_op_details(4)
 
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
@@ -329,12 +332,14 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def testDestructionOrder(self):
     """Make sure internal _interpreter object is destroyed before delegate."""
+    self.skipTest('TODO(b/142136355): fix flakiness and re-enable')
     # Track which order destructions were doned in
     # TODO(b/137299813): Enable when we fix for mac
     if sys.platform == 'darwin': return
     destructions = []
     def register_destruction(x):
-      destructions.append(x if isinstance(x, str) else x.decode('utf-8'))
+      destructions.append(
+          x if isinstance(x, str) else six.ensure_text(x, 'utf-8'))
       return 0
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)

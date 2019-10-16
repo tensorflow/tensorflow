@@ -1,6 +1,7 @@
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
+    "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
 )
@@ -12,12 +13,20 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+gen_zipped_test_file(
+    name = "zip_conv_edgetpu",
+    file = "conv_edgetpu.zip",
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
 )
 
 [gen_zip_test(
@@ -81,7 +90,18 @@ py_library(
         "//tensorflow/lite/toco",
     ],
     deps = [
-        ":generate_examples_lib",
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "op_tests",
+    srcs = glob(["op_tests/*.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -92,12 +112,21 @@ py_library(
     srcs = ["generate_examples_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":op_tests",
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "zip_test_utils",
+    srcs = ["zip_test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":generate_examples_report",
         ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -252,6 +281,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",

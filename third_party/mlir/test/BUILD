@@ -39,6 +39,7 @@ gentbl(
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
+        "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
 )
 
@@ -54,13 +55,26 @@ cc_library(
     includes = ["lib/TestDialect"],
     deps = [
         ":TestOpsIncGen",
-        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "TestIR",
+    srcs = [
+        "lib/IR/TestSymbolUses.cpp",
+    ],
+    deps = [
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )
@@ -89,6 +103,7 @@ cc_library(
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
+        "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],

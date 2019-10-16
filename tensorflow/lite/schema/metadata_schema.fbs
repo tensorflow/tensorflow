@@ -16,8 +16,8 @@ namespace tflite;
 
 // WARNING: This file contains experimental interface and is subject to change.
 
-// This corresponds to the version.
-file_identifier "TFLM";
+// This corresponds to the schema version.
+file_identifier "M000";
 // File extension of any written files.
 file_extension "tflitemeta";
 
@@ -25,14 +25,21 @@ enum AssociatedFileType : byte {
   UNKNOWN = 0,
   // Files such as readme.txt
   DESCRIPTIONS = 1,
-  // Contains class labels used in classification. For example, the label files
-  // in image classification.
-  LABELS = 2,
+  // Contains labels that annotate certain axis of the tensor. For example,
+  // the label file in image classification. Those labels annotate the
+  // the output tensor, such that each value in the output tensor is the
+  // probability of that corresponding category specified by the label.
+  TENSOR_AXIS_LABELS = 2,
+  // Contains labels that tensor values correspond to. For example, in
+  // the object detection model, one of the output tensors is the detected
+  // classes. And each value in the tensor refers to the index of label in the
+  // category label file.
+  TENSOR_VALUE_LABELS = 3,
   // The vocab files used in NLP.
-  VOCABULARY = 3,
+  VOCABULARY = 4,
   // Files that translate between languages, for example, the language resource
   // file in Android.
-  LOCALIZATION = 4,
+  LOCALIZATION = 5,
 }
 
 table AssociatedFile {
@@ -83,6 +90,35 @@ table ImageProperties {
   default_size:ImageSize;
 }
 
+// Statistics to describe a tensor.
+table Stats {
+  // Mean and std are utilized to automatically normalize tensor via
+  // tflite.support codegen wrapper. Values are normailzed per-channelly by,
+  //   (x - mean) / std.
+  // For example, a float MobileNet model will have
+  //   mean = 127.5f and std = 127.5f.
+  // A quantized MobileNet model will have
+  //   mean = 0.0f and std = 1.0f.
+  // Per-channel mean of the possible values used in normalization.
+  // If there is only one value in mean and std, we'll propogate the value to
+  // all channels.
+  mean:[float];
+
+  // Per-channel standard dev. of the possible values used in normalization.
+  std:[float];
+
+  // Unlike mean and std, max and min are not currently used in tflite.support
+  // codegen. They mainly serve as references for users to better understand the
+  // model. They can also be used to validate model pre/post processing results.
+  // If there is only one value in max and min, we'll propogate the value to
+  // all channels.
+  // Per-channel maximum value of the tensor.
+  max:[float];
+
+  // Per-channel minimum value of the tensor.
+  min:[float];
+}
+
 // Detailed information of an input or output tensor.
 table TensorMetadata {
   // Name of the tensor.
@@ -94,14 +130,8 @@ table TensorMetadata {
   // The type of content that this tensor represents.
   content_type:ContentType;
 
-  // Values are normailzed per-channelly by (x - mean) / std.
-  // If there is only one value in mean and std, we'll propogate the value to
-  // all channels.
-  // Mean of the possible values used in normalization.
-  mean:[float];
-
-  // Standard dev. of the possible values used in normalization.
-  std:[float];
+  // The statistics of the tensor values.
+  stats:Stats;
 
   // Properties that define an image. The section is used when the Content Type
   // is specified as image.
@@ -132,8 +162,8 @@ table ModelMetadata {
   // Name of the model.
   name:string;
 
-  // This is duplicated from the Model description in schema.
-  // description:string;
+  // Model description in schema.
+  description:string;
 
   // Version of the model that specified by model creators.
   version:string;

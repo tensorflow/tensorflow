@@ -305,15 +305,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float unused_min, unused_max;
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-  int8_t* quant_data;
-  int8_t* filter_data;
-  if (filter->type == kTfLiteUInt8) {
-    quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-    filter_data = reinterpret_cast<int8_t*>(filter->data.uint8);
-  } else {
-    quant_data = input_quantized->data.int8;
-    filter_data = filter->data.int8;
-  }
+  int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
+  const int8_t* filter_data = GetTensorData<int8_t>(filter);
 
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {

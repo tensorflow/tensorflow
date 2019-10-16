@@ -26,6 +26,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -51,7 +52,9 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1553,7 +1556,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     Args:
       sensitivity: A scalar value in range `[0, 1]`.
       num_thresholds: (Optional) Defaults to 200. The number of thresholds to
-        use for matching the given specificity.
+        use for matching the given sensitivity.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -1570,7 +1573,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
         self.true_positives, self.true_positives + self.false_negatives)
 
     # Find the index of the threshold where the sensitivity is closest to the
-    # given specificity.
+    # requested value.
     min_index = math_ops.argmin(
         math_ops.abs(sensitivities - self.value), axis=0)
     min_index = math_ops.cast(min_index, dtypes.int32)
@@ -1586,6 +1589,79 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
         'sensitivity': self.sensitivity
     }
     base_config = super(SpecificityAtSensitivity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.metrics.PrecisionAtRecall')
+class PrecisionAtRecall(SensitivitySpecificityBase):
+  """Computes the precision at a given recall.
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  precision at the given recall. The threshold for the given recall
+  value is computed and used to evaluate the corresponding precision.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.PrecisionAtRecall(0.8, num_thresholds=1)
+  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.PrecisionAtRecall()])
+  ```
+  """
+
+  def __init__(self, recall, num_thresholds=200, name=None, dtype=None):
+    """Creates a `PrecisionAtRecall` instance.
+
+    Args:
+      recall: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given recall.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if recall < 0 or recall > 1:
+      raise ValueError('`recall` must be in the range [0, 1].')
+    self.recall = recall
+    self.num_thresholds = num_thresholds
+    super(PrecisionAtRecall, self).__init__(
+        value=recall,
+        num_thresholds=num_thresholds,
+        name=name,
+        dtype=dtype)
+
+  def result(self):
+    # Calculate recall at all the thresholds.
+    recalls = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_negatives)
+
+    # Find the index of the threshold where the recall is closest to the
+    # requested value.
+    min_index = math_ops.argmin(
+        math_ops.abs(recalls - self.value), axis=0)
+    min_index = math_ops.cast(min_index, dtypes.int32)
+
+    # Compute precision at that index.
+    return math_ops.div_no_nan(
+        self.true_positives[min_index],
+        self.true_positives[min_index] + self.false_positives[min_index])
+
+  def get_config(self):
+    config = {'num_thresholds': self.num_thresholds, 'recall': self.recall}
+    base_config = super(PrecisionAtRecall, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
@@ -1646,7 +1722,9 @@ class AUC(Metric):
                summation_method='interpolation',
                name=None,
                dtype=None,
-               thresholds=None):
+               thresholds=None,
+               multi_label=False,
+               label_weights=None):
     """Creates an `AUC` instance.
 
     Args:
@@ -1669,6 +1747,23 @@ class AUC(Metric):
         equal to {-epsilon, 1+epsilon} for a small positive epsilon value will
         be automatically included with these to correctly handle predictions
         equal to exactly 0 or 1.
+      multi_label: boolean indicating whether multilabel data should be
+        treated as such, wherein AUC is computed separately for each label and
+        then averaged across labels, or (when False) if the data should be
+        flattened into a single label before AUC computation. In the latter
+        case, when multilabel data is passed to AUC, each label-prediction pair
+        is treated as an individual data point. Should be set to False for
+        multi-class data.
+      label_weights: (optional) list, array, or tensor of non-negative weights
+        used to compute AUCs for multilabel data. When `multi_label` is True,
+        the weights are applied to the individual label AUCs when they are
+        averaged to produce the multi-label AUC. When it's False, they are used
+        to weight the individual label predictions in computing the confusion
+        matrix on the flattened data. Note that this is unlike class_weights in
+        that class_weights weights the example depending on the value of its
+        label, whereas label_weights depends only on the index of that label
+        before flattening; therefore `label_weights` should not be used for
+        multi-class data.
     """
     # Validate configurations.
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
@@ -1713,23 +1808,56 @@ class AUC(Metric):
           summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
+    # Handle multilable arguments.
+    self.multi_label = multi_label
+    if label_weights is not None:
+      label_weights = constant_op.constant(label_weights, dtype=self.dtype)
+      checks = [
+          check_ops.assert_non_negative(
+              label_weights,
+              message='All values of `label_weights` must be non-negative.')
+      ]
+      self.label_weights = control_flow_ops.with_dependencies(
+          checks, label_weights)
+
+    else:
+      self.label_weights = None
+
+    self._built = False
+
+  def _build(self, shape):
+    """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
+    if self.multi_label:
+      if shape.ndims != 2:
+        raise ValueError('`y_true` must have rank=2 when `multi_label` is '
+                         'True. Found rank %s.' % shape.ndims)
+      variable_shape = tensor_shape.TensorShape(
+          [tensor_shape.Dimension(self.num_thresholds), shape[1]])
+    else:
+      variable_shape = tensor_shape.TensorShape(
+          [tensor_shape.Dimension(self.num_thresholds)])
+
     # Create metric variables
     self.true_positives = self.add_weight(
         'true_positives',
-        shape=(self.num_thresholds,),
+        shape=variable_shape,
         initializer=init_ops.zeros_initializer)
     self.true_negatives = self.add_weight(
         'true_negatives',
-        shape=(self.num_thresholds,),
+        shape=variable_shape,
         initializer=init_ops.zeros_initializer)
     self.false_positives = self.add_weight(
         'false_positives',
-        shape=(self.num_thresholds,),
+        shape=variable_shape,
         initializer=init_ops.zeros_initializer)
     self.false_negatives = self.add_weight(
         'false_negatives',
-        shape=(self.num_thresholds,),
+        shape=variable_shape,
         initializer=init_ops.zeros_initializer)
+    with ops.init_scope():
+      if not context.executing_eagerly():
+        K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+    self._built = True
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1744,12 +1872,52 @@ class AUC(Metric):
     Returns:
       Update op.
     """
-    return metrics_utils.update_confusion_matrix_variables({
-        metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.true_positives,
-        metrics_utils.ConfusionMatrix.TRUE_NEGATIVES: self.true_negatives,
-        metrics_utils.ConfusionMatrix.FALSE_POSITIVES: self.false_positives,
-        metrics_utils.ConfusionMatrix.FALSE_NEGATIVES: self.false_negatives,
-    }, y_true, y_pred, self.thresholds, sample_weight=sample_weight)
+    deps = []
+    if not self._built:
+      self._build(y_true.shape)
+
+    if self.multi_label or (self.label_weights is not None):
+      # y_true should have shape (number of examples, number of labels).
+      shapes = [
+          (y_true, ('N', 'L'))
+      ]
+      if self.multi_label:
+        # TP, TN, FP, and FN should all have shape
+        # (number of thresholds, number of labels).
+        shapes.extend([(self.true_positives, ('T', 'L')),
+                       (self.true_negatives, ('T', 'L')),
+                       (self.false_positives, ('T', 'L')),
+                       (self.false_negatives, ('T', 'L'))])
+      if self.label_weights is not None:
+        # label_weights should be of lenght equal to the number of labels.
+        shapes.append((self.label_weights, ('L',)))
+      deps = [
+          check_ops.assert_shapes(
+              shapes, message='Number of labels is not consistent.')
+      ]
+
+    # Only forward label_weights to update_confusion_matrix_variables when
+    # multi_label is False. Otherwise the averaging of individual label AUCs is
+    # handled in AUC.result
+    label_weights = None if self.multi_label else self.label_weights
+    with ops.control_dependencies(deps):
+      return metrics_utils.update_confusion_matrix_variables(
+          {
+              metrics_utils.ConfusionMatrix.TRUE_POSITIVES:
+                  self.true_positives,
+              metrics_utils.ConfusionMatrix.TRUE_NEGATIVES:
+                  self.true_negatives,
+              metrics_utils.ConfusionMatrix.FALSE_POSITIVES:
+                  self.false_positives,
+              metrics_utils.ConfusionMatrix.FALSE_NEGATIVES:
+                  self.false_negatives,
+          },
+          y_true,
+          y_pred,
+          self.thresholds,
+          sample_weight=sample_weight,
+          multi_label=self.multi_label,
+          label_weights=label_weights)
 
   def interpolate_pr_auc(self):
     """Interpolation formula inspired by section 4 of Davis & Goadrich 2006.
@@ -1851,15 +2019,36 @@ class AUC(Metric):
       heights = math_ops.maximum(y[:self.num_thresholds - 1], y[1:])
 
     # Sum up the areas of all the rectangles.
-    return math_ops.reduce_sum(
-        math_ops.multiply(x[:self.num_thresholds - 1] - x[1:], heights),
-        name=self.name)
+    if self.multi_label:
+      riemann_terms = math_ops.multiply(x[:self.num_thresholds - 1] - x[1:],
+                                        heights)
+      by_label_auc = math_ops.reduce_sum(
+          riemann_terms, name=self.name + '_by_label', axis=0)
+
+      if self.label_weights is None:
+        # Unweighted average of the label AUCs.
+        return math_ops.reduce_mean(by_label_auc, name=self.name)
+      else:
+        # Weighted average of the label AUCs.
+        return math_ops.div_no_nan(
+            math_ops.reduce_sum(
+                math_ops.multiply(by_label_auc, self.label_weights)),
+            math_ops.reduce_sum(self.label_weights),
+            name=self.name)
+    else:
+      return math_ops.reduce_sum(
+          math_ops.multiply(x[:self.num_thresholds - 1] - x[1:], heights),
+          name=self.name)
 
   def reset_states(self):
     K.batch_set_value(
         [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
 
   def get_config(self):
+    if is_tensor_or_variable(self.label_weights):
+      label_weights = K.eval(self.label_weights)
+    else:
+      label_weights = self.label_weights
     config = {
         'num_thresholds': self.num_thresholds,
         'curve': self.curve.value,
@@ -1868,6 +2057,8 @@ class AUC(Metric):
         # were initialized. This ensures that a metric initialized from this
         # config has the same thresholds.
         'thresholds': self.thresholds[1:-1],
+        'multi_label': self.multi_label,
+        'label_weights': label_weights
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

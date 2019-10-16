@@ -636,6 +636,7 @@ struct KernelRecord {
   CUevent start_event;
   CUevent stop_event;
   KernelDetails details;
+  uint64 start_timestamp;
 };
 
 struct MemcpyRecord {
@@ -646,6 +647,7 @@ struct MemcpyRecord {
   uint32 correlation_id;
   CUevent start_event;
   CUevent stop_event;
+  uint64 start_timestamp;
 };
 
 Status CreateAndRecordEvent(CUevent *event, CUstream stream) {
@@ -688,17 +690,19 @@ class CudaEventRecorder {
     record.details.grid_x = params->gridDimX;
     record.details.grid_y = params->gridDimY;
     record.details.grid_z = params->gridDimZ;
+    record.start_timestamp = CuptiTracer::GetTimestamp();
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     absl::MutexLock lock(&mutex_);
     if (stopped_) return -1;
     kernel_records_.push_back(record);
     return kernel_records_.size() - 1;
   }
-  void StopKernel(size_t index) {
+  uint64 StopKernel(size_t index) {
     absl::MutexLock lock(&mutex_);
-    if (index >= kernel_records_.size()) return;
+    if (index >= kernel_records_.size()) return 0;
     auto &record = kernel_records_[index];
     LogIfError(CreateAndRecordEvent(&record.stop_event, record.stream));
+    return record.start_timestamp;
   }
 
   // Registers the start of a copy operation. The returned index should be
@@ -707,17 +711,19 @@ class CudaEventRecorder {
                      CUcontext context, CUstream stream,
                      uint32 correlation_id) {
     MemcpyRecord record = {type, size_bytes, context, stream, correlation_id};
+    record.start_timestamp = CuptiTracer::GetTimestamp();
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     absl::MutexLock lock(&mutex_);
     if (stopped_) return -1;
     memcpy_records_.push_back(record);
     return memcpy_records_.size() - 1;
   }
-  void StopMemcpy(size_t index) {
+  uint64 StopMemcpy(size_t index) {
     absl::MutexLock lock(&mutex_);
-    if (index >= memcpy_records_.size()) return;
+    if (index >= memcpy_records_.size()) return 0;
     auto &record = memcpy_records_[index];
     LogIfError(CreateAndRecordEvent(&record.stop_event, record.stream));
+    return record.start_timestamp;
   }
 
   Status Stop() {
@@ -805,7 +811,8 @@ class CudaEventRecorder {
 
     if (it == context_infos_.end()) {
       uint32 context_id = 0;
-      RETURN_IF_CUPTI_ERROR(cuptiGetContextId(context, &context_id));
+      RETURN_IF_CUPTI_ERROR(
+          cupti_interface_->GetContextId(context, &context_id));
       ContextInfo ctx_info = {context_id};
       it = context_infos_.emplace(context, ctx_info).first;
     }
@@ -831,7 +838,14 @@ class CudaEventRecorder {
     TF_RETURN_IF_ERROR(GetContextInfo(context, &ctx_info));
     int index = stream ? ++ctx_info->num_streams : 0;
     uint32 stream_id = 0;
-    RETURN_IF_CUPTI_ERROR(cuptiGetStreamId(context, stream, &stream_id));
+#if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM)
+    RETURN_IF_CUPTI_ERROR(
+        cupti_interface_->GetStreamIdEx(context, stream, 1, &stream_id));
+#else
+    RETURN_IF_CUPTI_ERROR(
+        cupti_interface_->GetStreamIdEx(context, stream, 0, &stream_id));
+#endif
+
     StreamInfo stream_info = {stream_id, static_cast<std::string>(name), index,
                               ctx_info};
     stream_infos_.emplace(key, stream_info);
@@ -1008,9 +1022,10 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     auto *recorder = cuda_event_recorders_[device_id].get();
     if (*cbdata->correlationData == static_cast<size_t>(-1))
       return Status::OK();
+    uint64 start_tsc = 0;
     switch (cbid) {
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
-        recorder->StopKernel(*cbdata->correlationData);
+        start_tsc = recorder->StopKernel(*cbdata->correlationData);
         break;
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpy:
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync:
@@ -1020,11 +1035,12 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2:
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2:
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:
-        recorder->StopMemcpy(*cbdata->correlationData);
+        start_tsc = recorder->StopMemcpy(*cbdata->correlationData);
         break;
       default:
         VLOG(1) << "Unexpected callback id: " << cbid;
-        break;
+        // TODO: figure out how to get start timestamp in this case.
+        return Status::OK();
     }
     // If we are not collecting CPU events from Callback API, we can return now.
     if (!option_.required_callback_api_events) {
@@ -1033,11 +1049,8 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
 
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
     uint64 end_tsc = CuptiTracer::GetTimestamp();
-    uint64 start_tsc = *cbdata->correlationData;
     return AddDriverApiCallbackEvent(collector_, cupti_interface_, device_id,
                                      start_tsc, end_tsc, domain, cbid, cbdata);
-
-    return Status::OK();
   }
   Status Flush() override {
     for (auto &recorder : cuda_event_recorders_) {

@@ -41,7 +41,8 @@ from tensorflow.python.util import tf_contextlib
 
 # The list of DataAdapter that support validation_split, only numpy and data
 # tensor support validation_split for now.
-_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
+_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter,
+                                 data_adapter.GenericArrayLikeDataAdapter]
 
 # The list of DataAdapter that support model._standardize_user_data. Currently
 # keras.sequence/python generator will cause error when calling
@@ -49,7 +50,9 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
-    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter,
+    data_adapter.TensorLikeDataAdapter,
+    data_adapter.GenericArrayLikeDataAdapter,
+    data_adapter.DatasetAdapter,
     data_adapter.CompositeTensorDataAdapter
 ]
 
@@ -133,8 +136,9 @@ def run_one_epoch(model,
           # Now we know the cardinality of the input(dataset or generator).
           steps_per_epoch = step
           aggregator.steps = steps_per_epoch
-          progbar.params['steps'] = steps_per_epoch
-          progbar.progbar.target = steps_per_epoch
+          if mode == ModeKeys.TRAIN:
+            progbar.params['steps'] = steps_per_epoch
+            progbar.progbar.target = steps_per_epoch
         else:
           callbacks.model.stop_training = True
           logging.warning(
@@ -332,6 +336,13 @@ class Loop(training_utils.TrainingLoop):
                 total_epochs=epochs)
             cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
 
+            # In the case of steps_per_epoch = None, the final cardinality will
+            # be determined when the inputs are fully consumed (eg dataset or
+            # generator). Update the steps_per_epoch to the new value.
+            if (steps_per_epoch is None
+                and training_context.progbar.progbar.target is not None):
+              steps_per_epoch = training_context.progbar.progbar.target
+
             # Evaluation
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
@@ -378,6 +389,9 @@ class Loop(training_utils.TrainingLoop):
                       total_epochs=1)
                   cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TEST,
                                  prefix='val_')
+                if (validation_steps is None
+                    and eval_context.progbar.progbar.target is not None):
+                  validation_steps = eval_context.progbar.progbar.target
 
     return model.history
 

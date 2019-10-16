@@ -1703,7 +1703,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
       # Multiple assertion could fail, but the evaluation order is arbitrary.
       # Match gainst generic pattern.
@@ -2042,7 +2042,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -2055,7 +2055,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1
@@ -3726,7 +3726,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -3737,7 +3737,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1
@@ -3983,6 +3983,15 @@ class JpegTest(test_util.TensorFlowTestCase):
           image, jpeg_quality)
       with self.cached_session(use_gpu=True) as sess:
         sess.run(adjust_jpeg_quality_image)
+
+  @test_util.run_deprecated_v1
+  def testAdjustJpegQualityShape(self):
+    with self.cached_session(use_gpu=True):
+      image = constant_op.constant(
+          np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
+      adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
+      self.assertListEqual(adjusted_image.shape.as_list(),
+                           [None, None, 3])
 
 
 class PngTest(test_util.TensorFlowTestCase):

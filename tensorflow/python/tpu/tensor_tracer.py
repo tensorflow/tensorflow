@@ -43,6 +43,7 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import analytics
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
@@ -1302,9 +1303,12 @@ class TensorTracer(object):
         return math_ops.cast(tensor, dtypes.float32)
       return tensor
 
-    TensorTracer.check_device_type(self._tt_config.device_type)
-    TensorTracer.check_trace_mode(self._tt_config.device_type,
-                                  self._parameters.trace_mode)
+    trace_mode = self._parameters.trace_mode
+    device_type = self._tt_config.device_type
+
+    analytics.track_usage('tensor_tracer', [trace_mode, device_type])
+    TensorTracer.check_device_type(device_type)
+    TensorTracer.check_trace_mode(device_type, trace_mode)
     # Check in_tensor_fetches, and op_fetches and convert them to lists.
     processed_t_fetches = self._process_tensor_fetches(tensor_fetches)
     op_fetches = self._process_op_fetches(op_fetches)
@@ -1468,7 +1472,6 @@ class TensorTracer(object):
       RuntimeError: If num_replicas_per_host > 8.
       RuntimeError: If tensor_fetches is None or empty.
     """
-
     if graph in TensorTracer._traced_graphs:
       logging.warning('Graph is already rewritten with tensor tracer, ignoring '
                       'multiple calls.')

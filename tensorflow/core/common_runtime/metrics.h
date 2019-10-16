@@ -37,6 +37,13 @@ void RecordTFDataBytesRead(const string& name, int64 num_bytes);
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 void RecordTFDataElements(const string& name, int64 num_elements);
 
+// Records the number of times each tf.data fingerprint is used
+// to measure duplicate pre-processing.
+//
+// The `name` argument identifies the Dataset graph fingerprint,
+// created using GraphHash().
+void RecordTFDataFingerprint(const string& name);
+
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
@@ -75,6 +82,9 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+
+// Increment the number of jobs that failed during import to mlir.
+void IncrementMLIRImportFailureCount();
 
 }  // namespace metrics
 }  // namespace tensorflow

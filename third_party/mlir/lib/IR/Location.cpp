@@ -123,3 +123,24 @@ Identifier NameLoc::getName() const { return getImpl()->name; }
 
 /// Return the child location.
 Location NameLoc::getChildLoc() const { return getImpl()->child; }
+
+//===----------------------------------------------------------------------===//
+// OpaqueLoc
+//===----------------------------------------------------------------------===//
+
+Location OpaqueLoc::get(uintptr_t underlyingLocation, ClassID *classID,
+                        Location fallbackLocation) {
+  return Base::get(fallbackLocation->getContext(),
+                   StandardAttributes::OpaqueLocation, underlyingLocation,
+                   classID, fallbackLocation);
+}
+
+uintptr_t OpaqueLoc::getUnderlyingLocation() const {
+  return Base::getImpl()->underlyingLocation;
+}
+
+ClassID *OpaqueLoc::getClassId() const { return getImpl()->classId; }
+
+Location OpaqueLoc::getFallbackLocation() const {
+  return Base::getImpl()->fallbackLocation;
+}

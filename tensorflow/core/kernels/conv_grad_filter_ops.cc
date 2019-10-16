@@ -614,12 +614,14 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                        \
                               .Device(DEVICE_CPU)                             \
                               .Label("custom")                                \
-                              .TypeConstraint<T>("T"),                        \
+                              .TypeConstraint<T>("T")                         \
+                              .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DCustomBackpropFilterOp<CPUDevice, T>);        \
   REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                        \
                               .Device(DEVICE_CPU)                             \
                               .Label("eigen_tensor")                          \
-                              .TypeConstraint<T>("T"),                        \
+                              .TypeConstraint<T>("T")                         \
+                              .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);

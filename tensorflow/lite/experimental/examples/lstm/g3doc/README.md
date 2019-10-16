@@ -316,7 +316,7 @@ def run_main(_):
       '--use_post_training_quantize',
       action='store_true',
       default=True,
-      help='Whether or not to use post_training_quatize.')
+      help='Whether or not to use post_training_quantize.')
   parsed_flags, _ = parser.parse_known_args()
   train_and_export(parsed_flags)
 

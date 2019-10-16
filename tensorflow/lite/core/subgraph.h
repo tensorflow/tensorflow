@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -284,12 +285,12 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(Profiler* profiler) {
-    profiler_ = profiler;
-    context_.profiler = profiler;
+  void SetProfiler(std::unique_ptr<Profiler> profiler) {
+    profiler_ = std::move(profiler);
+    context_.profiler = profiler_.get();
   }
 
-  Profiler* GetProfiler() { return profiler_; }
+  Profiler* GetProfiler() { return profiler_.get(); }
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
@@ -527,6 +528,14 @@ class Subgraph {
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_execution_plan_index_to_prepare_;
 
+  // This is similar to `next_execution_plan_index_to_prepare_`, but it tracks
+  // which nodes' allocation is planned with the arena planner.
+  //
+  // This is a workaround for b/127354079. It shouldn't be necessary if
+  // ArenaPlanner can "rewind" to a specific point.
+  // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
+  int next_execution_plan_index_to_plan_allocation_;
+
   // WARNING: This is an experimental interface that is subject to change.
   // This is a list of node indices (to index into nodes_and_registration).
   // This represents a valid topological sort (dependency ordered) execution
@@ -561,7 +570,7 @@ class Subgraph {
   bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
-  Profiler* profiler_ = nullptr;
+  std::unique_ptr<Profiler> profiler_;
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;

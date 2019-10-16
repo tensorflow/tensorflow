@@ -1394,7 +1394,7 @@ def batch_normalization(x,
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
       others which are being normalized over.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      `tf.nn.moments(..., keepdims=True)` during training, or running averages
       thereof during inference.
     * In the common case where the 'depth' dimension is the last dimension in
       the input tensor `x`, they may be one dimensional tensors of the same
@@ -1403,10 +1403,11 @@ def batch_normalization(x,
       fully-connected layers, and `[batch, height, width, depth]` for
       convolutions.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  See equation 11 in Algorithm 2 of source: 
+  [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
 
@@ -1422,7 +1423,7 @@ def batch_normalization(x,
     name: A name for this operation (optional).
 
   Returns:
-    the normalized, scaled, offset tensor.
+    Normalized, scaled, offset tensor.
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)

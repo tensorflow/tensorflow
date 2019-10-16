@@ -188,7 +188,7 @@ class IntegerValueSet {
   /// Returns true if this integer set is determined to be empty. Emptiness is
   /// checked by by eliminating identifiers successively (through either
   /// Gaussian or Fourier-Motzkin) while using the GCD test and a trivial
-  /// invalid constraint check. Returns 'true' if the constaint system is found
+  /// invalid constraint check. Returns 'true' if the constraint system is found
   /// to be empty; false otherwise. This method is exact for rational spaces but
   /// not integer spaces - thus, if it returns true, the set is provably integer
   /// empty as well, but if it returns false, it doesn't necessarily mean an

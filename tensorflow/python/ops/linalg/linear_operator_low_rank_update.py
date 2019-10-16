@@ -333,6 +333,9 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     batch_shape = array_ops.broadcast_dynamic_shape(
         self.base_operator.batch_shape_tensor(),
         array_ops.shape(self.u)[:-2])
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        batch_shape,
+        array_ops.shape(self.v)[:-2])
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 

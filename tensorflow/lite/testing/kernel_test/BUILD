@@ -38,9 +38,6 @@ tf_cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":util",
         "//tensorflow/lite/testing:tflite_driver",
@@ -86,9 +83,6 @@ cc_test(
     data = [
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":input_generator",

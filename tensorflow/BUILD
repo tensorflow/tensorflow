@@ -417,6 +417,7 @@ config_setting(
 config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
+    visibility = ["//visibility:public"],
 )
 
 # This flag is defined for select statements that match both

@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
     ],
 )
@@ -71,12 +72,15 @@ cc_library(
     hdrs = ["remote_execute_node.h"],
     deps = [
         ":eager_client",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:shape_inference",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -132,12 +136,13 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

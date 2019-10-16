@@ -21,7 +21,16 @@ cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     copts = ruy_copts_base(),
-    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
+)
+
+cc_test(
+    name = "check_macros_test",
+    srcs = ["check_macros_test.cc"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":check_macros",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(

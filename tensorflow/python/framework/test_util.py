@@ -1212,7 +1212,7 @@ def deprecated_graph_mode_only(func=None):
       return f
 
     def decorated(self, *args, **kwargs):
-      if tf2.enabled():
+      if context.executing_eagerly():
         with context.graph_mode():
           return f(self, *args, **kwargs)
       else:
@@ -2046,7 +2046,8 @@ class TensorFlowTestCase(googletest.TestCase):
     the CPU.
 
     Example:
-    ```python
+
+    ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
         with self.session(use_gpu=True):

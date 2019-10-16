@@ -257,7 +257,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   # spectra.
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
@@ -541,7 +541,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,

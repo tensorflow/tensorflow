@@ -15,7 +15,6 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
-        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -62,6 +61,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":add_test_lib"],
@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 
@@ -98,6 +99,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":concat_test_lib"],
@@ -136,6 +138,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":conv_test_lib"],
@@ -188,6 +191,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":depthwise_conv_test_lib"],
@@ -227,6 +231,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":elementwise_test_lib"],
@@ -266,21 +271,10 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":fully_connected_test_lib"],
-)
-
-cc_library(
-    name = "hard_swish",
-    srcs = ["hard_swish.cc"],
-    hdrs = ["hard_swish.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-    ],
 )
 
 cc_library(
@@ -294,6 +288,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -315,6 +310,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":max_unpooling_test_lib"],
@@ -354,6 +350,7 @@ ios_unit_test(
     minimum_os_version = "9.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":mul_test_lib"],
@@ -370,6 +367,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -391,6 +389,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":padding_test_lib"],
@@ -408,6 +407,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -429,6 +429,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":pooling_test_lib"],
@@ -439,6 +440,7 @@ cc_library(
     srcs = ["prelu.cc"],
     hdrs = ["prelu.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -467,6 +469,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":prelu_test_lib"],
@@ -483,6 +486,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -504,6 +508,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":relu_test_lib"],
@@ -521,6 +526,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -542,6 +548,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":reshape_test_lib"],
@@ -558,6 +565,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -579,6 +587,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":slice_test_lib"],
@@ -617,6 +626,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":softmax_test_lib"],
@@ -656,6 +666,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":transpose_conv_test_lib"],
@@ -672,6 +683,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -693,6 +705,7 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":upsample_test_lib"],

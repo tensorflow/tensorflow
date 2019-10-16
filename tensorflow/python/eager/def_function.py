@@ -28,6 +28,7 @@ from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -63,12 +64,10 @@ class _CallCounter(object):
         break
 
   def called_without_tracing(self):
-    # TODO(kkimlabs): This is an unnecessary defensive check. Since this is last
-    # minute CL before 2.0 release, I've decided to be very defensive here to
-    # avoid a potential crash. Remove once we release 2.0.
+    # We don't count tracing when users load a concrete function dicretly or
+    # call get_concrete_function, so the first call can be not a tracing call.
     if not self._calls_per_tracings:
-      return
-
+      self._calls_per_tracings = [0]
     self._calls_per_tracings[-1] += 1
     self.call_count += 1
 
@@ -246,6 +245,11 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Note: this cond is always guaranteed to run because we're inside a
         # defun which will insert automatic control dependencies. It will only
         # execute assign_fn if lifting failed.
+        graph = ops.get_default_graph()
+
+        # Capture the handle ahead of time in order to avoid querying the shape
+        # of the handle which helps async execution performance
+        graph.capture(self._handle, shape=())
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
@@ -285,10 +289,11 @@ def run_functions_eagerly(run_eagerly):
   >>>
   >>> tf.config.experimental_run_functions_eagerly(True)
   >>> sqrt(tf.constant(2.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.4150391>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
   >>> ys
   [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
   1.4150391]
+  >>> tf.config.experimental_run_functions_eagerly(False)
 
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
@@ -298,6 +303,12 @@ def run_functions_eagerly(run_eagerly):
   """
   global RUN_FUNCTIONS_EAGERLY
   RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
+
+
+@tf_export("config.experimental_functions_run_eagerly")
+def functions_run_eagerly():
+  """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return RUN_FUNCTIONS_EAGERLY
 
 
 class FunctionDeleter(object):
@@ -401,6 +412,7 @@ class Function(object):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
+    self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
 
   def _defun_with_scope(self, scope):
@@ -493,6 +505,18 @@ class Function(object):
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
+  def _clone(self, python_function):
+    return Function(
+        python_function=(self._python_function
+                         if python_function is None else python_function),
+        name=self._name,
+        input_signature=self._input_signature,
+        autograph=self._autograph,
+        experimental_implements=self._implements,
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_compile=self._experimental_compile)
+
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.
 
@@ -531,7 +555,18 @@ class Function(object):
       return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    result = self._call(*args, **kwds)
+    if self._experimental_compile:
+      # V2 control flow relies on XLAControlFlowContext to generate a
+      # XLA-compatible function graph.
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      try:
+        xla_context.Enter()
+        result = self._call(*args, **kwds)
+      finally:
+        xla_context.Exit()
+    else:
+      result = self._call(*args, **kwds)
+
     if tracing_count == self._get_tracing_count():
       self._call_counter.called_without_tracing()
       return result
@@ -545,7 +580,7 @@ class Function(object):
           "due to passing python objects instead of tensors. Also, tf.function "
           "has experimental_relax_shapes=True option that relaxes argument "
           "shapes that can avoid unnecessary retracing. Please refer to "
-          "https://www.tensorflow.org/beta/tutorials/eager/tf_function#python_or_tensor_args"
+          "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
           " and https://www.tensorflow.org/api_docs/python/tf/function for more "
           "details.".format(recent_tracing_count, self._call_counter.call_count,
                             self._python_function))
@@ -639,9 +674,9 @@ class Function(object):
               "def f():\n"
               "  return v\n"
               "\n"
-              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "f()  # <tf.Tensor: numpy=1.>\n"
               "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: ... numpy=2.>")
+              "f()  # <tf.Tensor: numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))
@@ -676,18 +711,31 @@ class Function(object):
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
+    if not initializers:
+      return
+
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      for v, init in initializers:
+      # Stack all the var_is_initialized values into one tensor and intepret the
+      # numpy value. This will reduce the number of RPCs between client and
+      # worker in the remote case.
+      with ops.init_scope():
+        var_is_initialized = []
+        for v, _ in initializers:
+          var_is_initialized.append(
+              resource_variable_ops.var_is_initialized_op(v.handle))
+        var_is_initialized = array_ops.stack(var_is_initialized).numpy()
+
+      for (v, init), is_initialized in zip(initializers, var_is_initialized):
         with ops.init_scope():
-          if resource_variable_ops.var_is_initialized_op(v.handle):
-            # Ignore variables which are already initialized at trace time.
+          if is_initialized:
             continue
+
         op_map = lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph(), op_map=op_map)
-        v.assign(op_map[init])
+        v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -728,8 +776,9 @@ class Function(object):
     @function_lib.defun
     def initialize_variables():
       for v, init in initializers:
-        v.assign(lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph())[init])
+        v.assign(
+            lift_to_graph.lift_to_graph([init], ops.get_default_graph())[init],
+            read_value=False)
 
     return initialize_variables.get_concrete_function()
 
@@ -1078,7 +1127,7 @@ def function(func=None,
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
-      https://www.tensorflow.org/beta/guide/autograph).
+      https://www.tensorflow.org/guide/function).
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,

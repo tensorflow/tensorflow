@@ -39,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -436,6 +437,26 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "value": [k for k in range(i, i + 8)]
     } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testRaggedTensorDataset(self):
+    # Set up a dataset that produces ragged tensors with a static batch size.
+    row_lengths = np.random.randint(8, size=128)
+    values = np.random.normal(size=np.sum(row_lengths)).astype(np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ragged_tensor.RaggedTensor.from_row_lengths(values, row_lengths))
+    dataset = dataset.batch(32, drop_remainder=True)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=8)
+    # After rebatching, batch size is now 4.
+    expected_output = []
+    value_index = 0
+    for batch_row_lengths in row_lengths.reshape((-1, 4)):
+      num_values = np.sum(batch_row_lengths)
+      expected_output.append(
+          ragged_tensor.RaggedTensor.from_row_lengths(
+              values[value_index:(value_index + num_values)],
+              batch_row_lengths))
+      value_index += num_values
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":

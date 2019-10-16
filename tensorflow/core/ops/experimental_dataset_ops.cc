@@ -589,6 +589,9 @@ REGISTER_OP("ParseExampleDataset")
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
     .Attr("sloppy: bool = false")
+    .Attr("ragged_keys: list(string) >= 0 = []")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalParseExampleDataset")

@@ -85,25 +85,6 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-Status VerifiedHloModule::Verify() {
-  if (computation_count() == 0) {
-    // The computation was never built. Nothing to verify.
-    return Status::OK();
-  }
-  return verifier_.Run(this).status();
-}
-
-void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
-  Status status = Verify();
-  if (!status.ok()) {
-    ADD_FAILURE() << "HloVerifier failed on module " << name()
-                  << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
-                  << ": " << status;
-    LOG(ERROR) << "Contents of bad module:";
-    XLA_LOG_LINES(tensorflow::ERROR, ToString());
-  }
-}
-
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          std::function<bool(const HloInstruction*)>

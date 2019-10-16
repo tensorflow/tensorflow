@@ -19,7 +19,7 @@ set -e
 set -x
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-N_GPUS=$(lspci|grep 'VGA'|grep 'AMD/ATI'|wc -l)
+N_GPUS=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
 
 echo ""
 echo "Bazel will use ${N_JOBS} concurrent build job(s) and ${N_GPUS} concurrent test job(s)."
@@ -53,15 +53,12 @@ bazel test \
 && bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=-no_rocm,rocm_multi_gpu, \
+      --test_tag_filters=gpu \
       --test_timeout 600,900,2400,7200 \
       --test_output=errors \
       --jobs=${N_JOBS} \
       --local_test_jobs=1 \
       --test_sharding_strategy=disabled \
       -- \
-      //tensorflow/... \
-      -//tensorflow/compiler/... \
-      -//tensorflow/lite/... \
-      -//tensorflow/python/compiler/tensorrt/... \
+      //tensorflow/core/nccl:nccl_manager_test
 

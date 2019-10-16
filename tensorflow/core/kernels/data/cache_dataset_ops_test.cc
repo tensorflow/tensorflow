@@ -32,25 +32,19 @@ class CacheDatasetParams : public DatasetParams {
                       std::move(node_name)),
         filename_(filename) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
+  std::vector<Tensor> GetInputTensors() const override {
     Tensor filename_tensor =
         CreateTensor<tstring>(TensorShape({}), {filename_});
-    AddTensorInputs({filename_tensor}, created_tensors, inputs);
-    return Status::OK();
+    return {filename_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {CacheDatasetOp::kInputDataset,
-                          CacheDatasetOp::kFileName};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return Status::OK();
   }
 
@@ -60,7 +54,7 @@ class CacheDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return CacheDatasetOp::kDatasetType; }
+  string dataset_type() const override { return CacheDatasetOp::kDatasetType; }
 
   string filename() const { return filename_; }
 
@@ -182,7 +176,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 
   // Test the read mode.
   TF_ASSERT_OK(dataset_->MakeIterator(
@@ -197,7 +191,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(CacheDatasetOpTest, ParameterizedGetNextTest,
@@ -288,20 +282,20 @@ TEST_F(CacheDatasetOpTest, IteratorPrefix) {
 std::vector<IteratorSaveAndRestoreTestCase<CacheDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/CacheDatasetParams1(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams2(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/CacheDatasetParams3(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams4(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}}};
 }
 

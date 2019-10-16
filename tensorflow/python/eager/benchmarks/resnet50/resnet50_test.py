@@ -30,25 +30,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.benchmarks.resnet50 import resnet50
-
-
-def device_and_data_format():
-  if tf.config.experimental.list_physical_devices('GPU'):
-    return ('/gpu:0', 'channels_first')
-  return ('/cpu:0', 'channels_last')
-
-
-def random_batch(batch_size, data_format):
-  shape = (3, 224, 224) if data_format == 'channels_first' else (224, 224, 3)
-  shape = (batch_size,) + shape
-
-  num_classes = 1000
-  images = tf.random_uniform(shape)
-  labels = tf.random_uniform(
-      [batch_size], minval=0, maxval=num_classes, dtype=tf.int32)
-  one_hot = tf.one_hot(labels, num_classes)
-
-  return images, one_hot
+from tensorflow.python.eager.benchmarks.resnet50 import resnet50_test_util
 
 
 def compute_gradients(model, images, labels, num_replicas=1):
@@ -111,12 +93,12 @@ def events_from_logdir(logdir):
 class ResNet50Test(tf.test.TestCase):
 
   def _apply(self, defun=False, execution_mode=None):
-    device, data_format = device_and_data_format()
+    device, data_format = resnet50_test_util.device_and_data_format()
     model = resnet50.ResNet50(data_format)
     if defun:
       model.call = tf.function(model.call)
     with tf.device(device), context.execution_mode(execution_mode):
-      images, _ = random_batch(2, data_format)
+      images, _ = resnet50_test_util.random_batch(2, data_format)
       output = model(images, training=False)
       context.async_wait()
     self.assertEqual((2, 1000), output.shape)
@@ -134,25 +116,25 @@ class ResNet50Test(tf.test.TestCase):
     self._apply(defun=True, execution_mode=context.ASYNC)
 
   def test_apply_no_top(self):
-    device, data_format = device_and_data_format()
+    device, data_format = resnet50_test_util.device_and_data_format()
     model = resnet50.ResNet50(data_format, include_top=False)
     with tf.device(device):
-      images, _ = random_batch(2, data_format)
+      images, _ = resnet50_test_util.random_batch(2, data_format)
       output = model(images, training=False)
     output_shape = ((2, 2048, 1, 1)
                     if data_format == 'channels_first' else (2, 1, 1, 2048))
     self.assertEqual(output_shape, output.shape)
 
   def test_apply_with_pooling(self):
-    device, data_format = device_and_data_format()
+    device, data_format = resnet50_test_util.device_and_data_format()
     model = resnet50.ResNet50(data_format, include_top=False, pooling='avg')
     with tf.device(device):
-      images, _ = random_batch(2, data_format)
+      images, _ = resnet50_test_util.random_batch(2, data_format)
       output = model(images, training=False)
     self.assertEqual((2, 2048), output.shape)
 
   def _test_train(self, execution_mode=None):
-    device, data_format = device_and_data_format()
+    device, data_format = resnet50_test_util.device_and_data_format()
     model = resnet50.ResNet50(data_format)
     tf.compat.v2.summary.experimental.set_step(
         tf.train.get_or_create_global_step())
@@ -162,7 +144,7 @@ class ResNet50Test(tf.test.TestCase):
         name='t0').as_default(), tf.compat.v2.summary.record_if(True):
       with tf.device(device), context.execution_mode(execution_mode):
         optimizer = tf.train.GradientDescentOptimizer(0.1)
-        images, labels = random_batch(2, data_format)
+        images, labels = resnet50_test_util.random_batch(2, data_format)
         apply_gradients(model, optimizer,
                         compute_gradients(model, images, labels))
         self.assertEqual(320, len(model.variables))
@@ -178,11 +160,11 @@ class ResNet50Test(tf.test.TestCase):
     self._test_train(execution_mode=context.ASYNC)
 
   def test_no_garbage(self):
-    device, data_format = device_and_data_format()
+    device, data_format = resnet50_test_util.device_and_data_format()
     model = resnet50.ResNet50(data_format)
     optimizer = tf.train.GradientDescentOptimizer(0.1)
     with tf.device(device):
-      images, labels = random_batch(2, data_format)
+      images, labels = resnet50_test_util.random_batch(2, data_format)
       gc.disable()
       # Warm up. Note that this first run does create significant amounts of
       # garbage to be collected. The hope is that this is a build-only effect,
@@ -216,6 +198,11 @@ class MockIterator(object):
 
 class ResNet50Benchmarks(tf.test.Benchmark):
 
+  def _report(self, label, start, num_iters, device, batch_size, data_format,
+              num_replicas=1):
+    resnet50_test_util.report(self, label, start, num_iters, device,
+                              batch_size, data_format, num_replicas=1)
+
   def _train_batch_sizes(self):
     """Choose batch sizes based on GPU capability."""
     for device in device_lib.list_local_devices():
@@ -237,17 +224,6 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         return (32,)
     return (16, 32)
 
-  def _report(self, label, start, num_iters, device, batch_size, data_format,
-              num_replicas=1):
-    avg_time = (time.time() - start) / num_iters
-    dev = tf.DeviceSpec.from_string(device).device_type.lower()
-    replica_str = '' if num_replicas == 1 else 'replicas_%d_' % num_replicas
-    name = '%s_%s_batch_%d_%s%s' % (label, dev, batch_size,
-                                    replica_str, data_format)
-    extras = {'examples_per_sec': (num_replicas * batch_size) / avg_time}
-    self.report_benchmark(
-        iters=num_iters, wall_time=avg_time, name=name, extras=extras)
-
   def _force_device_sync(self):
     # If this function is called in the context of a non-CPU device
     # (e.g., inside a 'with tf.device("/gpu:0")' block)
@@ -266,7 +242,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       num_burn = 5
       num_iters = 30
       with tf.device(device):
-        images, _ = random_batch(batch_size, data_format)
+        images, _ = resnet50_test_util.random_batch(batch_size, data_format)
         for _ in xrange(num_burn):
           model(images, training=False).cpu()
         if execution_mode:
@@ -280,17 +256,19 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_apply_sync(self):
-    self._benchmark_eager_apply('eager_apply', device_and_data_format(),
-                                defun=False)
+    self._benchmark_eager_apply(
+        'eager_apply', resnet50_test_util.device_and_data_format(),
+        defun=False)
 
   def benchmark_eager_apply_async(self):
     self._benchmark_eager_apply(
-        'eager_apply_async', device_and_data_format(), defun=False,
-        execution_mode=context.ASYNC)
+        'eager_apply_async', resnet50_test_util.device_and_data_format(),
+        defun=False, execution_mode=context.ASYNC)
 
   def benchmark_eager_apply_with_defun(self):
-    self._benchmark_eager_apply('eager_apply_with_defun',
-                                device_and_data_format(), defun=True)
+    self._benchmark_eager_apply(
+        'eager_apply_with_defun',
+        resnet50_test_util.device_and_data_format(), defun=True)
 
   def _benchmark_eager_train(self,
                              label,
@@ -301,7 +279,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     with context.execution_mode(execution_mode):
       device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
-        (images, labels) = random_batch(batch_size, data_format)
+        (images, labels) = resnet50_test_util.random_batch(
+            batch_size, data_format)
         model = resnet50.ResNet50(data_format)
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         apply_grads = apply_gradients
@@ -333,21 +312,22 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_train_sync(self):
-    self._benchmark_eager_train('eager_train', MockIterator,
-                                device_and_data_format(), defun=False)
+    self._benchmark_eager_train(
+        'eager_train', MockIterator,
+        resnet50_test_util.device_and_data_format(), defun=False)
 
   def benchmark_eager_train_async(self):
     self._benchmark_eager_train(
         'eager_train_async',
         MockIterator,
-        device_and_data_format(),
+        resnet50_test_util.device_and_data_format(),
         defun=False,
         execution_mode=context.ASYNC)
 
   def benchmark_eager_train_with_defun(self):
     self._benchmark_eager_train(
         'eager_train_with_defun', MockIterator,
-        device_and_data_format(), defun=True)
+        resnet50_test_util.device_and_data_format(), defun=True)
 
   def benchmark_eager_train_datasets(self):
 
@@ -358,7 +338,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
     self._benchmark_eager_train(
         'eager_train_dataset', make_iterator,
-        device_and_data_format(), defun=False)
+        resnet50_test_util.device_and_data_format(), defun=False)
 
   def benchmark_eager_train_datasets_with_defun(self):
 
@@ -369,7 +349,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
     self._benchmark_eager_train(
         'eager_train_dataset_with_defun', make_iterator,
-        device_and_data_format(), defun=True)
+        resnet50_test_util.device_and_data_format(), defun=True)
 
 
 if __name__ == '__main__':

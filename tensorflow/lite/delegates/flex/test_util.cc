@@ -39,9 +39,9 @@ std::vector<string> FlexModelTest::GetStringValues(int tensor_index) const {
   std::vector<string> result;
 
   TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
-  auto num_strings = GetStringCount(tensor->data.raw);
+  auto num_strings = GetStringCount(tensor);
   for (size_t i = 0; i < num_strings; ++i) {
-    auto ref = GetString(tensor->data.raw, i);
+    auto ref = GetString(tensor, i);
     result.push_back(string(ref.str, ref.len));
   }
 

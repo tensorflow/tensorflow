@@ -41,6 +41,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
@@ -49,7 +51,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -319,6 +320,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_progbar_logging_training_validation(self):
+    model = self._get_model(input_shape=(2,))
+
+    def generator():
+      for _ in range(100):
+        yield [1, 1], 1
+
+    training = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2) \
+        .repeat()
+    validation = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2)
+    expected_log = (
+        r'(?s).*1/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:'
+        r'.*2/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(
+          x=training, validation_data=validation, epochs=2, steps_per_epoch=20)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
@@ -340,8 +372,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         test_samples=TEST_SAMPLES,
         input_shape=(INPUT_DIM,),
         num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
+    y_test = np_utils.to_categorical(y_test)
+    y_train = np_utils.to_categorical(y_train)
     # case 1
     monitor = 'val_loss'
     save_best_only = False
@@ -747,6 +779,23 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # `model.fit()` should work regardless of the presence of `TF_CONFIG`.
     model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_fit_with_ModelCheckpoint_with_dir_as_h5_filepath(self):
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'temp.h5')
+
+    self.assertFalse(os.path.exists(filepath))
+    os.mkdir(filepath)
+    self.assertTrue(os.path.exists(filepath))
+
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
+
+    with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
+                                          'filepath for ModelCheckpoint.'):
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -755,8 +804,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
@@ -884,8 +933,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
@@ -955,8 +1004,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
 
       def make_model():
         random_seed.set_random_seed(1234)
@@ -1062,8 +1111,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
 
       def make_model():
         np.random.seed(1337)
@@ -1141,8 +1190,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
 
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
       cbks = [keras.callbacks.TerminateOnNaN(), keras.callbacks.CSVLogger(fp)]
       model = keras.models.Sequential()
       for _ in range(5):
@@ -1193,8 +1242,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
 
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
       cbks = [keras.callbacks.TerminateOnNaN()]
       model = keras.models.Sequential()
       initializer = keras.initializers.Constant(value=1e5)
@@ -1230,8 +1279,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(

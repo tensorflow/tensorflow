@@ -68,7 +68,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
-      cpu_tensor = constant_op.constant(1, dtype=dtype)
+      with ops.device('CPU:0'):
+        cpu_tensor = constant_op.constant(1, dtype=dtype)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
 
@@ -208,6 +209,19 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     # If the setting the device placement is a no-op, do not throw a runtime
     # exception.
     context.set_log_device_placement(False)
+
+  @reset_eager
+  def testEnableMlirBridge(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests enabling mlir bridge.
+    config.enable_mlir_bridge()
+    self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests disabling mlir bridge.
+    config.disable_mlir_bridge()
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
 
   @test_util.run_gpu_only
   @reset_eager

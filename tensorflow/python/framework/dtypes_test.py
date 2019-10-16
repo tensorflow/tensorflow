@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
+from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -281,6 +282,8 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.max, float.fromhex("0x1.FEp127"))
 
   def testRepr(self):
+    if tf2.enabled():
+      self.skipTest("b/142725777")
     for enum, name in dtypes._TYPE_TO_STRING.items():
       if enum > 100:
         continue

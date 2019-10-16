@@ -463,9 +463,10 @@ string XlaCompiler::Argument::HumanString() const {
       return absl::StrCat("kind=constant", common,
                           " value=", constant_value.DebugString());
     case kResource: {
-      string output = absl::StrCat("kind=resource", common, " resource_kind=",
-                                   XlaResource::KindToString(resource_kind),
-                                   " initialized=", initialized);
+      string output = absl::StrCat(
+          "kind=resource", common,
+          " resource_kind=", XlaResource::KindToString(resource_kind),
+          " initialized=", initialized, " is_fast_mem=", fast_mem);
       if (max_array_size >= 0) {
         absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
@@ -516,11 +517,11 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version,
-      local_flib_def_.get(), OptimizerOptions()));
+      &device_mgr_, Env::Default(), /*config=*/nullptr,
+      options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions()));
+      &device_mgr_, Env::Default(), /*config=*/nullptr,
+      options.graph_def_version, options.flib_def, OptimizerOptions()));
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
@@ -609,11 +610,22 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   // However since we are only allowed to specify the filter at the "Node"
   // level there is no good way to allow the above behavior. So we
   // disallow any sort of constant folding on Variant nodes for now.
+  //
+  // Also do not consider constant folding Shape ops. When there is a dynamic
+  // dimension in a tensor, TF2XLA currently represent them as the static
+  // upperbound shape, which can be constant folded and then lose the info
+  // that this Shape is dynamic.
   auto cf_consider_fn = [](const Node* n) {
     for (const auto& output_arg : n->op_def().output_arg()) {
       if (output_arg.type() == DT_VARIANT) {
         return false;
       }
+    }
+    const auto& ts = n->type_string();
+    // XLA has special logic to handle dynamic shapes, don't constant fold
+    // them.
+    if (ts == "Shape" || ts == "ShapeN" || ts == "Size") {
+      return false;
     }
     return true;
   };
@@ -789,8 +801,7 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/false));
-
+                                  /*use_fast_memory=*/arg.fast_mem));
           return Status::OK();
         }
         case XlaResource::kTensorArray: {

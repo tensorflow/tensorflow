@@ -355,7 +355,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   });
   (dealloc(tmp)); // vexing parse...
 
-  rewriter.replaceOp(op, llvm::None);
+  rewriter.eraseOp(op);
   return matchSuccess();
 }
 

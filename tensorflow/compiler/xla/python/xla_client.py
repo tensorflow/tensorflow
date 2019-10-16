@@ -72,7 +72,7 @@ class Backend(object):
     """Returns the integer ID of this host."""
 
   @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   def buffers_from_pyvals(self, pyvals_and_devices):
@@ -83,7 +83,7 @@ class Backend(object):
     ]
 
   @abc.abstractmethod
-  def make_tuple(self, c_buffers, device_ordinal):
+  def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
 
   @abc.abstractmethod
@@ -113,14 +113,19 @@ class LocalBackend(Backend):
   def devices(self):
     return self.client.devices()
 
+  def local_devices(self):
+    return self.client.local_devices()
+
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
+    if device is None:
+      device = self.local_devices()[0]
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def make_tuple(self, c_buffers, device_ordinal):
-    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
+  def make_tuple(self, c_buffers, device):
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -279,6 +284,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
     PrimitiveType.TUPLE: np.dtype(np.object),
+    PrimitiveType.TOKEN: np.dtype(np.object),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -364,7 +370,7 @@ class Buffer(object):
   """
 
   @staticmethod
-  def from_pyval(pyval, device=0, backend=None):
+  def from_pyval(pyval, device=None, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
     return backend.buffer_from_pyval(pyval, device)
@@ -386,9 +392,9 @@ class Buffer(object):
     return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
-  def make_tuple(buffers, backend=None, device=0):
+  def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
-    return backend.make_tuple(buffers, device_ordinal=device)
+    return backend.make_tuple(buffers, device)
 
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
@@ -726,25 +732,62 @@ class ComputationBuilder(object):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
 
-  def Infeed(self, shape):
+  def CreateToken(self):
+    """Enqueues a CreateToken op onto the computation.
+
+    Returns:
+      An XlaOp, representing a fresh token.
+    """
+    return ops.CreateToken(self._builder)
+
+  def AfterAll(self, tokens):
+    """Enqueues a after-all op onto the computation.
+
+    `AfterAll` takes a variadic number of tokens and produces a single token.
+
+    Args:
+      tokens: a list of `XlaOp` values representing predecessor tokens.
+
+    Returns:
+      An `XlaOp`.
+    """
+    return ops.AfterAll(self._builder, tokens)
+
+  def Infeed(self, shape, token=None):
     """Enqueues an infeed op onto the computation.
 
     Infeed operations dequeue data of the given shape from the device's infeed
     queue for subsequent use in the computation.
 
+    Args:
+      shape: a `Shape` describing the shape of the infed value.
+      token: an optional `XlaOp` representing a token after which the infeed
+        effect should be sequenced.
     Returns:
-      An XlaOp.
+      An XlaOp, representing a (value, token) pair.
     """
-    return ops.Infeed(self._builder,
-                      shape.with_major_to_minor_layout_if_absent())
+    if token is None:
+      token = ops.CreateToken(self._builder)
+    return ops.InfeedWithToken(token,
+                               shape.with_major_to_minor_layout_if_absent())
 
-  def Outfeed(self, operand):
+  def Outfeed(self, operand, token=None):
     """Enqueues an outfeed op onto the computation.
 
     Outfeed operations enqueue data, using the given operand, onto the XLA
     outfeed queue for subsequent dequeue via the client API.
+
+    Args:
+      operand: an `XlaOp` representing the data to outfeed.
+      token: an `XlaOp` representing a token after which the outfeed should be
+        sequenced.
+    Returns:
+      An `XlaOp` representing a token.
     """
-    return ops.Outfeed(operand, self._builder.GetShape(operand), '')
+    if token is None:
+      token = ops.CreateToken(self._builder)
+    return ops.OutfeedWithToken(operand, token, self._builder.GetShape(operand),
+                                '')
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.

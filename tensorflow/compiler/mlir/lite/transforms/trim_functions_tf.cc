@@ -34,7 +34,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> trim_funcs_whitelist(
     "tfl-trim-funcs-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions. The first "
+    llvm::cl::desc("comma separated list of whitelisted functions. The first "
                    "function specified will be used as main."),
     llvm::cl::CommaSeparated);
 

@@ -267,6 +267,7 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
     return formatv(fmt, name);
   }
   }
+  llvm_unreachable("unknown kind");
 }
 
 std::string tblgen::SymbolInfoMap::SymbolInfo::getAllRangeUse(

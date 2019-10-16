@@ -244,6 +244,17 @@ class BASE_HLO_MulOp {
   }];
 }
 
+class BASE_HLO_RemOp {
+  string summary = "Remainder operator";
+
+  string description = [{
+    Returns `lhs % rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_SubOp {
   string summary = "Subtraction operator";
 
@@ -260,6 +271,17 @@ class BASE_HLO_AndOp {
 
   string description = [{
     Returns `lhs /\ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_OrOp {
+  string summary = "Logical or";
+
+  string description = [{
+    Returns `lhs \/ rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -374,6 +396,16 @@ class BASE_HLO_SliceOp {
     Slices a portion of the `operand` into a new configuration.
 
     See https://www.tensorflow.org/xla/operation_semantics#slice.
+  }];
+}
+
+class BASE_HLO_DynamicSliceOp {
+  string summary = "Dynamic Slice operator";
+
+  string description = [{
+    Extracts a sub-array from the input array at dynamic start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicslice.
   }];
 }
 
@@ -531,6 +563,21 @@ class BASE_HLO_SelectOp {
   }];
 }
 
+class BASE_HLO_SelectAndScatterOp {
+  string summary = "SelectAndScatter operator";
+
+  string description = [{
+    Runs a windowed selection `select` function over `operand` with shape
+    `window_dimensions` and stride `window_strides`. This will produce an amount
+    of selected locations whose shape matches `source`. These are then scattered
+    to the output which is initialized with `init_value`.
+    Multiple scattered elements which land in the same output location are
+    combined using the `scatter` function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
 class BASE_HLO_ReverseOp {
   string summary = "Reverse operator";
 
@@ -562,6 +609,17 @@ class BASE_HLO_TransposeOp {
     `res_dimensions[i] = operand_dimensions[permutation[i]]`
 
     See https://www.tensorflow.org/xla/operation_semantics#transpose.
+  }];
+}
+
+class BASE_HLO_RngUniformOp {
+  string summary = "RNG with uniform distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated following
+    the uniform distribution over the interval `[a,b)`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
 }
 

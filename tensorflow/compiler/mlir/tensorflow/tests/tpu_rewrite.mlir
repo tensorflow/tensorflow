@@ -177,15 +177,14 @@ func @empty_func() {
 
 // -----
 
-// Tests argument with unranked shape. No shape should be populated in the
+// Tests argument with unranked shape. Empty shape should be populated in the
 // metadata for associated argument.
 
 // CHECK-LABEL: func @unranked_shape_arg
 func @unranked_shape_arg(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>) -> tensor<*xi32>
   // CHECK:      metadata
-  // CHECK-SAME: args
-  // CHECK-NOT:  shape
+  // CHECK-SAME: shape {\0A unknown_rank: true
 
   return %0: tensor<*xi32>
 }
@@ -195,16 +194,14 @@ func @_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 
 // -----
 
-// Tests argument with partial shape. No shape should be populated in the
-// metadata for associated argument.
+// Tests argument with partial shape.
 
 // CHECK-LABEL: func @partial_shape_arg
 func @partial_shape_arg(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
   %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
   // CHECK:      metadata
   // CHECK-SAME: args
-  // CHECK-NOT:  shape
-
+  // CHECK-SAME: shape {\0A dim {\0A size: -1\0A }\0A dim {\0A size: -1\0A }\0A dim {\0A size: 3\0A }\0A }
   return %0: tensor<?x?x3xi32>
 }
 func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {

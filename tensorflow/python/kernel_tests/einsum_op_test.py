@@ -51,24 +51,24 @@ class EinsumOpTest(test.TestCase):
     b = self.evaluate(gen_linalg_ops.einsum(input_tensors, s))
     self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
 
-  @test_util.disable_xla('b/131919749')
   def testUnary(self):
     self._check('->', ())
-    self._check('aa->', (3, 3))
-    self._check('aa->a', (3, 3))
-    self._check('aaa->', (3, 3, 3))
-    self._check('aaa->a', (3, 3, 3))
-    self._check('aab->a', (3, 3, 4))
     self._check('ab->', (3, 3))
     self._check('ab->ab', (3, 3))
     self._check('abc->b', (3, 4, 5))
     self._check('abc->ca', (3, 4, 5))
     self._check('abc->cab', (3, 4, 5))
+
+  def testUnaryWithRepeatedLabels(self):
+    self._check('aa->', (3, 3))
+    self._check('aa->a', (3, 3))
+    self._check('aaa->', (3, 3, 3))
+    self._check('aaa->a', (3, 3, 3))
+    self._check('aab->a', (3, 3, 4))
     self._check('aabcc->a', (3, 3, 5, 4, 4))
     self._check('aabcc->ac', (3, 3, 5, 4, 4))
     self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testUnaryEllipsis(self):
     # Unary cases with ellipsis.
     # Edge cases.
@@ -106,12 +106,11 @@ class EinsumOpTest(test.TestCase):
     # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
     self._check('sa,shb->shab', (2, 1), (2, 3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testReducedIndices(self):
     self._check('ba,b->', (3, 2), (3,))
     self._check('ab,ab->', (3, 4), (3, 4))
+    self._check('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
 
-  @test_util.disable_xla('b/131919749')
   def testRepeatedIndices(self):
     # Repeated indices.
     self._check('ijj,k->ik', (2, 3, 3), (4,))
@@ -120,10 +119,19 @@ class EinsumOpTest(test.TestCase):
     self._check('aab,bc->ac', (2, 2, 3), (3, 4))
     self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
+  def testEllipsis(self):
+    # Batch matmul with ellipsis but without broadcasting.
+    self._check('...mk,...kn->...mn', (5, 1, 2, 3), (5, 1, 3, 4))
+    # Empty batch dimensions.
+    self._check('...mk,...kn->...mn', (2, 3), (3, 4))
+    # Tensor contraction with transpose.
+    self._check('...ija,aijb...->ba...ij', (1, 2, 2, 3, 1), (1, 2, 3, 4, 1, 2))
+    # Output subscripts may omit ellipsis when batch shape is empty.
+    self._check('...mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...mk,kn->mn', (2, 3), (3, 4))
+    self._check('mk,...kn->mn', (2, 3), (3, 4))
+
   def testBroadcasting(self):
-    # Batch matmul without broadcasting.
-    self._check('...ij,...jk->...ik', (5, 1, 2, 3), (5, 1, 3, 4))
     # Batch matmul with broadcasting.
     self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
     self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
@@ -134,8 +142,8 @@ class EinsumOpTest(test.TestCase):
     # Following 2 from https://stackoverflow.com/a/19203475/1611416
     self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
     self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
+    self._check('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcastingWithRepeatedIndices(self):
     # Broadcasting with repeated indices.
     self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
@@ -200,7 +208,6 @@ class EinsumOpTest(test.TestCase):
       with self.assertRaises((ValueError, errors.InvalidArgumentError)):
         _ = self.evaluate(gen_linalg_ops.einsum(placeholders, args[0]))
 
-  @test_util.disable_xla('b/131919749')
   @test_util.run_in_graph_and_eager_modes
   def testPlaceholder(self):
 
@@ -237,7 +244,6 @@ class EinsumOpTest(test.TestCase):
     b = self.evaluate(gen_linalg_ops.einsum([np.diag(a)], s))
     self.assertAllClose(diag_a, b, atol=1e-4, rtol=1e-4)
 
-  @test_util.disable_xla('b/131919749')
   def testEmpty(self):
     def check(equation, input_shapes, output_shape):
       # All these cases result in an output filled with zeros, so we don't call
@@ -252,6 +258,19 @@ class EinsumOpTest(test.TestCase):
     check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
+
+  @test_util.disable_xla('b/131919749')
+  def testEmptyWithRepeatedLabels(self):
+
+    def check(equation, input_shapes, output_shape):
+      # All these cases result in an output filled with zeros, so we don't call
+      # np.einsum. Also np.einsum doesn't support generalized diagonals which
+      # are needed for EinsumOp gradients.
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      output = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
+      self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
+
     # Generalized traces with zero-sized dimensions.
     check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
     check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
@@ -268,7 +287,7 @@ class EinsumGradTest(test.TestCase):
   def _check_gradient(self, s, *input_shapes):
     with self.cached_session():
       r = np.random.RandomState(0)
-      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      inputs = [np.array(r.randn(*shape), np.float64) for shape in input_shapes]
       input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
       analytical, numerical = gradient_checker_v2.compute_gradient(
           lambda *xs: gen_linalg_ops.einsum(xs, s), input_tensors)
@@ -321,11 +340,14 @@ class EinsumGradTest(test.TestCase):
     # From Transformer XL.
     self._check_gradient('ibnd,ijbn->jnd', (1, 0, 5, 10), (1, 1, 0, 5))
 
-  @test_util.disable_xla('b/131919749')
   def testReducedIndices(self):
     self._check_gradient('ba,b->', (3, 2), (3,))
     self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('ijkm,ijln->ijmn', (2, 3, 3, 4), (2, 3, 3, 2))
     self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
+
+  @test_util.disable_xla('b/131919749')
+  def testReducedIndicesWithRepeatedLabels(self):
     self._check_gradient('abce,badf->bcba', (1, 2, 3, 4), (2, 1, 4, 3))
 
   @test_util.disable_xla('b/131919749')
@@ -344,11 +366,14 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
     self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcasting(self):
     self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
     self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
     self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
+    self._check_gradient('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testBroadcastingWithRepeatedLabels(self):
     self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
 

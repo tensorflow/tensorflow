@@ -32,7 +32,7 @@ limitations under the License.
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #elif TENSORFLOW_USE_ROCM
-#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#include "rocm/include/hipcub/hipcub.hpp"
 #endif
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"

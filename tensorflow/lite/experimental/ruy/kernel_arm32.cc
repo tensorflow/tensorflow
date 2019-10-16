@@ -696,10 +696,9 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
 
         "vmlal.s8 q14, d1, d9\n"
         "vmlal.s8 q2, d1, d11\n"
-        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n" // Reload LHS
         "vmlal.s8 q15, d3, d9\n"
         "vmlal.s8 q3, d3, d11\n"
-        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
+        "vld1.8 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
 
         // Then pairwise accumulate in to q6, q7, q10, q11
         "vpadal.s16 q6, q14\n"
@@ -716,15 +715,13 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
 
         "vmlal.s8 q14, d1, d9\n"
         "vmlal.s8 q2, d1, d11\n"
-        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n" // Reload LHS
         "vmlal.s8 q15, d3, d9\n"
-        "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
         "vmlal.s8 q3, d3, d11\n"
-        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
+        "vld1.8 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
 
         // Then pairwise accumulate in to q8, q9, q12, q13
         "vpadal.s16 q8, q14\n"
-        "vld1.8 {d10, d11}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d8, d9, d10, d11}, [%[rhs_ptr]]!\n"
         "vpadal.s16 q9, q15\n"
         "vpadal.s16 q12, q2\n"
         "vpadal.s16 q13, q3\n"
@@ -752,10 +749,9 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
 
         "vmlal.s8 q14, d1, d9\n"
         "vmlal.s8 q2, d1, d11\n"
-        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n" // Reload LHS
         "vmlal.s8 q15, d3, d9\n"
         "vmlal.s8 q3, d3, d11\n"
-        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
+        "vld1.8 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
 
         // Then pairwise accumulate in to q6, q7, q10, q11
         "vpadal.s16 q6, q14\n"
@@ -881,8 +877,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         // main loop will need to load, we start loading the first 32 bytes of
         // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
         // in the rest of the work on the current block.
-        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
-        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[lhs_ptr]]\n")
         "vld1.8 {d8, d9, d10, d11}, [%[rhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[rhs_ptr]]\n")
@@ -1136,16 +1131,11 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "mov r4, r3\n"
         "mov r6, #1\n"
 
-        "vst1.8 {d30[0]}, [r3], r6\n"
+        "vst1.32 {d30[0]}, [r3]\n"
         "add r4, r4, r5\n"
-        "vst1.8 {d30[1]}, [r3], r6\n"
-        "vst1.8 {d30[2]}, [r3], r6\n"
-        "vst1.8 {d30[3]}, [r3], r6\n"
         "mov r3, r4\n"
-        "vst1.8 {d30[4]}, [r3], r6\n"
-        "vst1.8 {d30[5]}, [r3], r6\n"
-        "vst1.8 {d30[6]}, [r3], r6\n"
-        "vst1.8 {d30[7]}, [r3], r6\n"
+        "vst1.32 {d30[1]}, [r3]\n"
+
         "31:\n"
 
         // Load dst_ptr, increment, and write back.
@@ -1265,16 +1255,11 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "mov r4, r3\n"
         "mov r6, #1\n"
 
-        "vst1.8 {d30[0]}, [r3], r6\n"
+        "vst1.32 {d30[0]}, [r3]\n"
         "add r4, r4, r5\n"
-        "vst1.8 {d30[1]}, [r3], r6\n"
-        "vst1.8 {d30[2]}, [r3], r6\n"
-        "vst1.8 {d30[3]}, [r3], r6\n"
         "mov r3, r4\n"
-        "vst1.8 {d30[4]}, [r3], r6\n"
-        "vst1.8 {d30[5]}, [r3], r6\n"
-        "vst1.8 {d30[6]}, [r3], r6\n"
-        "vst1.8 {d30[7]}, [r3], r6\n"
+        "vst1.32 {d30[1]}, [r3]\n"
+
         "31:\n"
 
         // Load dst_ptr, increment, and write back.
