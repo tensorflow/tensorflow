@@ -704,6 +704,29 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     return Status::OK();
   }
 
+  // Check if we can merge "adjacent" concatenate operations
+  for (int64 i = 0; i < operands.size(); ++i) {
+    // Make sure the other Concatenate is along the same dimension and this
+    // concatenate is its only user.
+    if (operands[i]->opcode() != HloOpcode::kConcatenate ||
+        concatenate->concatenate_dimension() !=
+            operands[i]->concatenate_dimension() ||
+        operands[i]->user_count() > 1) {
+      continue;
+    }
+    HloInstruction::InstructionVector new_operands = concatenate->operands();
+    new_operands.erase(new_operands.begin() + i);
+    new_operands.insert(new_operands.begin() + i,
+                        operands[i]->operands().begin(),
+                        operands[i]->operands().end());
+
+    HloInstruction* new_instruction =
+        computation_->AddInstruction(HloInstruction::CreateConcatenate(
+            concatenate->shape(), new_operands,
+            concatenate->concatenate_dimension()));
+    TF_CHECK_OK(ReplaceInstruction(concatenate, new_instruction));
+    return Status::OK();
+  }
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();

@@ -5805,5 +5805,89 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
               GmockMatch(m::Parameter(1)));
 }
 
+
+TEST_F(AlgebraicSimplifierTest, FuseConcat) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4,2] parameter(0)
+      p1 = f32[6,2] parameter(1)
+      p2 = f32[3,2] parameter(2)
+      c0 = f32[10,2] concatenate(p0, p1), dimensions={0}
+      ROOT c1 = f32[13,2] concatenate(c0, p2), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(2))));
+}
+
+TEST_F(AlgebraicSimplifierTest, FuseConcatDifferentDim) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4,2] parameter(0)
+      p1 = f32[6,2] parameter(1)
+      p2 = f32[10,3] parameter(2)
+      c0 = f32[10,2] concatenate(p0, p1), dimensions={0}
+      ROOT c1 = f32[10,5] concatenate(c0, p2), dimensions={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Concatenate(
+          m::Concatenate(m::Parameter(0), m::Parameter(1)), m::Parameter(2))));
+}
+
+TEST_F(AlgebraicSimplifierTest, FuseConcatSeveralUsers) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4,2] parameter(0)
+      p1 = f32[6,2] parameter(1)
+      p2 = f32[3,2] parameter(2)
+      c0 = f32[10,2] concatenate(p0, p1), dimensions={0}
+      c1 = f32[13,2] concatenate(c0, p2), dimensions={0}
+      ROOT t = (f32[10,2], f32[13,2]) tuple(c0,c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Concatenate(m::Parameter(0), m::Parameter(1)),
+          m::Concatenate(m::Concatenate(m::Parameter(0), m::Parameter(1)),
+                         m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, FuseConcatMultiple) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4,2] parameter(0)
+      p1 = f32[6,2] parameter(1)
+      p2 = f32[3,2] parameter(2)
+      c0 = f32[10,2] concatenate(p0, p1), dimensions={0}
+      c1 = f32[9,2] concatenate(p2, p1), dimensions={0}
+      c2 = f32[7,2] concatenate(p2, p0), dimensions={0}
+      ROOT c3 = f32[26,2] concatenate(c0, p2, c1, p0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(HloPassFix<AlgebraicSimplifier>(default_options_)
+                  .Run(m.get())
+                  .ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(2), m::Parameter(2),
+                                        m::Parameter(1), m::Parameter(0))));
+}
+}
+
 }  // namespace
 }  // namespace xla
