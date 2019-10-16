@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a simple combiner for optimizing pattern in the Toy
-// dialect.
+// This file implements a set of simple combiners for optimizing operations in
+// the Toy dialect.
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,7 +32,8 @@ namespace {
 #include "ToyCombine.inc"
 } // end anonymous namespace
 
-/// Fold transpose(transpose(x) -> transpose(x)
+/// This is an example of a c++ rewrite pattern for the TransposeOp. It
+/// optimizes the following scenario: transpose(transpose(x)) -> transpose(x)
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
   /// We register this pattern to match every toy.transpose in the IR.
   /// The "benefit" is used by the framework to order the patterns and process
@@ -41,8 +42,8 @@ struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
       : OpRewritePattern<TransposeOp>(context, /*benefit=*/1) {}
 
   /// This method attempts to match a pattern and rewrite it. The rewriter
-  /// argument is the orchestrator of the sequence of rewrites. It is expected
-  /// to interact with it to perform any changes to the IR from here.
+  /// argument is the orchestrator of the sequence of rewrites. The pattern is
+  /// expected to interact with it to perform any changes to the IR from here.
   mlir::PatternMatchResult
   matchAndRewrite(TransposeOp op,
                   mlir::PatternRewriter &rewriter) const override {
@@ -55,19 +56,21 @@ struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
     if (!transposeInputOp)
       return matchFailure();
 
-    // Use the rewriter to perform the replacement
+    // Use the rewriter to perform the replacement.
     rewriter.replaceOp(op, {transposeInputOp.getOperand()}, {transposeInputOp});
     return matchSuccess();
   }
 };
 
-/// Register our patterns for rewrite by the Canonicalization framework.
+/// Register our patterns as "canonicalization" patterns on the TransposeOp so
+/// that they can be picked up by the Canonicalization framework.
 void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
   results.insert<SimplifyRedundantTranspose>(context);
 }
 
-/// Register our patterns for rewrite by the Canonicalization framework.
+/// Register our patterns as "canonicalization" patterns on the ReshapeOp so
+/// that they can be picked up by the Canonicalization framework.
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<ReshapeReshapeOptPattern, RedundantReshapeOptPattern,
