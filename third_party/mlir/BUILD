@@ -629,6 +629,7 @@ cc_library(
     deps = [
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
