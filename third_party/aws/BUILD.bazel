@@ -54,6 +54,8 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
         "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
+        "aws-cpp-sdk-transfer/include/**/*.h",
+        "aws-cpp-sdk-transfer/source/**/*.cpp",
     ]),
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
@@ -89,6 +91,7 @@ cc_library(
     includes = [
         "aws-cpp-sdk-core/include/",
         "aws-cpp-sdk-s3/include/",
+        "aws-cpp-sdk-transfer/include/",
     ],
     deps = [
         "@curl",
