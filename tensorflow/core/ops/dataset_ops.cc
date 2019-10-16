@@ -711,13 +711,6 @@ REGISTER_OP("DatasetToGraph")
     .Output("graph: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("DatasetToGraphV2")
-    .Input("input_dataset: variant")
-    .Attr("external_state_policy: int = 0")
-    .Attr("strip_device_assignment: bool = false")
-    .Output("graph: string")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("OptimizeDataset")
     .Input("input_dataset: variant")
     .Input("optimizations: string")

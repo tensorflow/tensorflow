@@ -63,34 +63,15 @@ Status FindStatefulOps(const GraphDef& graph_def,
 /* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
 /* static */ constexpr const char* const
     DatasetToGraphOp::kStripDeviceAssignment;
-/* static */ constexpr const char* const DatasetToGraphOp::kExternalStatePolicy;
-/* static */ constexpr const char* const DatasetToGraphOp::kDatasetToGraph;
 /* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
 /* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
-DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
-  if (op_version_ == 2) {
-    if (ctx->HasAttr(kExternalStatePolicy)) {
-      int64 state_change_option;
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr(kExternalStatePolicy, &state_change_option));
-      external_state_policy_ = ExternalStatePolicy(state_change_option);
-    }
-  } else {
-    if (ctx->HasAttr(kAllowStateful)) {
-      bool allow_stateful;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful));
-      if (allow_stateful) {
-        external_state_policy_ = ExternalStatePolicy::WARN;
-      } else {
-        external_state_policy_ = ExternalStatePolicy::FAIL;
-      }
-    }
+DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  if (ctx->HasAttr(kAllowStateful)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful_ops_));
   }
-
   if (ctx->HasAttr(kStripDeviceAssignment)) {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kStripDeviceAssignment, &strip_device_assignment_));
@@ -101,16 +82,14 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   SerializationContext::Params params;
-  params.check_external_state =
-      (external_state_policy_ == ExternalStatePolicy::FAIL);
-
+  params.check_external_state = !allow_stateful_ops_;
   GraphDef graph_def;
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def));
   // In case we allow stateful ops, we walk the graph and find all the stateful
   // ops in the Graph. We then log a warning indicating what ops' state we are
   // going to throw away.
-  if (external_state_policy_ == ExternalStatePolicy::WARN) {
+  if (allow_stateful_ops_) {
     std::vector<string> stateful_op_names;
     OP_REQUIRES_OK(ctx, FindStatefulOps(graph_def, &stateful_op_names));
     if (!stateful_op_names.empty()) {
@@ -184,8 +163,6 @@ void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
-                        DatasetToGraphOp);
-REGISTER_KERNEL_BUILDER(Name("DatasetToGraphV2").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
 REGISTER_KERNEL_BUILDER(Name("DatasetCardinality").Device(DEVICE_CPU),
