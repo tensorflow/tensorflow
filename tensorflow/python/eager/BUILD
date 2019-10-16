@@ -721,6 +721,8 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
     ],
 )
