@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -lower-gpu-ops-to-nvvm-ops | FileCheck %s
+// RUN: mlir-opt %s -lower-gpu-ops-to-nvvm-ops -split-input-file | FileCheck %s
 
 module attributes {gpu.kernel_module} {
   // CHECK-LABEL: func @gpu_index_ops()
@@ -32,12 +32,42 @@ module attributes {gpu.kernel_module} {
     // CHECK: = nvvm.read.ptx.sreg.nctaid.z : !llvm.i32
     %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
-    %one = constant 1.0 : f32
+    std.return
+  }
+}
+
+// -----
+
+module attributes {gpu.kernel_module} {
+  // CHECK-LABEL: func @gpu_all_reduce_op()
+  func @gpu_all_reduce_op()
+      attributes { gpu.kernel } {
+    %arg0 = constant 1.0 : f32
     // TODO(csigg): Check full IR expansion once lowering has settled.
     // CHECK: nvvm.shfl.sync.bfly
     // CHECK: nvvm.barrier0
+    // CHECK: llvm.fadd
+    %result = "gpu.all_reduce"(%arg0) ({}) {op = "add"} : (f32) -> (f32)
+
+    std.return
+  }
+}
+
+// -----
+
+module attributes {gpu.kernel_module} {
+  // CHECK-LABEL: func @gpu_all_reduce_region()
+  func @gpu_all_reduce_region()
+      attributes { gpu.kernel } {
+    %arg0 = constant 1 : i32
+    // TODO(csigg): Check full IR expansion once lowering has settled.
     // CHECK: nvvm.shfl.sync.bfly
-    %result = "gpu.all_reduce"(%one) {scope = "workgroup", kernel = "add"} : (f32) -> (f32)
+    // CHECK: nvvm.barrier0
+    %result = "gpu.all_reduce"(%arg0) ({
+    ^bb(%lhs : i32, %rhs : i32):
+      %xor = xor %lhs, %rhs : i32
+      "gpu.yield"(%xor) : (i32) -> ()
+    }) : (i32) -> (i32)
 
     std.return
   }

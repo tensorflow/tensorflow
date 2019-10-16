@@ -80,7 +80,7 @@ module attributes {gpu.container_module} {
       %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
       %one = constant 1.0 : f32
-      %sum = "gpu.all_reduce"(%one) : (f32) -> (f32)
+      %sum = "gpu.all_reduce"(%one) ({}) {op = "add"} : (f32) -> (f32)
 
       "some_op"(%bIdX, %tIdX) : (index, index) -> ()
       %42 = load %arg1[%bIdX] : memref<?xf32, 1>

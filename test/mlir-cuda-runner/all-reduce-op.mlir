@@ -19,7 +19,7 @@ func @main() {
     %idx = addi %tx, %t2 : index
     %t3 = index_cast %idx : index to i32
     %val = sitofp %t3 : i32 to f32
-    %sum = "gpu.all_reduce"(%val) { op = "add" } : (f32) -> (f32)
+    %sum = "gpu.all_reduce"(%val) ({}) { op = "add" } : (f32) -> (f32)
     store %sum, %kernel_dst[%tx, %ty, %tz] : memref<?x?x?xf32>
     gpu.return
   }

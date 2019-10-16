@@ -282,3 +282,81 @@ func @illegal_dimension() {
 
   return
 }
+
+// -----
+
+func @reduce_no_op_no_body(%arg0 : f32) {
+  // expected-error@+1 {{expected either an op attribute or a non-empty body}}
+  %res = "gpu.all_reduce"(%arg0) ({}) : (f32) -> (f32)
+  return
+}
+
+// -----
+
+func @reduce_op_and_body(%arg0 : f32) {
+  // expected-error@+1 {{expected either an op attribute or a non-empty body}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32, %rhs : f32):
+    "gpu.yield"(%lhs) : (f32) -> ()
+  }) {op = "add"} : (f32) -> (f32)
+}
+
+// -----
+
+func @reduce_invalid_op(%arg0 : f32) {
+  // expected-error@+1 {{op "foo" is invalid}}
+  %res = "gpu.all_reduce"(%arg0) ({}) {op = "foo"} : (f32) -> (f32)
+  return
+}
+
+// -----
+
+func @reduce_incorrect_region_arguments(%arg0 : f32) {
+  // expected-error@+1 {{expected two region arguments}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32):
+    "gpu.yield"(%lhs) : (f32) -> ()
+  }) : (f32) -> (f32)
+}
+
+// -----
+
+func @reduce_incorrect_region_arguments(%arg0 : f32) {
+  // expected-error@+1 {{incorrect region argument type}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32, %rhs : i32):
+    "gpu.yield"(%lhs) : (f32) -> ()
+  }) : (f32) -> (f32)
+}
+
+// -----
+
+func @reduce_incorrect_yield(%arg0 : f32) {
+  // expected-error@+1 {{expected one gpu.yield operand}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32, %rhs : f32):
+    "gpu.yield"(%lhs, %rhs) : (f32, f32) -> ()
+  }) : (f32) -> (f32)
+}
+
+// -----
+
+func @reduce_incorrect_yield(%arg0 : f32) {
+  // expected-error@+1 {{incorrect gpu.yield type}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32, %rhs : f32):
+    %one = constant 1 : i32
+    "gpu.yield"(%one) : (i32) -> ()
+  }) : (f32) -> (f32)
+}
+
+// -----
+
+func @reduce_incorrect_yield(%arg0 : f32) {
+  // expected-error@+1 {{expected gpu.yield op in region}}
+  %res = "gpu.all_reduce"(%arg0) ({
+  ^bb(%lhs : f32, %rhs : f32):
+    return
+  }) : (f32) -> (f32)
+}
+
