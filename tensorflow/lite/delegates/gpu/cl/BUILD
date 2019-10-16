@@ -1,5 +1,4 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -218,6 +217,33 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "buffer_test",
+    srcs = ["buffer_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":buffer",
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cl_test",
+    testonly = 1,
+    hdrs = ["cl_test.h"],
+    deps = [
+        ":environment",
+        ":opencl_wrapper",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "texture2d",
     srcs = ["texture2d.cc"],
@@ -424,5 +450,3 @@ flatbuffer_cc_library(
         "--scoped-enums",
     ],
 )
-
-tflite_portable_test_suite()
