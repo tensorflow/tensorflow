@@ -947,7 +947,7 @@ Syntax:
 
 ``` {.ebnf}
 tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
-tensor-memref-element-type ::= vector-element-type | vector-type
+tensor-memref-element-type ::= vector-element-type | vector-type | complex-type
 
 // memref requires a known rank, but tensor does not.
 dimension-list ::= dimension-list-ranked | (`*` `x`)

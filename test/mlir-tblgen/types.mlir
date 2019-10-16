@@ -2,6 +2,30 @@
 
 // -----
 
+// CHECK-LABEL: @complex_f64_success
+func @complex_f64_success() {
+  "test.complex_f64"() : () -> (complex<f64>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @complex_f64_tensor_success
+func @complex_f64_tensor_success() {
+  "test.complex_f64_tensor"() : () -> (tensor<complex<f64>>)
+  return
+}
+
+// -----
+
+func @complex_f64_failure() {
+  // expected-error@+1 {{must be complex type with 64-bit float elements}}
+  "test.complex_f64"() : () -> (f64)
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @tuple_success
 func @tuple_success() {
   "test.tuple_32_bit"() : () -> (tuple<i32>)

@@ -363,6 +363,17 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class Complex<Type type>
+    : Type<And<[
+          CPred<"$_self.isa<ComplexType>()">,
+          SubstLeaves<"$_self", "$_self.cast<ComplexType>().getElementType()",
+           type.predicate>]>,
+           "complex type with " # type.description # " elements"> {
+  Type elementType = type;
+}
+
+def AnyComplex : Type<CPred<"$_self.isa<ComplexType>()">, "complex-type">;
+
 class OpaqueType<string dialect, string name, string description>
   : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
          description>;
