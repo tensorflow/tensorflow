@@ -4,8 +4,8 @@ module attributes {gpu.container_module} {
 
   module @kernels attributes {gpu.kernel_module} {
     // CHECK:       spv.module "Logical" "GLSL450" {
-    // CHECK-DAG:    spv.globalVariable [[VAR0:@.*]] bind(0, 0) : !spv.ptr<!spv.struct<f32>, StorageBuffer>
-    // CHECK-DAG:    spv.globalVariable [[VAR1:@.*]] bind(0, 1) : !spv.ptr<!spv.struct<!spv.array<12 x f32>>, StorageBuffer>
+    // CHECK-DAG:    spv.globalVariable [[VAR0:@.*]] bind(0, 0) : !spv.ptr<!spv.struct<f32 [0]>, StorageBuffer>
+    // CHECK-DAG:    spv.globalVariable [[VAR1:@.*]] bind(0, 1) : !spv.ptr<!spv.struct<!spv.array<12 x f32 [4]> [0]>, StorageBuffer>
     // CHECK:    func [[FN:@.*]]()
     func @kernel_1(%arg0 : f32, %arg1 : memref<12xf32, 1>)
         attributes { gpu.kernel } {
