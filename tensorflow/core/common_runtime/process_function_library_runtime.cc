@@ -1058,7 +1058,6 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
     f = function_data_[h].get();
     *handle = h;
   }
-  LOG(INFO) << "Running a distributed init on device: " << options.target;
   TF_RETURN_IF_ERROR(f->DistributedInit(
       parent_, function_name,
       options.lib_def == nullptr ? *lib_def_ : *options.lib_def, attrs,
