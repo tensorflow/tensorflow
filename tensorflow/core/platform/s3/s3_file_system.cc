@@ -45,6 +45,9 @@ namespace {
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
+static const int kExecutorPoolSize = 5;
+static const int kUploadRetries = 5;
+static const char* kExecutorTag = "TransferManagerExecutor";
 
 Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   static mutex cfg_lock(LINKER_INITIALIZED);
@@ -140,6 +143,18 @@ void ShutdownClient(Aws::S3::S3Client* s3_client) {
   }
 }
 
+void ShutdownTransferManager(Aws::Transfer::TransferManager* transfer_manager) {
+  if (transfer_manager != nullptr) {
+    delete transfer_manager;
+  }
+}
+
+void ShutdownExecutor(Aws::Utils::Threading::PooledThreadExecutor* executor) {
+  if (executor != nullptr) {
+    delete executor;
+  }
+}
+
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
                    string* object) {
   if (!bucket || !object) {
@@ -206,10 +221,12 @@ class S3RandomAccessFile : public RandomAccessFile {
 class S3WritableFile : public WritableFile {
  public:
   S3WritableFile(const string& bucket, const string& object,
+                 std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager,
                  std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket),
         object_(object),
         s3_client_(s3_client),
+        transfer_manager(transfer_manager),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
             kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
@@ -252,19 +269,28 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
-    Aws::S3::Model::PutObjectRequest putObjectRequest;
-    putObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     long offset = outfile_->tellp();
-    outfile_->seekg(0);
-    putObjectRequest.SetBody(outfile_);
-    putObjectRequest.SetContentLength(offset);
-    auto putObjectOutcome = this->s3_client_->PutObject(putObjectRequest);
+    std::shared_ptr<Aws::Transfer::TransferHandle> handle = 
+      transfer_manager_.get()->UploadFile(
+        outfile_, bucket_.c_str(), object_.c_str(),
+        "application/octet-stream", Aws::Map<Aws::String, Aws::String>());
+    handle->WaitUntilFinished();
+    int retries = 0;
+    while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
+           retries++ < kUploadRetries) {
+      // if multipart upload was used, only the failed parts will be re-sent
+      VLOG(1) << "Retrying Upload of s3://" << bucket_ << "/" << object_
+              << " after failure. Current retry count:" << retries;
+      transfer_manager_.get()->RetryUpload(outfile_, handle);
+      handle->WaitUntilFinished();
+    }
+    if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
+      return errors::Unknown(handle->GetLastError().GetExceptionName(), ": ",
+                             handle->GetFailedParts().size(), " failed parts. ",
+                             handle->GetLastError().GetMessage());
+    }
     outfile_->clear();
     outfile_->seekp(offset);
-    if (!putObjectOutcome.IsSuccess()) {
-      return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
-                             ": ", putObjectOutcome.GetError().GetMessage());
-    }
     sync_needed_ = false;
     return Status::OK();
   }
@@ -273,6 +299,7 @@ class S3WritableFile : public WritableFile {
   string bucket_;
   string object_;
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
   bool sync_needed_;
   std::shared_ptr<Aws::Utils::TempFile> outfile_;
 };
@@ -292,13 +319,16 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 S3FileSystem::S3FileSystem()
-    : s3_client_(nullptr, ShutdownClient), client_lock_() {}
+    : s3_client_(nullptr, ShutdownClient), 
+    initialization_lock_(),
+    transfer_manager_(nullptr, ShutdownTransferManager),
+    executor_(nullptr, ShutdownExecutor) {}
 
 S3FileSystem::~S3FileSystem() {}
 
 // Initializes s3_client_, if needed, and returns it.
 std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
-  std::lock_guard<mutex> lock(this->client_lock_);
+  std::lock_guard<mutex> lock(this->initialization_lock_);
 
   if (this->s3_client_.get() == nullptr) {
     AWSLogSystem::InitializeAWSLogging();
@@ -309,6 +339,9 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
       return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.secureRandomFactory_create_fn = []() {
+      return Aws::MakeShared<AWSSecureRandomFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
 
@@ -326,11 +359,35 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
   return this->s3_client_;
 }
 
+std::shared_ptr<Aws::Transfer::TransferManager>
+S3FileSystem::GetTransferManager() {
+  std::shared_ptr<Aws::S3::S3Client> s3_client = this->GetS3Client();
+  std::lock_guard<mutex> lock(this->initialization_lock_);
+  if (this->transfer_manager_.get() == nullptr) {
+    Aws::Transfer::TransferManagerConfiguration config(
+        this->GetExecutor().get());
+    config.s3Client = s3_client;
+    this->transfer_manager_ = Aws::Transfer::TransferManager::Create(config);
+  }
+  return this->transfer_manager_;
+}
+
+std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor>
+S3FileSystem::GetExecutor() {
+  if (this->executor_.get() == nullptr) {
+    this->executor_ =
+        Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
+            kExecutorTag, kExecutorPoolSize);
+  }
+  return this->executor_;
+}
+
 Status S3FileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3RandomAccessFile(bucket, object, this->GetS3Client()));
+  result->reset(new S3RandomAccessFile(bucket, object, this->GetTransferManager(),
+                                        this->GetS3Client()));
   return Status::OK();
 }
 
@@ -338,7 +395,8 @@ Status S3FileSystem::NewWritableFile(const string& fname,
                                      std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object, this->GetS3Client()));
+  result->reset(new S3WritableFile(bucket, object, this->GetTransferManager(),
+                                    this->GetS3Client()));
   return Status::OK();
 }
 

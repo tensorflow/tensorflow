@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 
 #include <aws/s3/S3Client.h>
+#include <aws/transfer/TransferManager.h>
+#include <aws/core/utils/threading/Executor.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -74,10 +76,18 @@ class S3FileSystem : public FileSystem {
   // This S3 Client does not support Virtual Hosted–Style Method
   // for a bucket.
   std::shared_ptr<Aws::S3::S3Client> GetS3Client();
-
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
-  // Lock held when checking for s3_client_ initialization.
-  mutex client_lock_;
+  
+  // Returns the member transfer manager, initializing as-needed.
+  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager();
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
+
+  // Returns the member executor for transfer manager, initializing as-needed.
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
+
+  // Lock held when checking for s3_client_ and transfer_manager_ initialization
+  mutex initialization_lock_;
 };
 
 }  // namespace tensorflow
