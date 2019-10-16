@@ -68,6 +68,8 @@ TfLiteStatus ImageClassificationStage::Init() {
   preprocess_params->set_image_height(input_shape->data[1]);
   preprocess_params->set_image_width(input_shape->data[2]);
   preprocess_params->set_output_type(static_cast<int>(input_type));
+  // Preserving aspect improves the accuracy by about 0.5%.
+  preprocess_params->set_aspect_preserving(true);
   preprocessing_stage_.reset(new ImagePreprocessingStage(preprocessing_config));
   if (preprocessing_stage_->Init() != kTfLiteOk) return kTfLiteError;
 
