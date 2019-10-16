@@ -711,8 +711,6 @@ tf_cuda_library(
         "util/ptr_util.h",
         "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
-        "util/sparse/group_iterator.h",
-        "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
         "util/stream_executor_util.h",
@@ -726,6 +724,7 @@ tf_cuda_library(
         "util/matmul_autotune.h",
         "util/util.h",
         "util/work_sharder.h",
+        "//tensorflow/core/util/sparse:framework_group",
     ] + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -1572,6 +1571,7 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2570,6 +2570,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "graph/graph_def_builder.h",
     "graph/node_builder.h",
     "graph/tensor_id.h",
+    "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
 ] + glob(
     [
         "example/**/*.h",
@@ -2666,7 +2667,9 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "framework_internal_impl",
-    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + glob(
+    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
+        "//tensorflow/core/util/sparse:framework_internal_impl_group",
+    ] + glob(
         [
             "example/**/*.cc",
             "framework/**/*.cc",
@@ -3894,7 +3897,6 @@ tf_cc_tests(
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
         "util/semver_test.cc",
-        "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
         "util/tensor_format_test.cc",
         "util/tensor_slice_reader_test.cc",
@@ -3902,6 +3904,7 @@ tf_cc_tests(
         "util/tensor_slice_util_test.cc",
         "util/tensor_slice_writer_test.cc",
         "util/work_sharder_test.cc",
+        "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
