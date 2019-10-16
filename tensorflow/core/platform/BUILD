@@ -783,6 +783,7 @@ filegroup(
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "cpu_feature_guard.cc",
             "denormal.cc",
             "numbers.cc",
             "platform_strings.cc",
