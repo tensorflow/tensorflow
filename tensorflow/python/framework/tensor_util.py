@@ -361,12 +361,14 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   common workflow. That said, this utility function is still useful for
   generating TF Serving request protos:
 
+  ```python
     request = tensorflow_serving.apis.predict_pb2.PredictRequest()
     request.model_spec.name = "my_model"
     request.model_spec.signature_name = "serving_default"
     request.inputs["images"].CopyFrom(tf.make_tensor_proto(X_new))
+  ```
 
-  make_tensor_proto accepts "values" of a python scalar, a python list, a
+  `make_tensor_proto` accepts "values" of a python scalar, a python list, a
   numpy ndarray, or a numpy scalar.
 
   If "values" is a python scalar or a python list, make_tensor_proto
@@ -376,9 +378,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   type with the given dtype.
 
   In either case above, the numpy ndarray (either the caller provided
-  or the auto converted) must have the compatible type with dtype.
+  or the auto-converted) must have the compatible type with dtype.
 
-  make_tensor_proto then converts the numpy array to a tensor proto.
+  `make_tensor_proto` then converts the numpy array to a tensor proto.
 
   If "shape" is None, the resulting tensor proto represents the numpy
   array precisely.
