@@ -993,11 +993,13 @@ gentbl(
 cc_library(
     name = "SPIRVDialect",
     srcs = [
+        "lib/Dialect/SPIRV/LayoutUtils.cpp",
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/LayoutUtils.h",
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
@@ -1565,6 +1567,7 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
+        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
@@ -1680,7 +1683,6 @@ cc_binary(
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
-        ":SPIRVTransforms",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
