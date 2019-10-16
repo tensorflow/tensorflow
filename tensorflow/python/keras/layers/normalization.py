@@ -43,9 +43,18 @@ from tensorflow.python.util.tf_export import keras_export
 class BatchNormalizationBase(Layer):
   """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
 
-  Normalize the activations of the previous layer at each batch,
-  i.e. applies a transformation that maintains the mean activation
+  Applies a transformation that takes the mean activation
   close to 0 and the activation standard deviation close to 1.
+
+  During training, each call of the layer triggers a training op that
+  learns a "global" location and scale parameter. The parameters are
+  not used during training, instead the batchwise
+  mean and epsilon-floored variance are used to shift and scale
+  the activations.
+
+  During test (see `learning_phase`), the learned location and scale
+  are used to shift and scale the activations.
+
 
   Arguments:
     axis: Integer, the axis that should be normalized
@@ -138,7 +147,7 @@ class BatchNormalizationBase(Layer):
   def __init__(self,
                axis=-1,
                momentum=0.99,
-               epsilon=1e-3,
+               epsilon=1e-8,
                center=True,
                scale=True,
                beta_initializer='zeros',
