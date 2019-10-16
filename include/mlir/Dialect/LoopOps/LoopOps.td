@@ -28,6 +28,11 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+#ifdef MLIR_LOOPLIKEINTERFACE
+#else
+include "mlir/Transforms/LoopLikeInterface.td"
+#endif
+
 def Loop_Dialect : Dialect {
   let name = "loop";
   let cppNamespace = "";
@@ -48,7 +53,8 @@ class Loop_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 def ForOp : Loop_Op<"for",
-      [SingleBlockImplicitTerminator<"TerminatorOp">]> {
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let summary = "for operation";
   let description = [{
     The "loop.for" operation represents a loop nest taking 3 SSA value as
