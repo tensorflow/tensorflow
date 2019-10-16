@@ -364,6 +364,7 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
+    alwayslink = 1,
 )
 
 filegroup(
