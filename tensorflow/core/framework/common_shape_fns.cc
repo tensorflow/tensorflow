@@ -1571,9 +1571,9 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   // shape.
   int64 concat_dim;
   if (concat_dim_t->dtype() == DT_INT32) {
-	  concat_dim = static_cast<int64>(concat_dim_t->flat<int32>()(0));
+    concat_dim = static_cast<int64>(concat_dim_t->flat<int32>()(0));
   } else {
-	  concat_dim = concat_dim_t->flat<int64>()(0);
+    concat_dim = concat_dim_t->flat<int64>()(0);
   }
 
   // Minimum required number of dimensions.
