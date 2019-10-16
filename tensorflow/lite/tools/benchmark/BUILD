@@ -100,10 +100,7 @@ cc_test(
 
 cc_library(
     name = "benchmark_tflite_model_lib",
-    srcs = [
-        "benchmark_tflite_model.cc",
-        "logging.h",
-    ],
+    srcs = ["benchmark_tflite_model.cc"],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
     deps = [
