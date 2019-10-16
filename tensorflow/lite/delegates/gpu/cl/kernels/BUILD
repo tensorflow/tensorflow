@@ -667,6 +667,24 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "lstm_test",
+    srcs = ["lstm_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":lstm",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
