@@ -99,6 +99,12 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                             pass_config.emit_quant_adaptor_ops, pass_manager);
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
+
+    // This pass operates on TensorFlow ops but is triggered after legalization
+    // so that it can target constants introduced once TensorFlow Identity ops
+    // are removed during legalization.
+    pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+
     pass_manager->addPass(mlir::createCSEPass());
     // This pass should be always at the end. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes

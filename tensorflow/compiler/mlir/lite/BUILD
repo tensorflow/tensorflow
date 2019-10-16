@@ -262,6 +262,7 @@ cc_library(
         "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/lower_static_tensor_list.cc",
+        "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/split_merged_operands.cc",
