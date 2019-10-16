@@ -26,6 +26,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+static const map<std::string, Aws::Utils::Logging::LogLevel> log_levels_string_to_aws = {
+  {"off", Aws::Utils::Logging::LogLevel::Off},
+  {"fatal", Aws::Utils::Logging::LogLevel::Fatal},
+  {"error", Aws::Utils::Logging::LogLevel::Error},
+  {"warn", Aws::Utils::Logging::LogLevel::Warn},
+  {"info", Aws::Utils::Logging::LogLevel::Info},
+  {"debug", Aws::Utils::Logging::LogLevel::Debug},
+  {"trace", Aws::Utils::Logging::LogLevel::Trace}
+}
+
+static const map<int, Aws::Utils::Logging::LogLevel> log_levels_tf_to_aws = {
+  {INFO, Aws::Utils::Logging::LogLevel::Info},
+  {WARNING, Aws::Utils::Logging::LogLevel::Warn},
+  {ERROR, Aws::Utils::Logging::LogLevel::Error},
+  {FATAL, Aws::Utils::Logging::LogLevel::Fatal}
+}
+
 AWSLogSystem::AWSLogSystem(Aws::Utils::Logging::LogLevel log_level)
     : log_level_(log_level) {}
 
@@ -64,7 +81,7 @@ void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
       LOG(FATAL) << message;
       break;
     default:
-      LOG(ERROR) << message;
+      LOG(INFO) << message;
       break;
   }
 }
@@ -73,50 +90,42 @@ void AWSLogSystem::Flush() { return; }
 
 namespace {
 
-// Taken from tensorflow/core/platform/default/logging.cc
-int ParseInteger(const char* str, size_t size) {
-  string integer_str(str, size);
-  std::istringstream ss(integer_str);
-  int level = 0;
-  ss >> level;
-  return level;
-}
-
-// Taken from tensorflow/core/platform/default/logging.cc
-int64 LogLevelStrToInt(const char* tf_env_var_val) {
-  if (tf_env_var_val == nullptr) {
-    return 0;
+Aws::Utils::Logging::LogLevel TfLogLevelToAwsLogLevel(int aws_log_level) {
+  if (log_levels_tf_to_aws.find(level) != log_levels_tf_to_aws.end()) {
+    return log_levels_tf_to_aws.at(level);
+  } else {
+    // default to fatal
+    return Aws::Utils::Logging::LogLevel::Fatal;
   }
-  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
 }
 
 static const char* kAWSLoggingTag = "AWSLogging";
 
-Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
-  Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
+Aws::Utils::Logging::LogLevel ParseAwsLogLevelFromEnv() {
+  Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Fatal;
 
-  const int64_t level = getenv("AWS_LOG_LEVEL")
-                            ? LogLevelStrToInt(getenv("AWS_LOG_LEVEL"))
-                            : tensorflow::internal::MinLogLevelFromEnv();
-
-  switch (level) {
-    case INFO:
-      log_level = Aws::Utils::Logging::LogLevel::Info;
-      break;
-    case WARNING:
-      log_level = Aws::Utils::Logging::LogLevel::Warn;
-      break;
-    case ERROR:
-      log_level = Aws::Utils::Logging::LogLevel::Error;
-      break;
-    case FATAL:
-      log_level = Aws::Utils::Logging::LogLevel::Fatal;
-      break;
-    default:
-      log_level = Aws::Utils::Logging::LogLevel::Info;
-      break;
+  const char* aws_env_var_val = getenv("AWS_LOG_LEVEL");
+  if (aws_env_var_val != nullptr) {
+    string maybe_integer_str(aws_env_var_val, strlen(aws_env_var_val));
+    std::istringstream ss(maybe_integer_str);
+    int level;
+    ss >> level;
+    if (ss.fail()) {
+      // wasn't a number
+      // expecting a string here
+      string level_str = maybe_integer_str;
+      if (log_levels_string_to_aws.find(level_str) != log_levels_string_to_aws.end()) {
+        log_level = log_levels_string_to_aws.at(level_str);
+      }
+    } else {
+      // backwards compatibility
+      // valid number, but this number follows the standard tensorflow log levels
+      // need to convert this to aws sdk logging level number
+      log_level = TfLogLevelToAwsLogLevel(level);
+    }
+  } else {
+    log_level = TfLogLevelToAwsLogLevel(tensorflow::internal::MinLogLevelFromEnv());
   }
-
   return log_level;
 }
 }  // namespace
@@ -127,7 +136,7 @@ void AWSLogSystem::InitializeAWSLogging() {
   std::lock_guard<mutex> s3_logging_lock(s3_logging_mutex);
   if (!initialized) {
     Aws::Utils::Logging::InitializeAWSLogging(
-        Aws::MakeShared<AWSLogSystem>(kAWSLoggingTag, ParseLogLevelFromEnv()));
+        Aws::MakeShared<AWSLogSystem>(kAWSLoggingTag, ParseAwsLogLevelFromEnv()));
     initialized = true;
     return;
   }
