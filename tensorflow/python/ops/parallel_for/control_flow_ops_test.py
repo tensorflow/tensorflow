@@ -111,6 +111,14 @@ class PForTest(PForTestCase):
         compute, array_ops.ones((10, 5, 3)))
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_vectorized_map_with_dynamic_shape(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    x = array_ops.placeholder_with_default(
+        array_ops.ones((10, 5, 3)), shape=None)
+    result = pfor_control_flow_ops.vectorized_map(compute, x)
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
   def test_vectorized_map_example_1(self):
     def outer_product(a):
       return math_ops.tensordot(a, a, 0)
