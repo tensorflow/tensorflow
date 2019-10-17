@@ -19,7 +19,7 @@ def X_AddOp : X_Op<"add">,
     auto ivs = IndexedLinalgValuemakeIndexHandles(view_A.rank());
     auto pivs = IndexedLinalgValuemakeIndexHandlePointers(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
-    LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
+    AffineLoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
       C(ivs) = A(ivs) + B(ivs)
     });
   }];

@@ -38,9 +38,9 @@ using load = ValueBuilder<LoadOp>;
 using store = InstructionBuilder<StoreOp>;
 ```
 
-## LoopBuilder and LoopNestBuilder
+## LoopBuilder and AffineLoopNestBuilder
 
-`mlir::edsc::LoopNestBuilder` provides an interface to allow writing concise and
+`mlir::edsc::AffineLoopNestBuilder` provides an interface to allow writing concise and
 structured loop nests.
 
 ```c++
@@ -86,7 +86,7 @@ def AddOp : Op<"x.add">,
     auto ivs = makeIndexHandles(view_A.rank());
     auto pivs = makePIndexHandles(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
-    LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())(
+    AffineLoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())(
       [&]{
         C(ivs) = A(ivs) + B(ivs)
       });

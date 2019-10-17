@@ -55,8 +55,8 @@ public:
 };
 
 /// Helper class to sugar building loop.for loop nests from ranges.
-/// This is similar to edsc::LoopNestBuilder except it works on ranges directly.
-/// In the current implementation it produces loop.for operations.
+/// This is similar to edsc::AffineLoopNestBuilder except it works on ranges
+/// directly. In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,

@@ -343,7 +343,7 @@ TEST_FUNC(builder_helpers) {
   lb2 = vA.lb(2);
   ub2 = vA.ub(2);
   step2 = vA.step(2);
-  LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})([&]{
+  AffineLoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})([&]{
     LoopBuilder(&k1, lb2, ub2, step2)([&]{
       C(i, j, k1) = f7 + A(i, j, k1) + B(i, j, k1);
     });
@@ -392,7 +392,7 @@ TEST_FUNC(custom_ops) {
   OperationHandle ih0, ih2;
   IndexHandle m, n, M(f.getArgument(0)), N(f.getArgument(1));
   IndexHandle ten(index_t(10)), twenty(index_t(20));
-  LoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})([&]{
+  AffineLoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})([&]{
     vh = MY_CUSTOM_OP({m, m + n}, {indexType}, {});
     ih0 = MY_CUSTOM_OP_0({m, m + n}, {});
     ih2 = MY_CUSTOM_OP_2({m, m + n}, {indexType, indexType});
@@ -455,7 +455,7 @@ TEST_FUNC(select_op_i32) {
   MemRefView vA(f.getArgument(0));
   IndexedValue A(f.getArgument(0));
   IndexHandle i, j;
-  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
+  AffineLoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
     // This test exercises IndexedValue::operator Value*.
     // Without it, one must force conversion to ValueHandle as such:
     //   edsc::intrinsics::select(
@@ -490,7 +490,7 @@ TEST_FUNC(select_op_f32) {
   MemRefView vA(f.getArgument(0)), vB(f.getArgument(1));
   IndexedValue A(f.getArgument(0)), B(f.getArgument(1));
   IndexHandle i, j;
-  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
+  AffineLoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
 
     edsc::intrinsics::select(B(i, j) == B(i+one, j), *A(zero, zero), *A(i, j));
     edsc::intrinsics::select(B(i, j) != B(i+one, j), *A(zero, zero), *A(i, j));
@@ -568,11 +568,11 @@ TEST_FUNC(tile_2d) {
   IndexHandle i, j, k1, k2, M(vC.ub(0)), N(vC.ub(1)), O(vC.ub(2));
 
   // clang-format off
-  LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})([&]{
-    LoopNestBuilder(&k1, zero, O, 1)([&]{
+  AffineLoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})([&]{
+    AffineLoopNestBuilder(&k1, zero, O, 1)([&]{
       C(i, j, k1) = A(i, j, k1) + B(i, j, k1);
     });
-    LoopNestBuilder(&k2, zero, O, 1)([&]{
+    AffineLoopNestBuilder(&k2, zero, O, 1)([&]{
       C(i, j, k2) = A(i, j, k2) + B(i, j, k2);
     });
   });
@@ -645,8 +645,8 @@ TEST_FUNC(vectorize_2d) {
 
   // clang-format off
   IndexHandle i, j, k;
-  LoopNestBuilder({&i, &j, &k}, {zero, zero, zero}, {M, N, P}, {1, 1, 1})([&]{
-    C(i, j, k) = A(i, j, k) + B(i, j, k);
+  AffineLoopNestBuilder({&i, &j, &k}, {zero, zero, zero}, {M, N, P}, {1, 1,
+1})([&]{ C(i, j, k) = A(i, j, k) + B(i, j, k);
   });
   ret();
 
