@@ -120,8 +120,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:test",
         "@com_google_absl//absl/strings",
     ],
 )
