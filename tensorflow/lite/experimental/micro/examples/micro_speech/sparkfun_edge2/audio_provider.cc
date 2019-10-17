@@ -86,15 +86,6 @@ static am_hal_ctimer_config_t g_sContTimer = {
 
 // ARPIT TODO : Implement low power configuration
 void custom_am_bsp_low_power_init(void) {
-#if USE_MAYA
-  // Make sure SWO/ITM/TPIU is disabled.
-  // SBL may not get it completely shut down.
-  am_bsp_itm_printf_disable();
-#else
-  // Initialize the printf interface for AP3B ITM/SWO output.
-  am_bsp_itm_printf_enable();
-#endif
-
   // Initialize for low power in the power control block
   // am_hal_pwrctrl_low_power_init();
 
