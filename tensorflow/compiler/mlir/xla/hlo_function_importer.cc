@@ -414,6 +414,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       attributes.push_back(ConvertPrecisionConfig(instruction));
       MakeAndReturn(ConvOp);
     }
+
+    case HloOpcode::kFft: {
+      auto fft_type =
+          builder_->getStringAttr(FftType_Name(instruction->fft_type()));
+
+      std::vector<int64_t> fft_length(instruction->fft_length().begin(),
+                                      instruction->fft_length().end());
+
+      attributes.push_back(builder_->getNamedAttr("fft_type", fft_type));
+      attributes.push_back(
+          builder_->getNamedAttr("fft_length", Convert(fft_length)));
+      MakeAndReturn(FftOp);
+    }
 #define NoAttributeCase(hlo_op_code, mlir_op) \
   case HloOpcode::hlo_op_code: {              \
     MakeAndReturn(mlir_op);                   \
@@ -519,6 +532,9 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
       return builder_->getTensorType(array, builder_->getIntegerType(32));
     case PrimitiveType::U64:
       return builder_->getTensorType(array, builder_->getIntegerType(64));
+    case PrimitiveType::C64:
+      return builder_->getTensorType(
+          array, mlir::ComplexType::get(builder_->getF32Type()));
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(type)));
