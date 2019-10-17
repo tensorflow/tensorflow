@@ -1699,7 +1699,7 @@ py_library(
 
 cuda_py_test(
     name = "bias_op_deterministic_test",
-    size = "small",
+    size = "medium",
     srcs = ["bias_op_deterministic_test.py"],
     additional_deps = [
         ":bias_op_base",
@@ -1709,7 +1709,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "bias_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["bias_op_test.py"],
     additional_deps = [
         ":bias_op_base",
