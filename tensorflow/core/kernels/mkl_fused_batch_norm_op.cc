@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -721,9 +721,9 @@ class MklFusedBatchNormOp : public OpKernel {
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -821,7 +821,7 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*saved_mean_tensor);
     // set NAN mean value in case of empty input tensor
     auto saved_mean_data = (*saved_mean_tensor)->flat<U>().data();
-    std::fill_n(saved_mean_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_mean_data, num_elements, static_cast<U>(0));
 
     MklDnnShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
@@ -831,7 +831,7 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*saved_variance_tensor);
     // set NAN variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
-    std::fill_n(saved_variance_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_variance_data, num_elements, static_cast<U>(0));
 
     // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
     // TODO: This parameter functionality is not implemented on CPU.
@@ -848,7 +848,7 @@ class MklFusedBatchNormOp : public OpKernel {
       DCHECK((*reserved_space_tensor) != nullptr);
       auto saved_reserved_space_data =
           (*reserved_space_tensor)->flat<U>().data();
-      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(NAN));
+      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(0));
     }
   }
 };
@@ -1078,9 +1078,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(U));
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -1156,8 +1156,12 @@ class MklFusedBatchNormGradOp : public OpKernel {
     mkl_shape_p.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kP1Index, &p1_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p1_tensor->flat<U>().data(), p1_tensor->shape().num_elements(),
+                static_cast<U>(0));
     AllocateOutputSetMklShape(context, kP2Index, &p2_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p2_tensor->flat<U>().data(), p2_tensor->shape().num_elements(),
+                static_cast<U>(0));
   }
 
   memory::dims GetMeanVarianceDims() { return memory::dims({1, depth_}); }
