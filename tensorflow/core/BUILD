@@ -2221,6 +2221,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -2274,6 +2275,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:strong_hash",
@@ -3171,7 +3173,7 @@ cc_library(
         "//tensorflow/core/profiler:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
-    deps = [":lib_internal"],
+    deps = ["//tensorflow/core/platform:regexp"],
 )
 
 tf_cuda_library(
