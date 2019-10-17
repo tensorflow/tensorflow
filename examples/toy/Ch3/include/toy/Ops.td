@@ -242,6 +242,9 @@ def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {
       buildTransposeOp(b, result, input);
     }]
   >];
+
+  // Invoke a static verify method to verify this transpose operation.
+  let verifier = [{ return ::verify(*this); }];
 }
 
 #endif // TOY_OPS

@@ -240,12 +240,24 @@ static void buildTransposeOp(mlir::Builder *builder,
 }
 
 void TransposeOp::inferShapes() {
-  SmallVector<int64_t, 2> dims;
   auto arrayTy = getOperand()->getType().cast<RankedTensorType>();
-  dims.insert(dims.end(), arrayTy.getShape().begin(), arrayTy.getShape().end());
-  if (dims.size() == 2)
-    std::swap(dims[0], dims[1]);
+  SmallVector<int64_t, 2> dims(llvm::reverse(arrayTy.getShape()));
   getResult()->setType(RankedTensorType::get(dims, arrayTy.getElementType()));
+}
+
+static mlir::LogicalResult verify(TransposeOp op) {
+  auto inputType = op.getOperand()->getType().dyn_cast<RankedTensorType>();
+  auto resultType = op.getType().dyn_cast<RankedTensorType>();
+  if (!inputType || !resultType)
+    return mlir::success();
+
+  auto inputShape = inputType.getShape();
+  if (!std::equal(inputShape.begin(), inputShape.end(),
+                  resultType.getShape().rbegin())) {
+    return op.emitError()
+           << "expected result shape to be a transpose of the input";
+  }
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//

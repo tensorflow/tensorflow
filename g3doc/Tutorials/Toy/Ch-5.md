@@ -238,9 +238,9 @@ Looking back at our current working example:
 ```.mlir
 func @main() {
   %0 = "toy.constant"() {value = dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
-  %2 = "toy.transpose"(%0) : (tensor<2x3xf64>) -> tensor<2x3xf64>
-  %3 = "toy.mul"(%2, %2) : (tensor<2x3xf64>, tensor<2x3xf64>) -> tensor<2x3xf64>
-  "toy.print"(%3) : (tensor<2x3xf64>) -> ()
+  %2 = "toy.transpose"(%0) : (tensor<2x3xf64>) -> tensor<3x2xf64>
+  %3 = "toy.mul"(%2, %2) : (tensor<3x2xf64>, tensor<3x2xf64>) -> tensor<3x2xf64>
+  "toy.print"(%3) : (tensor<3x2xf64>) -> ()
   "toy.return"() : () -> ()
 }
 ```
@@ -249,9 +249,6 @@ With affine lowering added to our pipeline, we can now generate:
 
 ```mlir
 func @main() {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
   %cst = constant 1.000000e+00 : f64
   %cst_0 = constant 2.000000e+00 : f64
   %cst_1 = constant 3.000000e+00 : f64
@@ -260,42 +257,42 @@ func @main() {
   %cst_4 = constant 6.000000e+00 : f64
 
   // Allocating buffers for the inputs and outputs.
-  %0 = alloc() : memref<2x3xf64>
-  %1 = alloc() : memref<2x3xf64>
+  %0 = alloc() : memref<3x2xf64>
+  %1 = alloc() : memref<3x2xf64>
   %2 = alloc() : memref<2x3xf64>
 
   // Initialize the input buffer with the constant values.
-  affine.store %cst, %2[%c0, %c0] : memref<2x3xf64>
-  affine.store %cst_0, %2[%c0, %c1] : memref<2x3xf64>
-  affine.store %cst_1, %2[%c0, %c2] : memref<2x3xf64>
-  affine.store %cst_2, %2[%c1, %c0] : memref<2x3xf64>
-  affine.store %cst_3, %2[%c1, %c1] : memref<2x3xf64>
-  affine.store %cst_4, %2[%c1, %c2] : memref<2x3xf64>
+  affine.store %cst, %2[0, 0] : memref<2x3xf64>
+  affine.store %cst_0, %2[0, 1] : memref<2x3xf64>
+  affine.store %cst_1, %2[0, 2] : memref<2x3xf64>
+  affine.store %cst_2, %2[1, 0] : memref<2x3xf64>
+  affine.store %cst_3, %2[1, 1] : memref<2x3xf64>
+  affine.store %cst_4, %2[1, 2] : memref<2x3xf64>
 
   // Load the transpose value from the input buffer and store it into the
   // next input buffer.
-  affine.for %arg0 = 0 to 2 {
-    affine.for %arg1 = 0 to 3 {
+  affine.for %arg0 = 0 to 3 {
+    affine.for %arg1 = 0 to 2 {
       %3 = affine.load %2[%arg1, %arg0] : memref<2x3xf64>
-      affine.store %3, %1[%arg0, %arg1] : memref<2x3xf64>
+      affine.store %3, %1[%arg0, %arg1] : memref<3x2xf64>
     }
   }
 
   // Multiply and store into the output buffer.
   affine.for %arg0 = 0 to 2 {
     affine.for %arg1 = 0 to 3 {
-      %3 = affine.load %1[%arg0, %arg1] : memref<2x3xf64>
-      %4 = affine.load %1[%arg0, %arg1] : memref<2x3xf64>
+      %3 = affine.load %1[%arg0, %arg1] : memref<3x2xf64>
+      %4 = affine.load %1[%arg0, %arg1] : memref<3x2xf64>
       %5 = mulf %3, %4 : f64
-      affine.store %5, %0[%arg0, %arg1] : memref<2x3xf64>
+      affine.store %5, %0[%arg0, %arg1] : memref<3x2xf64>
     }
   }
 
   // Print the value held by the buffer.
-  "toy.print"(%0) : (memref<2x3xf64>) -> ()
+  "toy.print"(%0) : (memref<3x2xf64>) -> ()
   dealloc %2 : memref<2x3xf64>
-  dealloc %1 : memref<2x3xf64>
-  dealloc %0 : memref<2x3xf64>
+  dealloc %1 : memref<3x2xf64>
+  dealloc %0 : memref<3x2xf64>
   return
 }
 ```
@@ -310,9 +307,6 @@ the pipeline gives the following result:
 
 ```mlir
 func @main() {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
   %cst = constant 1.000000e+00 : f64
   %cst_0 = constant 2.000000e+00 : f64
   %cst_1 = constant 3.000000e+00 : f64
@@ -321,32 +315,32 @@ func @main() {
   %cst_4 = constant 6.000000e+00 : f64
 
   // Allocating buffers for the inputs and outputs.
-  %0 = alloc() : memref<2x3xf64>
+  %0 = alloc() : memref<3x2xf64>
   %1 = alloc() : memref<2x3xf64>
 
   // Initialize the input buffer with the constant values.
-  affine.store %cst, %1[%c0, %c0] : memref<2x3xf64>
-  affine.store %cst_0, %1[%c0, %c1] : memref<2x3xf64>
-  affine.store %cst_1, %1[%c0, %c2] : memref<2x3xf64>
-  affine.store %cst_2, %1[%c1, %c0] : memref<2x3xf64>
-  affine.store %cst_3, %1[%c1, %c1] : memref<2x3xf64>
-  affine.store %cst_4, %1[%c1, %c2] : memref<2x3xf64>
+  affine.store %cst, %1[0, 0] : memref<2x3xf64>
+  affine.store %cst_0, %1[0, 1] : memref<2x3xf64>
+  affine.store %cst_1, %1[0, 2] : memref<2x3xf64>
+  affine.store %cst_2, %1[1, 0] : memref<2x3xf64>
+  affine.store %cst_3, %1[1, 1] : memref<2x3xf64>
+  affine.store %cst_4, %1[1, 2] : memref<2x3xf64>
 
-  affine.for %arg0 = 0 to 2 {
-    affine.for %arg1 = 0 to 3 {
+  affine.for %arg0 = 0 to 3 {
+    affine.for %arg1 = 0 to 2 {
       // Load the transpose value from the input buffer.
       %2 = affine.load %1[%arg1, %arg0] : memref<2x3xf64>
 
       // Multiply and store into the output buffer.
       %3 = mulf %2, %2 : f64
-      affine.store %3, %0[%arg0, %arg1] : memref<2x3xf64>
+      affine.store %3, %0[%arg0, %arg1] : memref<3x2xf64>
     }
   }
 
   // Print the value held by the buffer.
-  "toy.print"(%0) : (memref<2x3xf64>) -> ()
+  "toy.print"(%0) : (memref<3x2xf64>) -> ()
   dealloc %1 : memref<2x3xf64>
-  dealloc %0 : memref<2x3xf64>
+  dealloc %0 : memref<3x2xf64>
   return
 }
 ```
