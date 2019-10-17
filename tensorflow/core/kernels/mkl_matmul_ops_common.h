@@ -191,6 +191,20 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
                                   op_beta);
+        } else if (post_op_param.name == "relu6") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::eltwise_bounded_relu,
+                                  op_alpha, op_beta);
+        } else if (post_op_param.name == "elu") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::eltwise_elu, op_alpha,
+                                  op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           std::vector<float> scales;
@@ -198,6 +212,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           post_ops_attr.set_output_scales(0, scales);
         } else {
           DCHECK((post_op_param.name == "relu") ||
+                 (post_op_param.name == "relu6") ||
+                 (post_op_param.name == "elu") ||
                  (post_op_param.name == "output_scale"));
         }
       }
