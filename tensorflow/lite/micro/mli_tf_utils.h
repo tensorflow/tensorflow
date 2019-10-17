@@ -42,6 +42,8 @@ static void TfLiteTensor2mli_tensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
   } else {
     //return kTfLiteError;
   }
+  // for now only support per tensor quantization paramters
+  mliT->el_params.asym.dim = -1;
   mliT->el_params.asym.zero_point.i16 = tfT->params.zero_point;
   float fscale = tfT->params.scale;
   int exp;
