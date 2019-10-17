@@ -383,7 +383,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Returns:
       TFLiteConverter object.
     """
-    func = _saving_utils.trace_model_call(model)
+    input_signature = None
+    # If the model's call is not a `tf.function`, then we need to first get its
+    # input signature from `model_input_signature` method. We can't directly
+    # call `trace_model_call` because otherwise the batch dimension is set
+    # to None.
+    # Once we have better support for dynamic shapes, we can remove this.
+    if not isinstance(model.call, _def_function.Function):
+      # Pass `keep_original_batch_size=True` will ensure that we get an input
+      # signature including the batch dimension specified by the user.
+      input_signature = _saving_utils.model_input_signature(
+          model, keep_original_batch_size=True)
+
+    func = _saving_utils.trace_model_call(model, input_signature)
     concrete_func = func.get_concrete_function()
     return cls([concrete_func])
 
