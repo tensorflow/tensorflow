@@ -1393,16 +1393,14 @@ LogicalResult TypeConverter::convertSignatureArg(unsigned inputNo, Type type,
 /// Create a default conversion pattern that rewrites the type signature of a
 /// FuncOp.
 namespace {
-struct FuncOpSignatureConversion : public ConversionPattern {
+struct FuncOpSignatureConversion : public OpConversionPattern<FuncOp> {
   FuncOpSignatureConversion(MLIRContext *ctx, TypeConverter &converter)
-      : ConversionPattern(FuncOp::getOperationName(), 1, ctx),
-        converter(converter) {}
+      : OpConversionPattern(ctx), converter(converter) {}
 
   /// Hook for derived classes to implement combined matching and rewriting.
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
 
     // Convert the original function arguments.
@@ -1425,7 +1423,7 @@ struct FuncOpSignatureConversion : public ConversionPattern {
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
-    rewriter.eraseOp(op);
+    rewriter.eraseOp(funcOp);
     return matchSuccess();
   }
 
