@@ -299,6 +299,25 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":tensor",
+        ":tensor_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tensor_type",
     srcs = ["tensor_type.cc"],
