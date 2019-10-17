@@ -255,11 +255,16 @@ def CallOp : Std_Op<"call", [CallOpInterface]> {
       result.addAttribute("callee", builder->getSymbolRefAttr(callee));
       result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState &result, StringRef callee,"
+    "Builder *builder, OperationState &result, SymbolRefAttr callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
       result.addOperands(operands);
-      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addAttribute("callee", callee);
       result.addTypes(results);
+  }]>, OpBuilder<
+    "Builder *builder, OperationState &result, StringRef callee,"
+    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+      build(builder, result, builder->getSymbolRefAttr(callee), results,
+            operands);
   }]>];
 
   let extraClassDeclaration = [{
