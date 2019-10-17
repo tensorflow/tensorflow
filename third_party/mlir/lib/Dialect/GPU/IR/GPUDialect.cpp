@@ -142,7 +142,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
     return allReduce.emitError(
         "expected either an op attribute or a non-empty body");
   if (allReduce.op()) {
-    ArrayRef<StringRef> supportedOps{"add", "mul"};
+    SmallVector<StringRef, 2> supportedOps{"add", "mul"};
     if (!llvm::is_contained(supportedOps, *allReduce.op()))
       return allReduce.emitError("op \"") << *allReduce.op() << "\" is invalid";
   }
