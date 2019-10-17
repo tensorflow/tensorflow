@@ -1543,7 +1543,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Add");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
@@ -1782,7 +1782,7 @@ inline void Add(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Add/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
@@ -1801,7 +1801,7 @@ inline void Add(const ArithmeticParams& params,
 
   const int input1_shift = params.input1_shift;
   const int flat_size =
-      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int16 output_activation_min = params.quantized_activation_min;
   const int16 output_activation_max = params.quantized_activation_max;
 
@@ -1846,8 +1846,10 @@ inline void Add(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar + input2_map.array();
   } else {
-    // Should not come here.
-    TFLITE_DCHECK(false);
+    reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
+                                      input2_shape, input2_data, output_shape,
+                                      output_data);
+    return;
   }
   output_map = output_map.cwiseMax(params.quantized_activation_min);
   output_map = output_map.cwiseMin(params.quantized_activation_max);
@@ -2097,7 +2099,7 @@ inline void Mul(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Mul");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
@@ -2108,7 +2110,7 @@ inline void Mul(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Mul/int32/activation");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
   for (int i = 0; i < flat_size; ++i) {
@@ -2139,8 +2141,9 @@ inline void MulNoActivation(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
-    // Should not come here.
-    TFLITE_DCHECK(false);
+    reference_ops::BroadcastMul4DSlow(params, input1_shape, input1_data,
+                                      input2_shape, input2_data, output_shape,
+                                      output_data);
   }
 }
 
@@ -2153,7 +2156,7 @@ inline void Mul(const ArithmeticParams& params,
   // properly optimized version.
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2178,7 +2181,7 @@ inline void Mul(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2342,6 +2345,8 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
 }
 
 // Broadcast mul that can often be used for inner loop of broadcast Mul.
+// This function will handle scalar_value (LHS) * vector_values (RHS).
+// Since it's a float function, input params does not matter here.
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
                                const float broadcast_value,
                                const float* input2_data, float* output_data) {
@@ -2380,7 +2385,7 @@ inline void Mul(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Mul/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -2509,6 +2514,8 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
+          // The input may be switched here, but the common parameters here
+          // do not matter as they will not influence the float math execution.
           MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
                              output_data_ptr);
           input2_data_ptr += y3;
@@ -2652,7 +2659,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             float* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubNonBroadcast");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -2669,7 +2676,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               int32* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubWithActivation/int32");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -2686,7 +2693,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               float* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubWithActivation/float");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
