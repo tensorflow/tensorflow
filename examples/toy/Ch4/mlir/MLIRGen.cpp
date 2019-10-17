@@ -79,7 +79,7 @@ public:
     // the structural properties of the IR and invoke any specific verifiers we
     // have on the Toy operations.
     if (failed(mlir::verify(theModule))) {
-      theModule.emitError("Module verification error");
+      theModule.emitError("module verification error");
       return nullptr;
     }
 
@@ -229,7 +229,7 @@ private:
     if (auto *variable = symbolTable.lookup(expr.getName()))
       return variable;
 
-    emitError(loc(expr.loc()), "Error: unknown variable '")
+    emitError(loc(expr.loc()), "error: unknown variable '")
         << expr.getName() << "'";
     return nullptr;
   }
@@ -289,7 +289,8 @@ private:
     auto dataAttribute =
         mlir::DenseElementsAttr::get(dataType, llvm::makeArrayRef(data));
 
-    // Build the MLIR op `toy.constant`.
+    // Build the MLIR op `toy.constant`. This invokes the `ConstantOp::build`
+    // method.
     return builder.create<ConstantOp>(loc(lit.loc()), type, dataAttribute);
   }
 
@@ -389,7 +390,7 @@ private:
     auto init = vardecl.getInitVal();
     if (!init) {
       emitError(loc(vardecl.loc()),
-                "Missing initializer in variable declaration");
+                "missing initializer in variable declaration");
       return nullptr;
     }
 

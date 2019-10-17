@@ -1,4 +1,4 @@
-//===- Passes.h - Toy Passes Definition -----------------------------------===//
+//===- ShapeInferenceInterface.h - Interface definitions for ShapeInference -=//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,27 +15,23 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file exposes the entry points to create compiler passes for Toy.
+// This file contains the declarations of the shape inference interfaces defined
+// in ShapeInferenceInterface.td.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TUTORIAL_TOY_PASSES_H
-#define MLIR_TUTORIAL_TOY_PASSES_H
+#ifndef MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_
+#define MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_
 
-#include <memory>
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
-class Pass;
-
 namespace toy {
-std::unique_ptr<Pass> createDeadFunctionEliminationPass();
-std::unique_ptr<Pass> createShapeInferencePass();
 
-/// Create a pass for lowering to operations in the `Affine` and `Std` dialects,
-/// for a subset of the Toy IR (e.g. matmul).
-std::unique_ptr<mlir::Pass> createLowerToAffinePass();
+/// Include the auto-generated declarations.
+#include "toy/ShapeInferenceOpInterfaces.h.inc"
 
 } // end namespace toy
 } // end namespace mlir
 
-#endif // MLIR_TUTORIAL_TOY_PASSES_H
+#endif // MLIR_TUTORIAL_TOY_SHAPEINFERENCEINTERFACE_H_

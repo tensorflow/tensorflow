@@ -55,7 +55,8 @@ static void buildConstantOp(mlir::Builder *builder, mlir::OperationState &state,
   ConstantOp::build(builder, state, dataType, dataAttribute);
 }
 
-/// Verifier for constant operation.
+/// Verifier for the constant operation. This corresponds to the `::verify(...)`
+/// in the op definition.
 static mlir::LogicalResult verify(ConstantOp op) {
   // If the return type of the constant is not an unranked tensor, the shape
   // must match the shape of the attribute holding the data.
@@ -63,6 +64,8 @@ static mlir::LogicalResult verify(ConstantOp op) {
   if (!resultType)
     return success();
 
+  // Check that the rank of the attribute type matches the rank of the constant
+  // result type.
   auto attrType = op.value().getType().cast<mlir::TensorType>();
   if (attrType.getRank() != resultType.getRank()) {
     return op.emitOpError(
@@ -70,7 +73,9 @@ static mlir::LogicalResult verify(ConstantOp op) {
                "attribute: ")
            << attrType.getRank() << " != " << resultType.getRank();
   }
-  for (int dim = 0; dim < attrType.getRank(); ++dim) {
+
+  // Check that each of the dimensions match between the two types.
+  for (int dim = 0, dimE = attrType.getRank(); dim < dimE; ++dim) {
     if (attrType.getShape()[dim] != resultType.getShape()[dim]) {
       return op.emitOpError(
                  "return type shape mismatches its attribute at dimension ")

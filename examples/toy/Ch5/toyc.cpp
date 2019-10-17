@@ -20,30 +20,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "toy/Dialect.h"
-#include "toy/Lowering.h"
 #include "toy/MLIRGen.h"
 #include "toy/Parser.h"
 #include "toy/Passes.h"
 
-#include "linalg1/Dialect.h"
 #include "mlir/Analysis/Verifier.h"
-#include "mlir/ExecutionEngine/ExecutionEngine.h"
-#include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Target/LLVMIR.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace toy;
@@ -64,28 +57,14 @@ static cl::opt<enum InputType> inputType(
                           "load the input file as an MLIR file")));
 
 namespace {
-enum Action {
-  None,
-  DumpAST,
-  DumpMLIR,
-  DumpMLIRLinalg,
-  DumpLLVMDialect,
-  DumpLLVMIR,
-  RunJIT
-};
+enum Action { None, DumpAST, DumpMLIR, DumpMLIRAffine };
 }
 static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
-    cl::values(clEnumValN(DumpMLIRLinalg, "mlir-linalg",
-                          "output the MLIR dump after linalg lowering")),
-    cl::values(clEnumValN(DumpLLVMDialect, "llvm-dialect",
-                          "output the LLVM MLIR Dialect dump")),
-    cl::values(clEnumValN(DumpLLVMIR, "llvm-ir", "output the LLVM IR dump")),
-    cl::values(
-        clEnumValN(RunJIT, "jit",
-                   "JIT the code and run it by invoking the main function")));
+    cl::values(clEnumValN(DumpMLIRAffine, "mlir-affine",
+                          "output the MLIR dump after affine lowering")));
 
 static cl::opt<bool> EnableOpt("opt", cl::desc("Enable optimizations"));
 
@@ -103,171 +82,78 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
   return parser.ParseModule();
 }
 
-mlir::LogicalResult optimize(mlir::ModuleOp module) {
-  mlir::PassManager pm(module.getContext());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(createShapeInferencePass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-
-  // Apply any generic pass manager command line options.
-  applyPassManagerCLOptions(pm);
-
-  return pm.run(module);
-}
-
-mlir::LogicalResult lowerDialect(mlir::ModuleOp module, bool OnlyLinalg) {
-  mlir::PassManager pm(module.getContext());
-  pm.addPass(createEarlyLoweringPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  if (!OnlyLinalg) {
-    pm.addPass(createLateLoweringPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-  }
-  // Apply any generic pass manager command line options.
-  applyPassManagerCLOptions(pm);
-
-  return pm.run(module);
-}
-
-mlir::OwningModuleRef loadFileAndProcessModule(
-    mlir::MLIRContext &context, bool EnableLinalgLowering = false,
-    bool EnableLLVMLowering = false, bool EnableOpt = false) {
-
-  mlir::OwningModuleRef module;
-  if (inputType == InputType::MLIR ||
-      llvm::StringRef(inputFilename).endswith(".mlir")) {
-    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
-        llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
-    if (std::error_code EC = fileOrErr.getError()) {
-      llvm::errs() << "Could not open input file: " << EC.message() << "\n";
-      return nullptr;
-    }
-    llvm::SourceMgr sourceMgr;
-    sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
-    module = mlir::parseSourceFile(sourceMgr, &context);
-    if (!module) {
-      llvm::errs() << "Error can't load file " << inputFilename << "\n";
-      return nullptr;
-    }
-    if (failed(mlir::verify(*module))) {
-      llvm::errs() << "Error verifying MLIR module\n";
-      return nullptr;
-    }
-  } else {
+int loadMLIR(mlir::MLIRContext &context, mlir::OwningModuleRef &module) {
+  // Handle '.toy' input to the compiler.
+  if (inputType != InputType::MLIR &&
+      !llvm::StringRef(inputFilename).endswith(".mlir")) {
     auto moduleAST = parseInputFile(inputFilename);
     module = mlirGen(context, *moduleAST);
+    return !module ? 1 : 0;
   }
-  if (!module)
-    return nullptr;
-  if (EnableOpt) {
-    if (failed(optimize(*module))) {
-      llvm::errs() << "Module optimization failed\n";
-      return nullptr;
-    }
+
+  // Otherwise, the input is '.mlir'.
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
+      llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
+  if (std::error_code EC = fileOrErr.getError()) {
+    llvm::errs() << "Could not open input file: " << EC.message() << "\n";
+    return -1;
   }
-  if (EnableLLVMLowering || EnableLinalgLowering) {
-    if (failed(lowerDialect(*module, !EnableLLVMLowering))) {
-      llvm::errs() << "Module lowering failed\n";
-      return nullptr;
-    }
+
+  // Parse the input mlir.
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
+  module = mlir::parseSourceFile(sourceMgr, &context);
+  if (!module) {
+    llvm::errs() << "Error can't load file " << inputFilename << "\n";
+    return 3;
   }
-  return module;
+  return 0;
 }
 
 int dumpMLIR() {
+  // Register our Dialect with MLIR.
+  mlir::registerDialect<mlir::toy::ToyDialect>();
+
   mlir::MLIRContext context;
-  auto module =
-      loadFileAndProcessModule(context, /*EnableLinalgLowering=*/false,
-                               /*EnableLLVMLowering=*/false, EnableOpt);
-  if (!module)
-    return -1;
+  mlir::OwningModuleRef module;
+  if (int error = loadMLIR(context, module))
+    return error;
+
+  mlir::PassManager pm(&context);
+  // Apply any generic pass manager command line options and run the pipeline.
+  applyPassManagerCLOptions(pm);
+
+  // Check to see what granularity of MLIR we are compiling to.
+  bool isLoweringToAffine = emitAction >= Action::DumpMLIRAffine;
+
+  if (EnableOpt || isLoweringToAffine) {
+    // Inline all functions into main and then delete them.
+    pm.addPass(mlir::createInlinerPass());
+    pm.addPass(mlir::toy::createDeadFunctionEliminationPass());
+
+    // Now that there is only one function, we can infer the shapes of each of
+    // the operations.
+    pm.addPass(mlir::toy::createShapeInferencePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+  }
+
+  if (isLoweringToAffine) {
+    // Partially lower the toy dialect with a few cleanups afterwards.
+    pm.addPass(mlir::toy::createLowerToAffinePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+
+    // Add optimizations if enabled.
+    if (EnableOpt) {
+      pm.addPass(mlir::createLoopFusionPass());
+      pm.addPass(mlir::createMemRefDataFlowOptPass());
+    }
+  }
+
+  if (mlir::failed(pm.run(*module)))
+    return 4;
+
   module->dump();
-  return 0;
-}
-
-int dumpMLIRLinalg() {
-  mlir::MLIRContext context;
-  auto module = loadFileAndProcessModule(context, /*EnableLinalgLowering=*/true,
-                                         /*EnableLLVMLowering=*/false,
-                                         /* EnableOpt=*/true);
-  if (!module)
-    return -1;
-  module->dump();
-  return 0;
-}
-
-int dumpLLVMDialect() {
-  mlir::MLIRContext context;
-  auto module = loadFileAndProcessModule(
-      context, /*EnableLinalgLowering=*/false, /* EnableLLVMLowering=*/true,
-      /* EnableOpt=*/true);
-  if (!module) {
-    llvm::errs() << "Failed to load/lower MLIR module\n";
-    return -1;
-  }
-  module->dump();
-  return 0;
-}
-
-int dumpLLVMIR() {
-  mlir::MLIRContext context;
-  auto module = loadFileAndProcessModule(
-      context, /*EnableLinalgLowering=*/false, /* EnableLLVMLowering=*/true,
-      /* EnableOpt=*/true);
-  if (!module) {
-    llvm::errs() << "Failed to load/lower MLIR module\n";
-    return -1;
-  }
-  auto llvmModule = translateModuleToLLVMIR(*module);
-  if (!llvmModule) {
-    llvm::errs() << "Failed to emit LLVM IR\n";
-    return -1;
-  }
-  // Initialize LLVM targets.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-  mlir::ExecutionEngine::setupTargetTriple(llvmModule.get());
-  auto optPipeline = mlir::makeOptimizingTransformer(
-      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0,
-      /* targetMachine=*/nullptr);
-  if (auto err = optPipeline(llvmModule.get())) {
-    llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
-    return -1;
-  }
-  llvm::errs() << *llvmModule << "\n";
-  return 0;
-}
-
-int runJit() {
-  mlir::MLIRContext context;
-  auto module = loadFileAndProcessModule(
-      context, /*EnableLinalgLowering=*/false, /* EnableLLVMLowering=*/true,
-      /* EnableOpt=*/true);
-
-  // Initialize LLVM targets.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-
-  // Create an MLIR execution engine. The execution engine eagerly JIT-compiles
-  // the module.
-  auto optPipeline = mlir::makeOptimizingTransformer(
-      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0,
-      /* targetMachine=*/nullptr);
-  auto maybeEngine = mlir::ExecutionEngine::create(*module, optPipeline);
-  assert(maybeEngine && "failed to construct an execution engine");
-  auto &engine = maybeEngine.get();
-
-  // Invoke the JIT-compiled function with the arguments.  Note that, for API
-  // uniformity reasons, it takes a list of type-erased pointers to arguments.
-  auto invocationResult = engine->invoke("main");
-  if (invocationResult) {
-    llvm::errs() << "JIT invocation failed\n";
-    return -1;
-  }
-
   return 0;
 }
 
@@ -286,10 +172,6 @@ int dumpAST() {
 }
 
 int main(int argc, char **argv) {
-  // Register our Dialects with MLIR
-  mlir::registerDialect<ToyDialect>();
-  mlir::registerDialect<linalg::LinalgDialect>();
-
   mlir::registerPassManagerCLOptions();
   cl::ParseCommandLineOptions(argc, argv, "toy compiler\n");
 
@@ -297,18 +179,10 @@ int main(int argc, char **argv) {
   case Action::DumpAST:
     return dumpAST();
   case Action::DumpMLIR:
+  case Action::DumpMLIRAffine:
     return dumpMLIR();
-  case Action::DumpMLIRLinalg:
-    return dumpMLIRLinalg();
-  case Action::DumpLLVMDialect:
-    return dumpLLVMDialect();
-  case Action::DumpLLVMIR:
-    return dumpLLVMIR();
-  case Action::RunJIT:
-    return runJit();
   default:
     llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";
-    return -1;
   }
 
   return 0;

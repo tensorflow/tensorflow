@@ -15,24 +15,30 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a simple combiner for optimizing pattern in the Toy
-// dialect.
+// This file implements a set of simple combiners for optimizing operations in
+// the Toy dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#include "toy/Dialect.h"
-
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
-
+#include "toy/Dialect.h"
 #include <numeric>
-
-namespace toy {
+using namespace mlir;
+using namespace toy;
 
 namespace {
+/// Include the patterns defined in the Declarative Rewrite framework.
+#include "ToyCombine.inc"
+} // end anonymous namespace
 
-/// Fold transpose(transpose(x) -> transpose(x)
+/// Fold simple cast operations that return the same type as the input.
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  return mlir::impl::foldCastOp(*this);
+}
+
+/// This is an example of a c++ rewrite pattern for the TransposeOp. It
+/// optimizes the following scenario: transpose(transpose(x)) -> transpose(x)
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
   /// We register this pattern to match every toy.transpose in the IR.
   /// The "benefit" is used by the framework to order the patterns and process
@@ -40,9 +46,9 @@ struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
   SimplifyRedundantTranspose(mlir::MLIRContext *context)
       : OpRewritePattern<TransposeOp>(context, /*benefit=*/1) {}
 
-  /// This method is attempting to match a pattern and rewrite it. The rewriter
-  /// argument is the orchestrator of the sequence of rewrites. It is expected
-  /// to interact with it to perform any changes to the IR from here.
+  /// This method attempts to match a pattern and rewrite it. The rewriter
+  /// argument is the orchestrator of the sequence of rewrites. The pattern is
+  /// expected to interact with it to perform any changes to the IR from here.
   mlir::PatternMatchResult
   matchAndRewrite(TransposeOp op,
                   mlir::PatternRewriter &rewriter) const override {
@@ -55,132 +61,23 @@ struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
     if (!transposeInputOp)
       return matchFailure();
 
-    // Use the rewriter to perform the replacement
+    // Use the rewriter to perform the replacement.
     rewriter.replaceOp(op, {transposeInputOp.getOperand()}, {transposeInputOp});
     return matchSuccess();
   }
 };
 
-/// Fold reshape(constant(x)) -> constant(x'), with x' being reshaped in place.
-struct SimplifyReshapeConstant : public mlir::OpRewritePattern<ReshapeOp> {
-  using mlir::OpRewritePattern<ReshapeOp>::OpRewritePattern;
-
-  mlir::PatternMatchResult
-  matchAndRewrite(ReshapeOp reshape,
-                  mlir::PatternRewriter &rewriter) const override {
-    // Look through the input of the current reshape.
-    ConstantOp constantOp = llvm::dyn_cast_or_null<ConstantOp>(
-        reshape.getOperand()->getDefiningOp());
-
-    // If the input is defined by another constant, bingo!
-    if (!constantOp)
-      return matchFailure();
-
-    auto reshapeType = reshape.getType().cast<ToyArrayType>();
-    if (auto valueAttr =
-            constantOp.getAttrOfType<mlir::DenseElementsAttr>("value")) {
-      // FIXME Check matching of element count!
-      //      auto oldType = constantOp.getType();
-      auto newType = rewriter.getTensorType(
-          reshapeType.getShape(), valueAttr.getType().getElementType());
-      auto newAttr = valueAttr.reshape(newType);
-      rewriter.replaceOpWithNewOp<ConstantOp>(reshape, reshapeType.getShape(),
-                                              newAttr);
-    } else if (auto valueAttr =
-                   constantOp.getAttrOfType<mlir::FloatAttr>("value")) {
-      // Broadcast
-      auto dataSize = std::accumulate(reshapeType.getShape().begin(),
-                                      reshapeType.getShape().end(), 1,
-                                      std::multiplies<int>());
-      std::vector<mlir::Attribute> data(dataSize, valueAttr);
-      auto tensorTy = rewriter.getTensorType(reshapeType.getShape(),
-                                             reshapeType.getElementType());
-      auto newAttr = mlir::DenseElementsAttr::get(tensorTy, data);
-      rewriter.replaceOpWithNewOp<ConstantOp>(reshape, reshapeType.getShape(),
-                                              newAttr);
-    } else {
-      llvm_unreachable("Unsupported Constant format");
-    }
-    return matchSuccess();
-  }
-};
-
-/// Fold reshape(reshape(x)) -> reshape(x)
-struct SimplifyReshapeReshape : public mlir::OpRewritePattern<ReshapeOp> {
-  using mlir::OpRewritePattern<ReshapeOp>::OpRewritePattern;
-
-  mlir::PatternMatchResult
-  matchAndRewrite(ReshapeOp op,
-                  mlir::PatternRewriter &rewriter) const override {
-    // Look through the input of the current reshape.
-    mlir::Value *reshapeInput = op.getOperand();
-
-    // If the input is defined by another reshape, bingo!
-    if (!matchPattern(reshapeInput, mlir::m_Op<ReshapeOp>()))
-      return matchFailure();
-
-    // Use the rewriter to perform the replacement
-    rewriter.replaceOp(op, {reshapeInput});
-    return matchSuccess();
-  }
-};
-
-/// Fold reshape(x)) -> x, when input type matches output type
-struct SimplifyNullReshape : public mlir::OpRewritePattern<ReshapeOp> {
-  using mlir::OpRewritePattern<ReshapeOp>::OpRewritePattern;
-
-  mlir::PatternMatchResult
-  matchAndRewrite(ReshapeOp op,
-                  mlir::PatternRewriter &rewriter) const override {
-    if (op.getOperand()->getType() != op.getType())
-      return matchFailure();
-    rewriter.replaceOp(op, {op.getOperand()});
-    return matchSuccess();
-  }
-};
-
-} // end anonymous namespace.
-
-// Register our patterns for rewrite by the Canonicalization framework.
-void TransposeOp::getCanonicalizationPatterns(
-    mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
+/// Register our patterns as "canonicalization" patterns on the TransposeOp so
+/// that they can be picked up by the Canonicalization framework.
+void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
   results.insert<SimplifyRedundantTranspose>(context);
 }
 
-// Register our patterns for rewrite by the Canonicalization framework.
-void ReshapeOp::getCanonicalizationPatterns(
-    mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  results.insert<SimplifyReshapeConstant, SimplifyReshapeReshape,
-                 SimplifyNullReshape>(context);
+/// Register our patterns as "canonicalization" patterns on the ReshapeOp so
+/// that they can be picked up by the Canonicalization framework.
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<ReshapeReshapeOptPattern, RedundantReshapeOptPattern,
+                 FoldConstantReshapeOptPattern>(context);
 }
-
-namespace {
-
-/// Fold type.cast(x) -> x, when input type matches output type
-struct SimplifyIdentityTypeCast : public mlir::OpRewritePattern<TypeCastOp> {
-  using mlir::OpRewritePattern<TypeCastOp>::OpRewritePattern;
-
-  mlir::PatternMatchResult
-  matchAndRewrite(TypeCastOp typeCast,
-                  mlir::PatternRewriter &rewriter) const override {
-    auto resTy = typeCast.getType();
-    auto *candidateOp = typeCast.getOperation();
-    while (llvm::isa_and_nonnull<TypeCastOp>(candidateOp)) {
-      if (resTy == candidateOp->getOperand(0)->getType()) {
-        rewriter.replaceOp(typeCast, {candidateOp->getOperand(0)});
-        return matchSuccess();
-      }
-      candidateOp = candidateOp->getOperand(0)->getDefiningOp();
-    }
-    return matchFailure();
-  }
-};
-
-} // end anonymous namespace.
-
-void TypeCastOp::getCanonicalizationPatterns(
-    mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  results.insert<SimplifyIdentityTypeCast>(context);
-}
-
-} // namespace toy
