@@ -1861,6 +1861,7 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_cuda",
         "no_windows",
     ],
 )
