@@ -44,6 +44,14 @@ func @verifyNativeCodeCall(%arg0: i32, %arg1: i32) -> (i32, i32) {
   return %0, %1: i32, i32
 }
 
+// CHECK-LABEL: verifyAuxiliaryNativeCodeCall
+func @verifyAuxiliaryNativeCodeCall(%arg0: i32) -> (i32) {
+  // CHECK: test.op_i
+  // CHECK: test.op_k
+  %0 = "test.native_code_call3"(%arg0) : (i32) -> (i32)
+  return %0 : i32
+}
+
 // CHECK-LABEL: verifyAllAttrConstraintOf
 func @verifyAllAttrConstraintOf() -> (i32, i32, i32) {
   // CHECK: "test.all_attr_constraint_of2"

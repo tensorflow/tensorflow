@@ -530,17 +530,23 @@ void PatternEmitter::emitRewriteLogic() {
   }
   os << "}); (void)loc;\n";
 
-  // Process each result pattern and record the result symbol.
-  llvm::SmallVector<std::string, 2> resultValues;
-  for (int i = 0; i < numResultPatterns; ++i) {
+  // Process auxiliary result patterns.
+  for (int i = 0; i < replStartIndex; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
-    resultValues.push_back(handleResultPattern(resultTree, offsets[i], 0));
+    auto val = handleResultPattern(resultTree, offsets[i], 0);
+    // Normal op creation will be streamed to `os` by the above call; but
+    // NativeCodeCall will only be materialized to `os` if it is used. Here
+    // we are handling auxiliary patterns so we want the side effect even if
+    // NativeCodeCall is not replacing matched root op's results.
+    if (resultTree.isNativeCodeCall())
+      os.indent(4) << val << ";\n";
   }
 
+  // Process replacement result patterns.
   os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
-  // Only use the last portion for replacing the matched root op's results.
-  auto range = llvm::makeArrayRef(resultValues).drop_front(replStartIndex);
-  for (const auto &val : range) {
+  for (int i = replStartIndex; i < numResultPatterns; ++i) {
+    DagNode resultTree = pattern.getResultPattern(i);
+    auto val = handleResultPattern(resultTree, offsets[i], 0);
     os.indent(4) << "\n";
     // Resolve each symbol for all range use so that we can loop over them.
     os << symbolInfoMap.getAllRangeUse(
