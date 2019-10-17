@@ -688,7 +688,10 @@ bool QuantizationDriver::PropagateParams() {
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
     for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      changed |= SetResultParams(op, i, restricted_outputs[i]);
+      // The restrict can be nullptr if the result has been quantized.
+      if (auto params = restricted_outputs[i]) {
+        changed |= SetResultParams(op, i, params);
+      }
     }
 
     for (auto &it : spec->biases_params) {
