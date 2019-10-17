@@ -39,7 +39,7 @@ include "toy/Ops.td"
 // Basic Pattern-Match and Rewrite
 //===----------------------------------------------------------------------===//
 
-// Reshape(Reshape(x)) = x
+// Reshape(Reshape(x)) = Reshape(x)
 def ReshapeReshapeOptPattern : Pat<(ReshapeOp(ReshapeOp $arg)),
                                    (ReshapeOp $arg)>;
 

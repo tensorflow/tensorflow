@@ -182,7 +182,7 @@ A redundant reshape optimization similar to SimplifyRedundantTranspose can be
 expressed more simply using DRR as follows:
 
 ```TableGen(.td):
-// Reshape(Reshape(x)) = x
+// Reshape(Reshape(x)) = Reshape(x)
 def ReshapeReshapeOptPattern : Pat<(ReshapeOp(ReshapeOp $arg)),
                                    (ReshapeOp $arg)>;
 ```
