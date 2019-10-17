@@ -996,8 +996,10 @@ tf_py_test(
     size = "medium",
     srcs = ["layers/preprocessing/text_vectorization_test.py"],
     additional_deps = [
+        ":generic_utils",
         ":keras",
         ":preprocessing_test_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
