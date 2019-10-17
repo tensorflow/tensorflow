@@ -4435,6 +4435,7 @@ cc_library(
     deps = [
         ":computation_placer",
         ":hlo",
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
     ],
 )
