@@ -114,26 +114,16 @@ struct TiledLinalgOp {
 };
 
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
-                                           ArrayRef<Value *> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes, OperationFolder &folder);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
-                                           ArrayRef<int64_t> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OperationFolder &folder);
 
 struct PromotionInfo {
   Value *buffer;
@@ -141,8 +131,8 @@ struct PromotionInfo {
   Value *partialLocalView;
 };
 
-/// Promotes the `views` into a new buffer allocated at the insertion point `b`.
-/// For now, promotion occurs in 3 steps:
+/// Promotes the `subViews` into a new buffer allocated at the insertion point
+/// `b`. For now, promotion occurs in 3 steps:
 ///   1. Create a new buffer for a full tile (i.e. not clipped at the boundary).
 ///   2. Take a full view on the buffer and `linalg.fill` it with zeros (use
 ///      float zero for now).
@@ -150,10 +140,9 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteLinalgViews(OpBuilder &b,
-                                                       Location loc,
-                                                       ArrayRef<Value *> views,
-                                                       OperationFolder &folder);
+llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
+                                                    ArrayRef<Value *> subViews,
+                                                    OperationFolder &folder);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like
