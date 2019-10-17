@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/nccl/nccl.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -674,42 +675,6 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 
 // Figures out which devices (named by their replica-ids) are participating in
 // the all-reduce subgroup that contains device_ordinal.
-static StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, const HloAllReduceInstruction* instr,
-    int64 total_replica_count, const DeviceAssignment& device_assn) {
-  std::vector<int64> participating_replicas;
-
-  // Empty replica_groups() means that all replicas participate in one big
-  // group.
-  if (instr->replica_groups().empty()) {
-    participating_replicas.resize(total_replica_count);
-    absl::c_iota(participating_replicas, 0);
-    return participating_replicas;
-  }
-
-  // Use the DeviceAssignment to figure out our replica-id.
-  TF_ASSIGN_OR_RETURN(int replica_id,
-                      device_assn.ReplicaIdForDeviceOrdinal(device_ordinal));
-
-  // Figure out the other replicas that go together with this one.
-  absl::optional<ReplicaGroup> replica_group;
-  for (const ReplicaGroup& g : instr->replica_groups()) {
-    if (absl::c_linear_search(g.replica_ids(), replica_id)) {
-      CHECK(!replica_group.has_value())
-          << "Replica appears twice in replica groups? " << instr->ToString();
-      replica_group = g;
-    }
-  }
-  CHECK(replica_group.has_value())
-      << "Replica " << replica_id << " doesn't appear in replica groups? "
-      << instr->ToString();
-
-  participating_replicas.insert(participating_replicas.begin(),
-                                replica_group->replica_ids().begin(),
-                                replica_group->replica_ids().end());
-  return participating_replicas;
-}
-
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << "Starting NcclAllReduceThunk.";
   auto op_profiler =
