@@ -238,7 +238,7 @@ struct RendezvousKey {
 
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<int64> participating_replicas,
-                         const HloAllReduceInstruction* instr)
+                         const HloInstruction* instr)
       : run_id(run_id), participating_replicas(participating_replicas) {
     std::tie(all_reduce_kind, op_id) =
         instr->channel_id().has_value()
@@ -246,14 +246,6 @@ struct RendezvousKey {
             : std::make_pair(
                   kCrossReplica,
                   static_cast<int64>(instr->GetModule()->unique_id()));
-    absl::optional<ncclRedOp_t> computation =
-        MatchAllReduceComputation(instr->to_apply());
-    CHECK(computation.has_value());
-    computation_kind = *computation;
-    absl::optional<ncclDataType_t> allreduce_datatype =
-        MatchNcclDataType(instr);
-    CHECK(allreduce_datatype.has_value());
-    datatype = *allreduce_datatype;
   }
 
   int num_participants() const { return participating_replicas.size(); }
@@ -284,8 +276,6 @@ struct RendezvousKey {
   RunId run_id;
   std::vector<int64> participating_replicas;
   AllReduceKind all_reduce_kind;
-  ncclRedOp_t computation_kind;
-  ncclDataType_t datatype;
   int64 op_id;
 };
 
@@ -475,10 +465,11 @@ class Rendezvous {
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
   StatusOr<
       std::pair<std::shared_ptr<NcclClique>, std::shared_ptr<BlockingCounter>>>
-  SubmitParticipant(ParticipantData participant);
+  SubmitParticipant(ParticipantData participant, const HloInstruction* inst);
 
  private:
-  Status DoAllReduce(ParticipantData participant, ncclComm_t comm);
+  Status DoAllReduce(ParticipantData participant, ncclComm_t comm,
+                     ncclRedOp_t computation_kind, ncclDataType_t datatype);
 
   const RendezvousKey key_;
 
@@ -509,7 +500,8 @@ RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
 
 StatusOr<
     std::pair<std::shared_ptr<NcclClique>, std::shared_ptr<BlockingCounter>>>
-Rendezvous::SubmitParticipant(ParticipantData participant) {
+Rendezvous::SubmitParticipant(ParticipantData participant,
+                              const HloInstruction* inst) {
   {
     tensorflow::mutex_lock lock(mu_);
     CHECK(!initialized_);
@@ -584,7 +576,13 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
 
   VLOG(3) << "Performing all reduce from device ordinal: "
           << participant.device_ordinal;
-  Status all_reduce_status = DoAllReduce(participant, comm);
+  absl::optional<ncclRedOp_t> computation =
+      MatchAllReduceComputation(inst->to_apply());
+  CHECK(computation.has_value());
+  absl::optional<ncclDataType_t> allreduce_datatype = MatchNcclDataType(inst);
+  CHECK(allreduce_datatype.has_value());
+  Status all_reduce_status =
+      DoAllReduce(participant, comm, *computation, *allreduce_datatype);
   VLOG(3) << "This thread done with all-reduce op.";
 
   done_.DecrementCount();
@@ -607,7 +605,9 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
   return std::make_pair(clique, returned_blocking_counter_);
 }
 
-Status Rendezvous::DoAllReduce(ParticipantData participant, ncclComm_t comm) {
+Status Rendezvous::DoAllReduce(ParticipantData participant, ncclComm_t comm,
+                               ncclRedOp_t computation_kind,
+                               ncclDataType_t datatype) {
   se::StreamExecutor* executor = participant.stream->parent();
   se::cuda::ScopedActivateExecutorContext scoped_context(executor);
   cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
@@ -618,13 +618,13 @@ Status Rendezvous::DoAllReduce(ParticipantData participant, ncclComm_t comm) {
   void* recv_buffer = participant.destination_data.opaque();
   VLOG(3) << absl::StreamFormat(
       "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
-      "datatype=ncclFloat, op=ncclSum, comm=%p, stream=%p)",
-      send_buffer, recv_buffer, participant.element_count,
-      static_cast<const void*>(comm), cu_stream);
+      "datatype=%d, op=%d, comm=%p, stream=%p)",
+      send_buffer, recv_buffer, participant.element_count, datatype,
+      computation_kind, static_cast<const void*>(comm), cu_stream);
   XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                          /*count=*/participant.element_count,
-                                         /*datatype=*/key_.datatype,
-                                         /*op=*/key_.computation_kind,
+                                         /*datatype=*/datatype,
+                                         /*op=*/computation_kind,
                                          /*comm=*/comm,
                                          /*stream=*/*cu_stream));
 
@@ -689,9 +689,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
                                *params.device_assn));
 
   // Find or create the rendezvous for this collective operation.
-  RendezvousKey rendezvous_key(
-      params.run_id, participating_replicas,
-      Cast<HloAllReduceInstruction>(hlo_instruction()));
+  RendezvousKey rendezvous_key(params.run_id, participating_replicas,
+                               hlo_instruction());
   std::shared_ptr<Rendezvous> rendezvous =
       GlobalRendezvousMap()[rendezvous_key];
 
@@ -712,7 +711,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Do the operation.
   StatusOr<std::pair<std::shared_ptr<NcclClique>,
                      std::shared_ptr<tensorflow::BlockingCounter>>>
-      result = rendezvous->SubmitParticipant(participant);
+      result = rendezvous->SubmitParticipant(participant, hlo_instruction());
   if (!result.ok()) {
     VLOG(1) << "NcclAllReduceThunk::ExecuteOnStream failed: "
             << result.status().ToString();
