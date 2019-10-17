@@ -64,6 +64,17 @@ struct ToyInlinerInterface : public DialectInlinerInterface {
     for (const auto &it : llvm::enumerate(returnOp.getOperands()))
       valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
   }
+
+  /// Attempts to materialize a conversion for a type mismatch between a call
+  /// from this dialect, and a callable region. This method should generate an
+  /// operation that takes 'input' as the only operand, and produces a single
+  /// result of 'resultType'. If a conversion can not be generated, nullptr
+  /// should be returned.
+  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+                                       Type resultType,
+                                       Location conversionLoc) const final {
+    return builder.create<CastOp>(conversionLoc, resultType, input);
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -94,7 +105,12 @@ static void buildConstantOp(mlir::Builder *builder, mlir::OperationState &state,
   ConstantOp::build(builder, state, dataType, dataAttribute);
 }
 
-/// Verifier for constant operation.
+/// Infer the output shape of the CastOp, this is required by the shape
+/// inference interface.
+void CastOp::inferShapes() { getResult()->setType(getOperand()->getType()); }
+
+/// Verifier for the constant operation. This corresponds to the `::verify(...)`
+/// in the op definition.
 static mlir::LogicalResult verify(ConstantOp op) {
   // If the return type of the constant is not an unranked tensor, the shape
   // must match the shape of the attribute holding the data.
@@ -138,6 +154,16 @@ static void buildGenericCallOp(mlir::Builder *builder,
   state.addOperands(arguments);
   state.addAttribute("callee", builder->getSymbolRefAttr(callee));
 }
+
+/// Return the callee of the generic call operation, this is required by the
+/// call interface.
+CallInterfaceCallable GenericCallOp::getCallableForCallee() {
+  return getAttrOfType<SymbolRefAttr>("callee");
+}
+
+/// Get the argument operands to the called function, this is required by the
+/// call interface.
+Operation::operand_range GenericCallOp::getArgOperands() { return inputs(); }
 
 static void buildMulOp(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::Value *lhs, mlir::Value *rhs) {

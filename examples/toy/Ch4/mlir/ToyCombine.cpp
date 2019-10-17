@@ -32,6 +32,11 @@ namespace {
 #include "ToyCombine.inc"
 } // end anonymous namespace
 
+/// Fold simple cast operations that return the same type as the input.
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  return mlir::impl::foldCastOp(*this);
+}
+
 /// This is an example of a c++ rewrite pattern for the TransposeOp. It
 /// optimizes the following scenario: transpose(transpose(x)) -> transpose(x)
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {

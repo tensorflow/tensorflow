@@ -122,9 +122,6 @@ int dumpMLIR() {
     // Apply any generic pass manager command line options and run the pipeline.
     applyPassManagerCLOptions(pm);
 
-    // Add a run of the canonicalizer to optimize the mlir module.
-    pm.addPass(mlir::createCanonicalizerPass());
-
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::toy::createDeadFunctionEliminationPass());
@@ -132,6 +129,7 @@ int dumpMLIR() {
     // Now that there is only one function, we can infer the shapes of each of
     // the operations.
     pm.addPass(mlir::toy::createShapeInferencePass());
+    pm.addPass(mlir::createCanonicalizerPass());
 
     if (mlir::failed(pm.run(*module)))
       return 4;

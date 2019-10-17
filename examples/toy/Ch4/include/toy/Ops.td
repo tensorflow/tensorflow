@@ -23,6 +23,11 @@
 #else
 #define TOY_OPS
 
+#ifdef MLIR_CALLINTERFACES
+#else
+include "mlir/Analysis/CallInterfaces.td"
+#endif // MLIR_CALLINTERFACES
+
 #ifdef SHAPE_INFERENCE_INTERFACE
 #else
 include "toy/ShapeInferenceInterface.td"
@@ -111,7 +116,27 @@ def AddOp : Toy_Op<"add",
   >];
 }
 
-def GenericCallOp : Toy_Op<"generic_call"> {
+def CastOp : Toy_Op<"cast",
+    [DeclareOpInterfaceMethods<ShapeInferenceOpInterface>, NoSideEffect,
+     SameOperandsAndResultShape]> {
+  let summary = "shape cast operation";
+  let description = [{
+    The "cast" operation converts a tensor from one type to an equivalent type
+    without changing any data elements. The source and destination types
+    must both be tensor types with the same element type. If both are ranked
+    then the rank should be the same and static dimensions should match. The
+    operation is invalid if converting to a mismatching constant dimension.
+  }];
+
+  let arguments = (ins F64Tensor:$input);
+  let results = (outs F64Tensor:$output);
+
+  // Set the folder bit so that we can fold redundant cast operations.
+  let hasFolder = 1;
+}
+
+def GenericCallOp : Toy_Op<"generic_call",
+    [DeclareOpInterfaceMethods<CallOpInterface>]> {
   let summary = "generic call operation";
   let description = [{
     Generic calls represent calls to a user defined function that needs to

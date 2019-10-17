@@ -80,8 +80,13 @@ public:
 
       // Ask the operation to infer its output shapes.
       LLVM_DEBUG(llvm::dbgs() << "Inferring shape for: " << *op << "\n");
-      auto shapeOp = dyn_cast<ShapeInference>(op);
-      shapeOp.inferShapes();
+      if (auto shapeOp = dyn_cast<ShapeInference>(op)) {
+        shapeOp.inferShapes();
+      } else {
+        op->emitError("unable to infer shape of operation without shape "
+                      "inference interface");
+        return signalPassFailure();
+      }
     }
 
     // If the operation worklist isn't empty, this indicates a failure.
