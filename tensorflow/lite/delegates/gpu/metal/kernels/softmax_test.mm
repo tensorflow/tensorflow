@@ -62,9 +62,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {0.1, 0.2, 0.1, 0.2}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 1, 1, 1}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSoftmaxDoesNotWorkForHeightAxis {
@@ -84,7 +84,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {0.1, 0.2, 0.3, 0.4}));
   auto status = model.Invoke();
-  XCTAssertFalse(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertFalse(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSoftmaxDoesNotWorkForWidthAxis {
@@ -104,7 +104,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {0.1, 0.2, 0.3, 0.4}));
   auto status = model.Invoke();
-  XCTAssertFalse(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertFalse(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSoftmax1x1 {
@@ -126,11 +126,11 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors(
       {std::exp(0.1f) / sum, std::exp(0.2f) / sum, std::exp(0.3f) / sum, std::exp(0.4f) / sum},
       model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

@@ -788,10 +788,11 @@ Status Conditional::BuildIfNode(Graph* graph,
   output_shapes.reserve(merges_.size());
   for (const Node* merge : merges_) {
     DataType dtype = merge->output_type(0);
-    auto* shape_ctx = refiner_.GetContext(merge);
-    shape_inference::ShapeHandle handle;
     TensorShapeProto shape;
-    shape_ctx->ShapeHandleToProto(shape_ctx->output(0), &shape);
+    if (auto* shape_ctx = refiner_.GetContext(merge)) {
+      shape_inference::ShapeHandle handle;
+      shape_ctx->ShapeHandleToProto(shape_ctx->output(0), &shape);
+    }
     out_type.push_back(dtype);
     output_shapes.push_back(shape);
   }
@@ -1486,7 +1487,9 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   std::vector<Node*> nodes;
   GetReversePostOrder(*graph_, &nodes);
   for (auto node : nodes) {
-    TF_RETURN_IF_ERROR(shape_refiner.AddNode(node));
+    if (!shape_refiner.AddNode(node).ok()) {
+      LOG(WARNING) << "Couldn't deduce shape for " << node->name();
+    }
   }
 
   // Sort the merge nodes from innermost outwards.

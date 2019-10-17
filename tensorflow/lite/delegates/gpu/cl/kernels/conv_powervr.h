@@ -61,8 +61,14 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr,
-              const ConvParams& conv_params);
+              const Convolution2DAttributes& attr, const CLDevice& device);
+  ConvPowerVR(const OperationDef& definition,
+              const FullyConnectedAttributes& attr, const CLDevice& device);
+
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -75,13 +81,26 @@ class ConvPowerVR : public GPUOperation {
                                   const Convolution2DAttributes& attr,
                                   ConvPowerVR* result);
 
+  friend Status CreateConvPowerVR(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  ConvPowerVR* result);
+
   friend std::string GenerateConvPowerVR1x1(
-      const OperationDef& op_def, const ConvParams& conv_params,
+      const OperationDef& op_def, bool stride_correction,
+      const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
-  friend ConvParams GuessBestParams(const CLDevice& device,
-                                    const OperationDef& definition,
-                                    const Convolution2DAttributes& attr);
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const Convolution2DAttributes& attr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const FullyConnectedAttributes& attr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition, int src_depth,
+                             int dst_depth, bool x_kernel_is_1,
+                             bool y_kernel_is_1) const;
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -95,6 +114,21 @@ class ConvPowerVR : public GPUOperation {
 
   CLKernel kernel_;
 };
+
+template <DataType T>
+Status ConvPowerVR::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                               const ::tflite::gpu::Tensor<Linear, T>& biases,
+                               CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.precision == CalculationsPrecision::F16
+                              ? DataType::FLOAT16
+                              : DataType::FLOAT32;
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
 
 template <DataType T>
 Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -165,6 +199,11 @@ void ConvPowerVR::RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
+                         ConvPowerVR* result);
+
+Status CreateConvPowerVR(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
                          ConvPowerVR* result);
 
 }  // namespace cl

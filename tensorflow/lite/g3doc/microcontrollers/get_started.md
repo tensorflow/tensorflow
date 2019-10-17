@@ -81,8 +81,8 @@ This example shows how you can use TensorFlow Lite to run a 250 kilobyte neural
 network to recognize people in images captured by a camera. It is designed to
 run on systems with small amounts of memory such as microcontrollers and DSPs.
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_vision">Micro
-Vision example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/person_detection">Person
+detection example</a>
 
 The example is tested on the following platforms:
 

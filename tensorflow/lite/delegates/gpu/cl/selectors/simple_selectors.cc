@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/upsample.h"
 
 namespace tflite {
@@ -189,6 +190,13 @@ void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
     Softmax operation = CreateSoftmax(op_def);
     *ptr = absl::make_unique<Softmax>(std::move(operation));
   }
+}
+
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr) {
+  Transpose operation = CreateTranspose(op_def, attr);
+  *ptr = absl::make_unique<Transpose>(std::move(operation));
 }
 
 }  // namespace cl

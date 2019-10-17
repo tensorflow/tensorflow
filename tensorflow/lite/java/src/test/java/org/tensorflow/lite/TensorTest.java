@@ -18,8 +18,12 @@ package org.tensorflow.lite;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
@@ -34,6 +38,12 @@ public final class TensorTest {
 
   private static final String MODEL_PATH =
       "tensorflow/lite/java/src/testdata/add.bin";
+
+  private static final String INT_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/int32.bin";
+
+  private static final String LONG_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/int64.bin";
 
   private NativeInterpreterWrapper wrapper;
   private Tensor tensor;
@@ -103,8 +113,58 @@ public final class TensorTest {
   }
 
   @Test
+  public void testCopyToByteBufferAsFloatBuffer() {
+    FloatBuffer parsedOutput =
+        ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3);
+    float[] outputOneD = {parsedOutput.get(0), parsedOutput.get(1), parsedOutput.get(2)};
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToFloatBuffer() {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(2 * 8 * 8 * 3);
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3);
+    float[] outputOneD = {parsedOutput.get(0), parsedOutput.get(1), parsedOutput.get(2)};
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToIntBuffer() {
+    wrapper = new NativeInterpreterWrapper(INT_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+    IntBuffer parsedOutput = IntBuffer.allocate(1 * 4 * 4 * 12);
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(1 * 4 * 4 * 12);
+  }
+
+  @Test
+  public void testCopyToLongBuffer() {
+    wrapper = new NativeInterpreterWrapper(LONG_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+    LongBuffer parsedOutput = LongBuffer.allocate(1 * 4 * 4 * 12);
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(1 * 4 * 4 * 12);
+  }
+
+  @Test
   public void testCopyToInvalidByteBuffer() {
     ByteBuffer parsedOutput = ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder());
+    try {
+      tensor.copyTo(parsedOutput);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected.
+    }
+  }
+
+  @Test
+  public void testCopyToInvalidTypedBuffer() {
+    IntBuffer parsedOutput = IntBuffer.allocate(2 * 8 * 8 * 3);
     try {
       tensor.copyTo(parsedOutput);
       fail();
@@ -147,18 +207,112 @@ public final class TensorTest {
   public void testSetTo() {
     float[][][][] input = new float[2][8][8][3];
     float[][][][] output = new float[2][8][8][3];
-    ByteBuffer inputByteBuffer =
-        ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
 
+    // Assign from array.
     input[0][0][0][0] = 2.0f;
     tensor.setTo(input);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(2.0f);
 
+    // Assign from direct ByteBuffer.
+    ByteBuffer inputByteBuffer =
+        ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
     inputByteBuffer.putFloat(0, 3.0f);
     tensor.setTo(inputByteBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(3.0f);
+
+    // Assign from FloatBuffer view of ByteBuffer.
+    inputByteBuffer.rewind();
+    FloatBuffer inputFloatBuffer = inputByteBuffer.asFloatBuffer();
+    inputFloatBuffer.put(0, 5.0f);
+    tensor.setTo(inputFloatBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5.0f);
+
+    // Assign from (non-direct) FloatBuffer.
+    inputFloatBuffer = FloatBuffer.allocate(2 * 8 * 8 * 3);
+    inputFloatBuffer.put(0, 5.0f);
+    inputFloatBuffer.rewind();
+    tensor.setTo(inputFloatBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5.0f);
+  }
+
+  @Test
+  public void testSetToInt() {
+    wrapper = new NativeInterpreterWrapper(INT_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+
+    int[][][][] input = new int[1][4][4][12];
+    int[][][][] output = new int[1][4][4][12];
+
+    // Assign from array.
+    input[0][0][0][0] = 2;
+    tensor.setTo(input);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(2);
+
+    // Assign from direct ByteBuffer.
+    ByteBuffer inputByteBuffer =
+        ByteBuffer.allocateDirect(1 * 4 * 4 * 12 * 4).order(ByteOrder.nativeOrder());
+    inputByteBuffer.putInt(0, 3);
+    tensor.setTo(inputByteBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(3);
+
+    // Assign from IntBuffer view of ByteBuffer.
+    inputByteBuffer.rewind();
+    IntBuffer inputIntBuffer = inputByteBuffer.asIntBuffer();
+    inputIntBuffer.put(0, 5);
+    tensor.setTo(inputIntBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5);
+
+    // Assign from (non-direct) IntBuffer.
+    inputIntBuffer = IntBuffer.allocate(1 * 4 * 4 * 12);
+    inputIntBuffer.put(0, 5);
+    tensor.setTo(inputIntBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5);
+  }
+
+  @Test
+  public void testSetToLong() {
+    wrapper = new NativeInterpreterWrapper(LONG_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+
+    long[][][][] input = new long[1][4][4][12];
+    long[][][][] output = new long[1][4][4][12];
+
+    // Assign from array.
+    input[0][0][0][0] = 2;
+    tensor.setTo(input);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(2);
+
+    // Assign from direct ByteBuffer.
+    ByteBuffer inputByteBuffer =
+        ByteBuffer.allocateDirect(1 * 4 * 4 * 12 * 8).order(ByteOrder.nativeOrder());
+    inputByteBuffer.putLong(0, 3);
+    tensor.setTo(inputByteBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(3);
+
+    // Assign from LongBuffer view of ByteBuffer.
+    inputByteBuffer.rewind();
+    LongBuffer inputLongBuffer = inputByteBuffer.asLongBuffer();
+    inputLongBuffer.put(0, 5);
+    tensor.setTo(inputLongBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5);
+
+    // Assign from (non-direct) LongBuffer.
+    inputLongBuffer = LongBuffer.allocate(1 * 4 * 4 * 12);
+    inputLongBuffer.put(0, 5);
+    tensor.setTo(inputLongBuffer);
+    tensor.copyTo(output);
+    assertThat(output[0][0][0][0]).isEqualTo(5);
   }
 
   @Test
@@ -172,13 +326,35 @@ public final class TensorTest {
   }
 
   @Test
-  public void testSetToInvalidByteBuffer() {
-    ByteBuffer input = ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder());
-    try {
-      tensor.setTo(input);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Success.
+  public void testSetToFloatBuffer() {
+    float[] input = new float[2 * 8 * 8 * 3];
+    float[] output = new float[2 * 8 * 8 * 3];
+    FloatBuffer inputFloatBuffer = FloatBuffer.wrap(input);
+    FloatBuffer outputFloatBuffer = FloatBuffer.wrap(output);
+
+    input[0] = 2.0f;
+    input[2 * 8 * 8 * 3 - 1] = 7.0f;
+    tensor.setTo(inputFloatBuffer);
+    tensor.copyTo(outputFloatBuffer);
+    assertThat(output[0]).isEqualTo(2.0f);
+    assertThat(output[2 * 8 * 8 * 3 - 1]).isEqualTo(7.0f);
+  }
+
+  @Test
+  public void testSetToInvalidBuffer() {
+    Buffer[] inputs = {
+      ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder()),
+      FloatBuffer.allocate(3),
+      IntBuffer.allocate(3),
+      LongBuffer.allocate(3)
+    };
+    for (Buffer input : inputs) {
+      try {
+        tensor.setTo(input);
+        fail();
+      } catch (IllegalArgumentException e) {
+        // Success.
+      }
     }
   }
 
@@ -205,6 +381,9 @@ public final class TensorTest {
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
     dataType = Tensor.dataTypeOf(testMultiDimArray);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    FloatBuffer testFloatBuffer = FloatBuffer.allocate(1);
+    dataType = Tensor.dataTypeOf(testFloatBuffer);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};

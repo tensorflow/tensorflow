@@ -608,6 +608,22 @@ func @testLstm(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: tensor<? x
 
 // -----
 
+// CHECK-LABEL: testBasicLstm
+func @testBasicLstm(%arg0: tensor<1x384xf32>, %arg1: tensor<1x96xf32>, %arg2: tensor<384x480xf32>, %arg3: tensor<384xf32>, %arg4: tensor<1x96xf32>) -> (tensor<1x96xf32>, tensor<1x96xf32>) {
+  %0:4 = "tfl.basic_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "TANH", kernel_type = "BASIC"} : (tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384xf32>, tensor<1x96xf32>) -> (tensor<1x96xf32>, tensor<1x96xf32>, tensor<1x480xf32>, tensor<1x384xf32>)
+  return %0#0, %0#1 : tensor<1x96xf32>, tensor<1x96xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testQuantizedBasicLstm
+func @testQuantizedBasicLstm(%arg0: tensor<1x384x!quant.uniform<u8:f32, 7.812500e-03:128>>, %arg1: tensor<1x96x!quant.uniform<u8:f32, 7.812500e-03:128>>, %arg2: tensor<384x480x!quant.uniform<u8<1:255>:f32, 0.070853792130947113:163>>, %arg3: tensor<384x!quant.uniform<i32:f32, 5.5354525102302432E-4>>, %arg4: tensor<1x96x!quant.uniform<i16:f32, 4.8828125E-4>>) -> (tensor<1x96x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<1x96x!quant.uniform<i16:f32, 4.8828125E-4>>) {
+  %0:4 = "tfl.basic_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<1x384x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<1x96x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<384x480x!quant.uniform<u8<1:255>:f32, 0.070853792130947113:163>>, tensor<384x!quant.uniform<i32:f32, 5.5354525102302432E-4>>, tensor<1x96x!quant.uniform<i16:f32, 4.8828125E-4>>) -> (tensor<1x96x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<1x96x!quant.uniform<i16:f32, 4.8828125E-4>>, tensor<1x480x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<1x384x!quant.uniform<i16:f32, 2.44140625E-4>>)
+  return %0#0, %0#1 : tensor<1x96x!quant.uniform<u8:f32, 7.812500e-03:128>>, tensor<1x96x!quant.uniform<i16:f32, 4.8828125E-4>>
+}
+
+// -----
+
 // CHECK-LABEL: testLstmWithNoneTypeAndOverrideAttr
 func @testLstmWithNoneTypeAndOverrideAttr(%arg0: tensor<? x f32>, %arg1: none, %arg2: tensor<? x f32>, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>, %arg5: tensor<? x f32>, %arg6: tensor<? x f32>, %arg7: tensor<? x f32>, %arg8: tensor<? x f32>, %arg9: tensor<? x f32>, %arg10: tensor<? x f32>, %arg11: tensor<? x f32>, %arg12: tensor<? x f32>, %arg13: tensor<? x f32>, %arg14: tensor<? x f32>, %arg15: tensor<? x f32>, %arg16: tensor<? x f32>, %arg17: tensor<? x f32>, %arg18: tensor<? x f32>, %arg19: tensor<? x f32>, %arg20: tensor<? x f32>, %arg21: tensor<? x f32>, %arg22: tensor<? x f32>, %arg23: tensor<? x f32>) -> tensor<? x f32> {
   // CHECK: "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23)
@@ -1946,4 +1962,28 @@ func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: tenso
   // expected-error @+1 {{expect 'output' num_elements % 40 == 0, got 'tensor<1x41xf32>'}}
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x41xf32>
   return %0 : tensor<1x41xf32>
+}
+
+// -----
+
+func @testTransposeConv(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32>
+  return %0 : tensor<1x64x84x32xf32>
+}
+
+// -----
+
+func @testTransposeConvBadOutputRank(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<64x84x32xf32> {
+  // expected-error @+1 {{expect output type has rank = 4, got output type tensor<64x84x32xf32>}}
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<64x84x32xf32>
+  return %0 : tensor<64x84x32xf32>
+}
+
+// -----
+
+func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x31xf32> {
+  %cst = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
+  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x64x84x31xf32>
+  return %0 : tensor<1x64x84x31xf32>
 }

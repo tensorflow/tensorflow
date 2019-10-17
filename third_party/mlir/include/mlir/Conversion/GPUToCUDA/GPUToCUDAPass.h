@@ -25,20 +25,18 @@
 
 namespace mlir {
 
-class FuncOp;
 class Location;
 class ModuleOp;
-class OpBuilder;
-class Value;
 
 namespace LLVM {
 class LLVMDialect;
-}
+} // namespace LLVM
 
 template <typename T> class OpPassBase;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
-using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
+using CubinGenerator =
+    std::function<OwnedCubin(const std::string &, Location, StringRef)>;
 
 /// Creates a pass to convert kernel functions into CUBIN blobs.
 ///
@@ -60,10 +58,6 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 /// on top of CUDA.
 std::unique_ptr<OpPassBase<ModuleOp>>
 createConvertGpuLaunchFuncToCudaCallsPass();
-
-/// Creates a pass to augment a module with getter functions for all contained
-/// cubins as encoded via the 'nvvm.cubin' attribute.
-std::unique_ptr<OpPassBase<ModuleOp>> createGenerateCubinAccessorPass();
 
 } // namespace mlir
 

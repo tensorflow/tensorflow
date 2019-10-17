@@ -26,11 +26,11 @@ namespace mlir {
 namespace tblgen {
 
 StringRef tblgen::Dialect::getName() const {
-  return def.getValueAsString("name");
+  return def->getValueAsString("name");
 }
 
 StringRef tblgen::Dialect::getCppNamespace() const {
-  return def.getValueAsString("cppNamespace");
+  return def->getValueAsString("cppNamespace");
 }
 
 static StringRef getAsStringOrEmpty(const llvm::Record &record,
@@ -44,15 +44,15 @@ static StringRef getAsStringOrEmpty(const llvm::Record &record,
 }
 
 StringRef tblgen::Dialect::getSummary() const {
-  return getAsStringOrEmpty(def, "summary");
+  return getAsStringOrEmpty(*def, "summary");
 }
 
 StringRef tblgen::Dialect::getDescription() const {
-  return getAsStringOrEmpty(def, "description");
+  return getAsStringOrEmpty(*def, "description");
 }
 
 bool Dialect::operator==(const Dialect &other) const {
-  return &def == &other.def;
+  return def == other.def;
 }
 
 bool Dialect::operator<(const Dialect &other) const {

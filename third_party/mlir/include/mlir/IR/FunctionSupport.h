@@ -97,7 +97,7 @@ namespace OpTrait {
 /// - Ops can be used with SymbolTable in the parent Op and have names;
 /// - Ops have a single region with multiple blocks that corresponds to the body
 ///   of the function;
-/// - the absence of a region corresonds to an external function;
+/// - the absence of a region corresponds to an external function;
 /// - arguments of the first block of the region are treated as function
 ///   arguments;
 /// - they can have argument attributes that are stored in a dictionary

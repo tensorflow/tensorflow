@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
@@ -213,6 +214,16 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   outside the replicated computation.
   """
 
+  class _TFBufferWrapper(object):
+    """An internal class to help manage the TF_Buffer lifetime."""
+
+    def __init__(self, buf_string):
+      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
+          compat.as_bytes(buf_string))
+
+    def __del__(self):
+      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
+
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
 
@@ -237,11 +248,17 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._host_compute_core = []
     self._name = name
     self._name_as_bytes = compat.as_bytes(name)
+    self._tpu_relicate_attr_buf = self._TFBufferWrapper(
+        attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
     self._unsupported_ops = []
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, device_map=None):
+  def get_replicated_var_handle(self,
+                                name,
+                                vars_,
+                                device_map=None,
+                                is_mirrored=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -251,7 +268,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       name: The common name of the variable.
       vars_: The replicated TPU variables.
       device_map: The DeviceMap used to create the variables if it is a
-      TPUMirroredVariable.
+        TPUMirroredVariable.
+      is_mirrored: Whether the variables are mirrored, which guarantees the
+        values in each replica are always the same.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -289,7 +308,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=True)
+                                            is_mirrored_variable=is_mirrored)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -469,8 +488,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           "(operator name: %s)" % op.name)
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op._set_attr(_TPU_REPLICATE_ATTR,
-                 attr_value_pb2.AttrValue(s=self._name_as_bytes))
+    op._set_attr_with_buf(
+        _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -568,6 +587,37 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._pivot
 
 
+class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
+  """The context for outside compilation in Tensorflow 2.0.
+
+  Every op added in this context will be assigned an _xla_outside_compilation
+  attribute.
+  """
+
+  def __init__(self, name):
+    control_flow_ops.ControlFlowContext.__init__(self)
+    self._name = name
+
+  def AddOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def AddInnerOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    raise NotImplementedError("to_control_flow_context_def not implemented")
+
+
 @tf_export(v1=["tpu.outside_compilation"])
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
@@ -583,6 +633,25 @@ def outside_compilation(computation, *args, **kwargs):
   """
   args = [] if args is None else args
   graph = ops.get_default_graph()
+
+  # If we are in TF 2 functions (control flow V2 functions, or tf.function()),
+  # we need to attach _xla_outside_compilation attribute directly because we are
+  # not in TPUReplicateContext.
+  if isinstance(graph, func_graph.FuncGraph):
+    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    # pylint: disable=protected-access
+    outside_compilation_name = str(tpu_context._outside_compilation_counter)
+    tpu_context._outside_compilation_counter = (
+        tpu_context._outside_compilation_counter + 1)
+    # pylint: enable=protected-access
+
+    outside_compilation_context = OutsideCompilationV2Context(
+        outside_compilation_name)
+    outside_compilation_context.Enter()
+    args = [] if args is None else args
+    retval = computation(*args, **kwargs)
+    outside_compilation_context.Exit()
+    return retval
 
   # If we are in a TPUReplicateContext, signal that we are now
   # outside_compilation

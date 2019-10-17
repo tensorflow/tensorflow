@@ -203,13 +203,13 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
         "gpu_driver_header",
         "gpu_helpers_header",
-        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:cuda_libdevice_path",

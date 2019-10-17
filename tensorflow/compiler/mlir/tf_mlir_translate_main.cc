@@ -47,7 +47,7 @@ static llvm::cl::opt<bool> import_saved_model(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> saved_model_tags(
     "tf-savedmodel-tags",
-    llvm::cl::desc("Tags used to indicate which MeataGraphDef to import, "
+    llvm::cl::desc("Tags used to indicate which MetaGraphDef to import, "
                    "separated by ','"),
     llvm::cl::init("serve"));
 
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
 
     auto module = tensorflow::SavedModelToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names),
-        debug_info_file, &context);
+        &context);
     if (!module) return 1;
 
     module->print(output->os());

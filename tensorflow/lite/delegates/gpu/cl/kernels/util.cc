@@ -130,6 +130,14 @@ TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
     const std::string& depth_name)
     : width(width_name), height(height_name), depth(depth_name) {}
 
+TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
+    const std::string& width_name, const std::string& height_name,
+    const std::string& depth_name, const std::string& batch_name)
+    : width(width_name),
+      height(height_name),
+      depth(depth_name),
+      batch(batch_name) {}
+
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
                                          const std::string& uniform_size_name,
                                          const TensorDescriptor& descriptor)
@@ -138,7 +146,7 @@ TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
   sizes_.height = uniform_size_name + ".y";
   sizes_.channels = uniform_size_name + ".z";
   sizes_.depth = uniform_size_name + ".w";
-  sizes_.batch_size = "BATCH_SIZE";
+  sizes_.batch = "BATCH_SIZE";
 }
 
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
@@ -241,16 +249,16 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
     case TensorStorageType::IMAGE_BUFFER:
       return absl::Substitute("(((($3) * $4 + $2) * $5 + ($1)) * $6 + ($0))", b,
                               x, y, z, sizes_.height, sizes_.width,
-                              sizes_.batch_size);
+                              sizes_.batch);
     case TensorStorageType::TEXTURE_2D:
       return absl::Substitute("(int2)(($0) * ($4) + ($1), ($2) * $5 + ($3))", x,
-                              b, y, z, sizes_.batch_size, sizes_.depth);
+                              b, y, z, sizes_.batch, sizes_.depth);
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::Substitute("(int2)(($0) * ($3) + ($1), ($2))", x, b, y,
-                              sizes_.batch_size);
+                              sizes_.batch);
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::Substitute("(int4)(($0) * ($4) + ($1), ($2), ($3), 0)", x, b,
-                              y, z, sizes_.batch_size);
+                              y, z, sizes_.batch);
     case TensorStorageType::UNKNOWN:
       return "error";
     default:

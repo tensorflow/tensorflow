@@ -364,6 +364,10 @@ class ShapeUtil {
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
 
+  // Update a subshape of a tuple.
+  static void UpdateTupleShape(const Shape& shape, int64 index,
+                               Shape* tuple_shape);
+
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 

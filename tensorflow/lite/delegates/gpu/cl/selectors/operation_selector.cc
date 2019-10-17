@@ -156,6 +156,12 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
       return OkStatus();
     }
+    case OperationType::TRANSPOSE: {
+      auto attr =
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, gpu_op);
+      return OkStatus();
+    }
     case OperationType::UPSAMPLE_2D: {
       auto attr =
           absl::any_cast<Upsample2DAttributes>(node.operation.attributes);

@@ -25,21 +25,40 @@ using namespace mlir;
 
 namespace {
 struct PassManagerOptions {
-  PassManagerOptions();
+  //===--------------------------------------------------------------------===//
+  // Crash Reproducer Generator
+  //===--------------------------------------------------------------------===//
+  llvm::cl::opt<std::string> reproducerFile{
+      "pass-pipeline-crash-reproducer",
+      llvm::cl::desc("Generate a .mlir reproducer file at the given output path"
+                     " if the pass manager crashes or fails")};
 
   //===--------------------------------------------------------------------===//
   // Multi-threading
   //===--------------------------------------------------------------------===//
-  llvm::cl::opt<bool> disableThreads;
+  llvm::cl::opt<bool> disableThreads{
+      "disable-pass-threading",
+      llvm::cl::desc("Disable multithreading in the pass manager"),
+      llvm::cl::init(false)};
 
   //===--------------------------------------------------------------------===//
   // IR Printing
   //===--------------------------------------------------------------------===//
-  PassPipelineCLParser printBefore;
-  PassPipelineCLParser printAfter;
-  llvm::cl::opt<bool> printBeforeAll;
-  llvm::cl::opt<bool> printAfterAll;
-  llvm::cl::opt<bool> printModuleScope;
+  PassPipelineCLParser printBefore{"print-ir-before",
+                                   "Print IR before specified passes"};
+  PassPipelineCLParser printAfter{"print-ir-after",
+                                  "Print IR after specified passes"};
+  llvm::cl::opt<bool> printBeforeAll{
+      "print-ir-before-all", llvm::cl::desc("Print IR before each pass"),
+      llvm::cl::init(false)};
+  llvm::cl::opt<bool> printAfterAll{"print-ir-after-all",
+                                    llvm::cl::desc("Print IR after each pass"),
+                                    llvm::cl::init(false)};
+  llvm::cl::opt<bool> printModuleScope{
+      "print-ir-module-scope",
+      llvm::cl::desc("When printing IR for print-ir-[before|after]{-all} "
+                     "always print the top-level module operation"),
+      llvm::cl::init(false)};
 
   /// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
   void addPrinterInstrumentation(PassManager &pm);
@@ -47,8 +66,18 @@ struct PassManagerOptions {
   //===--------------------------------------------------------------------===//
   // Pass Timing
   //===--------------------------------------------------------------------===//
-  llvm::cl::opt<bool> passTiming;
-  llvm::cl::opt<PassTimingDisplayMode> passTimingDisplayMode;
+  llvm::cl::opt<bool> passTiming{
+      "pass-timing",
+      llvm::cl::desc("Display the execution times of each pass")};
+  llvm::cl::opt<PassTimingDisplayMode> passTimingDisplayMode{
+      "pass-timing-display",
+      llvm::cl::desc("Display method for pass timing data"),
+      llvm::cl::init(PassTimingDisplayMode::Pipeline),
+      llvm::cl::values(
+          clEnumValN(PassTimingDisplayMode::List, "list",
+                     "display the results in a list sorted by total time"),
+          clEnumValN(PassTimingDisplayMode::Pipeline, "pipeline",
+                     "display the results with a nested pipeline view"))};
 
   /// Add a pass timing instrumentation if enabled by 'pass-timing' flags.
   void addTimingInstrumentation(PassManager &pm);
@@ -56,47 +85,6 @@ struct PassManagerOptions {
 } // end anonymous namespace
 
 static llvm::ManagedStatic<llvm::Optional<PassManagerOptions>> options;
-
-PassManagerOptions::PassManagerOptions()
-    //===------------------------------------------------------------------===//
-    // Multi-threading
-    //===------------------------------------------------------------------===//
-    : disableThreads(
-          "disable-pass-threading",
-          llvm::cl::desc("Disable multithreading in the pass manager"),
-          llvm::cl::init(false)),
-
-      //===----------------------------------------------------------------===//
-      // IR Printing
-      //===----------------------------------------------------------------===//
-      printBefore("print-ir-before", "Print IR before specified passes"),
-      printAfter("print-ir-after", "Print IR after specified passes"),
-      printBeforeAll("print-ir-before-all",
-                     llvm::cl::desc("Print IR before each pass"),
-                     llvm::cl::init(false)),
-      printAfterAll("print-ir-after-all",
-                    llvm::cl::desc("Print IR after each pass"),
-                    llvm::cl::init(false)),
-      printModuleScope(
-          "print-ir-module-scope",
-          llvm::cl::desc("When printing IR for print-ir-[before|after]{-all} "
-                         "always print the top-level module operation"),
-          llvm::cl::init(false)),
-
-      //===----------------------------------------------------------------===//
-      // Pass Timing
-      //===----------------------------------------------------------------===//
-      passTiming("pass-timing",
-                 llvm::cl::desc("Display the execution times of each pass")),
-      passTimingDisplayMode(
-          "pass-timing-display",
-          llvm::cl::desc("Display method for pass timing data"),
-          llvm::cl::init(PassTimingDisplayMode::Pipeline),
-          llvm::cl::values(
-              clEnumValN(PassTimingDisplayMode::List, "list",
-                         "display the results in a list sorted by total time"),
-              clEnumValN(PassTimingDisplayMode::Pipeline, "pipeline",
-                         "display the results with a nested pipeline view"))) {}
 
 /// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
 void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
@@ -150,6 +138,10 @@ void mlir::registerPassManagerCLOptions() {
 }
 
 void mlir::applyPassManagerCLOptions(PassManager &pm) {
+  // Generate a reproducer on crash/failure.
+  if ((*options)->reproducerFile.getNumOccurrences())
+    pm.enableCrashReproducerGeneration((*options)->reproducerFile);
+
   // Disable multi-threading.
   if ((*options)->disableThreads)
     pm.disableMultithreading();

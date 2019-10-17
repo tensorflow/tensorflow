@@ -37,7 +37,7 @@ Status RunShapeInference(const NodeDef& ndef,
   if (op_reg_data->shape_inference_fn == nullptr) return Status::OK();
 
   shape_inference::InferenceContext ic(
-      TF_GRAPH_DEF_VERSION, &ndef, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, ndef, op_reg_data->op_def,
       std::vector<shape_inference::ShapeHandle>(inputs.size()), {}, {}, {});
   for (size_t i = 0; i < inputs.size(); i++) {
     shape_inference::ShapeHandle shape;

@@ -16,8 +16,8 @@ namespace tflite;
 
 // WARNING: This file contains experimental interface and is subject to change.
 
-// This corresponds to the version.
-file_identifier "TFLM";
+// This corresponds to the schema version.
+file_identifier "M000";
 // File extension of any written files.
 file_extension "tflitemeta";
 

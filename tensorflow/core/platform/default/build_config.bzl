@@ -34,6 +34,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
+        srcs_version = "PY2AND3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -97,7 +98,7 @@ def pyx_library(
         name = name,
         srcs = py_srcs,
         deps = py_deps,
-        srcs_version = "PY2AND3",
+        srcs_version = srcs_version,
         data = shared_objects,
         testonly = testonly,
         **kwargs

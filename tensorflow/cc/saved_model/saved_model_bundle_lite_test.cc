@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/saved_model/loader.h"
-
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -92,6 +93,15 @@ class LoaderTest : public ::testing::Test {
     test::ExpectTensorEqual<float>(
         outputs[0],
         test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
+
+    // Validate the `output_partition_graphs` is not supported.
+    RunOptions run_options;
+    run_options.set_output_partition_graphs(true);
+    RunMetadata run_metadata;
+    Status s =
+        bundle.GetSession()->Run(run_options, {{input_name, input}},
+                                 {output_name}, {}, &outputs, &run_metadata);
+    ASSERT_TRUE(errors::IsInvalidArgument(s));
   }
 };
 

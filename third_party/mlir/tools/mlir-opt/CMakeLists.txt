@@ -38,10 +38,12 @@ set(LIBS
   MLIRROCDLIR
   MLIRSPIRV
   MLIRSPIRVConversion
+  MLIRSPIRVTransforms
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
   MLIRTestDialect
+  MLIRTestIR
   MLIRTestPass
   MLIRTestTransforms
   MLIRSupport

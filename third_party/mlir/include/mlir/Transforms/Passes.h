@@ -37,7 +37,7 @@ template <typename T> class OpPassBase;
 /// Creates a constant folding pass. Note that this pass solely provides simple
 /// top-down constant folding functionality; it is intended to be used for
 /// testing purpose. Use Canonicalizer pass, which exploits more simplification
-/// opportunties exposed by constant folding, for the general cases.
+/// opportunities exposed by constant folding, for the general cases.
 std::unique_ptr<OpPassBase<FuncOp>> createTestConstantFoldPass();
 
 /// Creates an instance of the Canonicalizer pass.

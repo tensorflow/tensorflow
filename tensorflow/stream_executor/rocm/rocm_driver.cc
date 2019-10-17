@@ -474,37 +474,26 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint8(GpuContext* context,
-                                                     hipDeviceptr_t location,
-                                                     uint8 value,
-                                                     size_t uint32_count,
-                                                     GpuStreamHandle stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
+    GpuContext* context, hipDeviceptr_t location, uint8 value,
+    size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res =
-      tensorflow::wrap::hipMemsetAsync(location, value, uint32_count, stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
-  VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  RETURN_IF_ROCM_ERROR(
+      tensorflow::wrap::hipMemsetAsync(location, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint32(GpuContext* context,
-                                                      hipDeviceptr_t location,
-                                                      uint32 value,
-                                                      size_t uint32_count,
-                                                      GpuStreamHandle stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
+    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  hipError_t res =
-      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(
+      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
   VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::AddStreamCallback(GpuContext* context,

@@ -269,6 +269,7 @@ typedef union {
   // Placeholder for 16b float type. Use uint16* in the pointer union for now.
   TfLiteFloat16* f16;
   char* raw;
+  const char* raw_const;
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
