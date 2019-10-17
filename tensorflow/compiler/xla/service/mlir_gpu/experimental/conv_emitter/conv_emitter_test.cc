@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter.h"
 
+#include <vector>
+
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
 #include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
@@ -26,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -60,8 +63,12 @@ mlir::Type ShapeToMlirType(const xla::Shape& shape, mlir::Builder* builder) {
 
 std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   xla::HloModuleConfig hlo_config;
-  xla::HloModule hlo_module("Conv", hlo_config);
+  VerifiedHloModule hlo_module(
+      "Conv", hlo_config, /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
   TF_CHECK_OK(xla::ParseHloString(hlo_text, &hlo_module));
+  TF_CHECK_OK(hlo_module.Verify());
   xla::HloInstruction* conv =
       hlo_module.entry_computation()->root_instruction();
 
