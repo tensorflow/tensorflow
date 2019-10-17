@@ -49,14 +49,17 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
  public:
   explicit TestClusterFLR(DeviceMgr* device_mgr) : device_mgr_(device_mgr) {}
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) override {
-    mutex_lock l(mu_);
-    *handle = next_handle_;
-    next_handle_++;
-    return Status::OK();
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* handle,
+                   FunctionLibraryRuntime::DoneCallback done) override {
+    {
+      mutex_lock l(mu_);
+      *handle = next_handle_;
+      next_handle_++;
+    }
+    done(Status::OK());
   }
 
   void Run(const FunctionLibraryRuntime::Options& opts,
