@@ -89,9 +89,9 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 
 // Extended and Quad floating point
 //
-// CHECK:       %27 = llvm.fpext %arg1 : !llvm.float to !llvm<"x86_fp80">
+// CHECK:       %27 = llvm.fpext %arg1 : !llvm.float to !llvm.x86_fp80
 // CHECK-NEXT:  %28 = llvm.fpext %arg1 : !llvm.float to !llvm.fp128
-  %27 = llvm.fpext %arg1 : !llvm.float to !llvm<"x86_fp80">
+  %27 = llvm.fpext %arg1 : !llvm.float to !llvm.x86_fp80
   %28 = llvm.fpext %arg1 : !llvm.float to !llvm.fp128
 
 // CHECK:  llvm.return

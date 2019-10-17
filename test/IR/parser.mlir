@@ -115,9 +115,10 @@ func @memrefs_drop_triv_id_trailing(memref<2x2xi8, (d0, d1) -> (d1, d0),
                                               (d0, d1) -> (d0, d1)>)
 
 // CHECK: func @memrefs_drop_triv_id_middle(memref<2x2xi8, #map{{[0-9]+}}, #map{{[0-9]+}}>)
-func @memrefs_drop_triv_id_middle(memref<2x2xi8, (d0, d1) -> (d0, d1 + 1),
-                                            (d0, d1) -> (d0, d1),
-					    (d0, d1) -> (d0 + 1, d1)>)
+func @memrefs_drop_triv_id_middle(memref<2x2xi8,
+                                         (d0, d1) -> (d0, d1 + 1),
+                                         (d0, d1) -> (d0, d1),
+                                         (d0, d1) -> (d0 + 1, d1)>)
 
 // CHECK: func @memrefs_drop_triv_id_multiple(memref<2xi8>)
 func @memrefs_drop_triv_id_multiple(memref<2xi8, (d0) -> (d0), (d0) -> (d0)>)
@@ -868,8 +869,8 @@ func @pretty_form_multi_result() -> (i16, i16) {
 // CHECK-LABEL: func @pretty_dialect_attribute()
 func @pretty_dialect_attribute() {
 
-  // CHECK: "foo.unknown_op"() {foo = #foo.simpleattr} : () -> ()
-  "foo.unknown_op"() {foo = #foo.simpleattr} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.simple_attr} : () -> ()
+  "foo.unknown_op"() {foo = #foo.simple_attr} : () -> ()
 
   // CHECK: "foo.unknown_op"() {foo = #foo.complexattr<abcd>} : () -> ()
   "foo.unknown_op"() {foo = #foo.complexattr<abcd>} : () -> ()

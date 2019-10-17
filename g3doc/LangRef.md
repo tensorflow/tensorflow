@@ -568,8 +568,10 @@ system.
 
 ``` {.ebnf}
 dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
-dialect-type ::= '!' alias-name pretty-dialect-type-body?
+dialect-type ::= '!' dialect-namespace '.' pretty-dialect-type-lead-ident
+                          pretty-dialect-type-body?
 
+pretty-dialect-type-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
 pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
 pretty-dialect-type-contents ::= pretty-dialect-type-body
                               | '(' pretty-dialect-type-contents+ ')'
@@ -1115,8 +1117,10 @@ Similarly to operations, dialects may define custom attribute values.
 
 ``` {.ebnf}
 dialect-attribute ::= '#' dialect-namespace '<' '"' attr-specific-data '"' '>'
-dialect-attribute ::= '#' alias-name pretty-dialect-attr-body?
+dialect-attribute ::= '#' dialect-namespace '.' pretty-dialect-attr-lead-ident
+                          pretty-dialect-attr-body?
 
+pretty-dialect-attr-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
 pretty-dialect-attr-body ::= '<' pretty-dialect-attr-contents+ '>'
 pretty-dialect-attr-contents ::= pretty-dialect-attr-body
                               | '(' pretty-dialect-attr-contents+ ')'
