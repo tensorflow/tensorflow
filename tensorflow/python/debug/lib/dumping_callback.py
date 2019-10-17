@@ -312,10 +312,10 @@ def enable_dumping(dump_root,
 
   if (hasattr(_state, "config") and
       _state.config.circular_buffer_size != circular_buffer_size):
-    logging.warning(
+    logging.warn(
         "There is already a dumping callback configured with a different "
         "circular-buffer size (%d). Therefore the newly request "
-        "circular-buffer size will not be honored.",
+        "circular-buffer size (%d) will not be honored.",
         _state.config.circular_buffer_size, circular_buffer_size)
   if not hasattr(_state, "config") or _state.config.dump_root != dump_root:
     _state.config = TracingConfig(
