@@ -692,10 +692,12 @@ static LogicalResult Verify(PackOp op) {
   auto input_type = operand0->getType().cast<ShapedType>();
 
   // Check axis bounds.
-  int64_t axis_value = op.axis().getSExtValue();
-  if (abs(axis_value) > input_type.getRank())
-    return op.emitOpError("op attribute 'axis' is out of bounds, got ")
-           << axis_value;
+  if (input_type.hasRank()) {
+    int64_t axis_value = op.axis().getSExtValue();
+    if (abs(axis_value) > input_type.getRank())
+      return op.emitOpError("op attribute 'axis' is out of bounds, got ")
+             << axis_value;
+  }
 
   // Make sure all inputs have the same shape and element type.
   // TODO(rahulsp): Simplify once b/135032064 is fixed.
