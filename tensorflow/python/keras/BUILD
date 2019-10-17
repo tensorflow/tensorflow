@@ -213,6 +213,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
+        "//tensorflow/python/profiler:traceme",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
