@@ -34,6 +34,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib.tensorboard.plugins import projector
+# for tensorflow2.0: from tensorflow.keras.callbacks import TensorBoard
 
 data_index = 0
 
