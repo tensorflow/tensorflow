@@ -47,6 +47,8 @@ class BatchNormalizationBase(Layer):
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
   close to 0 and the activation standard deviation close to 1.
+  Beware the scale factor is epsilon-floored so that activations with variance
+  less than epsilon, will only be scaled by epsilon.
 
   Batch normalization differs from other layers in several key aspects:
 
@@ -174,7 +176,7 @@ class BatchNormalizationBase(Layer):
   def __init__(self,
                axis=-1,
                momentum=0.99,
-               epsilon=1e-3,
+               epsilon=1e-8,
                center=True,
                scale=True,
                beta_initializer='zeros',
@@ -948,7 +950,7 @@ class LayerNormalization(Layer):
 
   def __init__(self,
                axis=-1,
-               epsilon=1e-3,
+               epsilon=1e-8,
                center=True,
                scale=True,
                beta_initializer='zeros',
