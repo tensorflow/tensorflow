@@ -445,15 +445,20 @@ void TPURewritePass::runOnModule() {
     return;
   }
 
-  // Eliminate TPUReplicatedInput and TPUReplicatedOutput now that the rewrite
-  // is complete.
+  // Eliminate TPUCompilationResultOp, TPUReplicatedInput and
+  // TPUReplicatedOutput now that the rewrite is complete.
   getModule().walk([&](Operation* op) {
-    auto op_name = op->getName().getStringRef();
-    if (op_name != "tf.TPUReplicatedInput" &&
-        op_name != "tf.TPUReplicatedOutput")
+    if (auto compile_result_op = dyn_cast<TF::TPUCompilationResultOp>(op)) {
+      compile_result_op.erase();
       return;
-    op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-    op->erase();
+    }
+
+    auto op_name = op->getName().getStringRef();
+    if (op_name == "tf.TPUReplicatedInput" ||
+        op_name == "tf.TPUReplicatedOutput") {
+      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+      op->erase();
+    }
   });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
