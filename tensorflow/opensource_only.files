@@ -265,6 +265,8 @@ tensorflow/third_party/toolchains/remote/configure.bzl
 tensorflow/third_party/toolchains/remote/execution.bzl.tpl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
+tensorflow/tools/ci_build/release/common.sh
+tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/pip.sh
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/def_file_filter/BUILD
 tensorflow/tools/def_file_filter/BUILD.tpl
