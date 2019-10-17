@@ -70,10 +70,10 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   ValueHandle f13(constant_float(llvm::APFloat(13.0f), f32Type));
   ValueHandle i7(constant_int(7, 32));
   ValueHandle i13(constant_int(13, 32));
-  LoopBuilder(&i, lb, ub, 3)([&] {
+  AffineLoopNestBuilder(&i, lb, ub, 3)([&] {
     lb *index_t(3) + ub;
     lb + index_t(3);
-    LoopBuilder(&j, lb, ub, 2)([&] {
+    AffineLoopNestBuilder(&j, lb, ub, 2)([&] {
       ceilDiv(index_t(31) * floorDiv(i + j * index_t(3), index_t(32)),
               index_t(32));
       ((f7 + f13) / f7) % f13 - f7 *f13;
@@ -118,13 +118,37 @@ TEST_FUNC(builder_dynamic_for) {
   ScopedContext scope(builder, f.getLoc());
   ValueHandle i(indexType), a(f.getArgument(0)), b(f.getArgument(1)),
       c(f.getArgument(2)), d(f.getArgument(3));
-  LoopBuilder(&i, a - b, c + d, 2)();
+  AffineLoopNestBuilder(&i, a - b, c + d, 2)();
 
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
   // CHECK-DAG:    [[r0:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 - s1)()[%{{.*}}, %{{.*}}]
   // CHECK-DAG:    [[r1:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 + s1)()[%{{.*}}, %{{.*}}]
   // CHECK-NEXT:   affine.for %{{.*}} = (d0) -> (d0)([[r0]]) to (d0) -> (d0)([[r1]]) step 2 {
+  // clang-format on
+  f.print(llvm::outs());
+  f.erase();
+}
+
+TEST_FUNC(builder_loop_for) {
+  using namespace edsc;
+  using namespace edsc::op;
+  using namespace edsc::intrinsics;
+  auto indexType = IndexType::get(&globalContext());
+  auto f = makeFunction("builder_loop_for", {},
+                        {indexType, indexType, indexType, indexType});
+
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
+  ValueHandle i(indexType), a(f.getArgument(0)), b(f.getArgument(1)),
+      c(f.getArgument(2)), d(f.getArgument(3));
+  LoopNestBuilder(&i, a - b, c + d, a)();
+
+  // clang-format off
+  // CHECK-LABEL: func @builder_loop_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
+  // CHECK-DAG:    [[r0:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 - s1)()[%{{.*}}, %{{.*}}]
+  // CHECK-DAG:    [[r1:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 + s1)()[%{{.*}}, %{{.*}}]
+  // CHECK-NEXT:   loop.for %{{.*}} = [[r0]] to [[r1]] step {{.*}} {
   // clang-format on
   f.print(llvm::outs());
   f.erase();
@@ -142,7 +166,7 @@ TEST_FUNC(builder_max_min_for) {
   ScopedContext scope(builder, f.getLoc());
   ValueHandle i(indexType), lb1(f.getArgument(0)), lb2(f.getArgument(1)),
       ub1(f.getArgument(2)), ub2(f.getArgument(3));
-  LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)();
+  AffineLoopNestBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)();
   ret();
 
   // clang-format off
@@ -344,10 +368,10 @@ TEST_FUNC(builder_helpers) {
   ub2 = vA.ub(2);
   step2 = vA.step(2);
   AffineLoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})([&]{
-    LoopBuilder(&k1, lb2, ub2, step2)([&]{
+    AffineLoopNestBuilder(&k1, lb2, ub2, step2)([&]{
       C(i, j, k1) = f7 + A(i, j, k1) + B(i, j, k1);
     });
-    LoopBuilder(&k2, lb2, ub2, step2)([&]{
+    AffineLoopNestBuilder(&k2, lb2, ub2, step2)([&]{
       C(i, j, k2) += A(i, j, k2) + B(i, j, k2);
     });
   });
@@ -699,7 +723,7 @@ TEST_FUNC(indirect_access) {
   IndexHandle i, N(vC.ub(0));
 
   // clang-format off
-  LoopBuilder(&i, zero, N, 1)([&]{
+  AffineLoopNestBuilder(&i, zero, N, 1)([&]{
       C((ValueHandle)D(i)) = A((ValueHandle)B(i));
   });
   // clang-format on
@@ -733,7 +757,7 @@ TEST_FUNC(empty_map_load_store) {
   IndexHandle iv;
 
   // clang-format off
-  LoopBuilder(&iv, zero, one, 1)([&]{
+  AffineLoopNestBuilder(&iv, zero, one, 1)([&]{
       res() = input();
   });
   // clang-format on
