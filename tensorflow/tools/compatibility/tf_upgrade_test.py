@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,14 +47,16 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   def testParseError(self):
     _, report, unused_errors, unused_new_text = self._upgrade(
         "import tensorflow as tf\na + \n")
-    self.assertTrue(report.find("Failed to parse") != -1)
+    self.assertNotEqual(six.ensure_str(report).find("Failed to parse"), -1)
 
   def testReport(self):
     text = "tf.mul(a, b)\n"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
     # This is not a complete test, but it is a sanity test that a report
     # is generating information.
-    self.assertTrue(report.find("Renamed function `tf.mul` to `tf.multiply`"))
+    self.assertTrue(
+        six.ensure_str(report).find(
+            "Renamed function `tf.mul` to `tf.multiply`"))
 
   def testRename(self):
     text = "tf.mul(a, tf.sub(b, c))\n"
