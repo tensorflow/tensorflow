@@ -699,6 +699,7 @@ filegroup(
             # :platform_base, a common dependency for downstream targets.
             "**/env_time.cc",
             "**/logging.cc",
+            "**/mutex.cc",
             "**/rocm_rocdl_path.*",
             "default/test_benchmark.*",
             "cuda.h",
