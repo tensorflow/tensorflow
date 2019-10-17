@@ -934,7 +934,7 @@ static LogicalResult Verify(SliceOp op) {
       int size_i =
           size.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
       int dim_i = input_type.getShape()[i];
-      if (begin_i >= dim_i) {
+      if (begin_i > dim_i) {
         return op.emitOpError(llvm::formatv(
             "begin[{0}] cannot exceed dimension length: {1}", i, dim_i));
       }

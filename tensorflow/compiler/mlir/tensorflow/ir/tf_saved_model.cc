@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
@@ -81,6 +82,26 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     // TODO(silvasean): Check that argument type matches with the value.
     return success();
   }
+  if (named_attr.first == "tf_saved_model.index_path") {
+    auto attr = named_attr.second.dyn_cast<ArrayAttr>();
+    if (!attr) {
+      return op->emitError()
+             << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
+    }
+    for (auto element : attr) {
+      if (element.isa<StringAttr>()) {
+        continue;
+      }
+      if (auto integer = element.dyn_cast<IntegerAttr>()) {
+        if (integer.getValue().getBitWidth() == 64) {
+          continue;
+        }
+      }
+      return op->emitError() << "'tf_saved_model.index_path' elements should "
+                                "be strings or 64-bit integers";
+    }
+    return mlir::success();
+  }
 
   return op->emitError() << "unknown tf_saved_model dialect arg attribute '"
                          << named_attr.first << "'";
@@ -133,6 +154,26 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                 "whose immediate parent has attribute "
                 "'tf_saved_model.semantics'";
     }
+    if (auto func = dyn_cast<FuncOp>(op)) {
+      bool reached_bound_inputs = false;
+      for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+        if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
+          reached_bound_inputs = true;
+          continue;
+        }
+        if (func.getArgAttr(i, "tf_saved_model.index_path")) {
+          if (reached_bound_inputs) {
+            return op->emitError()
+                   << "all 'tf_saved_model.index_path' arg attributes should "
+                      "precede all 'tf_saved_model.bound_input' arg attributes";
+          }
+          continue;
+        }
+        return op->emitError()
+               << "all arguments should have 'tf_saved_model.index_path' or "
+                  "'tf_saved_model.bound_input' attributes";
+      }
+    }
     return success();
   }
   if (named_attr.first == "tf_saved_model.semantics") {
@@ -146,6 +187,18 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
 
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
                          << named_attr.first << "'";
+}
+
+SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
+  SmallVector<StringRef, 2> ret;
+  auto exported_names =
+      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+  if (exported_names) {
+    for (auto name : exported_names) {
+      ret.push_back(name.cast<StringAttr>().getValue());
+    }
+  }
+  return ret;
 }
 
 }  // namespace tf_saved_model

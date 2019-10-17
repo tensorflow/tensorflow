@@ -18,7 +18,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
@@ -32,6 +34,15 @@ CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
+
+void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+                           bool emit_quant_adaptor_ops,
+                           mlir::PassManager* pass_manager) {
+  pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
+  pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+  pass_manager->addPass(
+      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+}
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
@@ -84,13 +95,16 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      pass_manager->addPass(
-          mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
-      pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-      pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
-          pass_config.emit_quant_adaptor_ops));
+      AddQuantizationPasses(pass_config.quant_specs,
+                            pass_config.emit_quant_adaptor_ops, pass_manager);
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
+
+    // This pass operates on TensorFlow ops but is triggered after legalization
+    // so that it can target constants introduced once TensorFlow Identity ops
+    // are removed during legalization.
+    pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+
     pass_manager->addPass(mlir::createCSEPass());
     // This pass should be always at the end. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes

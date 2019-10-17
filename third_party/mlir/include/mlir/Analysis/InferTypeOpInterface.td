@@ -16,8 +16,7 @@
 // =============================================================================
 //
 // This file contains a set of interfaces that can be used to define information
-// related to call-like and callable operations. Each of which are defined along
-// with the respective interface below.
+// related to type inference.
 //
 //===----------------------------------------------------------------------===//
 
@@ -47,8 +46,8 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
 
       The method takes an optional location which, if set, will be used to
       report errors on. The operands and attributes correspond to those with
-      which an Operation would be created (e.g., as used in Operation;:create).
-      Regions are the nested regions of the op.
+      which an Operation would be created (e.g., as used in Operation::create)
+      and the regions of the op.
       }],
       /*retTy=*/"SmallVector<Type, 2>",
       /*methodName=*/"inferReturnTypes",

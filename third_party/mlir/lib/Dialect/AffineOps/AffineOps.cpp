@@ -23,9 +23,11 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Transforms/SideEffectsInterface.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
+
 using namespace mlir;
 using llvm::dbgs;
 
@@ -68,6 +70,19 @@ struct AffineInlinerInterface : public DialectInlinerInterface {
   /// Affine regions should be analyzed recursively.
   bool shouldAnalyzeRecursively(Operation *op) const final { return true; }
 };
+
+// TODO(mlir): Extend for other ops in this dialect.
+struct AffineSideEffectsInterface : public SideEffectsDialectInterface {
+  using SideEffectsDialectInterface::SideEffectsDialectInterface;
+
+  SideEffecting isSideEffecting(Operation *op) const override {
+    if (isa<AffineIfOp>(op)) {
+      return Recursive;
+    }
+    return SideEffectsDialectInterface::isSideEffecting(op);
+  };
+};
+
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
@@ -81,7 +96,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/AffineOps/AffineOps.cpp.inc"
                 >();
-  addInterfaces<AffineInlinerInterface>();
+  addInterfaces<AffineInlinerInterface, AffineSideEffectsInterface>();
 }
 
 /// A utility function to check if a given region is attached to a function.
@@ -1528,6 +1543,18 @@ bool AffineForOp::matchingBoundOperandList() {
       return false;
   }
   return true;
+}
+
+Region &AffineForOp::getLoopBody() { return region(); }
+
+bool AffineForOp::isDefinedOutsideOfLoop(Value *value) {
+  return !region().isAncestor(value->getParentRegion());
+}
+
+LogicalResult AffineForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
+  for (auto *op : ops)
+    op->moveBefore(*this);
+  return success();
 }
 
 /// Returns if the provided value is the induction variable of a AffineForOp.

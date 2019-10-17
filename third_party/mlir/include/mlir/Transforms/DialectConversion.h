@@ -55,17 +55,18 @@ public:
     SignatureConversion(unsigned numOrigInputs)
         : remappedInputs(numOrigInputs) {}
 
-    /// This struct represents a range of new types that remap an existing
-    /// signature input.
+    /// This struct represents a range of new types or a single value that
+    /// remaps an existing signature input.
     struct InputMapping {
       size_t inputNo, size;
+      Value *replacementValue;
     };
 
     /// Return the argument types for the new signature.
     ArrayRef<Type> getConvertedTypes() const { return argTypes; }
 
     /// Get the input mapping for the given argument.
-    llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
+    llvm::Optional<InputMapping> const &getInputMapping(unsigned input) const {
       return remappedInputs[input];
     }
 
@@ -85,6 +86,10 @@ public:
     /// new signature.
     void remapInput(unsigned origInputNo, unsigned newInputNo,
                     unsigned newInputCount = 1);
+
+    /// Remap an input of the original signature to another `replacement`
+    /// value. This drops the original argument.
+    void remapInput(unsigned origInputNo, Value *replacement);
 
   private:
     /// The remapping information for each of the original arguments.
@@ -261,6 +266,11 @@ public:
   void replaceOp(Operation *op, ArrayRef<Value *> newValues,
                  ArrayRef<Value *> valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
+
+  /// PatternRewriter hook for erasing a dead operation. The uses of this
+  /// operation *must* be made dead by the end of the conversion process,
+  /// otherwise an assert will be issued.
+  void eraseOp(Operation *op) override;
 
   /// PatternRewriter hook for splitting a block into two parts.
   Block *splitBlock(Block *block, Block::iterator before) override;

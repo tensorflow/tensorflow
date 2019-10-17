@@ -220,7 +220,7 @@ struct TestRemoveOpWithInnerOps
 
   PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };

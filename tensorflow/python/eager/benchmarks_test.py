@@ -46,6 +46,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -765,17 +766,65 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
 
-  def _benchmark_tf_reduce_logsum_exp(self, device=CPU):
+  def _benchmark_tf_reduce_logsumexp(self, device=CPU):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       func = lambda: math_ops.reduce_logsumexp(x)
       self._run(func, 3000)
 
   def benchmark_tf_reduce_logsumexp_CPU(self):
-    self._benchmark_tf_reduce_logsum_exp()
+    self._benchmark_tf_reduce_logsumexp()
 
   def benchmark_tf_reduce_logsumexp_GPU(self):
-    self._benchmark_tf_reduce_logsum_exp(device=GPU)
+    self._benchmark_tf_reduce_logsumexp(device=GPU)
+
+  def _benchmark_tf_zeros_like(self, m, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros_like(m)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_like_CPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2)
+
+  def benchmark_tf_zeros_like_GPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2, device=GPU)
+
+  def benchmark_tf_zeros_like_variable_CPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m)
+
+  def benchmark_tf_zeros_like_variable_GPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m, device=GPU)
+
+  def _benchmark_transpose(self,
+                           m,
+                           num_iters,
+                           perm=None,
+                           conjugate=False,
+                           execution_mode=None):
+    func = lambda: array_ops.transpose(m, perm, conjugate)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
+  def benchmark_tf_transpose_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
 
   def benchmark_defun_without_signature(self):
 

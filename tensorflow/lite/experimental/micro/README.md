@@ -429,9 +429,10 @@ conv in this example), follow these steps:
 5.  Compile and flash. The 'auto' flag requires your target to be plugged in.
     `mbed compile -m auto -t GCC_ARM -f --source . --source
     <CUSTOM_LOCATION>/CMSIS/NN/Include --source
-    <CUSTOM_LOCATION>/CMSIS/NN/Source/ConvolutionFunctions --source
+    <CUSTOM_LOCATION>/CMSIS/NN/Source --source
     <CUSTOM_LOCATION>/CMSIS/DSP/Include --source
-    <CUSTOM_LOCATION>/CMSIS/Core/Include -j8`
+    <CUSTOM_LOCATION>/CMSIS/Core/Include -DARM_MATH_DSP -DARM_MATH_LOOPUNROLL
+    -j8`
 
 ## Goals
 

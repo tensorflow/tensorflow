@@ -25,6 +25,7 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -36,6 +37,9 @@ namespace {
 
 /// Converts all_reduce op to LLVM/NVVM ops.
 struct GPUAllReduceOpLowering : public LLVMOpLowering {
+  using AccumulatorFactory = std::function<Value *(
+      Location, Value *, Value *, ConversionPatternRewriter &)>;
+
   explicit GPUAllReduceOpLowering(LLVMTypeConverter &lowering_)
       : LLVMOpLowering(gpu::AllReduce::getOperationName(),
                        lowering_.getDialect()->getContext(), lowering_),
@@ -44,12 +48,102 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    Value *result = createBlockReduce(op->getLoc(), operands.front(), rewriter);
+    Location loc = op->getLoc();
+    Value *operand = operands.front();
+
+    // TODO(csigg): Generalize to other types of accumulation.
+    assert(op->getOperand(0)->getType().isIntOrFloat());
+
+    // Create the reduction using an accumulator factory.
+    AccumulatorFactory factory = getFactory(cast<gpu::AllReduce>(op), operand);
+    assert(factory && "failed to create accumulator factory");
+    Value *result = createBlockReduce(loc, operand, factory, rewriter);
+
     rewriter.replaceOp(op, {result});
     return matchSuccess();
   }
 
 private:
+  /// Returns an accumulator factory using either the op attribute or the body
+  /// region.
+  AccumulatorFactory getFactory(gpu::AllReduce allReduce,
+                                Value *operand) const {
+    if (!allReduce.body().empty()) {
+      return getFactory(allReduce.body());
+    }
+    if (allReduce.op()) {
+      auto type = operand->getType().cast<LLVM::LLVMType>();
+      return getFactory(*allReduce.op(), type.getUnderlyingType());
+    }
+    return AccumulatorFactory();
+  }
+
+  /// Returns an accumulator factory that clones the body. The body's entry
+  /// block is expected to have 2 arguments. The gpu.yield return the
+  /// accumulated value of the same type.
+  AccumulatorFactory getFactory(Region &body) const {
+    return AccumulatorFactory([&](Location loc, Value *lhs, Value *rhs,
+                                  ConversionPatternRewriter &rewriter) {
+      Block *block = rewriter.getInsertionBlock();
+      Block *split = rewriter.splitBlock(block, rewriter.getInsertionPoint());
+
+      // Insert accumulator body between split block.
+      BlockAndValueMapping mapping;
+      mapping.map(body.front().getArgument(0), lhs);
+      mapping.map(body.front().getArgument(1), rhs);
+      rewriter.cloneRegionBefore(body, *split->getParent(),
+                                 split->getIterator(), mapping);
+
+      // Add branch before inserted body, into body.
+      block = block->getNextNode();
+      rewriter.create<LLVM::BrOp>(loc, ArrayRef<Value *>{},
+                                  llvm::makeArrayRef(block),
+                                  llvm::ArrayRef<Value *>());
+
+      // Replace all gpu.yield ops with branch out of body.
+      for (; block != split; block = block->getNextNode()) {
+        Operation *terminator = block->getTerminator();
+        if (!llvm::isa<gpu::Yield>(terminator))
+          continue;
+        rewriter.setInsertionPointToEnd(block);
+        rewriter.replaceOpWithNewOp<LLVM::BrOp>(
+            terminator, ArrayRef<Value *>{}, llvm::makeArrayRef(split),
+            llvm::makeArrayRef(terminator->getOperand(0)));
+      }
+
+      // Return accumulator result.
+      rewriter.setInsertionPointToStart(split);
+      return split->addArgument(lhs->getType());
+    });
+  }
+
+  /// Returns an accumulator factory that creates an op specified by opName.
+  AccumulatorFactory getFactory(StringRef opName, llvm::Type *type) const {
+    if (type->isVectorTy() || type->isArrayTy())
+      return getFactory(opName, type->getSequentialElementType());
+
+    bool isFloatingPoint = type->isFloatingPointTy();
+
+    if (opName == "add") {
+      return isFloatingPoint ? getFactory<LLVM::FAddOp>()
+                             : getFactory<LLVM::AddOp>();
+    }
+    if (opName == "mul") {
+      return isFloatingPoint ? getFactory<LLVM::FMulOp>()
+                             : getFactory<LLVM::MulOp>();
+    }
+
+    return AccumulatorFactory();
+  }
+
+  /// Returns an accumulator factory that creates an op of type T.
+  template <typename T> AccumulatorFactory getFactory() const {
+    return [](Location loc, Value *lhs, Value *rhs,
+              ConversionPatternRewriter &rewriter) {
+      return rewriter.create<T>(loc, lhs->getType(), lhs, rhs);
+    };
+  }
+
   /// Creates an all_reduce across the block.
   ///
   /// First reduce the elements within a warp. The first thread of each warp
@@ -87,6 +181,7 @@ private:
   ///     return %result
   ///
   Value *createBlockReduce(Location loc, Value *operand,
+                           AccumulatorFactory &accumFactory,
                            ConversionPatternRewriter &rewriter) const {
     auto type = operand->getType().cast<LLVM::LLVMType>();
 
@@ -106,8 +201,8 @@ private:
     Value *activeWidth = getActiveWidth(loc, threadIdx, blockSize, rewriter);
 
     // Reduce elements within each warp to produce the intermediate results.
-    Value *warpReduce =
-        createWarpReduce(loc, activeWidth, laneId, operand, rewriter);
+    Value *warpReduce = createWarpReduce(loc, activeWidth, laneId, operand,
+                                         accumFactory, rewriter);
 
     // Write the intermediate results to shared memory, using the first lane of
     // each warp.
@@ -131,7 +226,8 @@ private:
       Value *loadSrc = rewriter.create<LLVM::GEPOp>(
           loc, type, sharedMemPtr, ArrayRef<Value *>({zero, threadIdx}));
       Value *value = rewriter.create<LLVM::LoadOp>(loc, type, loadSrc);
-      Value *result = createWarpReduce(loc, numWarps, laneId, value, rewriter);
+      Value *result = createWarpReduce(loc, numWarps, laneId, value,
+                                       accumFactory, rewriter);
       rewriter.create<LLVM::StoreOp>(loc, result, resultPtr);
     });
     rewriter.create<NVVM::Barrier0Op>(loc);
@@ -205,9 +301,8 @@ private:
   /// Creates a reduction across the first activeWidth lanes of a warp.
   /// The first lane returns the result, all others return values are undefined.
   Value *createWarpReduce(Location loc, Value *activeWidth, Value *laneId,
-                          Value *operand,
+                          Value *operand, AccumulatorFactory accumFactory,
                           ConversionPatternRewriter &rewriter) const {
-    // TODO(csigg): Generalize to other types of accumulation.
     Value *warpSize = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize));
     Value *maskAndClamp = rewriter.create<LLVM::ConstantOp>(
@@ -251,7 +346,7 @@ private:
                 loc, rewriter, isActiveSrcLane,
                 [&] {
                   return llvm::SmallVector<Value *, 1>{
-                      rewriter.create<LLVM::FAddOp>(loc, type, value, shfl)};
+                      accumFactory(loc, value, shfl, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
@@ -269,7 +364,7 @@ private:
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
             Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
                 loc, type, activeMask, value, offset, maskAndClamp);
-            value = rewriter.create<LLVM::FAddOp>(loc, type, value, shfl);
+            value = accumFactory(loc, value, shfl, rewriter);
           }
           return llvm::SmallVector<Value *, 1>{value};
         });
@@ -382,6 +477,8 @@ public:
     target.addIllegalDialect<gpu::GPUDialect>();
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalDialect<NVVM::NVVMDialect>();
+    // TODO(csigg): Remove once we support replacing non-root ops.
+    target.addLegalOp<gpu::Yield>();
     if (failed(applyPartialConversion(m, target, patterns, &converter)))
       signalPassFailure();
   }

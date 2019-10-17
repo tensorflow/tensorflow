@@ -308,7 +308,7 @@ public:
     if (!invertedMap) {
       LinalgScopedEmitter<ConcreteOp>::emitScalarImplementation({}, linalgOp,
                                                                 folder);
-      rewriter.replaceOp(op, {});
+      rewriter.eraseOp(op);
       return matchSuccess();
     }
 
@@ -341,7 +341,7 @@ public:
       });
     });
     // clang-format on
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 

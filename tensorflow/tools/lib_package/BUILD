@@ -198,9 +198,7 @@ genrule(
             "@grpc//:LICENSE",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
-    ]) + tf_additional_license_deps(),
+    ) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -266,8 +264,6 @@ genrule(
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_JNI_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",

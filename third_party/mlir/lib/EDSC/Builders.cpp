@@ -206,10 +206,9 @@ mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
   return ValueHandle::null();
 }
 
-mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
-                                             ArrayRef<ValueHandle> lbs,
-                                             ArrayRef<ValueHandle> ubs,
-                                             ArrayRef<int64_t> steps) {
+mlir::edsc::AffineLoopNestBuilder::AffineLoopNestBuilder(
+    ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+    ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps) {
   assert(ivs.size() == lbs.size() && "Mismatch in number of arguments");
   assert(ivs.size() == ubs.size() && "Mismatch in number of arguments");
   assert(ivs.size() == steps.size() && "Mismatch in number of arguments");
@@ -219,8 +218,8 @@ mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
   }
 }
 
-ValueHandle
-mlir::edsc::LoopNestBuilder::operator()(llvm::function_ref<void(void)> fun) {
+ValueHandle mlir::edsc::AffineLoopNestBuilder::operator()(
+    llvm::function_ref<void(void)> fun) {
   if (fun)
     fun();
   // Iterate on the calling operator() on all the loops in the nest.

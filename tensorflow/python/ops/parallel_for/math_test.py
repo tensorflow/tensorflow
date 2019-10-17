@@ -624,12 +624,15 @@ class LinalgTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
 
   def test_log_matrix_determinant(self):
-    x = random_ops.random_normal([3, 4, 2, 2])
+    for x_shape in ([3, 4, 2, 2], [3, 2, 2]):
+      x = random_ops.random_normal(x_shape)
 
-    def loop_fn(i):
-      return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+      # pylint: enable=cell-var-from-loop
 
-    self._test_loop_fn(loop_fn, 3)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
@@ -661,7 +664,8 @@ class LinalgTest(PForTestCase):
     x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
 
     def loop_fn(i):
-      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+      return (linalg_ops.self_adjoint_eig(array_ops.gather(x, i)),
+              linalg_ops.self_adjoint_eigvals(array_ops.gather(x, i)))
 
     self._test_loop_fn(loop_fn, 2)
 

@@ -182,25 +182,26 @@ public:
 /// Usage:
 ///
 /// ```c++
-///    LoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1, 1})(
+///    AffineLoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1,
+///    1})(
 ///      [&](){
 ///        ...
 ///      });
 /// ```
 ///
 /// ```c++
-///    LoopNestBuilder({&i}, {lb}, {ub}, {1})([&](){
-///      LoopNestBuilder({&j}, {lb}, {ub}, {1})([&](){
-///        LoopNestBuilder({&k}, {lb}, {ub}, {1})([&](){
+///    AffineLoopNestBuilder({&i}, {lb}, {ub}, {1})([&](){
+///      AffineLoopNestBuilder({&j}, {lb}, {ub}, {1})([&](){
+///        AffineLoopNestBuilder({&k}, {lb}, {ub}, {1})([&](){
 ///          ...
 ///        }),
 ///      }),
 ///    });
 /// ```
-class LoopNestBuilder {
+class AffineLoopNestBuilder {
 public:
-  LoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
-                  ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
+  AffineLoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+                        ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
   ValueHandle operator()(llvm::function_ref<void(void)> fun = nullptr);
 

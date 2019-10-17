@@ -280,7 +280,7 @@ public:
     Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
                                rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };

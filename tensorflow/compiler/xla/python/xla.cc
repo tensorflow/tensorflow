@@ -592,7 +592,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("AllReduce",
           static_cast<XlaOp (*)(
               XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
+              const absl::optional<ChannelHandle>&)>(&AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CreateToken", &CreateToken);

@@ -59,7 +59,7 @@ def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 // Any integer or floating-point tensor types
 def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -155,6 +155,12 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     HLO_Tensor:$rhs,
     BroadcastDimAttr:$broadcast_dimensions
   );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "DenseIntElementsAttr broadcast_dimensions"
+  >];
+
   let results = (outs HLO_Tensor);
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
@@ -174,6 +180,9 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
+
+def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
@@ -279,19 +288,17 @@ def HLO_CompareOp: HLO_Op<"compare",
     BroadcastDimAttr:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "DenseIntElementsAttr broadcast_dimensions, "
+    "StringAttr comparison_direction"
+  >];
   let results = (outs HLO_PredTensor);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
     "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
   >];
-
-  let extraClassDeclaration = [{
-    // Infers output type for given operand and attributes.
-    static Type InferOutputTypes(Builder *builder, Value *lhs, Value *rhs,
-                                 DenseIntElementsAttr broadcast_dimensions,
-                                 StringAttr comparison_direction);
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -343,6 +350,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
   let results = (outs HLO_Tensor:$result);
 
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
@@ -514,6 +523,19 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   let results = (outs HLO_Tensor);
 }
 
+def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_FftTypeAttr: $fft_type,
+    I64ElementsAttr:$fft_length
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(b/129422361) Attributes are not supported by the codegen.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -527,8 +549,8 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Attributes are not by the codegen. The optional argument
-  // (dimensions) needs to be added as an attribute.
+  // TODO(b/129422361) Attributes are not supported by the codegen. The
+  // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 

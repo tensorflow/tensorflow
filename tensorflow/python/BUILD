@@ -212,6 +212,7 @@ py_library(
         exclude = [
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
+            "**/analytics.py",  # In platform_analytics.
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
@@ -236,6 +237,12 @@ py_library(
         ":platform",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "platform_analytics",
+    srcs = ["platform/analytics.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(

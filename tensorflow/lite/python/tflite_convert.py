@@ -531,8 +531,8 @@ def _get_parser(use_v2_converter):
   parser.add_argument(
       "--experimental_enable_mlir_converter",
       action="store_true",
-      help=("Experimental flag, subject to change. Enables the MLIR converter "
-            "instead of the TOCO converter."))
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "conversion instead of TOCO conversion."))
   return parser
 
 

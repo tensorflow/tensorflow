@@ -455,13 +455,11 @@ struct SimplifyDeadAlloc : public OpRewritePattern<AllocOp> {
 
   PatternMatchResult matchAndRewrite(AllocOp alloc,
                                      PatternRewriter &rewriter) const override {
-    // Check if the alloc'ed value has any uses.
-    if (!alloc.use_empty())
-      return matchFailure();
-
-    // If it doesn't, we can eliminate it.
-    alloc.erase();
-    return matchSuccess();
+    if (alloc.use_empty()) {
+      rewriter.eraseOp(alloc);
+      return matchSuccess();
+    }
+    return matchFailure();
   }
 };
 } // end anonymous namespace.
@@ -1296,7 +1294,7 @@ struct SimplifyDeadDealloc : public OpRewritePattern<DeallocOp> {
         return matchFailure();
 
     // Erase the dealloc operation.
-    rewriter.replaceOp(dealloc, llvm::None);
+    rewriter.eraseOp(dealloc);
     return matchSuccess();
   }
 };

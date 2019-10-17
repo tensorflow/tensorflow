@@ -24,14 +24,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import json
 import os
 import signal
 import sys
-import traceback
 
 from absl import flags
+import six
 from six.moves import queue as Queue
 
 from tensorflow.python.distribute import multi_worker_test_base
@@ -74,6 +75,9 @@ class _LogCollector(object):
 
   def flush(self, *args, **kwargs):
     self.original_stream.flush(*args, **kwargs)
+
+
+ExcInfoWrapper = collections.namedtuple('ExcInfoWrapper', ['exc_info'])
 
 
 def test_main():
@@ -201,11 +205,18 @@ def run(proc_func,
         if return_data is not None:
           add_return_data(return_data)
       # pylint: disable=broad-except
-      except Exception as e:
+      except Exception:
         # Capture all exceptions to be reported to parent process.
-        finish_wrapper_func_properly(
-            type(e)(str(e) + '\n' + traceback.format_exc()))
-        return
+        finish_wrapper_func_properly(ExcInfoWrapper(sys.exc_info()))
+
+        # Re-raise the exception in addition to reporting it to the parent
+        # process, so that even if `--test_timeout` flag is set and the
+        # error doesn't make it to be shown in parent process before bazel's
+        # timeout, the log would still show what happens in this subprocess,
+        # instead of silently suppressing the error due to early bazel timeout.
+        # Raising an error in the subprocess produces stack trace in the log,
+        # but the program continues running.
+        raise
 
       finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
 
@@ -234,8 +245,8 @@ def run(proc_func,
     except Queue.Empty:
       # First check if any of the subprocesses raised exception.
       for internal_queue_result in internal_queue_results:
-        if isinstance(internal_queue_result, Exception):
-          raise internal_queue_result
+        if isinstance(internal_queue_result, ExcInfoWrapper):
+          six.reraise(*internal_queue_result.exc_info)
       # If none of those did, report time out to user.
       raise RuntimeError(
           'One or more subprocesses timed out. Please use '
@@ -243,8 +254,8 @@ def run(proc_func,
           'subprocess debugging info. Timeout = {} sec.'.format(timeout))
 
   for internal_queue_result in internal_queue_results:
-    if isinstance(internal_queue_result, Exception):
-      raise internal_queue_result
+    if isinstance(internal_queue_result, ExcInfoWrapper):
+      six.reraise(*internal_queue_result.exc_info)
     assert internal_queue_result == _FINISH_PROPERLY_MESSAGE
 
   def queue_to_list(queue_to_convert):
@@ -312,22 +323,6 @@ def _add_std_stream_data_flattened(data):
       _AvailableQueues.STD_STREAM_QUEUE]
   for d in list(data):
     std_stream_queue.put(d)
-
-
-@contextlib.contextmanager
-def try_run_and_except_connection_error(test_obj):
-  """Context manager to skip cases not considered failures for this test."""
-  # TODO(b/142074107): Remove this try-except once within-loop fault-tolerance
-  # is supported.
-  try:
-    yield
-  except RuntimeError as e:
-    if ('Connection reset by peer' in str(e) or 'Socket closed' in str(e) or
-        'failed to connect to all addresses' in str(e)):
-      test_obj.skipTest(
-          'Skipping connection error between processes: {}'.format(str(e)))
-    else:
-      raise
 
 
 def _get_internal_queue():

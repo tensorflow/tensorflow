@@ -106,9 +106,11 @@ class ReplicateClusterTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = replicated_ds[self._device1]
     with ops.device(self._device1):
       it1 = dataset_ops.make_initializable_iterator(dataset1)
-    # We don't support stateful ops in functions as of now.
+    # We don't support stateful ops across processes in functions as of now.
     with session.Session(self._target) as sess:
-      with self.assertRaises(errors.FailedPreconditionError):
+      with self.assertRaisesRegexp(
+          errors.InternalError,
+          "tf.function with resource inputs residing on remote devices."):
         sess.run(it1.initializer)
 
   @combinations.generate(

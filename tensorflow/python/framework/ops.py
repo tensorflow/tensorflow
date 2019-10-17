@@ -1632,22 +1632,19 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
-  An `Operation` is a node in a TensorFlow `Graph` that takes zero or
-  more `Tensor` objects as input, and produces zero or more `Tensor`
-  objects as output. Objects of type `Operation` are created by
-  calling a Python op constructor (such as
-  `tf.matmul`)
-  or `tf.Graph.create_op`.
+  An `Operation` is a node in a `tf.Graph` that takes zero or more `Tensor`
+  objects as input, and produces zero or more `Tensor` objects as output.
+  Objects of type `Operation` are created by calling a Python op constructor
+  (such as `tf.matmul`) within a `tf.function` or under a `tf.Graph.as_default`
+  context manager.
 
-  For example `c = tf.matmul(a, b)` creates an `Operation` of type
-  "MatMul" that takes tensors `a` and `b` as input, and produces `c`
-  as output.
+  For example, within a `tf.function`, `c = tf.matmul(a, b)` creates an
+  `Operation` of type "MatMul" that takes tensors `a` and `b` as input, and
+  produces `c` as output.
 
-  After the graph has been launched in a session, an `Operation` can
-  be executed by passing it to
-  `tf.Session.run`.
-  `op.run()` is a shortcut for calling
-  `tf.compat.v1.get_default_session().run(op)`.
+  If a `tf.compat.v1.Session` is used, an `Operation` of a `tf.Graph` can be
+  executed by passing it to `tf.Session.run`. `op.run()` is a shortcut for
+  calling `tf.compat.v1.get_default_session().run(op)`.
   """
 
   def __init__(self,
@@ -2666,26 +2663,22 @@ _SESSION_RUN_LOCK_GROUP = 1
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
-  A `Graph` contains a set of
-  `tf.Operation` objects,
-  which represent units of computation; and
-  `tf.Tensor` objects, which represent
-  the units of data that flow between operations.
+  Graphs are used by `tf.function`s to represent the function's computations.
+  Each graph contains a set of `tf.Operation` objects, which represent units of
+  computation; and `tf.Tensor` objects, which represent the units of data that
+  flow between operations.
 
-  A default `Graph` is always registered, and accessible by calling
-  `tf.compat.v1.get_default_graph`.
-  To add an operation to the default graph, simply call one of the functions
-  that defines a new `Operation`:
+  ### Using graphs directly (deprecated)
 
-  ```python
-  c = tf.constant(4.0)
-  assert c.graph is tf.compat.v1.get_default_graph()
-  ```
+  A `tf.Graph` can be constructed and used directly without a `tf.function`, as
+  was required in TensorFlow 1, but this is deprecated and it is recommended to
+  use a `tf.function` instead. If a graph is directly used, other deprecated
+  TensorFlow 1 classes are also required to execute the graph, such as a
+  `tf.compat.v1.Session`.
 
-  Another typical usage involves the
-  `tf.Graph.as_default`
-  context manager, which overrides the current default graph for the
-  lifetime of the context:
+  A default graph can be registered with the `tf.Graph.as_default` context
+  manager. Then, operations will be added to the graph instead of being executed
+  eagerly. For example:
 
   ```python
   g = tf.Graph()
@@ -2694,6 +2687,8 @@ class Graph(object):
     c = tf.constant(30.0)
     assert c.graph is g
   ```
+
+  `tf.compat.v1.get_default_graph()` can be used to obtain the default graph.
 
   Important note: This class *is not* thread-safe for graph construction. All
   operations should be created from a single thread, or external

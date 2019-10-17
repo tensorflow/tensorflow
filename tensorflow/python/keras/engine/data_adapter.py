@@ -34,9 +34,14 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
+
+try:
+  from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
+except ImportError:
+  scipy_sparse = None
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -107,7 +112,8 @@ class DataAdapter(object):
         use it, or raise exception if any required argument is not provide.
     """
     if not self.can_handle(x, y):
-      raise ValueError("{} Cannot handle input {}".format(self.__class__, x))
+      raise ValueError("{} Cannot handle input {}, {}".format(
+          self.__class__, x, y))
 
   @abc.abstractmethod
   def get_dataset(self):
@@ -264,6 +270,10 @@ class TensorLikeDataAdapter(DataAdapter):
     num_full_batches = int(num_samples // batch_size)
     self._partial_batch_size = num_samples % batch_size
 
+    if isinstance(shuffle, str):
+      shuffle = shuffle.lower()
+
+    self._shuffle = shuffle
     # Vectorized version of shuffle.
     # This is a performance improvement over using `from_tensor_slices`.
     # The indices of the data are shuffled and batched, and these indices
@@ -275,14 +285,16 @@ class TensorLikeDataAdapter(DataAdapter):
     # 4. optimized permutation batching
     # 5. disabled static optimizations
 
-    indices_dataset = dataset_ops.DatasetV2.range(1).repeat(epochs)
+    indices_dataset = dataset_ops.DatasetV2.range(1)
+    if shuffle != "batch":
+      indices_dataset = indices_dataset.repeat(epochs)
 
     def permutation(_):
       # It turns out to be more performant to make a new set of indices rather
       # than reusing the same range Tensor. (presumably because of buffer
       # forwarding.)
       indices = math_ops.range(num_samples, dtype=dtypes.int64)
-      if shuffle:
+      if shuffle and shuffle != "batch":
         indices = random_ops.random_shuffle(indices)
       return indices
 
@@ -318,9 +330,38 @@ class TensorLikeDataAdapter(DataAdapter):
         index_remainder = dataset_ops.DatasetV2.from_tensors(array_ops.slice(
             indices, [num_in_full_batch], [self._partial_batch_size]))
         flat_dataset = flat_dataset.concatenate(index_remainder)
+
+      if shuffle == "batch":
+        # 1024 is a magic constant that has not been properly evaluated
+        flat_dataset = flat_dataset.shuffle(1024).repeat(epochs)
       return flat_dataset
 
     indices_dataset = indices_dataset.flat_map(slice_batch_indices)
+
+    dataset = self.slice_inputs(indices_dataset, inputs)
+
+    if shuffle == "batch":
+      def shuffle_batch(*batch):
+        return nest.map_structure(random_ops.random_shuffle, batch)
+      dataset = dataset.map(shuffle_batch)
+
+    self._dataset = dataset
+
+  def slice_inputs(self, indices_dataset, inputs):
+    """Slice inputs into a Dataset of batches.
+
+    Given a Dataset of batch indices and the unsliced inputs,
+    this step slices the inputs in a parallelized fashion
+    and produces a dataset of input batches.
+
+    Args:
+      indices_dataset: A Dataset of batched indices
+      inputs: A python data structure that contains the inputs, targets,
+        and possibly sample weights.
+
+    Returns:
+      A Dataset of input batches matching the batch indices.
+    """
     dataset = dataset_ops.DatasetV2.zip((
         indices_dataset,
         dataset_ops.DatasetV2.from_tensors(inputs).repeat()
@@ -336,11 +377,11 @@ class TensorLikeDataAdapter(DataAdapter):
     # input pipeline graph serialization and deserialization
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    if shuffle:
+    if self._shuffle:
       # See b/141490660 for more details.
       options.experimental_allow_stateful = True
     dataset = dataset.with_options(options)
-    self._dataset = dataset
+    return dataset
 
   def get_dataset(self):
     return self._dataset
@@ -362,6 +403,98 @@ class TensorLikeDataAdapter(DataAdapter):
     return False
 
 
+class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
+  """Adapter that handles array-like data without forcing it into memory.
+
+  As an example, this adapter handles `keras.utils.HDF5Matrix` which holds
+  datasets that may be too big to fully fit into memory.
+
+  Specifically, this adapter handles any Python class which implements:
+  `__get_item__`, `__len__`, `shape`, and `dtype` with the same meanings
+  as Numpy, but it ignores any case where all the inputs are Tensors or Numpy
+  arrays (because that case is handled by the base TensorLikeDataAdapter).
+
+  It also does not handle lists/tuples of scalars, because those are handled
+  by the ListsOfScalarsDataAdapter.
+  """
+
+  @staticmethod
+  def can_handle(x, y=None):
+    flat_inputs = nest.flatten(x)
+    if y is not None:
+      flat_inputs += nest.flatten(y)
+
+    def _is_array_like(v):
+      """Return True if v is a Tensor, array, or is array-like."""
+      return (
+          hasattr(v, "__getitem__") and
+          hasattr(v, "shape") and
+          hasattr(v, "dtype") and
+          hasattr(v, "__len__")
+      )
+
+    if not TensorLikeDataAdapter.can_handle(x, y):
+      return all(_is_array_like(v) for v in flat_inputs)
+    else:
+      return False
+
+  def __init__(self, *args, **kwargs):
+    logging.warn(
+        "Keras is training/fitting/evaluating on array-like data. Keras may "
+        "not be optimized for this format, so if your input data format is "
+        "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
+        "recommend using that to load a Dataset instead.")
+
+    super(GenericArrayLikeDataAdapter, self).__init__(*args, **kwargs)
+
+  def slice_inputs(self, indices_dataset, inputs):
+    """Slice inputs into a Dataset of batches.
+
+    Given a Dataset of batch indices and the unsliced inputs,
+    this step slices the inputs in a parallelized fashion
+    and produces a dataset of input batches.
+
+    Args:
+      indices_dataset: A Dataset of batched indices
+      inputs: A python data structure that contains the inputs, targets,
+        and possibly sample weights.
+
+    Returns:
+      A Dataset of input batches matching the batch indices.
+    """
+    flat_inputs = nest.flatten(inputs)
+    def dynamic_shape_like(t):
+      shape = list(t.shape)
+      shape[0] = None
+      return tuple(shape)
+
+    flat_dtypes = [inp.dtype for inp in flat_inputs]
+    contiguous = True
+    if self._shuffle and self._shuffle != "batch":
+      contiguous = False
+
+    def grab_batch(indices):
+      """Grab a batch of data from the inputs."""
+      # This uses a py_function to avoid converting the array-like
+      # into a Tensor before slicing it, because converting the array-like
+      # to a Tensor may force it into memory..
+      def py_method(ind):
+        def slice_array(data):
+          return training_utils.slice_arrays(data, ind.numpy(),
+                                             contiguous=contiguous)
+        return [slice_array(inp) for inp in flat_inputs]
+
+      flat_out = script_ops.eager_py_func(py_method, [indices], flat_dtypes)
+      for v, original_inp in zip(flat_out, flat_inputs):
+        v.set_shape(dynamic_shape_like(original_inp))
+      return nest.pack_sequence_as(inputs, flat_out)
+
+    dataset = indices_dataset.map(
+        grab_batch, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    return dataset
+
+
 class CompositeTensorDataAdapter(DataAdapter):
   """Adapter that handles composite tensor."""
 
@@ -375,6 +508,9 @@ class CompositeTensorDataAdapter(DataAdapter):
       # Dataset inherits from CompositeTensor but shouldn't be handled here.
       if (isinstance(v, composite_tensor.CompositeTensor) and
           not isinstance(v, dataset_ops.DatasetV2)):
+        return True
+      # Support Scipy sparse tensors if scipy is installed
+      if scipy_sparse is not None and scipy_sparse.issparse(v):
         return True
       return False
 
@@ -558,11 +694,12 @@ class DatasetAdapter(DataAdapter):
 
 
 class GeneratorDataAdapter(DataAdapter):
-  """Adapter that handles python generator."""
+  """Adapter that handles python generators and iterators."""
 
   @staticmethod
   def can_handle(x, y=None):
-    return tf_inspect.isgenerator(x)
+    return ((hasattr(x, "__next__") or hasattr(x, "next"))
+            and hasattr(x, "__iter__"))
 
   def __init__(self, x, y=None, sample_weights=None, workers=1,
                use_multiprocessing=False, max_queue_size=10, **kwargs):
@@ -681,12 +818,13 @@ class KerasSequenceAdapter(DataAdapter):
     return False
 
   def partial_batch_size(self):
-    return None
+    return
 
 
 ALL_ADAPTER_CLS = [
-    ListsOfScalarsDataAdapter, TensorLikeDataAdapter, DatasetAdapter,
-    GeneratorDataAdapter, KerasSequenceAdapter, CompositeTensorDataAdapter
+    ListsOfScalarsDataAdapter, TensorLikeDataAdapter,
+    GenericArrayLikeDataAdapter, DatasetAdapter,
+    GeneratorDataAdapter, KerasSequenceAdapter, CompositeTensorDataAdapter,
 ]
 
 

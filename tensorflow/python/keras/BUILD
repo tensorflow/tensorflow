@@ -1330,6 +1330,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = False,  # b/142744009
 )
 
 cuda_py_test(

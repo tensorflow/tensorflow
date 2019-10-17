@@ -621,12 +621,13 @@ class Flatten(Layer):
     return outputs
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tensor_shape.as_shape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
-    output_shape = [input_shape[0]]
+    else:
+      output_shape = [input_shape[0]]
     if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
+      output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)

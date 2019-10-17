@@ -820,6 +820,22 @@ tf_gen_op_wrapper_py(
 #
 # This is a separate library so that external passes can link only this library
 # without linking any of the other tensorflow passes.
+gentbl(
+    name = "lower_tf_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_lower_tf.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/lower_tf.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "lower_tf_lib",
     srcs = [
@@ -829,6 +845,7 @@ cc_library(
         "transforms/lower_tf.h",
     ],
     deps = [
+        ":lower_tf_inc_gen",
         ":tensorflow",
         "@local_config_mlir//:IR",
     ],
