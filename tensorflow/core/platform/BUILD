@@ -653,6 +653,7 @@ filegroup(
             "**/env_time.cc",
             "**/logger.cc",
             "**/mutex.cc",
+            "**/net.cc",
             "**/logging.cc",
             "**/port.cc",
             "**/human_readable_json.cc",

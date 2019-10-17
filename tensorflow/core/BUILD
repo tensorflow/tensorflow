@@ -2271,6 +2271,7 @@ cc_library(
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
+        "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
