@@ -1372,6 +1372,15 @@ void ProcessFunctionLibraryRuntime::Run(
       });
 }
 
+void ProcessFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,
+    std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  const std::vector<Tensor> lcoal_inputs = args.GetLocalTensors();
+  Run(opts, handle, lcoal_inputs, rets, std::move(done));
+}
+
 void ProcessFunctionLibraryRuntime::CleanUp(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
     FunctionLibraryRuntime::DoneCallback done) const {

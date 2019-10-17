@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -143,11 +144,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerOperation* op = function_data->op.get();
 
-  if (!opts.op_id.has_value()) {
-    done(
-        errors::Internal("op_id is not set for remote function: ", op->Name()));
-  }
-
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(function_data->context_id);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
@@ -159,7 +155,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unqiue op_id generated
   // by the master context.
-  remote_op->set_id(opts.op_id.value());
+  const int64 op_id = opts.op_id.has_value() ? opts.op_id.value()
+                                             : ctx_->RemoteMgr()->NextOpId();
+  remote_op->set_id(op_id);
   remote_op->set_name(op->Name());
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);

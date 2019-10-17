@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
@@ -103,7 +104,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
   TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
 
-  return kernel->Run(input_vector, nullptr, nullptr);
+  EagerKernelArgs args(std::move(input_vector));
+  return kernel->Run(args, nullptr, nullptr, absl::nullopt);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -184,9 +186,9 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
-  gtl::InlinedVector<TensorValue, 4> input_vector;
-  return kernel->Run(input_vector, outputs,
-                     captured_state_->recv_cancellation());
+  EagerKernelArgs args;
+  return kernel->Run(args, outputs, captured_state_->recv_cancellation(),
+                     absl::nullopt);
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
