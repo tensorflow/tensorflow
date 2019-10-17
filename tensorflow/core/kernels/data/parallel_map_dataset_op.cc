@@ -213,7 +213,7 @@ ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
 
 void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int32 num_parallel_calls;
+  int64 num_parallel_calls;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   OP_REQUIRES(
