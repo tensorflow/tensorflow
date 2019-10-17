@@ -18,6 +18,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
 #include "mlir/Support/StringExtras.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -35,6 +36,67 @@ using namespace mlir;
 using namespace mlir::spirv;
 
 //===----------------------------------------------------------------------===//
+// InlinerInterface
+//===----------------------------------------------------------------------===//
+
+/// Returns true if the given region contains spv.Return or spv.ReturnValue ops.
+static inline bool containsReturn(Region &region) {
+  return llvm::any_of(region, [](Block &block) {
+    Operation *terminator = block.getTerminator();
+    return isa<spirv::ReturnOp>(terminator) ||
+           isa<spirv::ReturnValueOp>(terminator);
+  });
+}
+
+namespace {
+/// This class defines the interface for inlining within the SPIR-V dialect.
+struct SPIRVInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  /// Returns true if the given region 'src' can be inlined into the region
+  /// 'dest' that is attached to an operation registered to the current dialect.
+  bool isLegalToInline(Operation *op, Region *dest,
+                       BlockAndValueMapping &) const final {
+    // TODO(antiagainst): Enable inlining structured control flows with return.
+    if ((isa<spirv::SelectionOp>(op) || isa<spirv::LoopOp>(op)) &&
+        containsReturn(op->getRegion(0)))
+      return false;
+    // TODO(antiagainst): we need to filter OpKill here to avoid inlining it to
+    // a loop continue construct:
+    // https://github.com/KhronosGroup/SPIRV-Headers/issues/86
+    // However OpKill is fragment shader specific and we don't support it yet.
+    return true;
+  }
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op, Block *newDest) const final {
+    if (auto returnOp = dyn_cast<spirv::ReturnOp>(op)) {
+      OpBuilder(op).create<spirv::BranchOp>(op->getLoc(), newDest);
+      op->erase();
+    } else if (auto retValOp = dyn_cast<spirv::ReturnValueOp>(op)) {
+      llvm_unreachable("unimplemented spv.ReturnValue in inliner");
+    }
+  }
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value *> valuesToRepl) const final {
+    // Only spv.ReturnValue needs to be handled here.
+    auto retValOp = dyn_cast<spirv::ReturnValueOp>(op);
+    if (!retValOp)
+      return;
+
+    // Replace the values directly with the return operands.
+    assert(valuesToRepl.size() == 1 &&
+           "spv.ReturnValue expected to only handle one result");
+    valuesToRepl.front()->replaceAllUsesWith(retValOp.value());
+  }
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // SPIR-V Dialect
 //===----------------------------------------------------------------------===//
 
@@ -47,6 +109,8 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"
       >();
+
+  addInterfaces<SPIRVInlinerInterface>();
 
   // Allow unknown operations because SPIR-V is extensible.
   allowUnknownOperations();
