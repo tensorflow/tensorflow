@@ -3144,6 +3144,35 @@ tensor, so its value can change during training.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RFFTOp : TF_Op<"RFFT", [NoSideEffect]> {
+  let summary = "Real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 1-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most dimension of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
+`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
+followed by the `fft_length / 2` positive-frequency terms.
+
+Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
   let summary = "Outputs random values from a uniform distribution.";
 
