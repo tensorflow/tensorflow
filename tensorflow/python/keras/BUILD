@@ -1328,9 +1328,7 @@ cuda_py_test(
     ],
     tags = [
         "guitar",
-        # TODO(b/142744009) Re-enable multi_gpu_utils_test on TensorFlowMultiGpu
-        # after fixing test timeouts.
-        # "multi_gpu",
+        "multi_gpu",
     ],
     xla_enable_strict_auto_jit = False,  # b/142744009
 )
