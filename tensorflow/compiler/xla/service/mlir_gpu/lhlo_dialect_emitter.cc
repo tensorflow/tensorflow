@@ -238,7 +238,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
     arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
         getLocation(fusion), function.getArgument(i)));
   }
-  HloDialectEmitter hlo_emitter(body_builder, arg_values);
+  HloDialectEmitter hlo_emitter(emission_context_, body_builder, arg_values);
 
   TF_ASSIGN_OR_RETURN(
       auto result,
