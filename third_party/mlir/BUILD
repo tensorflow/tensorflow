@@ -877,6 +877,7 @@ gentbl(
 filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
+        "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
@@ -993,6 +994,7 @@ gentbl(
 cc_library(
     name = "SPIRVDialect",
     srcs = [
+        "include/mlir/Transforms/InliningUtils.h",
         "lib/Dialect/SPIRV/LayoutUtils.cpp",
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
