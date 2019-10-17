@@ -127,7 +127,7 @@ class FromConcreteFunctionTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -298,7 +298,7 @@ class FromConcreteFunctionTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -567,7 +567,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -595,7 +595,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -626,7 +626,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -651,7 +651,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -678,7 +678,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -700,7 +700,7 @@ class ControlFlowTest(TestModels):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_enable_mlir_converter = True
+    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 

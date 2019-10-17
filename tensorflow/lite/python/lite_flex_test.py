@@ -50,7 +50,7 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
-    converter.experimental_enable_mlir_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -111,7 +111,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
-    converter.experimental_enable_mlir_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
 
     # Ensures the model contains TensorFlow ops.
