@@ -74,6 +74,18 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
+
+// Creates a pass that lifts operations on external resource variables from
+// device computation nested in `tf_device::LaunchOp` out so that resource
+// variable load operations are all before device computation while resource
+// variable store operations are all after device computation. After this pass,
+// device computation no longer interacts with external resource variables.
+std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
+
+// Lifts resource variable operations from tf_device.launch_func ops nested in
+// `op`.
+void LiftResourceOps(Operation* op);
+
 }  // namespace TFDevice
 
 namespace TFTPU {

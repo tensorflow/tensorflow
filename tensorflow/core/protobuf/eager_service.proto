@@ -39,6 +39,8 @@ message QueueItem {
     RemoteTensorHandle handle_to_decref = 1;
     Operation operation = 2;
     SendTensorOp send_tensor = 3;
+    // Takes a FunctionDef and makes it enqueable on the remote worker.
+    RegisterFunctionOp register_function = 4;
   }
 }
 
@@ -72,6 +74,9 @@ message CreateContextRequest {
   // that both ends use this ID for selecting a rendezvous to get everything to
   // match.
   fixed64 context_id = 7;
+
+  // The view ID of the context.
+  fixed64 context_view_id = 8;
 
   reserved 5;
 }
@@ -131,7 +136,10 @@ message KeepAliveRequest {
   fixed64 context_id = 1;
 }
 
-message KeepAliveResponse {}
+message KeepAliveResponse {
+  // If the requested context_id is on the remote host, set the context view ID.
+  fixed64 context_view_id = 1;
+}
 
 message CloseContextRequest {
   fixed64 context_id = 1;
@@ -139,17 +147,13 @@ message CloseContextRequest {
 
 message CloseContextResponse {}
 
-message RegisterFunctionRequest {
-  fixed64 context_id = 1;
-
-  FunctionDef function_def = 2;
+message RegisterFunctionOp {
+  FunctionDef function_def = 1;
 
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
-  bool is_component_function = 3;
+  bool is_component_function = 2;
 }
-
-message RegisterFunctionResponse {}
 
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this
@@ -212,14 +216,14 @@ service EagerService {
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
-  // delay this.
+  // delay this. It can also be used to validate the existance of a context ID
+  // on remote eager worker. If the context is on remote worker, return the same
+  // ID and the current context view ID. This is useful for checking if the
+  // remote worker (potentially with the same task name and hostname / port) is
+  // replaced with a new process.
   rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse);
 
   // Closes the context. No calls to other methods using the existing context ID
   // are valid after this.
   rpc CloseContext(CloseContextRequest) returns (CloseContextResponse);
-
-  // Takes a FunctionDef and makes it enqueable on the remote worker.
-  rpc RegisterFunction(RegisterFunctionRequest)
-      returns (RegisterFunctionResponse);
 }

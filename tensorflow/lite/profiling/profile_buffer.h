@@ -46,6 +46,8 @@ struct ProfileEvent {
   EventType event_type;
   // Extra data describing the details of the event.
   uint32_t event_metadata;
+  // The index of subgraph where an event came from.
+  uint32_t event_subgraph_index;
 };
 
 // A ring buffer of profile events.
@@ -60,7 +62,7 @@ class ProfileBuffer {
   // buffer is disabled this has no affect.
   // The tag of the event should remain valid till the buffer is valid.
   uint32_t BeginEvent(const char* tag, ProfileEvent::EventType event_type,
-                      uint32_t event_metadata) {
+                      uint32_t event_metadata, uint32_t event_subgraph_index) {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
@@ -71,6 +73,7 @@ class ProfileBuffer {
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
+    event_buffer_[index].event_subgraph_index = event_subgraph_index;
     event_buffer_[index].event_metadata = event_metadata;
     event_buffer_[index].begin_timestamp_us = timestamp;
     event_buffer_[index].end_timestamp_us = 0;

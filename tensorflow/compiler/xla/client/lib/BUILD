@@ -503,3 +503,42 @@ xla_test(
         "//tensorflow/core:test",
     ],
 )
+
+cc_library(
+    name = "tridiagonal",
+    srcs = ["tridiagonal.cc"],
+    hdrs = ["tridiagonal.h"],
+    deps = [
+        ":constants",
+        ":loops",
+        ":slicing",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "tridiagonal_test",
+    srcs = ["tridiagonal_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":constants",
+        ":slicing",
+        ":tridiagonal",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/stream_executor/lib",
+    ],
+)

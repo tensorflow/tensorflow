@@ -434,7 +434,7 @@ protected:
   }
 
   /// Default implementation of visitVarying dispatches to the special
-  /// functions for variables and negations thereof.  Concerete visitors can
+  /// functions for variables and negations thereof.  Concrete visitors can
   /// override it to visit all variables and negations instead.
   Result visitVarying(SDBMVaryingExpr expr) {
     auto *derived = static_cast<Derived *>(this);

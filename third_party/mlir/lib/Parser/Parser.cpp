@@ -38,7 +38,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/bit.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -210,6 +209,14 @@ public:
   ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
                                        bool allowDynamic = true);
   ParseResult parseXInDimensionList();
+
+  /// Parse strided layout specification.
+  ParseResult parseStridedLayout(int64_t &offset,
+                                 SmallVectorImpl<int64_t> &strides);
+
+  // Parse a brace-delimiter list of comma-separated integers with `?` as an
+  // unknown marker.
+  ParseResult parseStrideList(SmallVectorImpl<int64_t> &dimensions);
 
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
@@ -634,6 +641,40 @@ Type Parser::parseFunctionType() {
   return builder.getFunctionType(arguments, results);
 }
 
+/// Parse the offset and strides from a strided layout specification.
+///
+///   strided-layout ::= `offset:` dimension `,` `strides: ` stride-list
+///
+ParseResult Parser::parseStridedLayout(int64_t &offset,
+                                       SmallVectorImpl<int64_t> &strides) {
+  // Parse offset.
+  consumeToken(Token::kw_offset);
+  if (!consumeIf(Token::colon))
+    return emitError("expected colon after `offset` keyword");
+  auto maybeOffset = getToken().getUnsignedIntegerValue();
+  bool question = getToken().is(Token::question);
+  if (!maybeOffset && !question)
+    return emitError("invalid offset");
+  offset = maybeOffset ? static_cast<int64_t>(maybeOffset.getValue())
+                       : MemRefType::getDynamicStrideOrOffset();
+  consumeToken();
+
+  if (!consumeIf(Token::comma))
+    return emitError("expected comma after offset value");
+
+  // Parse stride list.
+  if (!consumeIf(Token::kw_strides))
+    return emitError("expected `strides` keyword after offset specification");
+  if (!consumeIf(Token::colon))
+    return emitError("expected colon after `strides` keyword");
+  if (failed(parseStrideList(strides)))
+    return emitError("invalid braces-enclosed stride list");
+  if (llvm::any_of(strides, [](int64_t st) { return st == 0; }))
+    return emitError("invalid memref stride");
+
+  return success();
+}
+
 /// Parse a memref type.
 ///
 ///   memref-type ::= `memref` `<` dimension-list-ranked type
@@ -675,18 +716,28 @@ Type Parser::parseMemRefType() {
       consumeToken(Token::integer);
       parsedMemorySpace = true;
     } else {
-      // Parse affine map.
       if (parsedMemorySpace)
-        return emitError("affine map after memory space in memref type");
-      auto affineMap = parseAttribute();
-      if (!affineMap)
-        return failure();
-
-      // Verify that the parsed attribute is an affine map.
-      if (auto affineMapAttr = affineMap.dyn_cast<AffineMapAttr>())
-        affineMapComposition.push_back(affineMapAttr.getValue());
-      else
-        return emitError("expected affine map in memref type");
+        return emitError("expected memory space to be last in memref type");
+      if (getToken().is(Token::kw_offset)) {
+        int64_t offset;
+        SmallVector<int64_t, 4> strides;
+        if (failed(parseStridedLayout(offset, strides)))
+          return failure();
+        // Construct strided affine map.
+        auto map = makeStridedLinearLayoutMap(strides, offset,
+                                              elementType.getContext());
+        affineMapComposition.push_back(map);
+      } else {
+        // Parse affine map.
+        auto affineMap = parseAttribute();
+        if (!affineMap)
+          return failure();
+        // Verify that the parsed attribute is an affine map.
+        if (auto affineMapAttr = affineMap.dyn_cast<AffineMapAttr>())
+          affineMapComposition.push_back(affineMapAttr.getValue());
+        else
+          return emitError("expected affine map in memref type");
+      }
     }
     return success();
   };
@@ -935,9 +986,53 @@ ParseResult Parser::parseXInDimensionList() {
   return success();
 }
 
+// Parse a comma-separated list of dimensions, possibly empty:
+//   stride-list ::= `[` (dimension (`,` dimension)*)? `]`
+ParseResult Parser::parseStrideList(SmallVectorImpl<int64_t> &dimensions) {
+  if (!consumeIf(Token::l_square))
+    return failure();
+  // Empty list early exit.
+  if (consumeIf(Token::r_square))
+    return success();
+  while (true) {
+    if (consumeIf(Token::question)) {
+      dimensions.push_back(MemRefType::getDynamicStrideOrOffset());
+    } else {
+      // This must be an integer value.
+      int64_t val;
+      if (getToken().getSpelling().getAsInteger(10, val))
+        return emitError("invalid integer value: ") << getToken().getSpelling();
+      // Make sure it is not the one value for `?`.
+      if (ShapedType::isDynamic(val))
+        return emitError("invalid integer value: ")
+               << getToken().getSpelling()
+               << ", use `?` to specify a dynamic dimension";
+      dimensions.push_back(val);
+      consumeToken(Token::integer);
+    }
+    if (!consumeIf(Token::comma))
+      break;
+  }
+  if (!consumeIf(Token::r_square))
+    return failure();
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
+
+/// Return the symbol reference referred to by the given token, that is known to
+/// be an @-identifier.
+static std::string extractSymbolReference(Token tok) {
+  assert(tok.is(Token::at_identifier) && "expected valid @-identifier");
+  StringRef nameStr = tok.getSpelling().drop_front();
+
+  // Check to see if the reference is a string literal, or a bare identifier.
+  if (nameStr.front() == '"')
+    return tok.getStringValue();
+  return nameStr;
+}
 
 /// Parse an arbitrary attribute.
 ///
@@ -1056,9 +1151,9 @@ Attribute Parser::parseAttribute(Type type) {
 
   // Parse a symbol reference attribute.
   case Token::at_identifier: {
-    auto nameStr = getTokenSpelling();
+    std::string nameStr = extractSymbolReference(getToken());
     consumeToken(Token::at_identifier);
-    return builder.getSymbolRefAttr(nameStr.drop_front());
+    return builder.getSymbolRefAttr(nameStr);
   }
 
   // Parse a 'unit' attribute.
@@ -3459,9 +3554,11 @@ public:
   /// attribute named 'attrName'.
   ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) override {
-    if (parser.getToken().isNot(Token::at_identifier))
+    Token atToken = parser.getToken();
+    if (atToken.isNot(Token::at_identifier))
       return failure();
-    result = getBuilder().getStringAttr(parser.getTokenSpelling().drop_front());
+
+    result = getBuilder().getStringAttr(extractSymbolReference(atToken));
     attrs.push_back(getBuilder().getNamedAttr(attrName, result));
     parser.consumeToken();
     return success();

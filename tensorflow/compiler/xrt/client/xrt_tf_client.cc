@@ -381,14 +381,15 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
 }
 
 Status XrtTfContext::RegisterFunction(const FunctionDef& def) {
-  eager::RegisterFunctionRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  *request.mutable_function_def() = def;
+  auto* register_function = request.add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = def;
 
-  eager::RegisterFunctionResponse response;
+  eager::EnqueueResponse response;
   Status status;
   absl::Notification done;
-  eager_client_->RegisterFunctionAsync(&request, &response, [&](Status s) {
+  eager_client_->EnqueueAsync(&request, &response, [&](Status s) {
     status = s;
     done.Notify();
   });

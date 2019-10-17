@@ -197,18 +197,23 @@ def quant_StatisticsOp : quant_Op<"stats", [SameOperandsAndResultType]> {
     Currently, only dim=2 is supported, which is interpreted as [min, max].
 
     `layerStats` must be a rank 1 tensor: [2]
-    `axisStats` must be a rank 2 tensor: [N, 2], where N=the rank of `arg`.
+    `axisStats` must be a rank 2 tensor: [N, 2], where N=the slice size
+      splitted by the `axis` dimension. For example:
+      <?x?x3x2>, axis=3 => N=2
+      <?x?x3x2>, axis=2 => N=6
   }];
 
   let arguments = (ins
     quant_RealValueType:$arg,
     ElementsAttr:$layerStats,
-    OptionalAttr<ElementsAttr>:$axisStats);
+    OptionalAttr<ElementsAttr>:$axisStats,
+    OptionalAttr<I64Attr>:$axis);
   let results = (outs quant_RealValueType);
 
   let verifier = [{
     auto tensorArg = arg()->getType().dyn_cast<TensorType>();
-    auto argRank = tensorArg ? tensorArg.getRank() : 0;
+    if (!tensorArg) return emitOpError("arg needs to be tensor type.");
+
     // Verify layerStats attribute.
     {
       auto layerStatsType = layerStats().getType();
@@ -222,15 +227,21 @@ def quant_StatisticsOp : quant_Op<"stats", [SameOperandsAndResultType]> {
     }
     // Verify axisStats (optional) attribute.
     if (axisStats()) {
+      if (!axis()) return emitOpError("axis must be specified for axisStats");
+
+      auto shape = tensorArg.getShape();
+      auto argSliceSize = std::accumulate(std::next(shape.begin(),
+        axis()->getSExtValue()), shape.end(), 1, std::multiplies<int64_t>());
+
       auto axisStatsType = axisStats()->getType();
       if (!axisStatsType.getElementType().isa<FloatType>()) {
         return emitOpError("axisStats must have a floating point element type");
       }
       if (axisStatsType.getRank() != 2 ||
           axisStatsType.getDimSize(1) != 2 ||
-          axisStatsType.getDimSize(0) != argRank) {
+          axisStatsType.getDimSize(0) != argSliceSize) {
         return emitOpError("axisStats must have shape [N,2] "
-                           "where N = the argument rank");
+                           "where N = the slice size defined by the axis dim");
       }
     }
     return success();

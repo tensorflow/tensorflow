@@ -537,6 +537,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
@@ -609,7 +610,10 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],
-    hdrs = ["register.h"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "register.h",
+    ],
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",

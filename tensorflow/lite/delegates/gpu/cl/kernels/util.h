@@ -43,9 +43,28 @@ enum class TextureAddressMode {
 
 class TensorCodeGenerator {
  public:
+  struct SizeVariablesNames {
+    SizeVariablesNames() = default;
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name);
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name,
+                       const std::string& batch_name);
+
+    std::string width = "unknown";
+    std::string height = "unknown";
+    std::string channels = "unknown";
+    std::string depth = "unknown";
+    std::string batch = "unknown";
+  };
   TensorCodeGenerator() = default;
   TensorCodeGenerator(const std::string& name,
                       const std::string& uniform_size_name,
+                      const TensorDescriptor& descriptor);
+
+  TensorCodeGenerator(const std::string& name, const SizeVariablesNames& sizes,
                       const TensorDescriptor& descriptor);
 
   std::string GetDeclaration(AccessType access) const;
@@ -62,22 +81,24 @@ class TensorCodeGenerator {
   // parameter.
   std::string Read3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Read4D supports BUFFER and IMAGE_BUFFER storage types.
-  std::string Read4D(const std::string& x, const std::string& y,
-                     const std::string& z, const std::string& b) const;
+  std::string Read4D(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   std::string ReadAsFloat4D(
       const std::string& x, const std::string& y, const std::string& z,
       const std::string& b,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   std::string Write3D(const std::string& var_name, const std::string& x,
                       const std::string& y, const std::string& z) const;
@@ -89,12 +110,12 @@ class TensorCodeGenerator {
 
   std::string Read(
       const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat(
       const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
 
@@ -110,9 +131,16 @@ class TensorCodeGenerator {
                              const std::string& address) const;
 
   std::string tensor_name_;
-  std::string uniform_size_name_;
+  SizeVariablesNames sizes_;
   TensorDescriptor descriptor_;
 };
+
+// Calculates correct X coordinate when stride != 1 and batch != 1 for
+// DHWBC4, HDWBC4, HWBC layouts
+std::string GetXStrideCorrected(const std::string& src_x,
+                                const std::string& batch_size,
+                                const std::string& stride_x,
+                                const std::string& padding_x);
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWI4I4O(const ::tflite::gpu::Tensor<OHWI, S>& weights,

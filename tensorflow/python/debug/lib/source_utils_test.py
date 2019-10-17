@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -32,6 +31,7 @@ from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -147,7 +147,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testAnnotateWholeValidSourceFileGivesCorrectResult(self):
@@ -270,7 +270,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testGenerateSourceList(self):

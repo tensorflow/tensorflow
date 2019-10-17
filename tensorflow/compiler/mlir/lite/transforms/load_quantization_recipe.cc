@@ -40,7 +40,7 @@ namespace {
 // Specifically, it extends the fused ops with their internal implementation as
 // op regions. Each ops in the region produces results with element type
 // AnyQuantizedType, thus bitwidth, narrow_range, etc are included. The op also
-// defines the op quantization traits, which are used to propgate the
+// defines the op quantization traits, which are used to propagate the
 // quantization parameters by the following passes.
 struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
   void runOnFunction() override;
@@ -75,13 +75,13 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   Type int8_storage_type = builder->getIntegerType(8);
   Type int16_storage_type = builder->getIntegerType(16);
   auto flag = quant::QuantizationFlags::FlagValue::Signed;
-  int64_t int8_min = quant::QuantizedType::getDefaultMininumForInteger(
+  int64_t int8_min = quant::QuantizedType::getDefaultMinimumForInteger(
       flag, /*integralWidth=*/8);
-  int64_t int8_max = quant::QuantizedType::getDefaultMaxinumForInteger(
+  int64_t int8_max = quant::QuantizedType::getDefaultMaximumForInteger(
       flag, /*integralWidth=*/8);
-  int64_t int16_min = quant::QuantizedType::getDefaultMininumForInteger(
+  int64_t int16_min = quant::QuantizedType::getDefaultMinimumForInteger(
       flag, /*integralWidth=*/16);
-  int64_t int16_max = quant::QuantizedType::getDefaultMaxinumForInteger(
+  int64_t int16_max = quant::QuantizedType::getDefaultMaximumForInteger(
       flag, /*integralWidth=*/16);
   auto any_int8 = quant::AnyQuantizedType::get(
       flag, int8_storage_type, expressed_type, int8_min, int8_max);
@@ -95,7 +95,7 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
 Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, Value* in,
                                                    Value* ln_w, Value* ln_bias,
                                                    OpBuilder* builder) {
-  // Note that l2_normalization and add ops here are not the execution kernle
+  // Note that l2_normalization and add ops here are not the execution kernel
   // implementation for layer_normalization and we just want to use them to
   // model the quantization requirement.
   auto l2_norm = builder->create<L2NormalizationOp>(loc, int16, in, none_af);

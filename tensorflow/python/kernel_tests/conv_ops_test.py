@@ -858,7 +858,7 @@ class Conv2DTest(test.TestCase):
       self.assertShapeEqual(value, conv)
     tf_logging.debug("expected = %s", expected)
     tf_logging.debug("actual = %s", value)
-    self.assertAllCloseAccordingToType(expected, value.flatten())
+    self.assertAllCloseAccordingToType(expected, value.flatten(), atol=1e-5)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                             conv_strides, padding):
@@ -1760,7 +1760,7 @@ class Conv2DTest(test.TestCase):
                                data_format,
                                use_gpu,
                                num_groups=1,
-                               max_err=0.002):
+                               max_err=0.003):
     assert in_depth % num_groups == 0 and out_depth % num_groups == 0
     input_shape = [batch, input_rows, input_cols, in_depth]
     filter_shape = [filter_rows, filter_cols, in_depth // num_groups, out_depth]

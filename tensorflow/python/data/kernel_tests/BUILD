@@ -241,9 +241,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
     ],
-    tags = [
-        "nomac",  # b/62040583
-    ],
 )
 
 tf_py_test(
@@ -443,6 +440,23 @@ cuda_py_test(
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "as_numpy_iterator_test",
+    size = "small",
+    srcs = ["as_numpy_iterator_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 

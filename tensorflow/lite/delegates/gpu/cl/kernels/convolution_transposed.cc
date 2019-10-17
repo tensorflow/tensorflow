@@ -31,9 +31,15 @@ std::string GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const LinearStorage& biases,
     const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  const TensorCodeGenerator::SizeVariablesNames src_size(
+      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
+  const TensorCodeGenerator::SizeVariablesNames dst_size(
+      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
+  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+
+  const std::string batch_id = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   switch (op_def.precision) {
@@ -95,12 +101,18 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   if (src_tensor_type == TensorStorageType::BUFFER) {
-    c += "  int f_base = Z * src_size.w * kernel_size.x * kernel_size.y;\n";
+    c += "  int f_base = Z * src_size.z * kernel_size.x * kernel_size.y;\n";
   }
   c += "  int2 offset = (int2)(X, Y) + padding - k_offset;\n";
   c += "  offset.x = offset.x % stride.x;\n";
@@ -127,13 +139,12 @@ std::string GenerateConvolutionTransposedCode(
   c += "      int kernel_index = index_y * kernel_size.x + index_x;\n";
   c += "      if (inside_kernel && !(out_x || out_y)) {\n";
   if (src_tensor_type == TensorStorageType::BUFFER) {
-    c += "        int f_offset = f_base + kernel_index * src_size.w;\n";
+    c += "        int f_offset = f_base + kernel_index * src_size.z;\n";
   } else {
-    c += "        int x_c = kernel_index * src_size.w * 4;\n";
+    c += "        int x_c = kernel_index * src_size.z * 4;\n";
   }
-  c += "        for (int l = 0; l < src_size.w; ++l) {\n";
-  c += "          FLT4 src =" +
-       src_tensor.Read3D("s_x", "s_y", "l", TextureAddressMode::DONT_CARE) +
+  c += "        for (int l = 0; l < src_size.z; ++l) {\n";
+  c += "          FLT4 src =" + src_tensor.Read4D("s_x", "s_y", "l", batch_id) +
        ";\n";
   if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "          FLT16 f0 = filters[f_offset]; f_offset++;\n";
@@ -155,9 +166,10 @@ std::string GenerateConvolutionTransposedCode(
   c += "  }\n";
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  FLT4 res0 = TO_FLT4(r0) + bias_val;\n";
-  const LinkingContext context{"res0", "X", "Y", "Z"};
+  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  const LinkingContext context{"res0", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("res0", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.Write4D("res0", "X", "Y", "Z", batch_id) + "\n";
   c += "}\n";
 
   return c;
@@ -236,13 +248,13 @@ Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_offset_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(inner_size_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
   return OkStatus();
 }
 
 int3 ConvolutionTransposed::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);

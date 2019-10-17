@@ -29,8 +29,11 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float Clip(float f, float abs_limit);
 
-// Checks if all entries of vector are zero.
+// Checks if all entries of vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size);
+
+// Checks if all entries of vector are zero for int8.
+bool IsZeroVector(const int8_t* vector, int v_size);
 
 // Quantizes a buffer of floating point values using a symmetric quantization
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
@@ -39,6 +42,14 @@ bool IsZeroVector(const float* vector, int v_size);
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min_value,
                              float* max_value, float* scaling_factor);
+
+// Quantizes a buffer of floating point values using a symmetric quantization
+// (i.e. linear quantization without an offset) to 8-bit signed integers.
+// It uses the range (min, max) provided to the function to calculate the
+// appropriate scaling factor to quantize the values.
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float min_value,
+                             float max_value, float* scaling_factor);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -168,6 +179,23 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_batch, int32_t n_input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int8_t* output);
+
+// Multiplies a matrix with a scalar and reduce the result on each row to a
+// scalar.
+// Parameters:
+//     - matrix: matrix of size n_row * n_col
+//     - scalar: the scalar that is multiplied to each element in the matrix
+//     - n_row:  the row count of the matrix
+//     - n_col:  the column count of the matrix
+//     - output: the 32bit output
+// Note: We do not need saturation because the int8 * int8 is safe from overflow
+// in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
+// initial output value is not exceiptionally large.
+//
+// TODO(b/142062560): optimize this.
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output);
 
 // Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
 // vector.

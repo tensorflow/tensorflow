@@ -20,6 +20,9 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -37,10 +40,10 @@ from tensorflow.python.platform import tf_logging as logging
 class CollectiveOpTest(test.TestCase):
 
   def _testCollectiveReduce(self, inputs, expected, set_graph_key,
-                            communication_hint='auto', fp16=False):
+                            communication_hint='auto', fp16=False,
+                            instance_key=1, merge_op='Add', final_op='Div'):
     group_key = 1
     group_size = len(inputs)
-    instance_key = 1
     device_type = 'CPU'
     config = config_pb2.ConfigProto(device_count={device_type: group_size})
     devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
@@ -52,7 +55,7 @@ class CollectiveOpTest(test.TestCase):
           tensor = constant_op.constant(inputs[i], dtype=(
               dtypes.float16 if fp16 else dtypes.float32))
           colred.append(collective_ops.all_reduce(
-              tensor, group_size, group_key, instance_key, 'Add', 'Div',
+              tensor, group_size, group_key, instance_key, merge_op, final_op,
               communication_hint=communication_hint))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
@@ -220,6 +223,26 @@ class CollectiveOpTest(test.TestCase):
     self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
                                set_graph_key=True)
 
+  @test_util.run_deprecated_v1
+  def testCollectiveReduceMaximum(self):
+    self._testCollectiveReduce(
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[10., 20., 30., 40., 50.],
+        set_graph_key=True,
+        instance_key=30,
+        merge_op='Max',
+        final_op='Id')
+
+  @test_util.run_deprecated_v1
+  def testCollectiveReduceMinimum(self):
+    self._testCollectiveReduce(
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[1., 2., 3., 4., 5.],
+        set_graph_key=True,
+        instance_key=40,
+        merge_op='Min',
+        final_op='Id')
+
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
     instance_key = 1
@@ -322,6 +345,78 @@ class CollectiveOpTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    'Shape mismatch'):
         sess.run([c0, c1], options=run_options)
+
+  @test_util.run_v2_only
+  def testCollectiveGroupSizeMismatch(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    @def_function.function
+    def run_all_reduce():
+      group_key = 10
+      instance_key = 20
+      t0 = [1, 2, 3, 4]
+      t1 = [5, 6, 7, 8]
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(
+            in0, group_size=2, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(
+            in1, group_size=3, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
+      return c0, c1
+
+    with self.assertRaisesRegexp(errors.InternalError,
+                                 'but that group has size'):
+      run_all_reduce()
+
+  @test_util.run_deprecated_v1
+  def testCollectiveTensorsHaveNoDeviceSpecified(self):
+    group_size = 2
+    group_key = 1
+    instance_key = 1
+
+    @def_function.function
+    def fn(all_args):
+      results = []
+      # The inputs have no devices set. This is expected to be a trace-time
+      # check only.
+      self.assertEqual(all_args[0].device, '')
+      self.assertEqual(all_args[1].device, '')
+
+      with ops.device('/CPU:0'):
+        results.append(
+            collective_ops.all_reduce(all_args[0], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
+      with ops.device('/CPU:1'):
+        results.append(
+            collective_ops.all_reduce(all_args[1], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
+
+      return results
+
+    with self.session(config=config_pb2.ConfigProto(
+        device_count={'CPU': 2})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(1)
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(3)
+
+      result_op = fn([in0, in1])
+
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 1
+      result = sess.run(result_op, options=run_options)
+
+      self.assertAllClose(result, [2, 2])
 
 
 if __name__ == '__main__':

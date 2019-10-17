@@ -72,9 +72,9 @@ ios_unit_test(
     name = "common_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":common_test_lib"],
@@ -91,6 +91,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -109,9 +110,9 @@ ios_unit_test(
     name = "compiled_model_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":compiled_model_test_lib"],
@@ -145,6 +146,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@FP16",
     ],
 )
@@ -178,9 +180,9 @@ ios_unit_test(
     name = "environment_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":environment_test_lib"],
@@ -220,9 +222,9 @@ ios_unit_test(
     name = "inference_context_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
+        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":inference_context_test_lib"],

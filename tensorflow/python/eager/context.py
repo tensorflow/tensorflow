@@ -606,7 +606,7 @@ class Context(object):
 
     Args:
       collective_leader: a device string for collective leader, e.g.
-        "/job:worker/replica:0/task:"; empty string means local execution of
+        "/job:worker/replica:0/task:0"; empty string means local execution of
           collective ops.
       scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
         allocator to run with.
@@ -729,6 +729,8 @@ class Context(object):
     """
     if isinstance(name, LogicalDevice):
       name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -1083,13 +1085,10 @@ class Context(object):
     """
     self._initialize_physical_devices()
 
-    if device_type is not None:
-      return [
-          d for d in self._physical_devices
-          if device_type is None or device_type == d.device_type
-      ]
+    if device_type is None:
+      return list(self._physical_devices)
 
-    return self._physical_devices
+    return [d for d in self._physical_devices if d.device_type == device_type]
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -1140,26 +1139,21 @@ class Context(object):
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
     self.ensure_initialized()
+    if device_type is None:
+      return list(self._logical_devices)
 
-    devices = []
-    for dev in self._logical_devices:
-      if device_type is not None and device_type != dev.device_type:
-        continue
-
-      devices.append(dev)
-
-    return devices
+    return [d for d in self._logical_devices if d.device_type == device_type]
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
     self._initialize_physical_devices()
 
     if device_type is None:
-      return self._visible_device_list
-    else:
-      return [
-          d for d in self._visible_device_list if d.device_type == device_type
-      ]
+      return list(self._visible_device_list)
+
+    return [
+        d for d in self._visible_device_list if d.device_type == device_type
+    ]
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
@@ -1248,7 +1242,7 @@ class Context(object):
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
           raise ValueError(
-              "Setting memory limit is required for GPU virtual devices is")
+              "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
                        dev.device_type())
@@ -1653,10 +1647,11 @@ def executing_eagerly():
   Returns:
     `True` if the current thread has eager execution enabled.
   """
-  if context_safe() is None:
+  ctx = context_safe()
+  if ctx is None:
     return default_execution_mode == EAGER_MODE
 
-  return context().executing_eagerly()
+  return ctx.executing_eagerly()
 
 
 @tf_export(v1=["executing_eagerly"])

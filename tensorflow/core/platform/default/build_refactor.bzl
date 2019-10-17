@@ -8,11 +8,6 @@ Build targets for default implementations of tf/core/platform libraries.
 # tensorflow/core/platform/windows after the refactoring is complete.
 
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_additional_numa_copts",
-    "tf_additional_numa_deps",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
 )
@@ -68,6 +63,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:default/env.cc",
@@ -154,6 +150,28 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "logging": {
+        "name": "logging_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:logging.h",
+        ],
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/logging.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/logging.cc",
+        ],
+        "deps": [
+            "@com_google_absl//absl/base",
+            "@com_google_absl//absl/strings",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:env_time",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "mutex": {
         "name": "mutex_impl",
         "hdrs": [
@@ -220,6 +238,33 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "stacktrace": {
+        "name": "stacktrace_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:default/stacktrace.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:abi",
+            "//tensorflow/core/platform:platform",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "stacktrace_handler": {
+        "name": "stacktrace_handler_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:stacktrace_handler.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/stacktrace_handler.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:stacktrace",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "strong_hash": {
         "name": "strong_hash_impl",
         "textual_hdrs": [
@@ -247,6 +292,27 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "test": {
+        "name": "test_impl",
+        "testonly": True,
+        "srcs": [
+            "//tensorflow/core/platform:default/test.cc",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:test.h",
+        ],
+        "deps": [
+            "@com_google_googletest//:gtest",
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:net",
             "//tensorflow/core/platform:types",
         ],
         "tags": ["no_oss", "manual"],
@@ -318,6 +384,7 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "srcs": [
             "//tensorflow/core/platform:env.cc",
+            "//tensorflow/core/platform:file_system.cc",
             "//tensorflow/core/platform:file_system_helper.cc",
             "//tensorflow/core/platform:threadpool.cc",
             "//tensorflow/core/platform:windows/env.cc",
@@ -404,6 +471,36 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "stacktrace": {
+        "name": "windows_stacktrace_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:windows/stacktrace.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/stacktrace.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:mutex",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "stacktrace_handler": {
+        "name": "windows_stacktrace_handler_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:stacktrace_handler.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/stacktrace_handler.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:stacktrace",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "subprocess": {
         "name": "windows_subprocess_impl",
         "textual_hdrs": [
@@ -439,6 +536,7 @@ def tf_instantiate_platform_libraries(names = []):
             native.cc_library(
                 name = "platform_port_impl",
                 srcs = [
+                    "//tensorflow/core/platform:cpu_info.cc",
                     "//tensorflow/core/platform:default/port.cc",
                 ],
                 hdrs = [
@@ -450,7 +548,12 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:numa.h",
                     "//tensorflow/core/platform:snappy.h",
                 ],
-                copts = tf_copts() + tf_additional_numa_copts(),
+                defines = ["TF_USE_SNAPPY"] + select({
+                    # TF Additional NUMA defines
+                    "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+                    "//conditions:default": [],
+                }),
+                copts = tf_copts(),
                 deps = [
                     "@com_google_absl//absl/base",
                     "//tensorflow/core/platform:byte_order",
@@ -459,13 +562,22 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:types",
                     "//tensorflow/core/platform",
                     "@snappy",
-                ] + tf_additional_numa_deps(),
+                ] + select({
+                    # TF Additional NUMA dependencies
+                    "//tensorflow:android": [],
+                    "//tensorflow:ios": [],
+                    "//tensorflow:macos": [],
+                    "//conditions:default": [
+                        "@hwloc",
+                    ],
+                }),
                 visibility = ["//visibility:private"],
                 tags = ["no_oss", "manual"],
             )
             native.cc_library(
                 name = "windows_platform_port_impl",
                 srcs = [
+                    "//tensorflow/core/platform:cpu_info.cc",
                     "//tensorflow/core/platform:windows/port.cc",
                 ],
                 hdrs = [
@@ -477,6 +589,7 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:numa.h",
                     "//tensorflow/core/platform:snappy.h",
                 ],
+                defines = ["TF_USE_SNAPPY"],
                 copts = tf_copts(),
                 deps = [
                     "//tensorflow/core/platform",
@@ -503,3 +616,6 @@ def tf_platform_helper_deps(name):
         "//tensorflow:windows": [":windows_" + name],
         "//conditions:default": [":" + name],
     })
+
+def tf_logging_deps():
+    return [":logging_impl"]

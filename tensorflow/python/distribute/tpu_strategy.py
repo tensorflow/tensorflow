@@ -218,6 +218,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._require_static_shapes = True
 
     self.experimental_enable_get_next_as_optional = True
+    self.experimental_enable_dynamic_batch_size = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
@@ -385,6 +386,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
+    if kwargs.pop("tpu_embedding_variable_creator", False):
+      return next_creator(*args, **kwargs)
+
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       device_map = self._device_map
@@ -425,7 +429,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return distribute_lib.create_mirrored_variable(
+    return values.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, values.TPUMirroredVariable,
         values.TPUSyncOnReadVariable, *args, **kwargs)
@@ -498,17 +502,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
-      # Return in a deterministic order.
-      return tuple(val.get(device=d) for d in sorted(val.devices))
-    elif isinstance(val, list):
-      # TODO(josh11b): We need to remove this case; per device values should
-      # be represented using a PerReplica wrapper instead of a list with
-      # one entry per device.
-      return tuple(val)
-    elif isinstance(val, values.TPUMirroredVariable):
-      # pylint: disable=protected-access
-      if values._enclosing_tpu_context() is not None:
-        return (val,)
       return val.values
     return (val,)
 
@@ -539,16 +532,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This method needs to take host_id as input for correct computation.
     max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
                            self._device_assignment.num_cores_per_replica)
-    models_per_host = min(self._device_assignment.num_replicas,
-                          max_models_per_host)
-    return models_per_host * self._device_assignment.num_cores_per_replica
+    return min(self._device_assignment.num_replicas, max_models_per_host)
 
   @property
   def _num_replicas_in_sync(self):
     if self._device_assignment is None:
       return self._tpu_metadata.num_cores
-    return (self._device_assignment.num_replicas *
-            self._device_assignment.num_cores_per_replica)
+    return self._device_assignment.num_replicas
 
   @property
   def experimental_between_graph(self):
@@ -659,7 +649,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
-      if replicate_inputs:
+      if self.experimental_enable_dynamic_batch_size and replicate_inputs:
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:

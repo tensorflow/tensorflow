@@ -28,6 +28,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Transforms/LoopLikeInterface.h"
 
 namespace mlir {
 class AffineBound;
@@ -109,7 +110,7 @@ public:
 /// affine expression of loop induction variables and symbols.
 /// The optional stride arguments should be of 'index' type, and specify a
 /// stride for the slower memory space (memory space with a lower memory space
-/// id), tranferring chunks of number_of_elements_per_stride every stride until
+/// id), transferring chunks of number_of_elements_per_stride every stride until
 /// %num_elements are transferred. Either both or no stride arguments should be
 /// specified. The value of 'num_elements' must be a multiple of
 /// 'number_of_elements_per_stride'.

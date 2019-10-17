@@ -82,6 +82,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
+    "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras:preprocessing_test_utils",
@@ -157,7 +158,7 @@ filegroup(
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
-        "@png_archive//:LICENSE",
+        "@png//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
@@ -214,8 +215,6 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
-    ]) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

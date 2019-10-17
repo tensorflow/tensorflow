@@ -728,6 +728,33 @@ struct functor_traits<xdivy_op<Scalar>> {
   };
 };
 
+template <typename T>
+struct scalar_erfinv_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erfinv_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
+    T y = numext::ndtri((x + static_cast<T>(1.)) / static_cast<T>(2.));
+    return y / static_cast<T>(numext::sqrt(2.));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& x) const {
+    Packet y = pndtri<Packet>(pmadd(pset1<Packet>(0.5), x, pset1<Packet>(0.5)));
+    return pdiv(y, psqrt(pset1<Packet>(2.)));
+  }
+};
+
+template <typename T>
+struct functor_traits<scalar_erfinv_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_ndtri_op<T>>::Cost + NumTraits<T>::AddCost,
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = packet_traits<T>::HasNdtri,
+#endif
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -872,6 +899,12 @@ struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
 
 template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
+
+template <typename T>
+struct ndtri : base<T, Eigen::internal::scalar_ndtri_op<T>> {};
+
+template <typename T>
+struct erfinv : base<T, Eigen::internal::scalar_erfinv_op<T>> {};
 
 template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_logistic_op<T>> {};

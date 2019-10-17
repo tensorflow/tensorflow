@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
@@ -138,6 +139,42 @@ class DebugEventsWriter {
   // Takes ownership of graph_execution_trace.
   void WriteGraphExecutionTrace(GraphExecutionTrace* graph_execution_trace);
 
+  // Write a graph execution trace without using a protocol buffer.
+  // Instead, pass the raw values related to the graph execution trace.
+  // Args:
+  //   tfdbg_context_id: A unique ID for the context of interest, e.g., a
+  //   concreted compiled tf.function that the op of interest belongs to.
+  //   op_name: Name of the op that this graph execution trace is concerned
+  //     with. Applicable only to the single-tensor trace case. For cases in
+  //     which the trace concerns multiple tensors, this is an empty string.
+  //   output_slot: Output slot index of the op that this trace is concerned
+  //     with.
+  //   tensor_debug_mode: An integer that represents the tensor-debug mode enum.
+  //   tensor_value: The value of the tensor that describes the tensor(s)
+  //     that this trace is concerned with. The sematics of this tensor value
+  //     depends on the value of `tensor_debug_mode`.
+  void WriteGraphExecutionTrace(const string& tfdbg_context_id,
+                                const string& op_name, int32 output_slot,
+                                int32 tensor_debug_mode,
+                                const Tensor& tensor_value);
+
+  // Writes a serialized DebugEvent to one of the debug-events files
+  // concerned with the non-execution events: the SOURCE_FILES, STACK_FRAMES
+  // and GRAPHS files.
+  // NOTE: Actually used in the Python binding, to avoid overhead of
+  // serializing and parsing protos at the language interface.
+  void WriteSerializedNonExecutionDebugEvent(const string& debug_event_str,
+                                             DebugEventFileType type);
+
+  // Writes a serialized DebugEvent to one of the debug-events files
+  // concerned with the execution-related events: the EXECUTION and
+  // GRAPH_EXECUTION_TRACES files. This involves the cyclic-buffer behavior if
+  // cyclic_buffer_size is configured to be >0.
+  // NOTE: Actually used in the Python binding, to avoid overhead of
+  // serializing and parsing protos at the language interface.
+  void WriteSerializedExecutionDebugEvent(const string& debug_event_str,
+                                          DebugEventFileType type);
+
   // EventWriter automatically flushes and closes on destruction, but
   // this method is provided for users who want to write to disk sooner
   // and/or check for success.
@@ -188,9 +225,9 @@ class DebugEventsWriter {
   mutex initialization_mu_;
 
   const int64 cyclic_buffer_size_;
-  std::deque<DebugEvent> execution_buffer_ GUARDED_BY(execution_buffer_mu_);
+  std::deque<string> execution_buffer_ GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
-  std::deque<DebugEvent> graph_execution_trace_buffer_
+  std::deque<string> graph_execution_trace_buffer_
       GUARDED_BY(graph_execution_trace_buffer_mu_);
   mutex graph_execution_trace_buffer_mu_;
 

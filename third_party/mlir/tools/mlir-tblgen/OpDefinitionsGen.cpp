@@ -898,12 +898,12 @@ void OpEmitter::genBuilder() {
   //    attribute, and
   genSeparateParamBuilder();
   // 2. one having a stand-alone parameter for each operand / attribute and
-  //    an aggregrated parameter for all result types, and
+  //    an aggregated parameter for all result types, and
   genCollectiveTypeParamBuilder();
   // 3. one having an aggregated parameter for all result types / operands /
   //    attributes, and
   genCollectiveParamBuilder();
-  // 4. one having a stand-alone prameter for each operand and attribute,
+  // 4. one having a stand-alone parameter for each operand and attribute,
   //    use the first operand or attribute's type as all result types
   // to facilitate different call patterns.
   if (op.getNumVariadicResults() == 0) {

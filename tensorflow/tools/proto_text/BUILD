@@ -40,7 +40,7 @@ cc_binary(
         ":gen_proto_text_functions_lib",
         "@com_google_protobuf//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:lib_proto_compiler",
+        "//tensorflow/core/platform:protobuf_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 

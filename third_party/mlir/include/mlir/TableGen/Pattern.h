@@ -309,7 +309,7 @@ public:
   // Returns true if the given `symbol` is bound.
   bool contains(StringRef symbol) const;
 
-  // Returns an interator to the information of the given symbol named as `key`.
+  // Returns an iterator to the information of the given symbol named as `key`.
   const_iterator find(StringRef key) const;
 
   // Returns the number of static values of the given `symbol` corresponds to.
@@ -321,14 +321,14 @@ public:
   // Returns a string containing the C++ expression for referencing this
   // symbol as a value (if this symbol represents one static value) or a value
   // range (if this symbol represents multiple static values). `fmt` is used to
-  // format each value. `separator` is used to seperate values if `symbol`
+  // format each value. `separator` is used to separate values if `symbol`
   // represents a value range.
   std::string getValueAndRangeUse(StringRef symbol, const char *fmt = "{0}",
                                   const char *separator = ", ") const;
 
   // Returns a string containing the C++ expression for referencing this
   // symbol as a value range regardless of how many static values this symbol
-  // represents. `fmt` is used to format each value. `seperator` is used to
+  // represents. `fmt` is used to format each value. `separator` is used to
   // separate values in the range.
   std::string getAllRangeUse(StringRef symbol, const char *fmt = "{0}",
                              const char *separator = ", ") const;

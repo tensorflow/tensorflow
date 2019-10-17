@@ -19,11 +19,12 @@ set(LIBS
   MLIRAffineOps
   MLIRLoopsToGPU
   MLIRAnalysis
-  MLIRControlFlowToCFG
+  MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps
   MLIRGPU
   MLIRGPUtoNVVMTransforms
+  MLIRGPUtoROCDLTransforms
   MLIRGPUtoSPIRVTransforms
   MLIRLinalg
   MLIRLLVMIR
@@ -37,10 +38,12 @@ set(LIBS
   MLIRROCDLIR
   MLIRSPIRV
   MLIRSPIRVConversion
+  MLIRSPIRVTransforms
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
   MLIRTestDialect
+  MLIRTestIR
   MLIRTestPass
   MLIRTestTransforms
   MLIRSupport

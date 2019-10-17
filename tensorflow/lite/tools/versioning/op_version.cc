@@ -237,6 +237,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_RELU:
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_UINT8) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_STRIDED_SLICE:
+      // If the op takes bool input, it is version 3.
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -261,7 +277,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_STRIDED_SLICE:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
     case BuiltinOperator_ARG_MIN:

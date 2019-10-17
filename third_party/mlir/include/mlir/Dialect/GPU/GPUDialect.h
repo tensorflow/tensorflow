@@ -36,7 +36,15 @@ namespace gpu {
 class GPUDialect : public Dialect {
 public:
   /// Create the dialect in the given `context`.
-  GPUDialect(MLIRContext *context);
+  explicit GPUDialect(MLIRContext *context);
+  /// Get dialect namespace.
+  static StringRef getDialectNamespace() { return "gpu"; }
+
+  /// Get the name of the attribute used to annotate the modules that contain
+  /// kernel modules.
+  static StringRef getContainerModuleAttrName() {
+    return "gpu.container_module";
+  }
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName();
@@ -49,7 +57,10 @@ public:
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
-  static bool isKernel(FuncOp function);
+  static bool isKernel(Operation *op);
+
+  LogicalResult verifyOperationAttribute(Operation *op,
+                                         NamedAttribute attr) override;
 };
 
 /// Utility class for the GPU dialect to represent triples of `Value`s
@@ -147,6 +158,9 @@ public:
   StringRef kernel();
   /// The number of operands passed to the kernel function.
   unsigned getNumKernelOperands();
+  /// The name of the kernel module specified by the operation's `kernel_module`
+  /// attribute.
+  StringRef getKernelModuleName();
   /// The i-th operand passed to the kernel function.
   Value *getKernelOperand(unsigned i);
 
@@ -164,8 +178,17 @@ public:
   static constexpr unsigned kNumConfigOperands = 6;
 
 private:
-  /// The name of the function attribute specifying the kernel to launch.
+  // This needs to quietly verify if attributes with names defined below are
+  // present since it is run before the verifier of this op.
+  friend LogicalResult GPUDialect::verifyOperationAttribute(Operation *,
+                                                            NamedAttribute);
+
+  /// The name of the symbolRef attribute specifying the kernel to launch.
   static StringRef getKernelAttrName() { return "kernel"; }
+
+  /// The name of the symbolRef attribute specifying the name of the module
+  /// containing the kernel to launch.
+  static StringRef getKernelModuleAttrName() { return "kernel_module"; }
 };
 
 #define GET_OP_CLASSES

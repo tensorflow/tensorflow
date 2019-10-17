@@ -40,6 +40,11 @@ include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
 #endif // SPIRV_ARITHMETIC_OPS
 
+#ifdef SPIRV_BIT_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
+#endif // SPIRV_BIT_OPS
+
 #ifdef SPIRV_CONTROLFLOW_OPS
 #else
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
@@ -324,7 +329,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let arguments = (ins
     SymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -332,6 +337,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -380,6 +390,10 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
 }
 
 // -----
@@ -472,6 +486,44 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
   );
 
   let results = (outs);
+}
+
+// -----
+
+def SPV_UndefOp : SPV_Op<"undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.undef : f32
+    %1 = spv.undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
+  let autogenSerialization = 0;
 }
 
 // -----

@@ -508,7 +508,7 @@ class XlaBuilder {
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
 
-  XlaOp CrossReplicaSum(
+  XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
@@ -911,9 +911,9 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
-  friend XlaOp CrossReplicaSum(XlaOp operand, const XlaComputation& computation,
-                               absl::Span<const ReplicaGroup> replica_groups,
-                               const absl::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
+                         absl::Span<const ReplicaGroup> replica_groups,
+                         const absl::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
@@ -1637,11 +1637,9 @@ XlaOp CrossReplicaSum(XlaOp operand,
 // means, replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
 //
 // - `channel_id`: for Allreduce nodes from different modules, if they have the
-// same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+// same channel_id, they will be 'AllReduce'd. If empty, AllReduce will not be
 // applied cross modules.
-//
-// TODO(b/117564385): Rename this to AllReduce when it's ready to use.
-XlaOp CrossReplicaSum(
+XlaOp AllReduce(
     XlaOp operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);

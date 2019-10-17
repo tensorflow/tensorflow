@@ -22,7 +22,7 @@ module attributes {tf_saved_model.semantics} {
   // Representation for functions: func's with attributes.
   // CHECK: func @__concrete_function_run_computation
   func @__concrete_function_run_computation(
-    %arg0: tensor<f32>,
+    %arg0: tensor<f32> {tf_saved_model.index_path = [0, "foo"]},
     %arg1: tensor<f32> {tf_saved_model.bound_input = @some_constant}
   ) -> tensor<f32>
   attributes { tf_saved_model.exported_names = ["some_func"] }

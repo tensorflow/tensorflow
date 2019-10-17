@@ -232,13 +232,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // TODO(alanchiao): refactor logic out into dequantize function.
       if (!op_data->float_weights_time_initialized) {
         const float dequantization_scale = weights_time->params.scale;
-        const int8_t* weights_time_ptr;
-        if (weights_feature->type == kTfLiteUInt8) {
-          weights_time_ptr = reinterpret_cast<const int8_t*>(
-              GetTensorData<uint8_t>(weights_time));
-        } else {
-          weights_time_ptr = GetTensorData<int8_t>(weights_time);
-        }
+        const int8_t* weights_time_ptr = GetTensorData<int8_t>(weights_time);
         float* float_weights_time_ptr =
             GetTensorData<float>(float_weights_time);
         for (int i = 0; i < NumElements(float_weights_time); ++i) {

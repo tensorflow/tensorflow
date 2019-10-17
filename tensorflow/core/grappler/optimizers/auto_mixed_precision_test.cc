@@ -1043,6 +1043,7 @@ TEST_F(AutoMixedPrecisionTest, SigmoidOp) {
 }
 
 TEST_F(AutoMixedPrecisionTest, SoftmaxOp) {
+  GTEST_SKIP() << "b/142826443. Reenable once fixed.";
   TestSimpleUnaryGrayOp(
       -8, 8, 1.0e-3, -1,
       [](const tensorflow::Scope& scope, Output input) -> Output {

@@ -263,7 +263,7 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
-def TF_AssignAddVariableOpOp : TF_Op<"AssignAddVariableOp", []> {
+def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
   let description = [{
@@ -281,7 +281,7 @@ see the incremented value or a subsequent newer one.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_AssignVariableOpOp : TF_Op<"AssignVariableOp", []> {
+def TF_AssignVariableOp : TF_Op<"AssignVariableOp", []> {
   let summary = "Assigns a new value to a variable.";
 
   let description = [{
@@ -452,6 +452,10 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -754,6 +758,72 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the input.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$input_sizes,
+    TF_FpTensor:$filter,
+    TF_FpTensor:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {
+  let summary = [{
+Computes a 3-D convolution given 5-D `input` and `filter` tensors.
+  }];
+
+  let description = [{
+In signal processing, cross-correlation is a measure of similarity of
+two waveforms as a function of a time-lag applied to one of them. This
+is also known as a sliding dot product or sliding inner-product.
+
+Our Conv3D implements a form of cross-correlation.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$input,
+    TF_FpTensor:$filter,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2206,7 +2276,6 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.
@@ -2254,6 +2323,34 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
+  let summary = "Computes gradients of the maxpooling function.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_MaximumOp : TF_Op<"Maximum", [Broadcastable, NoSideEffect]>,
@@ -2371,7 +2468,7 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MlirPassthroughOpOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
+def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
   }];
@@ -2728,6 +2825,10 @@ output =
     TF_Tensor:$output
   );
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
@@ -2975,7 +3076,7 @@ This op determines the maximum scale_factor that would map the initial
 quantized range.
 
 It determines the scale from one of input_min and input_max, then updates the
-other one to maximize the respresentable range.
+other one to maximize the representable range.
 
 e.g.
 
@@ -3041,6 +3142,35 @@ tensor, so its value can change during training.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RFFTOp : TF_Op<"RFFT", [NoSideEffect]> {
+  let summary = "Real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 1-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most dimension of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
+`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
+followed by the `fft_length / 2` positive-frequency terms.
+
+Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
@@ -3139,7 +3269,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   ];
 }
 
-def TF_ReadVariableOpOp : TF_Op<"ReadVariableOp", []> {
+def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
   let summary = "Reads the value of a variable.";
 
   let description = [{
@@ -3245,6 +3375,24 @@ def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes rectified linear gradients for a Relu operation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$gradients,
+    TF_IntOrFpTensor:$features
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 
@@ -3252,13 +3400,16 @@ def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
 Given `tensor`, this operation returns a tensor that has the same values
 as `tensor` with shape `shape`.
 
-If one component of `shape` is the special value -1, the size of that dimension
-is computed so that the total size remains constant.  In particular, a `shape`
-of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
+If one component of 1-D tensor `shape` is the special value -1, the size of that
+dimension is computed so that the total size remains constant.  In particular, a
+`shape` of `[-1]` flattens into 1-D.  At most one component of `shape` may be
+unknown.
 
-If `shape` is 1-D or higher, then the operation returns a tensor with shape
+The `shape` must be 1-D and the operation returns a tensor with shape
 `shape` filled with the values of `tensor`. In this case, the number of elements
 implied by `shape` must be the same as the number of elements in `tensor`.
+
+It is an error if `shape` is not 1-D.
 
 For example:
 
@@ -3758,6 +3909,10 @@ whose values are extracted from 'input' starting at the offsets in
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4444,6 +4599,24 @@ element_shape: a shape compatible with that of elements in the list.
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_TensorListResizeOp : TF_Op<"TensorListResize", [NoSideEffect]> {
+  let summary = "Resizes the list.";
+
+  let description = [{
+input_handle: the input list
+size: size of the output list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$size
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+}
+
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 
@@ -4535,6 +4708,10 @@ array([[1, 2, 3, 1, 2, 3],
 
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  // TODO(parkers): Add folds for multiples = [1,...].
+  // TODO(parkers): Add errors for negative multiples and multiples.size() !=
+  // input.rank()
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {

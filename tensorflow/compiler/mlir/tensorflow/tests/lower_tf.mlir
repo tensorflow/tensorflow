@@ -23,3 +23,14 @@ func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor
   %0 = "tf.Pack"(%arg0, %arg1) {axis = -2 : i64, N = 2 : i64} : (tensor<?x5xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+
+// CHECK-LABEL: func @pad
+func @pad(%arg0: tensor<3xf32>) -> tensor<6xf32> {
+  %padding = "tf.Const"() { value = dense<[[1, 2]]> : tensor<1x2xi64> } : () -> tensor<1x2xi64>
+  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
+  %1 = "tf.Pad"(%arg0, %padding) {N = 2 : i64} : (tensor<3xf32>, tensor<1x2xi64>) -> tensor<6xf32>
+  return %1 : tensor<6xf32>
+}

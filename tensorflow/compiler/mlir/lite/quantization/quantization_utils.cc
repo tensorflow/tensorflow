@@ -245,9 +245,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
   Builder builder(expressed_type.getContext());
   IntegerType storage_type = builder.getIntegerType(32);
   int64_t storage_type_min =
-      quant::QuantizedType::getDefaultMininumForInteger(/*isSigned=*/true, 32);
+      quant::QuantizedType::getDefaultMinimumForInteger(/*isSigned=*/true, 32);
   int64_t storage_type_max =
-      quant::QuantizedType::getDefaultMaxinumForInteger(/*isSigned=*/true, 32);
+      quant::QuantizedType::getDefaultMaximumForInteger(/*isSigned=*/true, 32);
   if (axis_size == 1) {
     return quant::UniformQuantizedType::getChecked(
         /*flags=*/true, storage_type, expressed_type, scales[0],

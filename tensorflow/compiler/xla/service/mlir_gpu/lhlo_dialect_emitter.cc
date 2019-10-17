@@ -54,31 +54,39 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
+namespace lhlo = ::mlir::xla_lhlo;
+
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAdd:
-      func_builder.create<::mlir::xla_lhlo::AddOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMultiply:
-      func_builder.create<::mlir::xla_lhlo::MulOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSubtract:
-      func_builder.create<::mlir::xla_lhlo::SubOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
-      func_builder.create<::mlir::xla_lhlo::DivOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
-      func_builder.create<::mlir::xla_lhlo::AndOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMinimum:
-      func_builder.create<::mlir::xla_lhlo::MinOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MinOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMaximum:
-      func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MaxOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kExp:
+      func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kSelect:
+      func_builder.create<::mlir::xla_lhlo::SelectOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -147,11 +155,17 @@ StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
 
 }  // namespace
 
-LhloDialectEmitter::LhloDialectEmitter(const HloModule& hlo_module,
-                                       const BufferAssignment& assignment,
-                                       const se::Platform* platform,
-                                       ModuleOp mlir_module)
-    : mlir_module_(mlir_module),
+mlir::Location LhloDialectEmitter::getLocation(
+    const HloInstruction* instr) const {
+  return emission_context_->getLocation(instr);
+}
+
+LhloDialectEmitter::LhloDialectEmitter(
+    xla::mlir_gpu::EmissionContext* emission_context,
+    const BufferAssignment& assignment, const se::Platform* platform,
+    ModuleOp mlir_module)
+    : emission_context_(emission_context),
+      mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
       platform_(platform),
@@ -185,11 +199,11 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
   TF_ASSIGN_OR_RETURN(auto args, GetInstructionArgTypes(instr, builder_));
   auto function_type = builder_.getFunctionType(args, {});
   auto function =
-      FuncOp::create(builder_.getUnknownLoc(), instr.name(), function_type);
+      FuncOp::create(getLocation(&instr), instr.name(), function_type);
   mlir_module_.push_back(function);
   function.addEntryBlock();
   OpBuilder op_builder(function.getBody());
-  op_builder.create<::mlir::ReturnOp>(builder_.getUnknownLoc());
+  op_builder.create<::mlir::ReturnOp>(getLocation(&instr));
   instruction_to_mlir_func_[&instr] = function;
   return function;
 }
@@ -202,7 +216,7 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   llvm::SmallVector<NamedAttribute, 10> attributes{
       builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()))};
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
-                                  builder_.getUnknownLoc(), ArrayRef<Type>{},
+                                  getLocation(instr), ArrayRef<Type>{},
                                   arg_values, attributes));
   return Status::OK();
 }
@@ -210,17 +224,32 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*fusion));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<Value*, 4> arg_values(function.getArguments());
   auto attribute =
       builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
 
-  auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
-      builder_.getUnknownLoc(), attribute);
+  auto fusion_op =
+      func_builder.create<lhlo::FusionOp>(getLocation(fusion), attribute);
 
-  HloDialectEmitter hlo_emitter(&fusion_op.region(), arg_values);
+  // Load the HLO argument tensors from the corresponding buffers. The last
+  // argument is for the result, so no need to load it.
+  OpBuilder body_builder(fusion_op.region());
+  llvm::SmallVector<Value*, 4> arg_values;
+  for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
+    arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
+        getLocation(fusion), function.getArgument(i)));
+  }
+  HloDialectEmitter hlo_emitter(body_builder, arg_values);
 
-  TF_RETURN_IF_ERROR(
+  TF_ASSIGN_OR_RETURN(
+      auto result,
       hlo_emitter.EmitComputation(*fusion->fused_instructions_computation()));
+
+  // Insert the write-back from the HLO computation to the result argument
+  // buffer.
+  body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
+  Value* result_memref = function.getArgument(function.getNumArguments() - 1);
+  body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
+                                             result_memref);
 
   return Status::OK();
 }
@@ -230,6 +259,22 @@ Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
+  llvm::SmallVector<NamedAttribute, 2> attributes{
+      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
+      builder_.getNamedAttr("comparison_direction",
+                            builder_.getStringAttr(ComparisonDirectionToString(
+                                compare->comparison_direction())))};
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
+                                          function.args_end()};
+  func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
+                                       arg_values, attributes);
   return Status::OK();
 }
 

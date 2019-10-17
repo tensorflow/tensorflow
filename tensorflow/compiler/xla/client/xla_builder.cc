@@ -212,12 +212,11 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
+
     case HloOpcode::kGetDimensionSize:
-    case HloOpcode::kSetDimensionSize: {
-      // DimensionSize is always considered constant in XLA -- If a dynamic
+      // GetDimensionSize is always considered constant in XLA -- If a dynamic
       // dimension is presented, -1 is returned.
       break;
-    }
 
     // Non functional ops.
     case HloOpcode::kRng:
@@ -2028,15 +2027,14 @@ XlaOp XlaBuilder::CrossReplicaSum(
     Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
         b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
-    return CrossReplicaSum(operand, computation, replica_groups,
-                           /*channel_id=*/absl::nullopt);
+    return AllReduce(operand, computation, replica_groups,
+                     /*channel_id=*/absl::nullopt);
   });
 }
 
-XlaOp XlaBuilder::CrossReplicaSum(
-    XlaOp operand, const XlaComputation& computation,
-    absl::Span<const ReplicaGroup> replica_groups,
-    const absl::optional<ChannelHandle>& channel_id) {
+XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
+                            absl::Span<const ReplicaGroup> replica_groups,
+                            const absl::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
@@ -3206,11 +3204,11 @@ XlaOp CrossReplicaSum(const XlaOp operand,
   return operand.builder()->CrossReplicaSum(operand, replica_groups);
 }
 
-XlaOp CrossReplicaSum(const XlaOp operand, const XlaComputation& computation,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const absl::optional<ChannelHandle>& channel_id) {
-  return operand.builder()->CrossReplicaSum(operand, computation,
-                                            replica_groups, channel_id);
+XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
+                absl::Span<const ReplicaGroup> replica_groups,
+                const absl::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->AllReduce(operand, computation, replica_groups,
+                                      channel_id);
 }
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,

@@ -209,8 +209,8 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   forOp.setStep(step * unrollJamFactor);
 
   auto *forOpIV = forOp.getInductionVar();
-  // Unroll and jam (appends unrollJamFactor-1 additional copies).
-  for (unsigned i = 1; i < unrollJamFactor; i++) {
+  // Unroll and jam (appends unrollJamFactor - 1 additional copies).
+  for (unsigned i = unrollJamFactor - 1; i >= 1; --i) {
     // Operand map persists across all sub-blocks.
     BlockAndValueMapping operandMapping;
     for (auto &subBlock : subBlocks) {

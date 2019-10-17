@@ -489,14 +489,14 @@ struct ConvertTFStridedSlice : public RewritePattern {
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
+  MLIRContext *ctx = &getContext();
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(
-      &getContext());
-  TFL::populateWithGenerated(&getContext(), &patterns);
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -507,11 +507,10 @@ void PrepareTFPass::runOnFunction() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   patterns.clear();
-  TFL::populateWithGenerated(&getContext(), &patterns);
+  TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(
-      &getContext());
+                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

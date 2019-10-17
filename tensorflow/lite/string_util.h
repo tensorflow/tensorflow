@@ -91,12 +91,12 @@ class DynamicBuffer {
 };
 
 // Return num of strings in a String tensor.
-int GetStringCount(const char* raw_buffer);
+int GetStringCount(const void* raw_buffer);
 int GetStringCount(const TfLiteTensor* tensor);
 
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
-StringRef GetString(const char* raw_buffer, int string_index);
+StringRef GetString(const void* raw_buffer, int string_index);
 StringRef GetString(const TfLiteTensor* tensor, int string_index);
 }  // namespace tflite
 

@@ -51,18 +51,14 @@ std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
   switch (mask_type_) {
     case MaskType::TENSOR:
       return context.var_name + " *= " +
-             mask.Read3D(context.x_coord, context.y_coord, context.z_coord,
-                         TextureAddressMode::DONT_CARE) +
+             mask.Read3D(context.x_coord, context.y_coord, context.z_coord) +
              ";\n";
     case MaskType::CHANNELS:
-      return context.var_name + " *= " +
-             mask.Read3D("0", "0", context.z_coord,
-                         TextureAddressMode::DONT_CARE) +
-             ";\n";
+      return context.var_name +
+             " *= " + mask.Read3D("0", "0", context.z_coord) + ";\n";
     case MaskType::LAYER:
-      return context.var_name + " *= " +
-             mask.Read3D(context.x_coord, context.y_coord, "0",
-                         TextureAddressMode::DONT_CARE) +
+      return context.var_name +
+             " *= " + mask.Read3D(context.x_coord, context.y_coord, "0") +
              ".x;\n";
   }
 }

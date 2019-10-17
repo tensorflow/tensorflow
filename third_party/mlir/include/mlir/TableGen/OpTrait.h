@@ -99,7 +99,7 @@ public:
 // OpTrait corresponding to an OpInterface on the operation.
 class InterfaceOpTrait : public OpTrait {
 public:
-  // Returns member function defitions corresponding to the trait,
+  // Returns member function definitions corresponding to the trait,
   OpInterface getOpInterface() const;
 
   // Returns the trait corresponding to a C++ trait class.

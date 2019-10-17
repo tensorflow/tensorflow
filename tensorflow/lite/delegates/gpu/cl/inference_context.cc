@@ -308,6 +308,7 @@ Status InferenceContext::ConvertOperations(
 
     OperationDef op_def;
     op_def.precision = precision_;
+    op_def.batch_support = outputs[0]->tensor.shape.b != 1;
     for (int j = 0; j < inputs.size(); ++j) {
       op_def.src_tensors.push_back(
           tensor_descriptors.find(inputs[j]->id)->second);
@@ -428,7 +429,7 @@ Status InferenceContext::AllocateMemoryForBuffers(
     const size_t element_size =
         descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
     const size_t buffer_size =
-        shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+        shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
     graph_ids_to_shared_buffer_tensors_[usage.first] =
         buffer_usage_records.size();
     buffer_usage_records.push_back({buffer_size,
@@ -607,8 +608,8 @@ Status InferenceContext::SetInputTensor(ValueId id, const TensorFloat32& tensor,
 Status InferenceContext::GetOutputTensor(ValueId id, CLCommandQueue* queue,
                                          TensorFloat32* result) {
   const auto& gpu_tensor = *GetTensor(id);
-  const int4 dst_size = gpu_tensor.GetSizeWithDepth();
-  const auto dst_shape = BHWC(1, dst_size.y, dst_size.x, dst_size.z);
+  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
+                              gpu_tensor.Width(), gpu_tensor.Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());

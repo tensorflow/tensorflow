@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/hard_swish.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
@@ -189,9 +188,6 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
           options);
       break;
-    case OperationType::HARD_SWISH:
-      *tasks = HardSwish(node_id, inputs[0], outputs[0], options);
-      break;
     case OperationType::MAX_UNPOOLING_2D:
       *tasks = MaxUnpooling(
           node_id, inputs[0], inputs[1], outputs[0],
@@ -203,11 +199,14 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<MultiplyScalarAttributes>(node->operation.attributes),
           options);
       break;
-    case OperationType::PAD:
-      *tasks =
-          Padding(node_id, inputs[0], outputs[0],
-                  absl::any_cast<PadAttributes>(node->operation.attributes));
+    case OperationType::PAD: {
+      auto attr = absl::any_cast<PadAttributes>(node->operation.attributes);
+      if (attr.appended.b != 0 || attr.prepended.b != 0) {
+        return UnimplementedError("Padding for BATCH is not supported.");
+      }
+      *tasks = Padding(node_id, inputs[0], outputs[0], attr);
       break;
+    }
     case OperationType::POOLING_2D:
       *tasks = Pooling(
           node_id, inputs[0], outputs,
@@ -247,6 +246,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
@@ -270,6 +270,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::MUL:
     case OperationType::RESIZE:
     case OperationType::SPACE_TO_BATCH:
+    case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
       return UnimplementedError("Unsupported op: " + node->operation.type);
   }

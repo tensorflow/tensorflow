@@ -167,7 +167,7 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bincount_op_test",
     size = "small",
     srcs = ["bincount_op_test.py"],
@@ -766,7 +766,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "parsing_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["parsing_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1272,7 +1272,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_oss",  # TODO(b/142818120): Re-enable.
+        "no_rocm",
+    ],
 )
 
 tf_py_test(
@@ -1376,7 +1379,6 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -3356,6 +3358,27 @@ cuda_py_test(
     shard_count = 20,
 )
 
+tf_py_test(
+    name = "eig_op_test",
+    size = "medium",
+    srcs = ["eig_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+    ],
+    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
+    shard_count = 20,
+    tags = [
+        "no_rocm",  # flaky test
+        "no_windows",
+    ],
+    # b/127344411: xla_enable_strict_auto_jit = True,
+)
+
 cuda_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
@@ -3757,6 +3780,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
     ],
     main = "sparse_csr_matrix_ops_test.py",
+    shard_count = 10,
     tags = ["no_rocm"],
 )
 

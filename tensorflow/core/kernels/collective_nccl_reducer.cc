@@ -31,9 +31,16 @@ Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   } else if (merge_op == "Mul") {
     *reduction_op = ncclProd;
     return Status::OK();
+  } else if (merge_op == "Maximum") {
+    *reduction_op = ncclMax;
+    return Status::OK();
+  } else if (merge_op == "Minimum") {
+    *reduction_op = ncclMin;
+    return Status::OK();
   } else {
-    return errors::Internal("Expected merge_op to be either Add or Mul, found ",
-                            merge_op);
+    return errors::Internal(
+        "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
+        merge_op);
   }
 }
 }  // namespace

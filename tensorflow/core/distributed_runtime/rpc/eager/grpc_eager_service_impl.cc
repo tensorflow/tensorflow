@@ -54,7 +54,6 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(WaitQueueDone);
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
-  ENQUEUE_REQUEST(RegisterFunction);
 #undef ENQUEUE_REQUEST
 
   // Request a StreamingEnqueue call.

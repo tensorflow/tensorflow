@@ -55,17 +55,18 @@ public:
     SignatureConversion(unsigned numOrigInputs)
         : remappedInputs(numOrigInputs) {}
 
-    /// This struct represents a range of new types that remap an existing
-    /// signature input.
+    /// This struct represents a range of new types or a single value that
+    /// remaps an existing signature input.
     struct InputMapping {
       size_t inputNo, size;
+      Value *replacementValue;
     };
 
     /// Return the argument types for the new signature.
     ArrayRef<Type> getConvertedTypes() const { return argTypes; }
 
     /// Get the input mapping for the given argument.
-    llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
+    llvm::Optional<InputMapping> const &getInputMapping(unsigned input) const {
       return remappedInputs[input];
     }
 
@@ -85,6 +86,10 @@ public:
     /// new signature.
     void remapInput(unsigned origInputNo, unsigned newInputNo,
                     unsigned newInputCount = 1);
+
+    /// Remap an input of the original signature to another `replacement`
+    /// value. This drops the original argument.
+    void remapInput(unsigned origInputNo, Value *replacement);
 
   private:
     /// The remapping information for each of the original arguments.
@@ -262,6 +267,11 @@ public:
                  ArrayRef<Value *> valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
 
+  /// PatternRewriter hook for erasing a dead operation. The uses of this
+  /// operation *must* be made dead by the end of the conversion process,
+  /// otherwise an assert will be issued.
+  void eraseOp(Operation *op) override;
+
   /// PatternRewriter hook for splitting a block into two parts.
   Block *splitBlock(Block *block, Block::iterator before) override;
 
@@ -269,6 +279,15 @@ public:
   void inlineRegionBefore(Region &region, Region &parent,
                           Region::iterator before) override;
   using PatternRewriter::inlineRegionBefore;
+
+  /// PatternRewriter hook for cloning blocks of one region into another. The
+  /// given region to clone *must* not have been modified as part of conversion
+  /// yet, i.e. it must be within an operation that is either in the process of
+  /// conversion, or has not yet been converted.
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before,
+                         BlockAndValueMapping &mapping) override;
+  using PatternRewriter::cloneRegionBefore;
 
   /// PatternRewriter hook for creating a new operation.
   Operation *createOperation(const OperationState &state) override;
@@ -465,6 +484,12 @@ private:
 //===----------------------------------------------------------------------===//
 // Op Conversion Entry Points
 //===----------------------------------------------------------------------===//
+
+/// Below we define several entry points for operation conversion. It is
+/// important to note that the patterns provided to the conversion framework may
+/// have additional constraints. See the `PatternRewriter Hooks` section of the
+/// ConversionPatternRewriter, to see what additional constraints are imposed on
+/// the use of the PatternRewriter.
 
 /// Apply a partial conversion on the given operations, and all nested
 /// operations. This method converts as many operations to the target as

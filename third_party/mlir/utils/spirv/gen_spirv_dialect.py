@@ -385,7 +385,7 @@ def get_description(text, assembly):
   Returns:
     - A string that corresponds to the description of the Tablegen op.
   """
-  fmt_str = ('{text}\n\n    ### Custom assembly ' 'form\n{assembly}}}];\n')
+  fmt_str = ('{text}\n\n    ### Custom assembly ' 'form\n{assembly}\n  ')
   return fmt_str.format(
       text=text, assembly=assembly)
 
@@ -466,8 +466,8 @@ def get_op_definition(instruction, doc, existing_info):
                '    ```\n\n'\
                '    For example:\n\n'\
                '    ```\n'\
-               '    [TODO]\n'\
-               '    ```\n  '
+               '    [TODO]\n' \
+               '    ```'
     description = get_description(text, assembly)
 
   return fmt_str.format(

@@ -102,9 +102,6 @@ class EagerServiceImpl {
   Status CloseContext(const CloseContextRequest* request,
                       CloseContextResponse* response);
 
-  Status RegisterFunction(const RegisterFunctionRequest* request,
-                          RegisterFunctionResponse* response);
-
  protected:
   // This is the server-side execution context. All state regarding execution of
   // a client's ops is held in this server-side context (all generated tensors,
@@ -208,6 +205,8 @@ class EagerServiceImpl {
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status RegisterFunction(const RegisterFunctionOp& register_function,
+                          EagerContext* eager_context);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

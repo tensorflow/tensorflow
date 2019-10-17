@@ -27,6 +27,7 @@ cc_library(
     hdrs = ["dataset_test_base.h"],
     deps = [
         ":batch_dataset_op",
+        ":concatenate_dataset_op",
         ":dataset_utils",
         ":iterator_ops",
         ":map_dataset_op",
@@ -345,12 +346,10 @@ tf_cc_test(
     size = "small",
     srcs = ["padded_batch_dataset_op_test.cc"],
     deps = [
-        ":concatenate_dataset_op",
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
         ":padded_batch_dataset_op",
-        ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -441,10 +440,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "parallel_map_dataset_op",
-    srcs = [
-        "parallel_map_dataset_op.cc",
-        "parallel_map_iterator.cc",
-    ],
+    srcs = ["parallel_map_dataset_op.cc"],
     hdrs = ["parallel_map_dataset_op.h"],
     deps = [
         ":captured_function",
@@ -454,6 +450,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -592,6 +589,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -1259,6 +1257,7 @@ tf_kernel_library(
     srcs = ["dataset_ops.cc"],
     hdrs = ["dataset_ops.h"],
     deps = [
+        ":captured_function",
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1266,7 +1265,6 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler/utils:traversal",
-        "//tensorflow/core/kernels/data:captured_function",
     ],
 )
 

@@ -128,6 +128,13 @@ public:
       callables.push_back(&getBody());
   }
 
+  /// Returns the results types that the given callable region produces when
+  /// executed.
+  ArrayRef<Type> getCallableResults(Region *region) {
+    assert(!isExternal() && region == &getBody() && "invalid callable");
+    return getType().getResults();
+  }
+
 private:
   // This trait needs access to `getNumFuncArguments` and `verifyType` hooks
   // defined below.

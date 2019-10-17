@@ -19,7 +19,7 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test", "cc_header_only_library")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -99,6 +99,7 @@ py_library(
     ],
     deps = [
         ":_pywrap_events_writer",
+        ":_pywrap_py_exception_registry",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -211,6 +212,7 @@ py_library(
         exclude = [
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
+            "**/analytics.py",  # In platform_analytics.
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
@@ -235,6 +237,12 @@ py_library(
         ":platform",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "platform_analytics",
+    srcs = ["platform/analytics.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -382,6 +390,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pybind11_lib",
+    hdrs = ["lib/core/pybind11_lib.h"],
+    features = ["-parse_headers"],
+    deps = [
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "pybind11_status",
     hdrs = ["lib/core/pybind11_status.h"],
     features = ["-parse_headers"],
@@ -435,6 +452,7 @@ tf_python_pybind_extension(
     hdrs = ["util/util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        ":pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -466,6 +484,23 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_debug_events_writer",
+    srcs = ["client/debug_events_writer_wrapper.cc"],
+    module_name = "_pywrap_debug_events_writer",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["client/events_writer_wrapper.cc"],
     module_name = "_pywrap_events_writer",
@@ -478,6 +513,31 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+filegroup(
+    name = "py_exception_registry_hdr",
+    srcs = [
+        "lib/core/py_exception_registry.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_py_exception_registry",
+    srcs = ["lib/core/py_exception_registry_wrapper.cc"],
+    hdrs = [
+        ":py_exception_registry_hdr",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
+    module_name = "_pywrap_py_exception_registry",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -809,7 +869,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        ":_pywrap_py_exception_registry",
+        ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -902,6 +965,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_py_exception_registry",
         ":c_api_util",
         ":error_interpolation",
         ":util",
@@ -1786,6 +1850,13 @@ tf_gen_op_wrapper_py(
     name = "test_ops",
     out = "framework/test_ops.py",
     deps = [":test_ops_kernels"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "debug_ops_gen",
+    out = "ops/gen_debug_ops.py",
+    visibility = ["//tensorflow/python/debug:__pkg__"],
+    deps = ["//tensorflow/core:debug_ops_op_lib"],
 )
 
 cc_library(
@@ -2909,6 +2980,7 @@ py_library(
         ":gradients_impl",
         ":gradients_util",
         ":unconnected_gradients",
+        "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
     ],
@@ -3608,6 +3680,7 @@ cuda_py_test(
         "//tensorflow/python/kernel_tests/random:util",
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -3934,6 +4007,7 @@ py_library(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/structured",
     ],
 )
 
@@ -4730,7 +4804,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
 
 tf_py_test(
@@ -5056,7 +5130,6 @@ tf_py_wrap_cc(
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/bfloat16.i",
-        "lib/core/py_exception_registry.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5171,8 +5244,9 @@ genrule(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
+        ":py_exception_registry",  # py_exception_registry
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({

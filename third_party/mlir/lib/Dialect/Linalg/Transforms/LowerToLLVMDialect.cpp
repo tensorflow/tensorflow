@@ -15,9 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Conversion/VectorToLLVM/VectorToLLVM.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
@@ -178,15 +179,17 @@ public:
     auto indexType = IndexType::get(op->getContext());
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
-    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
+    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64))
+                       .cast<LLVM::LLVMType>();
     // Insert the `malloc` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    FuncOp mallocFunc = module.lookupSymbol<FuncOp>("malloc");
+    auto mallocFunc = module.lookupSymbol<LLVMFuncOp>("malloc");
     if (!mallocFunc) {
-      auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
-      mallocFunc =
-          FuncOp::create(rewriter.getUnknownLoc(), "malloc", mallocType);
-      module.push_back(mallocFunc);
+      OpBuilder moduleBuilder(op->getParentOfType<ModuleOp>().getBodyRegion());
+      mallocFunc = moduleBuilder.create<LLVMFuncOp>(
+          rewriter.getUnknownLoc(), "malloc",
+          LLVM::LLVMType::getFunctionTy(voidPtrTy, int64Ty,
+                                        /*isVarArg=*/false));
     }
 
     // Get MLIR types for injecting element pointer.
@@ -257,15 +260,18 @@ public:
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
+    auto voidTy = LLVM::LLVMType::getVoidTy(lowering.getDialect());
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    FuncOp freeFunc = module.lookupSymbol<FuncOp>("free");
+    auto freeFunc = module.lookupSymbol<LLVMFuncOp>("free");
     if (!freeFunc) {
-      auto freeType = rewriter.getFunctionType(voidPtrTy, {});
-      freeFunc = FuncOp::create(rewriter.getUnknownLoc(), "free", freeType);
-      module.push_back(freeFunc);
+      OpBuilder moduleBuilder(op->getParentOfType<ModuleOp>().getBodyRegion());
+      freeFunc = moduleBuilder.create<LLVMFuncOp>(
+          rewriter.getUnknownLoc(), "free",
+          LLVM::LLVMType::getFunctionTy(voidTy, voidPtrTy,
+                                        /*isVarArg=*/false));
     }
 
     // Emit MLIR for buffer_dealloc.
@@ -274,7 +280,7 @@ public:
     Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
                                rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -545,20 +551,37 @@ public:
   }
 };
 
-// Get function definition for the LinalgOp. If it doesn't exist, insert a
-// definition.
+// YieldOp produces and LLVM::ReturnOp.
+class YieldOpConversion : public LLVMOpLowering {
+public:
+  explicit YieldOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(YieldOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, operands);
+    return matchSuccess();
+  }
+};
+
+// Get a SymbolRefAttr containing the library function name for the LinalgOp.
+// If the library function does not exist, insert a declaration.
 template <typename LinalgOp>
-static FuncOp getLLVMLibraryCallDeclaration(Operation *op,
-                                            PatternRewriter &rewriter) {
+static SymbolRefAttr getLibraryCallSymbolRef(Operation *op,
+                                             PatternRewriter &rewriter) {
   auto linalgOp = cast<LinalgOp>(op);
   auto fnName = linalgOp.getLibraryCallName();
   if (fnName.empty()) {
     op->emitWarning("No library call defined for: ") << *op;
-    return FuncOp();
+    return {};
   }
+
+  // fnName is a dynamic std::String, unique it via a SymbolRefAttr.
+  SymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
   auto module = op->getParentOfType<ModuleOp>();
-  if (auto f = module.lookupSymbol<FuncOp>(fnName)) {
-    return f;
+  if (module.lookupSymbol(fnName)) {
+    return fnNameAttr;
   }
 
   SmallVector<Type, 4> inputTypes(op->getOperandTypes());
@@ -566,14 +589,14 @@ static FuncOp getLLVMLibraryCallDeclaration(Operation *op,
          "Library call for linalg operation can be generated only for ops that "
          "have void return types");
   auto libFnType = FunctionType::get(inputTypes, {}, rewriter.getContext());
-  // fnName is a dynamic std::String, unique it via a SymbolRefAttr.
-  SymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
+
   OpBuilder::InsertionGuard guard(rewriter);
   // Insert before module terminator.
   rewriter.setInsertionPoint(module.getBody(),
                              std::prev(module.getBody()->end()));
-  return rewriter.create<FuncOp>(op->getLoc(), fnNameAttr.getValue(), libFnType,
-                                 ArrayRef<NamedAttribute>{});
+  rewriter.create<FuncOp>(op->getLoc(), fnNameAttr.getValue(), libFnType,
+                          ArrayRef<NamedAttribute>{});
+  return fnNameAttr;
 }
 
 namespace {
@@ -601,14 +624,13 @@ public:
 
   PatternMatchResult matchAndRewrite(LinalgOp op,
                                      PatternRewriter &rewriter) const override {
-    auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, rewriter);
-    if (!f)
+    auto libraryCallName = getLibraryCallSymbolRef<LinalgOp>(op, rewriter);
+    if (!libraryCallName)
       return this->matchFailure();
 
-    auto fAttr = rewriter.getSymbolRefAttr(f);
     SmallVector<Value *, 4> operands(op.getOperands().begin(),
                                      op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, fAttr.getValue(),
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
                                               ArrayRef<Type>{}, operands);
     return this->matchSuccess();
   }
@@ -629,14 +651,13 @@ public:
     if (outputPerm.hasValue() && !outputPerm->isIdentity())
       return matchFailure();
 
-    auto f = getLLVMLibraryCallDeclaration<CopyOp>(op, rewriter);
-    if (!f)
+    auto libraryCallName = getLibraryCallSymbolRef<CopyOp>(op, rewriter);
+    if (!libraryCallName)
       return matchFailure();
 
-    auto fAttr = rewriter.getSymbolRefAttr(f);
     SmallVector<Value *, 4> operands(op.getOperands().begin(),
                                      op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, fAttr.getValue(),
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
                                               ArrayRef<Type>{}, operands);
     return matchSuccess();
   }
@@ -673,13 +694,35 @@ public:
   }
 };
 
+/// A non-conversion rewrite pattern kicks in to convert SubViewOp into RangeOps
+/// and SliceOps.
+class SubViewOpConversion : public OpRewritePattern<SubViewOp> {
+public:
+  using OpRewritePattern<SubViewOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(SubViewOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto *view = op.getView();
+    SmallVector<Value *, 8> ranges;
+    for (auto sliceRange : op.getRanges())
+      ranges.push_back(rewriter.create<RangeOp>(
+          op.getLoc(), sliceRange.min, sliceRange.max, sliceRange.step));
+    rewriter.replaceOpWithNewOp<SliceOp>(op, view, ranges);
+    return matchSuccess();
+  }
+};
+
 /// Populate the given list with patterns that convert from Linalg to Standard.
 static void
 populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
                                            MLIRContext *ctx) {
+  // TODO(ntv) ConvOp conversion needs to export a descriptor with relevant
+  // attribute values such as kernel striding and dilation.
   patterns.insert<CopyTransposeConversion, LinalgOpConversion<CopyOp>,
                   LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
-                  LinalgOpConversion<MatmulOp>>(ctx);
+                  LinalgOpConversion<MatvecOp>, LinalgOpConversion<MatmulOp>,
+                  LinalgOpConversion<ConvOp>, LinalgOpConversion<GenericOp>,
+                  SubViewOpConversion>(ctx);
 }
 
 /// Populate the given list with patterns that convert from Linalg to LLVM.
@@ -689,7 +732,8 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        MLIRContext *ctx) {
   patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
                   BufferSizeOpConversion, RangeOpConversion, SliceOpConversion,
-                  TransposeOpConversion, ViewOpConversion>(ctx, converter);
+                  TransposeOpConversion, ViewOpConversion, YieldOpConversion>(
+      ctx, converter);
 }
 
 namespace {
@@ -698,27 +742,8 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 };
 } // namespace
 
-// This is currently written as a standalone function because the lowering to
-// affine will look different than lowering to LLVM and it is still unclear how
-// everything will be eventually structured.
-static void lowerLinalgSubViewOps(FuncOp &f) {
-  f.walk([&](SubViewOp op) {
-    OpBuilder b(op);
-    ScopedContext scope(b, op.getLoc());
-    auto *view = op.getView();
-    SmallVector<Value *, 8> ranges;
-    for (auto sliceRange : op.getRanges())
-      ranges.push_back(range(sliceRange.min, sliceRange.max, sliceRange.step));
-    op.replaceAllUsesWith(slice(view, ranges));
-    op.erase();
-  });
-}
-
 void LowerLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
-
-  for (auto f : module.getOps<FuncOp>())
-    lowerLinalgSubViewOps(f);
 
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;
@@ -726,6 +751,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
   populateAffineToStdConversionPatterns(patterns, &getContext());
   populateLoopToStdConversionPatterns(patterns, &getContext());
   populateStdToLLVMConversionPatterns(converter, patterns);
+  populateVectorToLLVMConversionPatterns(converter, patterns);
   populateLinalgToStandardConversionPatterns(patterns, &getContext());
   populateLinalgToLLVMConversionPatterns(converter, patterns, &getContext());
 

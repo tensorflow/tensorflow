@@ -186,13 +186,13 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
     }
 
     // Construct a new subview for the tile.
-    SmallVector<SubViewOp::Range, 4> subViewOperands;
-    subViewOperands.reserve(rank * 3);
+    SmallVector<SubViewOp::Range, 4> subViewRangeOperands;
+    subViewRangeOperands.reserve(rank * 3);
     for (unsigned r = 0; r < rank; ++r) {
       if (!isTiled(map.getSubMap({r}), tileSizes)) {
-        subViewOperands.push_back(SubViewOp::Range{constant_index(folder, 0),
-                                                   dim(view, r),
-                                                   constant_index(folder, 1)});
+        subViewRangeOperands.push_back(
+            SubViewOp::Range{constant_index(folder, 0), dim(view, r),
+                             constant_index(folder, 1)});
         continue;
       }
 
@@ -201,8 +201,15 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
       auto *max = applyMapToValues(b, loc, m, maxes, folder).front();
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
-      subViewOperands.push_back(
+      subViewRangeOperands.push_back(
           SubViewOp::Range{min, max, constant_index(folder, 1)});
+    }
+    SmallVector<Value *, 12> subViewOperands;
+    subViewOperands.reserve(subViewRangeOperands.size() * 3);
+    for (auto r : subViewRangeOperands) {
+      subViewOperands.push_back(r.min);
+      subViewOperands.push_back(r.max);
+      subViewOperands.push_back(r.step);
     }
     res.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
   }

@@ -38,6 +38,13 @@ struct QuantizationSpecs {
   // DT_HALF and DT_QINT8 inference type.
   bool weight_quantization = false;
 
+  // Whether the quantization passes are triggered for post-training
+  // quantization. If it is true, the model input doesn't require user specified
+  // input ranges.
+  // TODO(fengliuai): The `weight_quantization` is just a special case of
+  // post-training quantization. We need to deprecate the `weight_quantization`.
+  bool post_training_quantization = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
@@ -49,6 +56,10 @@ struct QuantizationSpecs {
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
   std::vector<std::pair<double, double>> input_ranges;
+
+  // A serialized "QuantizationInfo" object to specify value ranges for some of
+  // the tensors with known names.
+  std::string serialized_quant_stats = "";
 
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or

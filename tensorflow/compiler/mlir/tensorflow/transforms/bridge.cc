@@ -28,8 +28,10 @@ void createTPUBridge(OpPassManager &bridge) {
   bridge.addPass(createCanonicalizerPass());
   bridge.addPass(CreateTPUClusterFormationPass());
   bridge.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
+  bridge.addPass(TFDevice::CreateResourceOpLiftingPass());
   bridge.addPass(TFDevice::CreateClusterOutliningPass());
   bridge.addPass(CreateTPURewritePass());
+  bridge.addPass(createCanonicalizerPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module) {

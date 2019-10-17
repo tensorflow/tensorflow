@@ -24,12 +24,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TrivialCrossReplicaSumTest : public HloTestBase {};
+class TrivialAllReduceTest : public HloTestBase {};
 
-// Currently the CPU and GPU backends only support CrossReplicaSum with one
+// Currently the CPU and GPU backends only support AllReduce with one
 // replica.  But we can at least check this.
 
-XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
+XLA_TEST_F(TrivialAllReduceTest, OneOperand) {
   const char* module_str = R"(
   HloModule test
 
@@ -44,13 +44,13 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
     ROOT crs = f32[3] all-reduce(p), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   EXPECT_EQ(literal, ExecuteAndTransfer(std::move(module), {&literal}));
 }
 
-XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
+XLA_TEST_F(TrivialAllReduceTest, MultipleOperands) {
   const char* module_str = R"(
   HloModule test
 
@@ -66,7 +66,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
     ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
@@ -77,7 +77,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
 // On the GPU backend, constants get special handling.  Someone might pass a
 // constant to CRS to e.g. count the number of replicas -- we need to make sure
 // it works.
-XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
+XLA_TEST_F(TrivialAllReduceTest, ConstantOperand) {
   const char* module_str = R"(
   HloModule test
 
@@ -93,7 +93,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
     ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});

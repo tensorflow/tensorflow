@@ -151,11 +151,16 @@ Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
                     uint64* hash);
 
 // Returns a stable hash of the subgraph rooted at the given node.
-// `node.
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+
+// Returns a stable hash of the given tensor.
+//
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashTensor(const Tensor& tensor, uint64* hash);
 
 // Returns a stable hash of the given graph.
 //

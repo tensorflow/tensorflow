@@ -100,7 +100,7 @@ class CPred<code pred> : Pred {
   code predExpr = "(" # pred # ")";
 }
 
-// Kinds of predicate combiners.  These must closesly match the predicates
+// Kinds of predicate combiners.  These must closely match the predicates
 // implemented by the C++ backend (tblgen::PredCombinerKind).
 class PredCombinerKind;
 def PredCombinerAnd : PredCombinerKind;
@@ -264,11 +264,21 @@ class Dialect {
 
 // A type, carries type constraints.
 class Type<Pred condition, string descr = ""> :
-    TypeConstraint<condition, descr>;
+    TypeConstraint<condition, descr> {
+  string typeDescription = "";
+}
 
 // Allows providing an alternative name and description to an existing type def.
 class TypeAlias<Type t, string description = t.description> :
-    Type<t.predicate, description>;
+    Type<t.predicate, description> {
+  let typeDescription = t.typeDescription;
+}
+
+// A type of a specific dialect.
+class DialectType<Dialect d, Pred condition, string descr = ""> :
+    Type<condition, descr> {
+  Dialect dialect = d;
+}
 
 // A variadic type constraint. It expands to zero or more of the base type. This
 // class is used for supporting variadic operands/results. An op can declare no
@@ -352,6 +362,17 @@ def F64 : F<64>;
 
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
+
+class Complex<Type type>
+    : Type<And<[
+          CPred<"$_self.isa<ComplexType>()">,
+          SubstLeaves<"$_self", "$_self.cast<ComplexType>().getElementType()",
+           type.predicate>]>,
+           "complex type with " # type.description # " elements"> {
+  Type elementType = type;
+}
+
+def AnyComplex : Type<CPred<"$_self.isa<ComplexType>()">, "complex-type">;
 
 class OpaqueType<string dialect, string name, string description>
   : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
@@ -612,7 +633,7 @@ class Attr<Pred condition, string descr = ""> :
   // Unset means this is a base-level Attr.
   //
   // This field is used by attribute wrapper classes (DefaultValuedAttr,
-  // OptionalAttr, etc.) to retrive the base-level attribute definition.
+  // OptionalAttr, etc.) to retrieve the base-level attribute definition.
   // This can be used for getting its name; otherwise, we will see
   // "anonymous_<number>" as the attribute def name because of template
   // instantiation.
@@ -957,6 +978,24 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
 
+class FloatElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseElementsAttr>().getType()."
+      "getElementType().isF" # width # "()">,
+  width # "-bit float elements attribute"> {
+
+  let storageType = [{ DenseElementsAttr }];
+  let returnType = [{ DenseElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({}, $_builder.getF" # width # "Type()),"
+    "llvm::makeArrayRef($0))";
+  let convertFromStorage = "$_self";
+}
+
+def F64ElementsAttr : FloatElementsAttr<64>;
+
 // A `width`-bit floating point elements attribute. The attribute should be
 // ranked and has a shape as specified in `dims`.
 class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
@@ -998,7 +1037,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     And<[
-      // Guranatee this is an ArrayAttr first
+      // Guarantee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
       Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "
@@ -1235,9 +1274,9 @@ def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
 def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
-// Op has the same element type for all operands.
+// Op has the same element type (or type itself, if scalar) for all operands.
 def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
-// Op has the same operand and result element type.
+// Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a terminator.
@@ -1384,7 +1423,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = "";
 
-  // Dag containting the arguments of the op. Default to 0 arguments.
+  // Dag containing the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
 
   // The list of results of the op. Default to 0 results.
@@ -1483,6 +1522,9 @@ def HasNoUseOf: Constraint<
 class Rank<string name> :
     StrFunc<"$" # name # ".getType().cast<ShapedType>().getRank()">;
 
+class Shape<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getShape()">;
+
 class ElementCount<string name> :
   StrFunc<"$" # name # ".getType().cast<ShapedType>().getNumElements()">;
 
@@ -1514,6 +1556,9 @@ class AllElementTypesMatch<list<string> names> :
 
 class AllRanksMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, Rank<"_self">.result, "rank">;
+
+class AllShapesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, Shape<"_self">.result, "shape">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, "$_self.getType()", "type">;
@@ -1654,7 +1699,7 @@ def addBenefit;
 //
 // Then `TwoResultOp` will replace the first two values of `ThreeResultOp`.
 //
-// You can also use `$<name>__N` to explicitly access the N-th reusult.
+// You can also use `$<name>__N` to explicitly access the N-th result.
 // ```
 // def : Pattern<(FiveResultOp ...),
 //               [(TwoResultOp1:$res1__1 ...), (replaceWithValue $res1__0),

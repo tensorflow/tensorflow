@@ -33,9 +33,15 @@ float PortableClip(float f, float abs_limit);
 
 bool PortableIsZeroVector(const float* vector, int v_size);
 
+bool PortableIsZeroVector(const int8_t* vector, int v_size);
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor);
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float min_value,
+                                     float max_value, float* scaling_factor);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
@@ -101,6 +107,10 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output);
+
+void PortableMatrixScalarMultiplyAccumulate(const int8_t* matrix,
+                                            int32_t scalar, int32_t n_row,
+                                            int32_t n_col, int32_t* output);
 
 void PortableApplyLayerNorm(const int16_t* input,
                             const int16_t* layer_norm_weights,

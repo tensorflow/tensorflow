@@ -1,7 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cc_test_mkl",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -193,6 +192,19 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "shape_inference",
+    srcs = ["shape_inference.cc"],
+    hdrs = ["shape_inference.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_lib",
     "//tensorflow/core:framework",
@@ -224,6 +236,30 @@ tf_cuda_library(
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
             "//tensorflow/compiler/jit:xla_kernel_creator_util",
+        ],
+    }),
+)
+
+tf_cuda_library(
+    name = "process_function_library_runtime",
+    srcs = [
+        "process_function_library_runtime.cc",
+    ],
+    hdrs = [
+        "process_function_library_runtime.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "@com_google_absl//absl/types:optional",
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -305,18 +341,6 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_eager_op_rewrite_test",
-    srcs = ["mkl_eager_op_rewrite_test.cc"],
-    deps = [
-        ":execute",
-        ":mkl_eager_op_rewrite",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
