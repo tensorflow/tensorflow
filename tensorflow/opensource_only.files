@@ -206,6 +206,7 @@ tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/cpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/py3/BUILD
+tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.1-cudnn7/cuda/BUILD
