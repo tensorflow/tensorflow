@@ -1658,11 +1658,11 @@ def _log_prob(self, x):
 
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
-    self.assertIn("tf.flags has been removed", errors[0])
+    self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
   def test_flags_flags(self):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
-    self.assertIn("tf.flags has been removed", errors[0])
+    self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
   def test_contrib_estimator_head_deprecation(self):
     api_symbols = ["binary_classification_head", "logistic_regression_head",
@@ -1913,6 +1913,12 @@ def _log_prob(self, x):
   def test_saved_model_load_v2(self):
     text = "tf.saved_model.load_v2('/tmp/blah')"
     expected = "tf.compat.v2.saved_model.load('/tmp/blah')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_app_flags(self):
+    text = "flags = tf.app.flags"
+    expected = "flags = tf.compat.v1.app.flags"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
