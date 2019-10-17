@@ -102,6 +102,12 @@ class AutotuneAlgorithm(enum.Enum):
   GRADIENT_DESCENT = 1
 
 
+class ExternalStatePolicy(enum.Enum):
+  WARN = 0
+  IGNORE = 1
+  FAIL = 2
+
+
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
@@ -162,32 +168,42 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
+  @deprecation.deprecated_args(None, "Use external_state_policy instead",
+                               "allow_stateful")
   def _as_serialized_graph(self,
                            allow_stateful=None,
-                           strip_device_assignment=None):
+                           strip_device_assignment=None,
+                           external_state_policy=ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
       allow_stateful: If true, we allow stateful ops to be present in the graph
-      def. In that case, the state in these ops would be thrown away.
+        def. In that case, the state in these ops would be thrown away.
       strip_device_assignment: If true, non-local (i.e. job and task) device
-      assignment is stripped from ops in the serialized graph.
+        assignment is stripped from ops in the serialized graph.
+      external_state_policy: The ExternalStatePolicy enum that determines how
+        we handle input pipelines that depend on external state. By default,
+        its set to WARN.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if allow_stateful is None:
-      allow_stateful = False
-
+    if compat.forward_compatible(2019, 11, 25) or external_state_policy:
+      policy = None
+      if external_state_policy:
+        policy = external_state_policy.value
+      return gen_dataset_ops.dataset_to_graph_v2(
+          self._variant_tensor,
+          external_state_policy=policy,
+          strip_device_assignment=strip_device_assignment)
     if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
       return gen_dataset_ops.dataset_to_graph(
           self._variant_tensor,
           allow_stateful=allow_stateful,
           strip_device_assignment=strip_device_assignment)
-    else:
-      return gen_dataset_ops.dataset_to_graph(
-          self._variant_tensor, allow_stateful=allow_stateful)
+    return gen_dataset_ops.dataset_to_graph(
+        self._variant_tensor, allow_stateful=allow_stateful)
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -2441,6 +2457,19 @@ class Options(options_lib.OptionsBase):
       "Users can -- at their own risk -- override this restriction by "
       "explicitly specifying that they are fine throwing away the state "
       "in these ops when they turn this option on.")
+
+  experimental_external_state_policy = options_lib.create_option(
+      name="experimental_external_state_policy",
+      ty=ExternalStatePolicy,
+      docstring="By default, tf.data will refuse to serialize a dataset or "
+      "checkpoint its iterator if the dataset contains a stateful op as the "
+      "serialization / checkpointing won't be able to capture its state. "
+      "Users can -- at their own risk -- override this restriction by "
+      "explicitly specifying that they are fine throwing away the state "
+      "in these ops. There are three settings available - IGNORE: in which we"
+      "completely ignore any state; WARN: We warn the user that some state "
+      "might be thrown away; FAIL: We fail if any state is being captured.",
+      default_factory=lambda: ExternalStatePolicy.WARN)
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
