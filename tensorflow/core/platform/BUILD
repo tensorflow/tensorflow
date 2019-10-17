@@ -658,6 +658,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm.h",
             "**/rocm_rocdl_path.cc",
+            "**/subprocess.cc",
             "abi.cc",
             "cpu_info.cc",
             "numbers.cc",
