@@ -48,6 +48,11 @@ from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
+RECURRENT_DROPOUT_WARNING_MSG = (
+    'RNN `implementation=2` is not supported when `recurrent_dropout` is set. '
+    'Using `implementation=1`.')
+
+
 @keras_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
@@ -1704,7 +1709,11 @@ class GRUCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     self.reset_after = reset_after
     self.state_size = self.units
     self.output_size = self.units
@@ -1821,9 +1830,6 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         matrix_x = K.bias_add(matrix_x, input_bias)
 
       x_z, x_r, x_h = array_ops.split(matrix_x, 3, axis=-1)
-
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
@@ -2258,7 +2264,11 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     # tuple(_ListWrapper) was silently dropping list content in at least 2.7.10,
     # and fixed after 2.7.16. Converting the state_size to wrapper around
     # NoDependency(), so that the base_layer.__setattr__ will not convert it to
@@ -2382,8 +2392,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       if 0. < self.dropout < 1.:
         inputs = inputs * dp_mask[0]
       z = K.dot(inputs, self.kernel)
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
       z += K.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
         z = K.bias_add(z, self.bias)
