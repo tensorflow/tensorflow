@@ -269,6 +269,13 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
       return repl;
     }
 
+    // If this op has no result at all but still we bind a symbol to it, it
+    // means we want to capture the op itself.
+    if (op->getNumResults() == 0) {
+      LLVM_DEBUG(llvm::dbgs() << name << " (Op)\n");
+      return name;
+    }
+
     // We are referencing all results of the multi-result op. A specific result
     // can either be a value or a range. Then join them with `separator`.
     SmallVector<std::string, 4> values;

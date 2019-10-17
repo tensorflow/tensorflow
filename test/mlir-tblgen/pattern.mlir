@@ -83,6 +83,13 @@ func @symbolBinding(%arg0: i32) -> i32 {
   return %0: i32
 }
 
+// CHECK-LABEL: symbolBindingNoResult
+func @symbolBindingNoResult(%arg0: i32) {
+  // CHECK: test.symbol_binding_b
+  "test.symbol_binding_no_result"(%arg0) : (i32) -> ()
+  return
+}
+
 //===----------------------------------------------------------------------===//
 // Test Attributes
 //===----------------------------------------------------------------------===//

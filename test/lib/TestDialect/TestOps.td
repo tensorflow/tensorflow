@@ -556,6 +556,14 @@ def : Pattern<
     // Use bound symbols in additional constraints
     [(HasOneUse $res_a)]>;
 
+def OpSymbolBindingNoResult : TEST_Op<"symbol_binding_no_result", []> {
+  let arguments = (ins I32:$operand);
+}
+
+// Test that we can bind to an op without results and reference it later.
+def : Pat<(OpSymbolBindingNoResult:$op $operand),
+          (NativeCodeCall<"handleNoResultOp($_builder, $0)"> $op)>;
+
 //===----------------------------------------------------------------------===//
 // Test Patterns (Attributes)
 
