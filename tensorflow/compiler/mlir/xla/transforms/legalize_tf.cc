@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -130,6 +131,12 @@ int64_t GetDimSize(Type ty, int64_t index) {
   if (!ranked_ty) return -1;
 
   return ranked_ty.getDimSize(index);
+}
+
+template <typename T>
+tensorflow::TensorShape ToTensorShape(llvm::ArrayRef<T> sizes) {
+  return tensorflow::TensorShape(
+      llvm::SmallVector<tensorflow::int64, 4>(sizes.begin(), sizes.end()));
 }
 
 // Returns minimum value for the given int or float element type.
@@ -518,7 +525,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 template <typename OpT, int num_spatial_dims>
 class ConvertConv : public OpRewritePattern<OpT> {
  public:
-  explicit ConvertConv(MLIRContext *context) : OpRewritePattern<OpT>(context) {}
+  using OpRewritePattern<OpT>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(OpT op,
                                      PatternRewriter &rewriter) const override {
@@ -644,8 +651,7 @@ using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
 // Required to manually specify the intermediate types.
 class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
  public:
-  explicit ConvertBF16FloorDivOp(MLIRContext *context)
-      : OpRewritePattern<TF::FloorDivOp>(context) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::FloorDivOp op,
                                      PatternRewriter &rewriter) const override {
@@ -690,8 +696,7 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
 //
 class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
  public:
-  explicit ConvertMaxPoolOp(MLIRContext *context)
-      : OpRewritePattern<TF::MaxPoolOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::MaxPoolOp op,
                                      PatternRewriter &rewriter) const override {
@@ -739,8 +744,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
 //
 class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
  public:
-  explicit ConvertSigmoidOp(MLIRContext *context)
-      : OpRewritePattern<TF::SigmoidOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::SigmoidOp op,
                                      PatternRewriter &rewriter) const override {
@@ -813,8 +817,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 template <typename OpTy, bool use_log = true>
 class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
  public:
-  explicit ConvertSoftmaxOp(MLIRContext *context)
-      : OpRewritePattern<OpTy>(context, 1) {}
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(OpTy op,
                                      PatternRewriter &rewriter) const override {
@@ -906,8 +909,7 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 //
 class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
  public:
-  explicit ConvertStridedSliceOp(MLIRContext *context)
-      : OpRewritePattern<TF::StridedSliceOp>(context, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(TF::StridedSliceOp op,
                                      PatternRewriter &rewriter) const override {
@@ -1371,6 +1373,144 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
   }
 };
 
+// Converts hlo.Conv2DBackpropInputOp into:
+//   %rev_filter = "xla_hlo.reverse"(%filter)
+//   %result = "xla_hlo.conv"(%out_backprop, %rev_filter)
+class ConvertConv2DBackpropInputOp
+    : public OpRewritePattern<TF::Conv2DBackpropInputOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::Conv2DBackpropInputOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Unpack all of the attributes.
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format)) {
+      return matchFailure();
+    }
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return Pattern::matchFailure();
+
+    auto out_backprop_ty =
+        op.out_backprop()->getType().dyn_cast<RankedTensorType>();
+    if (!out_backprop_ty || !out_backprop_ty.hasStaticShape())
+      return matchFailure();
+    ArrayRef<int64_t> out_backprop_shape = out_backprop_ty.getShape();
+    auto filter_ty = op.filter()->getType().dyn_cast<RankedTensorType>();
+    if (!filter_ty || !filter_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> filter_shape = filter_ty.getShape();
+    int num_spatial_dims = 2;
+    Location loc = op.getLoc();
+
+    int num_dims = num_spatial_dims + 2;
+    int batch_dim = tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
+    int feature_dim =
+        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+
+    DenseIntElementsAttr input_shape_attr;
+    if (!matchPattern(op.input_sizes(), m_Constant(&input_shape_attr)) ||
+        input_shape_attr.getType().getRank() != 1) {
+      return matchFailure();
+    }
+    auto input_shape =
+        llvm::to_vector<4>(input_shape_attr.getValues<int32_t>());
+    if (input_shape.size() != num_dims) return matchFailure();
+
+    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
+    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
+
+    auto strides_attr = GetI64ElementsAttr(op.strides());
+    std::vector<tensorflow::int32> strides{
+        strides_attr.getValues<int64_t>().begin(),
+        strides_attr.getValues<int64_t>().end()};
+    auto dilations_attr = GetI64ElementsAttr(op.dilations());
+    std::vector<int> dilations{dilations_attr.getValues<int64_t>().begin(),
+                               dilations_attr.getValues<int64_t>().end()};
+    auto explicit_paddings_attr = GetI64ElementsAttr(op.explicit_paddings());
+    std::vector<tensorflow::int64> explicit_paddings{
+        explicit_paddings_attr.getValues<int64_t>().begin(),
+        explicit_paddings_attr.getValues<int64_t>().end()};
+
+    int64_t in_depth = input_shape[feature_dim];
+    int64_t filter_in_depth = filter_shape[num_spatial_dims];
+    int64_t feature_group_count = in_depth / filter_in_depth;
+
+    // Reuse dimension computation logic from conv_grad_ops.cc.
+    tensorflow::ConvBackpropDimensions dims;
+    if (!tensorflow::ConvBackpropComputeDimensionsV2(
+             "", num_spatial_dims, ToTensorShape<int>(input_shape),
+             ToTensorShape<int64_t>(filter_shape),
+             ToTensorShape<int64_t>(out_backprop_shape), dilations, strides,
+             padding, explicit_paddings, data_format, &dims)
+             .ok()) {
+      return matchFailure();
+    }
+
+    // Compute xla_hlo::ConvDimensionNumbers, dilation, and padding.
+    SmallVector<int64_t, 4> kernel_spatial_dims(num_spatial_dims);
+    SmallVector<int64_t, 4> conv_paddings(num_spatial_dims * 2);
+    SmallVector<int64_t, 4> lhs_dilation(num_spatial_dims);
+    SmallVector<int64_t, 4> rhs_dilation(num_spatial_dims);
+    SmallVector<int64_t, 4> ones(num_spatial_dims, 1);
+    SmallVector<int64_t, 4> spatial_dims(num_spatial_dims);
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      spatial_dims[i] = dim;
+      kernel_spatial_dims[i] = i;
+
+      conv_paddings[i * 2] = dims.spatial_dims[i].pad_before;
+      conv_paddings[i * 2 + 1] = dims.spatial_dims[i].pad_after;
+      lhs_dilation[i] = dims.spatial_dims[i].stride;
+      rhs_dilation[i] = dilations[dim];
+    }
+    RankedTensorType paddings_ty = rewriter.getTensorType(
+        {num_spatial_dims, 2}, rewriter.getIntegerType(64));
+    auto paddings_attr =
+        DenseIntElementsAttr::get<int64_t>(paddings_ty, conv_paddings);
+    auto spatial_dims_attr = GetI64ElementsAttr(spatial_dims, &rewriter);
+
+    Value *filter = op.filter();
+
+    // Mirror the filter in the spatial dimensions.
+    filter = rewriter.create<xla_hlo::ReverseOp>(
+        loc, filter, GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
+
+    // activation gradients
+    //   = gradients (with padding and dilation) <conv> mirrored_weights
+    Value *result = rewriter.create<xla_hlo::ConvOp>(
+        loc, op.getType(), op.out_backprop(), filter,
+        /*window_strides=*/GetI64ElementsAttr(ones, &rewriter),
+        /*padding=*/paddings_attr.cast<DenseIntElementsAttr>(),
+        GetI64ElementsAttr(lhs_dilation, &rewriter),
+        GetI64ElementsAttr(rhs_dilation, &rewriter),
+        xla_hlo::ConvDimensionNumbers::get(
+            /*input_batch_dimension=*/batch_dim_attr,
+            /*input_feature_dimension=*/feature_dim_attr,
+            /*input_spatial_dimensions=*/spatial_dims_attr,
+            // TF filter shape is [ H, W, ..., inC, outC ]
+            // Transpose the input and output features for computing the
+            // gradient.
+            /*kernel_input_feature_dimension=*/
+            rewriter.getI64IntegerAttr(num_spatial_dims + 1),
+            /*kernel_output_feature_dimension=*/
+            rewriter.getI64IntegerAttr(num_spatial_dims),
+            /*kernel_spatial_dimensions=*/
+            GetI64ElementsAttr(kernel_spatial_dims, &rewriter),
+            /*output_batch_dimension=*/batch_dim_attr,
+            /*output_feature_dimension=*/feature_dim_attr,
+            /*output_spatial_dimensions=*/spatial_dims_attr,
+            rewriter.getContext()),
+        rewriter.getI64IntegerAttr(feature_group_count),
+        /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
+        /*precision_config=*/ArrayAttr());
+
+    rewriter.replaceOp(op, {result}, {op.input_sizes()});
+
+    return matchSuccess();
+  }
+};
+
 class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -1452,7 +1592,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
                   mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
                   mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp,
-                  mlir::xla::ConvertOneHotOp>(op->getContext());
+                  mlir::xla::ConvertOneHotOp,
+                  mlir::xla::ConvertConv2DBackpropInputOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

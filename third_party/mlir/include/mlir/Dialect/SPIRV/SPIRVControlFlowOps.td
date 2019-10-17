@@ -29,6 +29,11 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
+#ifdef MLIR_CALLINTERFACES
+#else
+include "mlir/Analysis/CallInterfaces.td"
+#endif // MLIR_CALLINTERFACES
+
 // -----
 
 def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
@@ -151,7 +156,8 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
 // -----
 
-def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [InFunctionScope]> {
+def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
+    InFunctionScope, DeclareOpInterfaceMethods<CallOpInterface>]> {
   let summary = "Call a function.";
 
   let description = [{

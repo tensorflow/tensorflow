@@ -21,9 +21,6 @@ from __future__ import print_function
 
 import sys
 
-import six
-from six.moves import range
-
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
@@ -78,7 +75,7 @@ def get_tensor_name(tensor):
   Returns:
     str
   """
-  parts = six.ensure_str(tensor.name).split(":")
+  parts = tensor.name.split(":")
   if len(parts) > 2:
     raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
         len(parts) - 1))
@@ -281,8 +278,7 @@ def is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if six.ensure_str(op.type).startswith("Variable") or six.ensure_str(
-        op.type).endswith("VariableOp"):
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
 

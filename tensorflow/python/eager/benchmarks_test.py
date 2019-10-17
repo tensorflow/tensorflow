@@ -766,17 +766,36 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
 
-  def _benchmark_tf_reduce_logsum_exp(self, device=CPU):
+  def _benchmark_tf_reduce_logsumexp(self, device=CPU):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       func = lambda: math_ops.reduce_logsumexp(x)
       self._run(func, 3000)
 
   def benchmark_tf_reduce_logsumexp_CPU(self):
-    self._benchmark_tf_reduce_logsum_exp()
+    self._benchmark_tf_reduce_logsumexp()
 
   def benchmark_tf_reduce_logsumexp_GPU(self):
-    self._benchmark_tf_reduce_logsum_exp(device=GPU)
+    self._benchmark_tf_reduce_logsumexp(device=GPU)
+
+  def _benchmark_tf_zeros_like(self, m, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros_like(m)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_like_CPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2)
+
+  def benchmark_tf_zeros_like_GPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2, device=GPU)
+
+  def benchmark_tf_zeros_like_variable_CPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m)
+
+  def benchmark_tf_zeros_like_variable_GPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m, device=GPU)
 
   def _benchmark_transpose(self,
                            m,

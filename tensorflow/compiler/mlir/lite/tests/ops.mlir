@@ -1547,7 +1547,7 @@ func @testSliceSizeOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) ->
 
 func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
   %cst = constant dense<[1, 1, 1]> : tensor<3xi32>
-  %cst_1 = constant dense<[2, 1, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[3, 1, 3]> : tensor<3xi32>
   // expected-error @+1 {{begin[0] cannot exceed dimension length: 2}}
   %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>

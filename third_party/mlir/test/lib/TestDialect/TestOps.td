@@ -35,6 +35,15 @@ class TEST_Op<string mnemonic, list<OpTrait> traits = []> :
 // Test Types
 //===----------------------------------------------------------------------===//
 
+def ComplexF64 : Complex<F64>;
+def ComplexOp : TEST_Op<"complex_f64"> {
+  let results = (outs ComplexF64);
+}
+
+def ComplexTensorOp : TEST_Op<"complex_f64_tensor"> {
+  let results = (outs TensorOf<[ComplexF64]>);
+}
+
 def AnyShaped: ShapedContainerType<[AnyType], IsShapedTypePred, "shaped">;
 
 def TupleOp : TEST_Op<"tuple_32_bit"> {

@@ -15,12 +15,58 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
+#include "absl/strings/substitute.h"
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace mlir_gpu {
+
+EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
+    : module_(std::move(module)), context_() {
+  error_handler_ = [](const ErrorMap& instructions_with_error,
+                      HloModule* module) {
+    std::set<const HloComputation*> computations_with_error;
+    for (auto err : instructions_with_error) {
+      computations_with_error.insert(err.first->parent());
+    }
+
+    // TODO(tanyabelova): Log the most relevant lines of large computations
+    // only.
+    LOG(ERROR) << module->ToString(
+        HloPrintOptions()
+            .set_format_instruction(
+                // Returns the string representation of `instr` in the following
+                // format. ROOT? instr_name
+                //   FAILED: err_0
+                //   FAILED: err_1
+                //   ...
+                [&instructions_with_error](const HloInstruction* instr,
+                                           const string& instr_name, int indent,
+                                           bool is_root) {
+                  string tab;
+                  for (int i = 0; i < indent; i++) {
+                    tab += "  ";
+                  }
+                  string result = tab + (is_root ? "ROOT " : "") + instr_name;
+                  if (!instructions_with_error.count(instr)) {
+                    return result;
+                  }
+                  for (const string& err : instructions_with_error.at(instr)) {
+                    absl::SubstituteAndAppend(&result, "\n$0  FAILED: $1", tab,
+                                              err);
+                  }
+                  return result;
+                })
+            .set_print_computation(
+                [&computations_with_error](const HloComputation* comp) {
+                  return computations_with_error.find(comp) !=
+                         computations_with_error.end();
+                }));
+  };
+  registerDiagnosticHandler();
+}
 
 EmissionContext::EmissionContext(
     std::unique_ptr<HloModule> module,
@@ -35,9 +81,9 @@ mlir::Location EmissionContext::getLocation(const HloInstruction* instr) {
   return mlir::OpaqueLoc::get<const HloInstruction*>(instr, &context_);
 }
 
-void EmissionContext::addError(const HloInstruction* hloInstruction,
+void EmissionContext::addError(const HloInstruction* hlo_instruction,
                                const string& str) {
-  instructions_with_error_[hloInstruction].push_back(str);
+  instructions_with_error_[hlo_instruction].push_back(str);
 }
 
 void EmissionContext::setErrorHandler(

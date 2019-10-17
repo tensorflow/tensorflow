@@ -638,9 +638,8 @@ class GlobalAveragePooling1D(GlobalPooling1D):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
     if mask is not None:
       mask = math_ops.cast(mask, backend.floatx())
-      input_shape = inputs.shape.as_list()
-      broadcast_shape = [-1, input_shape[steps_axis], 1]
-      mask = array_ops.reshape(mask, broadcast_shape)
+      mask = array_ops.expand_dims(
+          mask, 2 if self.data_format == 'channels_last' else 1)
       inputs *= mask
       return backend.sum(inputs, axis=steps_axis) / math_ops.reduce_sum(
           mask, axis=steps_axis)

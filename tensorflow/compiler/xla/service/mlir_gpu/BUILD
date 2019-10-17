@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["emission_context.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/strings",
         "@local_config_mlir//:IR",
     ],
 )

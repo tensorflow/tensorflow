@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -280,7 +281,9 @@ def choose_from_datasets_v1(datasets, choice_dataset):
 choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-choose_from_datasets = choose_from_datasets_v1
-sample_from_datasets = sample_from_datasets_v1
+if tf2.enabled():
+  choose_from_datasets = choose_from_datasets_v2
+  sample_from_datasets = sample_from_datasets_v2
+else:
+  choose_from_datasets = choose_from_datasets_v1
+  sample_from_datasets = sample_from_datasets_v1

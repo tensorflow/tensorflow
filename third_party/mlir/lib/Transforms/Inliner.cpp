@@ -291,4 +291,8 @@ struct InlinerPass : public OperationPass<InlinerPass> {
 };
 } // end anonymous namespace
 
+std::unique_ptr<Pass> mlir::createInlinerPass() {
+  return std::make_unique<InlinerPass>();
+}
+
 static PassRegistration<InlinerPass> pass("inline", "Inline function calls");

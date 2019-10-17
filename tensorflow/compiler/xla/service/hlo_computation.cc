@@ -554,11 +554,11 @@ string HloComputation::ToString(
     for (const HloInstruction* instruction : instruction_order) {
       CHECK_EQ(this, instruction->parent());
 
-      for (int i = 0; i < new_options.indent_amount(); i++) {
-        s << "  ";
-      }
-      s << (instruction == root_instruction_ ? "ROOT " : "")
-        << instruction->ToStringWithCanonicalNameMap(new_options, &name_map)
+      s << new_options.format_instruction(
+               instruction,
+               instruction->ToStringWithCanonicalNameMap(new_options,
+                                                         &name_map),
+               new_options.indent_amount(), instruction == root_instruction_)
         << "\n";
     }
   }

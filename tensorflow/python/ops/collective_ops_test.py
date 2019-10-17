@@ -378,6 +378,46 @@ class CollectiveOpTest(test.TestCase):
                                  'but that group has size'):
       run_all_reduce()
 
+  @test_util.run_deprecated_v1
+  def testCollectiveTensorsHaveNoDeviceSpecified(self):
+    group_size = 2
+    group_key = 1
+    instance_key = 1
+
+    @def_function.function
+    def fn(all_args):
+      results = []
+      # The inputs have no devices set. This is expected to be a trace-time
+      # check only.
+      self.assertEqual(all_args[0].device, '')
+      self.assertEqual(all_args[1].device, '')
+
+      with ops.device('/CPU:0'):
+        results.append(
+            collective_ops.all_reduce(all_args[0], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
+      with ops.device('/CPU:1'):
+        results.append(
+            collective_ops.all_reduce(all_args[1], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
+
+      return results
+
+    with self.session(config=config_pb2.ConfigProto(
+        device_count={'CPU': 2})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(1)
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(3)
+
+      result_op = fn([in0, in1])
+
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 1
+      result = sess.run(result_op, options=run_options)
+
+      self.assertAllClose(result, [2, 2])
+
 
 if __name__ == '__main__':
   test.main()

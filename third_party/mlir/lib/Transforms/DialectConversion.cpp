@@ -288,8 +288,17 @@ void ArgConverter::applySignatureConversion(
   rewriter.setInsertionPointToStart(block);
   for (unsigned i = 0; i != origArgCount; ++i) {
     ArrayRef<Value *> remappedValues;
-    if (auto inputMap = signatureConversion.getInputMapping(i))
-      remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    if (auto &inputMap = signatureConversion.getInputMapping(i)) {
+      // If inputMap->replacementValue is not nullptr, then the argument is
+      // dropped and a replacement value is provided to be the remappedValue.
+      if (inputMap->replacementValue) {
+        assert(inputMap->size == 0 &&
+               "invalid to provide a replacement value when the argument isn't "
+               "dropped");
+        remappedValues = inputMap->replacementValue;
+      } else
+        remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    }
 
     BlockArgument *arg = block->getArgument(i);
     newArgMapping.push_back(convertArgument(arg, remappedValues, mapping));
@@ -583,9 +592,11 @@ void ConversionPatternRewriterImpl::discardRewrites() {
 void ConversionPatternRewriterImpl::applyRewrites() {
   // Apply all of the rewrites replacements requested during conversion.
   for (auto &repl : replacements) {
-    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
-      repl.op->getResult(i)->replaceAllUsesWith(
-          mapping.lookupOrDefault(repl.newValues[i]));
+    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i) {
+      if (auto *newValue = repl.newValues[i])
+        repl.op->getResult(i)->replaceAllUsesWith(
+            mapping.lookupOrDefault(newValue));
+    }
 
     // If this operation defines any regions, drop any pending argument
     // rewrites.
@@ -637,12 +648,9 @@ void ConversionPatternRewriterImpl::replaceOp(
   assert(newValues.size() == op->getNumResults());
 
   // Create mappings for each of the new result values.
-  for (unsigned i = 0, e = newValues.size(); i < e; ++i) {
-    assert((newValues[i] || op->getResult(i)->use_empty()) &&
-           "result value has remaining uses that must be replaced");
-    if (newValues[i])
-      mapping.map(op->getResult(i), newValues[i]);
-  }
+  for (unsigned i = 0, e = newValues.size(); i < e; ++i)
+    if (auto *repl = newValues[i])
+      mapping.map(op->getResult(i), repl);
 
   // Record the requested operation replacement.
   replacements.emplace_back(op, newValues);
@@ -716,6 +724,16 @@ void ConversionPatternRewriter::replaceOp(
   LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
                           << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
+}
+
+/// PatternRewriter hook for erasing a dead operation. The uses of this
+/// operation *must* be made dead by the end of the conversion process,
+/// otherwise an assert will be issued.
+void ConversionPatternRewriter::eraseOp(Operation *op) {
+  LLVM_DEBUG(llvm::dbgs() << "** Erasing operation : " << op->getName()
+                          << "\n");
+  SmallVector<Value *, 1> nullRepls(op->getNumResults(), nullptr);
+  impl->replaceOp(op, nullRepls, /*valuesToRemoveIfDead=*/llvm::None);
 }
 
 /// Apply a signature conversion to the entry block of the given region.
@@ -1305,7 +1323,17 @@ void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
                                                     unsigned newInputCount) {
   assert(!remappedInputs[origInputNo] && "input has already been remapped");
   assert(newInputCount != 0 && "expected valid input count");
-  remappedInputs[origInputNo] = InputMapping{newInputNo, newInputCount};
+  remappedInputs[origInputNo] =
+      InputMapping{newInputNo, newInputCount, /*replacementValue=*/nullptr};
+}
+
+/// Remap an input of the original signature to another `replacementValue`
+/// value. This would make the signature converter drop this argument.
+void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
+                                                    Value *replacementValue) {
+  assert(!remappedInputs[origInputNo] && "input has already been remapped");
+  remappedInputs[origInputNo] =
+      InputMapping{origInputNo, /*size=*/0, replacementValue};
 }
 
 /// This hooks allows for converting a type.
@@ -1397,7 +1425,7 @@ struct FuncOpSignatureConversion : public ConversionPattern {
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 

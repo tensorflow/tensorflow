@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
@@ -1197,6 +1198,14 @@ static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
   }
 
   return success();
+}
+
+CallInterfaceCallable spirv::FunctionCallOp::getCallableForCallee() {
+  return getAttrOfType<SymbolRefAttr>(kCallee);
+}
+
+Operation::operand_range spirv::FunctionCallOp::getArgOperands() {
+  return arguments();
 }
 
 //===----------------------------------------------------------------------===//
