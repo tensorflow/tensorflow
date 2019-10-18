@@ -3395,9 +3395,9 @@ class BatchDataset(UnaryDataset):
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
       # pylint: disable=g-long-lambda
+      constant_batch_size = tensor_util.constant_value(self._batch_size)
       self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(
-              tensor_util.constant_value(self._batch_size)),
+          lambda component_spec: component_spec._batch(constant_batch_size),
           input_dataset.element_spec)
     else:
       self._structure = nest.map_structure(
