@@ -69,7 +69,6 @@ load(
     "if_android",
     "if_emscripten",
     "if_ios",
-    "if_linux_x86_64",
     "if_mobile",
     "if_not_windows",
     "tf_android_core_proto_headers",
@@ -2239,7 +2238,6 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-        "//tensorflow/core/lib/hash:legacy_lib_internal_impl_srcs",
         "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
@@ -2248,7 +2246,6 @@ cc_library(
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
-        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2267,6 +2264,8 @@ cc_library(
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/core:threadpool_interface",
         "//tensorflow/core/lib/core:threadpool_options",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/lib/hash:hash",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:annotation",
@@ -2302,16 +2301,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
     alwayslink = 1,
-)
-
-# File compiled with extra flags to get cpu-specific acceleration.
-cc_library(
-    name = "lib_hash_crc32c_accelerate_internal",
-    srcs = [
-        "//tensorflow/core/lib/hash:legacy_crc32_accelerate_srcs",
-    ],
-    # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(
