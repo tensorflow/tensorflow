@@ -520,7 +520,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = tf_platform_helper_deps("test_impl"),
+    deps = tf_mobile_aware_deps("test_impl"),
 )
 
 cc_library(
