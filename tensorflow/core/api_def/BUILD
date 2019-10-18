@@ -101,6 +101,7 @@ tf_cc_test(
         ":base_api_def",
         ":python_api_def",
     ],
+    tags = ["no_rocm"],
     deps = [
         ":excluded_ops_lib",
         "//tensorflow/core:framework",
