@@ -321,10 +321,18 @@ name via a string attribute like [SymbolRefAttr](#symbol-reference-attribute)):
 function ::= `func` function-signature function-attributes? function-body?
 
 function-signature ::= symbol-ref-id `(` argument-list `)`
-                       (`->` function-result-type)?
+                       (`->` function-result-list)?
+
 argument-list ::= (named-argument (`,` named-argument)*) | /*empty*/
 argument-list ::= (type attribute-dict? (`,` type attribute-dict?)*) | /*empty*/
 named-argument ::= ssa-id `:` type attribute-dict?
+
+function-result-list ::= function-result-list-parens
+                       | non-function-type
+function-result-list-parens ::= `(` `)`
+                              | `(` function-result-list-no-parens `)`
+function-result-list-no-parens ::= function-result (`,` function-result)*
+function-result ::= type attribute-dict?
 
 function-attributes ::= `attributes` attribute-dict
 function-body ::= region

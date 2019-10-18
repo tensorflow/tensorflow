@@ -924,6 +924,11 @@ func @invalid_func_arg_attr(i1 {non_dialect_attr = 10})
 
 // -----
 
+// expected-error @+1 {{results may only have dialect attributes}}
+func @invalid_func_result_attr() -> (i1 {non_dialect_attr = 10})
+
+// -----
+
 // expected-error @+1 {{expected '<' in tuple type}}
 func @invalid_tuple_missing_less(tuple i32>)
 

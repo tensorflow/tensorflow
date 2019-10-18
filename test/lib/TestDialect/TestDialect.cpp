@@ -114,6 +114,24 @@ TestDialect::TestDialect(MLIRContext *context)
   allowUnknownOperations();
 }
 
+LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
+                                                    unsigned regionIndex,
+                                                    unsigned argIndex,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
+LogicalResult
+TestDialect::verifyRegionResultAttribute(Operation *op, unsigned regionIndex,
+                                         unsigned resultIndex,
+                                         NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Test IsolatedRegionOp - parse passthrough region arguments.
 //===----------------------------------------------------------------------===//

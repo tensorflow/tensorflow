@@ -847,6 +847,11 @@ func @func_arg_attrs(%arg0: i1 {dialect.attr = 10 : i64}) {
   return
 }
 
+// CHECK-LABEL: func @func_result_attrs({{.*}}) -> (f32 {dialect.attr = 1 : i64})
+func @func_result_attrs(%arg0: f32) -> (f32 {dialect.attr = 1}) {
+  return %arg0 : f32
+}
+
 // CHECK-LABEL: func @empty_tuple(tuple<>)
 func @empty_tuple(tuple<>)
 
