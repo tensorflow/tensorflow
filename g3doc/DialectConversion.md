@@ -122,10 +122,11 @@ After the conversion target has been defined, a set of legalization patterns
 must be provided to transform illegal operations into legal ones. The patterns
 supplied here, that do not [require type changes](#conversion-patterns), are the
 same as those described in the
-[quickstart rewrites guide](QuickstartRewrites.md#adding-patterns). The patterns
-provided do not need to generate operations that are directly legal on the
-target. The framework will automatically build a graph of conversions to convert
-non-legal operations into a set of legal ones.
+[quickstart rewrites guide](QuickstartRewrites.md#adding-patterns), but have a
+few additional [restrictions](#restrictions). The patterns provided do not need
+to generate operations that are directly legal on the target. The framework will
+automatically build a graph of conversions to convert non-legal operations into
+a set of legal ones.
 
 As an example, say you define a target that supports one operation: `foo.add`.
 When providing the following patterns: [`bar.add` -> `baz.add`, `baz.add` ->
@@ -133,6 +134,21 @@ When providing the following patterns: [`bar.add` -> `baz.add`, `baz.add` ->
 `baz.add` -> `foo.add` even though a direct conversion does not exist. This
 means that you don’t have to define a direct legalization pattern for `bar.add`
 -> `foo.add`.
+
+### Restrictions
+
+The framework processes operations in topological order, trying to legalize them
+individually. As such, patterns used in the conversion framework have a few
+additional restrictions:
+
+1.  If a pattern matches, it must erase or replace the op it matched on.
+    Operations can *not* be updated in place.
+2.  Match criteria should not be based on the IR outside of the op itself. The
+    preceding ops will already have been processed by the framework (although it
+    may not update uses), and the subsequent IR will not yet be processed. This
+    can create confusion if a pattern attempts to match against a sequence of
+    ops (e.g. rewrite A + B -> C). That sort of rewrite should be performed in a
+    separate pass.
 
 ## Type Conversion
 
@@ -195,6 +211,9 @@ struct MyConversionPattern : public ConversionPattern {
                   ConversionPatternRewriter &rewriter) const;
 };
 ```
+
+These patterns have the same [restrictions](#restrictions) as the basic rewrite
+patterns used in dialect conversion.
 
 ### Region Signature Conversion
 
