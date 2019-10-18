@@ -60,7 +60,6 @@ REQUIRED_PACKAGES = [
     'keras_preprocessing >= 1.0.5',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 2.0.0, < 2.1.0',
     'tensorflow_estimator >= 2.0.0, < 2.1.0',
