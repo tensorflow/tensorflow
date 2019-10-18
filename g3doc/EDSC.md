@@ -40,8 +40,8 @@ using store = InstructionBuilder<StoreOp>;
 
 ## LoopBuilder and AffineLoopNestBuilder
 
-`mlir::edsc::AffineLoopNestBuilder` provides an interface to allow writing
-concise and structured loop nests.
+`mlir::edsc::AffineLoopNestBuilder` provides an interface to allow writing concise and
+structured loop nests.
 
 ```c++
   ScopedContext scope(f.get());
@@ -53,10 +53,10 @@ concise and structured loop nests.
               f13(constant_float(llvm::APFloat(13.0f), f32Type)),
               i7(constant_int(7, 32)),
               i13(constant_int(13, 32));
-  AffineLoopNestBuilder(&i, lb, ub, 3)([&]{
+  LoopBuilder(&i, lb, ub, 3)([&]{
       lb * index_t(3) + ub;
       lb + index_t(3);
-      AffineLoopNestBuilder(&j, lb, ub, 2)([&]{
+      LoopBuilder(&j, lb, ub, 2)([&]{
           ceilDiv(index_t(31) * floorDiv(i + j * index_t(3), index_t(32)),
                   index_t(32));
           ((f7 + f13) / f7) % f13 - f7 * f13;
@@ -99,10 +99,10 @@ generated IR resembles the following, for a 4-D memref of `vector<4xi8>`:
 
 ``` {.mlir}
 // CHECK-LABEL: func @t1(%lhs: memref<3x4x5x6xvector<4xi8>>, %rhs: memref<3x4x5x6xvector<4xi8>>, %result: memref<3x4x5x6xvector<4xi8>>) -> () {
-//       CHECK: affine.for {{.*}} = 0 to 3 {
-//       CHECK:   affine.for {{.*}} = 0 to 4 {
-//       CHECK:     affine.for {{.*}} = 0 to 5 {
-//       CHECK:       affine.for {{.*}}= 0 to 6 {
+//       CHECK: for {{.*}} = 0 to 3 {
+//       CHECK:   for {{.*}} = 0 to 4 {
+//       CHECK:     for {{.*}} = 0 to 5 {
+//       CHECK:       for {{.*}}= 0 to 6 {
 //       CHECK:         {{.*}} = load %arg1[{{.*}}] : memref<3x4x5x6xvector<4xi8>>
 //       CHECK:         {{.*}} = load %arg0[{{.*}}] : memref<3x4x5x6xvector<4xi8>>
 //       CHECK:         {{.*}} = addi {{.*}} : vector<4xi8>
@@ -118,9 +118,6 @@ or the following, for a 0-D `memref<f32>`:
 //       CHECK: {{.*}} = addf {{.*}}, {{.*}} : f32
 //       CHECK: store {{.*}}, %arg2[] : memref<f32>
 ```
-
-Similar APIs are provided to emit the lower-level `loop.for` op with
-`LoopNestBuilder`. See the `builder-api-test.cpp` test for more usage examples.
 
 Since the implementation of declarative builders is in C++, it is also available
 to program the IR with an embedded-DSL flavor directly integrated in MLIR. We
