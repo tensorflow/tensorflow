@@ -37,8 +37,8 @@ DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
 def format_master_url(master, rpc_layer=None):
   if rpc_layer:
     return '%s://%s' % (rpc_layer, master)
-  else:
-    return master
+  
+  return master
 
 
 def get_accelerator_devices(master, config_proto):
