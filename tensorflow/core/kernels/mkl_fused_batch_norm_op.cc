@@ -836,7 +836,7 @@ class MklFusedBatchNormOp : public OpKernel {
     // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
     // TODO: This parameter functionality is not implemented on CPU.
     //       It is used to hold intermediate results. So the allocated
-    //       memory is filled with NANs.
+    //       memory is filled with 0.
     if (reserved_space) {
       DCHECK(reserved_space_tensor != nullptr);
 
