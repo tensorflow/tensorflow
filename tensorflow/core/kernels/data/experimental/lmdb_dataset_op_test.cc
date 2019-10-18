@@ -52,7 +52,7 @@ class LMDBDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  virtual string op_name() const override {
+  virtual string dataset_type() const override {
     return LMDBDatasetOp::kDatasetType;
   }
 
