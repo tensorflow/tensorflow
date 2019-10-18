@@ -133,7 +133,7 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   std::string errorMessage;
   if (auto type = funcTypeBuilder(builder, argTypes, results,
                                   impl::VariadicFlag(isVariadic), errorMessage))
-    result.addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
+    result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
   else
     return parser.emitError(signatureLocation)
            << "failed to construct function type"

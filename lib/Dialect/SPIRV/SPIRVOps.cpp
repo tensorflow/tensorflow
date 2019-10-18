@@ -1244,7 +1244,7 @@ static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
   if (!type.isa<spirv::PointerType>()) {
     return parser.emitError(loc, "expected spv.ptr type");
   }
-  state.addAttribute(kTypeAttrName, parser.getBuilder().getTypeAttr(type));
+  state.addAttribute(kTypeAttrName, TypeAttr::get(type));
 
   return success();
 }

@@ -1067,8 +1067,8 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      auto resultType = builder->getTensorType(memrefType.getShape(),
-          memrefType.getElementType());
+      auto resultType = RankedTensorType::get(memrefType.getShape(),
+                                              memrefType.getElementType());
       result.addOperands(memref);
       result.addTypes(resultType);
   }]>];

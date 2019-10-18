@@ -772,7 +772,7 @@ TEST_FUNC(affine_if_op) {
       builder.getAffineSymbolExpr(0), // s0 >= 0
       builder.getAffineSymbolExpr(1)  // s1 >= 0
   };
-  auto intSet = builder.getIntegerSet(2, 2, affineExprs, isEq);
+  auto intSet = IntegerSet::get(2, 2, affineExprs, isEq);
 
   SmallVector<Value *, 4> affineIfArgs = {zero, zero, ten, ten};
   intrinsics::affine_if(intSet, affineIfArgs, /*withElseRegion=*/false);

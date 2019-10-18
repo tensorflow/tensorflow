@@ -282,7 +282,7 @@ private:
     // The type of this attribute is tensor of 64-bit floating-point with the
     // shape of the literal.
     mlir::Type elementType = builder.getF64Type();
-    auto dataType = builder.getTensorType(lit.getDims(), elementType);
+    auto dataType = mlir::RankedTensorType::get(lit.getDims(), elementType);
 
     // This is the actual attribute that holds the list of values for this
     // tensor literal.
@@ -443,10 +443,10 @@ private:
   mlir::Type getType(ArrayRef<int64_t> shape) {
     // If the shape is empty, then this type is unranked.
     if (shape.empty())
-      return builder.getTensorType(builder.getF64Type());
+      return mlir::UnrankedTensorType::get(builder.getF64Type());
 
     // Otherwise, we use the given shape.
-    return builder.getTensorType(shape, builder.getF64Type());
+    return mlir::RankedTensorType::get(shape, builder.getF64Type());
   }
 
   /// Build an MLIR type from a Toy AST variable type (forward to the generic

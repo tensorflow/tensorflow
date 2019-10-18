@@ -772,7 +772,7 @@ static void computeMemoryOpIndices(Operation *op, AffineMap map,
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
     auto singleResMap =
-        builder.getAffineMap(map.getNumDims(), map.getNumSymbols(), resultExpr);
+        AffineMap::get(map.getNumDims(), map.getNumSymbols(), resultExpr);
     auto afOp =
         builder.create<AffineApplyOp>(op->getLoc(), singleResMap, mapOperands);
     results.push_back(afOp);

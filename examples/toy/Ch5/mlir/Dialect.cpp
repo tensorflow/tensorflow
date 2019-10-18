@@ -100,7 +100,7 @@ ToyDialect::ToyDialect(mlir::MLIRContext *ctx) : mlir::Dialect("toy", ctx) {
 /// expected to fill in order to build the operation.
 static void buildConstantOp(mlir::Builder *builder, mlir::OperationState &state,
                             double value) {
-  auto dataType = builder->getTensorType({}, builder->getF64Type());
+  auto dataType = RankedTensorType::get({}, builder->getF64Type());
   auto dataAttribute = DenseElementsAttr::get(dataType, value);
   ConstantOp::build(builder, state, dataType, dataAttribute);
 }
@@ -142,7 +142,7 @@ static mlir::LogicalResult verify(ConstantOp op) {
 
 static void buildAddOp(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::Value *lhs, mlir::Value *rhs) {
-  state.addTypes(builder->getTensorType(builder->getF64Type()));
+  state.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   state.addOperands({lhs, rhs});
 }
 
@@ -154,7 +154,7 @@ static void buildGenericCallOp(mlir::Builder *builder,
                                mlir::OperationState &state, StringRef callee,
                                ArrayRef<mlir::Value *> arguments) {
   // Generic call always returns an unranked Tensor initially.
-  state.addTypes(builder->getTensorType(builder->getF64Type()));
+  state.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   state.addOperands(arguments);
   state.addAttribute("callee", builder->getSymbolRefAttr(callee));
 }
@@ -171,7 +171,7 @@ Operation::operand_range GenericCallOp::getArgOperands() { return inputs(); }
 
 static void buildMulOp(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::Value *lhs, mlir::Value *rhs) {
-  state.addTypes(builder->getTensorType(builder->getF64Type()));
+  state.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   state.addOperands({lhs, rhs});
 }
 
@@ -235,7 +235,7 @@ static mlir::LogicalResult verify(ReturnOp op) {
 
 static void buildTransposeOp(mlir::Builder *builder,
                              mlir::OperationState &state, mlir::Value *value) {
-  state.addTypes(builder->getTensorType(builder->getF64Type()));
+  state.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   state.addOperands(value);
 }
 

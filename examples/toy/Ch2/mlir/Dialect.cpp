@@ -50,7 +50,7 @@ ToyDialect::ToyDialect(mlir::MLIRContext *ctx) : mlir::Dialect("toy", ctx) {
 /// expected to fill in order to build the operation.
 static void buildConstantOp(mlir::Builder *builder,
                             mlir::OperationState &result, double value) {
-  auto dataType = builder->getTensorType({}, builder->getF64Type());
+  auto dataType = RankedTensorType::get({}, builder->getF64Type());
   auto dataAttribute = DenseElementsAttr::get(dataType, value);
   ConstantOp::build(builder, result, dataType, dataAttribute);
 }
@@ -88,7 +88,7 @@ static mlir::LogicalResult verify(ConstantOp op) {
 
 static void buildAddOp(mlir::Builder *builder, mlir::OperationState &result,
                        mlir::Value *lhs, mlir::Value *rhs) {
-  result.addTypes(builder->getTensorType(builder->getF64Type()));
+  result.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   result.addOperands({lhs, rhs});
 }
 
@@ -96,14 +96,14 @@ static void buildGenericCallOp(mlir::Builder *builder,
                                mlir::OperationState &result, StringRef callee,
                                ArrayRef<mlir::Value *> arguments) {
   // Generic call always returns an unranked Tensor initially.
-  result.addTypes(builder->getTensorType(builder->getF64Type()));
+  result.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   result.addOperands(arguments);
   result.addAttribute("callee", builder->getSymbolRefAttr(callee));
 }
 
 static void buildMulOp(mlir::Builder *builder, mlir::OperationState &result,
                        mlir::Value *lhs, mlir::Value *rhs) {
-  result.addTypes(builder->getTensorType(builder->getF64Type()));
+  result.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   result.addOperands({lhs, rhs});
 }
 
@@ -144,7 +144,7 @@ static mlir::LogicalResult verify(ReturnOp op) {
 
 static void buildTransposeOp(mlir::Builder *builder,
                              mlir::OperationState &result, mlir::Value *value) {
-  result.addTypes(builder->getTensorType(builder->getF64Type()));
+  result.addTypes(UnrankedTensorType::get(builder->getF64Type()));
   result.addOperands(value);
 }
 
