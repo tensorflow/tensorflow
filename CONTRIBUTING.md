@@ -84,6 +84,7 @@ TensorFlow coding style.
     [tensorflow/addons](https://github.com/tensorflow/addons) to get some
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
+*   As every PR requires several CPU/GPU hours of CI testing, we discourage submitting PRs to fix one typo, one warning,         etc. We recommend fixing the same issue at the file level at least (e.g.: fix all typos in a file, fix all compiler         warning in a file, etc.)
 
 #### License
 
