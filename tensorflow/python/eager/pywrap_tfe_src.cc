@@ -764,8 +764,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
+static std::atomic<int64_t> _uid;
 
 }  // namespace
 
@@ -970,7 +969,6 @@ const char* TFE_GetPythonString(PyObject* o) {
 }
 
 int64_t get_uid() {
-  tensorflow::mutex_lock l(_uid_mutex);
   return _uid++;
 }
 

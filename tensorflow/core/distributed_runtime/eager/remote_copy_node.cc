@@ -64,9 +64,8 @@ Status CreateUncachedKernelAndDeviceOp(
 string GetUniqueWireID() {
   static tensorflow::uint64 random_seed = random::New64();
   static tensorflow::mutex wireid_mutex(tensorflow::LINKER_INITIALIZED);
-  static tensorflow::int64 wireid GUARDED_BY(wireid_mutex) = 0;
-  tensorflow::mutex_lock l(wireid_mutex);
-  return strings::StrCat(random_seed, "_", wireid++);
+  static std::atomic<int64_t> wire_id;
+  return strings::StrCat(random_seed, "_", wire_id++);
 }
 
 }  // namespace
