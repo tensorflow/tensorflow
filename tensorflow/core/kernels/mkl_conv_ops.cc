@@ -1563,6 +1563,13 @@ class MklQuantizedConv2DOp
   Tbias* GetBiasHandle(OpKernelContext* context,
                        std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                        const Tensor& bias_tensor) override {
+    if (!bias_enabled) {
+      return nullptr;
+    }
+    if (std::is_same<Tbias, qint32>::value) {
+      return static_cast<Tbias*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+    }
     int bias_index_offset;
     bias_index_offset = bias_enabled ? 1 : 0;
 
@@ -1576,13 +1583,6 @@ class MklQuantizedConv2DOp
     const float* max_filter = max_filter_vector.flat<float>().data();
 
     std::vector<mkldnn::primitive> net;
-    if (!bias_enabled) {
-      return nullptr;
-    }
-    if (std::is_same<Tbias, qint32>::value) {
-      return static_cast<Tbias*>(
-          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-    }
 
     const float int_const_scale_limit =
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
