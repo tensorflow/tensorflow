@@ -30,6 +30,7 @@ export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
+export TF_NEED_CUDA=0
 export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
@@ -41,4 +42,7 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm
     --test_sharding_strategy=disabled \
     --test_size_filters=small,medium \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
-    //tensorflow/... -//tensorflow/compiler/...
+    //tensorflow/... \
+    -//tensorflow/compiler/... \
+    -//tensorflow/lite/delegates/gpu/gl/... \
+    -//tensorflow/lite/delegates/gpu/cl/...
