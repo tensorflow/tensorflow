@@ -6,6 +6,8 @@
 # the default java toolchain to remove "-parameters" flag.
 load("@bazel_tools//tools/jdk:default_java_toolchain.bzl", "default_java_toolchain")
 
+licenses(["notice"])
+
 default_java_toolchain(
     name = "tf_java_toolchain",
     misc = [
