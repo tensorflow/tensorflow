@@ -6,7 +6,7 @@ add_llvm_library(MLIRGPUtoNVVMTransforms
   LowerGpuOpsToNVVMOps.cpp
   )
 
-add_dependencies(GPUToNVVMTransforms
+add_dependencies(MLIRGPUtoNVVMTransforms
   MLIRGPUToNVVMIncGen)
 
 target_link_libraries(MLIRGPUtoNVVMTransforms
