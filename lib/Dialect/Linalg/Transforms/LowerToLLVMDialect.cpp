@@ -770,5 +770,5 @@ mlir::linalg::createLowerLinalgToLLVMPass() {
 }
 
 static PassRegistration<LowerLinalgToLLVMPass>
-    pass("linalg-convert-to-llvm",
+    pass("convert-linalg-to-llvm",
          "Lower the operations from the linalg dialect into the LLVM dialect");

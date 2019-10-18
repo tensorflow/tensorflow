@@ -53,8 +53,12 @@ func @materialize_read_1d_partially_specialized(%dyn1 : index, %dyn2 : index, %d
 
 // CHECK-LABEL: func @materialize_read(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
 func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
-  // CHECK-NEXT:  %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT:  %{{.*}} = alloc(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?x?x?xf32>
+  // CHECK-DAG:  %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG:  %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG:  %[[C3:.*]] = constant 3 : index
+  // CHECK-DAG:  %[[C4:.*]] = constant 4 : index
+  // CHECK-DAG:  %[[C5:.*]] = constant 5 : index
+  //     CHECK:  %{{.*}} = alloc(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?x?x?xf32>
   // CHECK-NEXT:  affine.for %[[I0:.*]] = 0 to %{{.*}} step 3 {
   // CHECK-NEXT:    affine.for %[[I1:.*]] = 0 to %{{.*}} {
   // CHECK-NEXT:      affine.for %[[I2:.*]] = 0 to %{{.*}} {
@@ -65,9 +69,9 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:          %[[D3:.*]] = dim %{{.*}}, 3 : memref<?x?x?x?xf32>
   //      CHECK:          %[[ALLOC:.*]] = alloc() : memref<5x4x3xf32>
   // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector.type_cast %[[ALLOC]] : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
-  // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
-  // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
-  // CHECK-NEXT:              affine.for %[[I6:.*]] = 0 to 5 {
+  // CHECK-NEXT:          loop.for %[[I4:.*]] = %[[C0]] to %[[C3]] step %[[C1]] {
+  // CHECK-NEXT:            loop.for %[[I5:.*]] = %[[C0]] to %[[C4]] step %[[C1]] {
+  // CHECK-NEXT:              loop.for %[[I6:.*]] = %[[C0]] to %[[C5]] step %[[C1]] {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
@@ -126,9 +130,13 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
 
 // CHECK-LABEL:func @materialize_write(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
 func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
-  // CHECK-NEXT:  %{{.*}} = constant dense<1.000000e+00> : vector<5x4x3xf32>
-  // CHECK-NEXT:  %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT:  %{{.*}} = alloc(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?x?x?xf32>
+  // CHECK-DAG:  %{{.*}} = constant dense<1.000000e+00> : vector<5x4x3xf32>
+  // CHECK-DAG:  %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG:  %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG:  %[[C3:.*]] = constant 3 : index
+  // CHECK-DAG:  %[[C4:.*]] = constant 4 : index
+  // CHECK-DAG:  %[[C5:.*]] = constant 5 : index
+  //     CHECK:  %{{.*}} = alloc(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?x?x?xf32>
   // CHECK-NEXT:  affine.for %[[I0:.*]] = 0 to %{{.*}} step 3 {
   // CHECK-NEXT:    affine.for %[[I1:.*]] = 0 to %{{.*}} step 4 {
   // CHECK-NEXT:      affine.for %[[I2:.*]] = 0 to %{{.*}} {
@@ -140,9 +148,9 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK:               %[[ALLOC:.*]] = alloc() : memref<5x4x3xf32>
   // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector.type_cast {{.*}} : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
   //      CHECK:          store %{{.*}}, {{.*}} : memref<1xvector<5x4x3xf32>>
-  // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
-  // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
-  // CHECK-NEXT:              affine.for %[[I6:.*]] = 0 to 5 {
+  // CHECK-NEXT:          loop.for %[[I4:.*]] = %[[C0]] to %[[C3]] step %[[C1]] {
+  // CHECK-NEXT:            loop.for %[[I5:.*]] = %[[C0]] to %[[C4]] step %[[C1]] {
+  // CHECK-NEXT:              loop.for %[[I6:.*]] = %[[C0]] to %[[C5]] step %[[C1]] {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, {{.*}} : index

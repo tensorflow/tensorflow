@@ -1,5 +1,5 @@
-// RUN: mlir-opt %s -linalg-convert-to-llvm | FileCheck %s
-// RUN: mlir-opt %s -linalg-lower-to-loops -linalg-convert-to-llvm | FileCheck %s --check-prefix=LLVM-LOOPS
+// RUN: mlir-opt %s -convert-linalg-to-llvm | FileCheck %s
+// RUN: mlir-opt %s -linalg-lower-to-loops -convert-linalg-to-llvm | FileCheck %s --check-prefix=LLVM-LOOPS
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
   %c1 = constant 1 : index

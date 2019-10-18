@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -linalg-lower-to-loops | FileCheck %s
 
 // Test that we can lower all the way to LLVM without crashing, don't check results here.
-// RUN: mlir-opt %s --linalg-convert-to-llvm -o=/dev/null 2>&1
+// RUN: mlir-opt %s --convert-linalg-to-llvm -o=/dev/null 2>&1
 
 // CHECK-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
