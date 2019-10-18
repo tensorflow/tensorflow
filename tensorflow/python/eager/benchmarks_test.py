@@ -20,6 +20,13 @@ To run CPU benchmarks:
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
     --benchmarks=.
+
+To run a subset of benchmarks using --benchmarks flag.
+--benchmarks: the list of benchmarks to run. The specified value is interpreted
+as a regular expression and any benchmark whose name contains a partial match
+to the regular expression is executed.
+e.g. --benchmarks=".*matmul*." will run all matmul related benmarks.
+
 """
 from __future__ import absolute_import
 from __future__ import division
