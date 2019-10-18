@@ -129,7 +129,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "deps": [
             "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/core:status",
-            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:protobuf",
         ],
         "visibility": ["//visibility:private"],

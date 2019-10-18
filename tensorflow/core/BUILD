@@ -107,7 +107,6 @@ load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
-    "tf_additional_human_readable_json_deps",
     "tf_additional_lib_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
@@ -391,16 +390,9 @@ alias(
     actual = "//tensorflow/core/platform:grpc_services",
 )
 
-cc_library(
+alias(
     name = "human_readable_json",
-    srcs = ["//tensorflow/core/platform:legacy_human_readable_json_src"],
-    hdrs = ["//tensorflow/core/platform:human_readable_json.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-    ] + tf_additional_human_readable_json_deps(),
+    actual = "//tensorflow/core/platform:human_readable_json",
 )
 
 cc_library(
