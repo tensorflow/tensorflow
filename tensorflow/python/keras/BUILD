@@ -213,6 +213,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
+        "//tensorflow/python/profiler:traceme",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -996,8 +997,10 @@ tf_py_test(
     size = "medium",
     srcs = ["layers/preprocessing/text_vectorization_test.py"],
     additional_deps = [
+        ":generic_utils",
         ":keras",
         ":preprocessing_test_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
@@ -1328,9 +1331,7 @@ cuda_py_test(
     ],
     tags = [
         "guitar",
-        # TODO(b/142744009) Re-enable multi_gpu_utils_test on TensorFlowMultiGpu
-        # after fixing test timeouts.
-        # "multi_gpu",
+        "multi_gpu",
     ],
     xla_enable_strict_auto_jit = False,  # b/142744009
 )

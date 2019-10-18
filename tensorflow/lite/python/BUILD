@@ -197,7 +197,6 @@ py_test(
     ],
 )
 
-# TODO(hyey): Temporarily reverting changes made for PY3 migration. b/142594344
 py_library(
     name = "util",
     srcs = ["util.py"],
@@ -210,6 +209,7 @@ py_library(
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:wrap_function",
+        "@six_archive//:six",
     ],
 )
 

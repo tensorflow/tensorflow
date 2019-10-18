@@ -109,10 +109,10 @@ mlir::Value* NormalizeMlirShapeToLogicalNchw(
 
   return builder.createOrFold<mlir::MemRefCastOp>(
       builder.getUnknownLoc(),
-      builder.getMemRefType(
+      mlir::MemRefType::get(
           type.getShape(), type.getElementType(),
           mlir::AffineMap(type.getAffineMaps()[0])
-              .compose(builder.getAffineMap(exprs.size(), 0, exprs))),
+              .compose(mlir::AffineMap::get(exprs.size(), 0, exprs))),
       buffer);
 }
 
@@ -367,7 +367,7 @@ void SetBoundForSimpleLoop(mlir::AffineForOp loop, mlir::AffineExpr new_bound,
                            mlir::OpBuilder builder) {
   CHECK(IsSimpleLoop(loop));
 
-  loop.setUpperBoundMap(builder.getAffineMap(
+  loop.setUpperBoundMap(mlir::AffineMap::get(
       loop.getUpperBoundMap().getNumDims(),
       loop.getUpperBoundMap().getNumSymbols(), {new_bound}));
 }
@@ -511,7 +511,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     ancestor_dimensions.insert(ancestor_dimensions.end(),
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
-        builder.getMemRefType(ancestor_dimensions, type.getElementType());
+        mlir::MemRefType::get(ancestor_dimensions, type.getElementType());
     auto new_alloc =
         builder.create<mlir::AllocOp>(builder.getUnknownLoc(), new_type);
 
@@ -642,7 +642,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   builder = cartesian_product_loops.back().getBodyBuilder();
 
   mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
-      location, builder.getMemRefType({}, builder.getF32Type()));
+      location, mlir::MemRefType::get({}, builder.getF32Type()));
 
   builder.create<mlir::AffineStoreOp>(
       location,
@@ -708,7 +708,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
         location,
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
-            builder.getAffineMap(2 + num_spatial_dims * 2, 0, input_indices),
+            mlir::AffineMap::get(2 + num_spatial_dims * 2, 0, input_indices),
             input_vars),
         builder.getF32Type());
   }();

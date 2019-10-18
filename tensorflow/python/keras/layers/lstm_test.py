@@ -102,6 +102,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_recurrent_dropout_with_implementation_restriction(self):
+    layer = keras.layers.LSTM(2, recurrent_dropout=0.1, implementation=2)
+    # The implementation is force to 1 due to the limit of recurrent_dropout.
+    self.assertEqual(layer.implementation, 1)
+
   @parameterized.parameters([0, 1, 2])
   def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2

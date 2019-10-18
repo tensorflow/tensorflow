@@ -970,7 +970,7 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "RankedTensorType::get({}, $_builder.getIntegerType(" # width # ")), "
     "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
   let convertFromStorage = "$_self";
 }
@@ -989,7 +989,7 @@ class FloatElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getF" # width # "Type()),"
+    "RankedTensorType::get({}, $_builder.getF" # width # "Type()),"
     "llvm::makeArrayRef($0))";
   let convertFromStorage = "$_self";
 }
@@ -1013,7 +1013,7 @@ class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
   let returnType = [{ DenseFPElementsAttr }];
 
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "RankedTensorType::get({" # StrJoinInt<dims>.result #
     "}, $_builder.getF" # width # "Type()), "
     "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
   let convertFromStorage = "$_self";

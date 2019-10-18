@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
 
 #if defined(__ANDROID__)
@@ -45,9 +46,13 @@ limitations under the License.
 #include "profiling/profiler.h"
 #endif
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
-#endif
+
+// Version with Weak linker attribute doing nothing: if someone links this
+// library with another definition of this function (presumably to actually
+// register custom ops), that version will be used instead.
+void ABSL_ATTRIBUTE_WEAK
+RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 
 namespace tflite {
 namespace benchmark {
@@ -686,11 +691,8 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
-  tflite::OpResolver* resolver = nullptr;
-  resolver = new tflite::ops::builtin::BuiltinOpResolver();
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
-#endif
+  auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 

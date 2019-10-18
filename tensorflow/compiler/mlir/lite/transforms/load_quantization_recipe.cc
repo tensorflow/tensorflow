@@ -145,7 +145,7 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
   builder->setInsertionPointToEnd(&region.front());
   Location loc = lstm.getLoc();
   Type int32_type = builder->getIntegerType(32);
-  Type int32_tensor = builder->getTensorType(int32_type);
+  Type int32_tensor = UnrankedTensorType::get(int32_type);
   none_cst = builder->create<ConstantOp>(loc, builder->getNoneType(),
                                          builder->getUnitAttr());
 

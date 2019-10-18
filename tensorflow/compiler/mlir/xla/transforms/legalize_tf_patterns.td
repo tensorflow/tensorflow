@@ -229,8 +229,8 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
 //===----------------------------------------------------------------------===//
 
 def ZeroPaddingAttr : NativeCodeCall <
-  "$_builder.getDenseElementsAttr("
-    "$_builder.getTensorType($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
+  "DenseElementsAttr::get("
+    "RankedTensorType::get($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
     "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})"
     ".cast<DenseIntElementsAttr>()">;
 

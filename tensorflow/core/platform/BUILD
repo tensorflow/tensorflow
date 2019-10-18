@@ -189,7 +189,7 @@ cc_library(
         ":platform",
         ":types",
         "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/lib/strings:string_utils",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 
@@ -520,7 +520,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = tf_platform_helper_deps("test_impl"),
+    deps = tf_mobile_aware_deps("test_impl"),
 )
 
 cc_library(
@@ -659,6 +659,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm.h",
             "**/rocm_rocdl_path.cc",
+            "**/subprocess.cc",
             "abi.cc",
             "cpu_info.cc",
             "numbers.cc",
@@ -768,6 +769,7 @@ filegroup(
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
+            "error.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",

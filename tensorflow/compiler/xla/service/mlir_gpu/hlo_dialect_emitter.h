@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -34,13 +35,19 @@ namespace mlir_gpu {
 
 class HloDialectEmitter : public DfsHloVisitorWithDefault {
  public:
-  HloDialectEmitter(::mlir::Region* region,
+  HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
+                    ::mlir::Region* region,
                     llvm::ArrayRef<::mlir::Value*> arguments)
-      : builder_(region), arguments_(arguments) {}
+      : emission_context_(emission_context),
+        builder_(region),
+        arguments_(arguments) {}
 
-  HloDialectEmitter(::mlir::OpBuilder builder,
+  HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
+                    ::mlir::OpBuilder builder,
                     llvm::ArrayRef<::mlir::Value*> arguments)
-      : builder_(builder), arguments_(arguments) {}
+      : emission_context_(emission_context),
+        builder_(builder),
+        arguments_(arguments) {}
 
   StatusOr<mlir::Value*> EmitComputation(const HloComputation& computation);
 
@@ -51,6 +58,9 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   Status HandleCompare(HloInstruction* compare) override;
 
  private:
+  mlir::Location getLocation(const HloInstruction* instr) const;
+
+  xla::mlir_gpu::EmissionContext* emission_context_;
   ::mlir::OpBuilder builder_;
   llvm::ArrayRef<::mlir::Value*> arguments_;
   absl::flat_hash_map<const xla::HloInstruction*, ::mlir::Value*>

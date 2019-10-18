@@ -93,6 +93,8 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
   GraphImportConfig specs;
+  specs.graph_as_function = true;
+
   GraphExportConfig confs;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,

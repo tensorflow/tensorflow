@@ -87,7 +87,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   for (unsigned i = 0, e = tripCountMap.getNumResults(); i < e; i++) {
     auto tripCountExpr = tripCountMap.getResult(i);
     bumpExprs[i] = (tripCountExpr - tripCountExpr % unrollFactor) * step;
-    auto bumpMap = b.getAffineMap(tripCountMap.getNumDims(),
+    auto bumpMap = AffineMap::get(tripCountMap.getNumDims(),
                                   tripCountMap.getNumSymbols(), bumpExprs[i]);
     bumpValues[i] =
         b.create<AffineApplyOp>(forOp.getLoc(), bumpMap, tripCountOperands);
@@ -100,7 +100,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   operands->clear();
   operands->push_back(lb);
   operands->append(bumpValues.begin(), bumpValues.end());
-  *map = b.getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs);
+  *map = AffineMap::get(1 + tripCountMap.getNumResults(), 0, newUbExprs);
   // Simplify the map + operands.
   fullyComposeAffineMapAndOperands(map, operands);
   *map = simplifyAffineMap(*map);
@@ -487,7 +487,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
     if (!forOpIV->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
-      auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
+      auto bumpMap = AffineMap::get(1, 0, {d0 + i * step});
       auto ivUnroll =
           builder.create<AffineApplyOp>(forOp.getLoc(), bumpMap, forOpIV);
       operandMap.map(forOpIV, ivUnroll);
@@ -676,7 +676,7 @@ static void augmentMapAndBounds(OpBuilder &b, Value *iv, AffineMap *map,
   auto bounds = llvm::to_vector<4>(map->getResults());
   bounds.push_back(b.getAffineDimExpr(map->getNumDims()) + offset);
   operands->insert(operands->begin() + map->getNumDims(), iv);
-  *map = b.getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds);
+  *map = AffineMap::get(map->getNumDims() + 1, map->getNumSymbols(), bounds);
   canonicalizeMapAndOperands(map, operands);
 }
 
@@ -1229,7 +1229,7 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
             ? memIndicesStart[d]
             : b.create<AffineApplyOp>(
                   loc,
-                  b.getAffineMap(memAffineMap.getNumDims(),
+                  AffineMap::get(memAffineMap.getNumDims(),
                                  memAffineMap.getNumSymbols(),
                                  memAffineMap.getResult(d)),
                   memIndicesStart);
@@ -1238,7 +1238,7 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
     SmallVector<Value *, 2> operands = {memBase, forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
-        b.getAffineMap(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
+        AffineMap::get(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
         operands);
     memIndices.push_back(memIndex);
   }
@@ -1381,7 +1381,7 @@ static LogicalResult generateCopy(
     } else {
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
-      auto map = top.getAffineMap(
+      auto map = AffineMap::get(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset);
       memIndices.push_back(b.create<AffineApplyOp>(loc, map, regionSymbols));
     }
@@ -1401,8 +1401,8 @@ static LogicalResult generateCopy(
   if (!existingBuf) {
     AffineMap fastBufferLayout = b.getMultiDimIdentityMap(rank);
     auto fastMemRefType =
-        top.getMemRefType(fastBufferShape, memRefType.getElementType(),
-                          fastBufferLayout, copyOptions.fastMemorySpace);
+        MemRefType::get(fastBufferShape, memRefType.getElementType(),
+                        fastBufferLayout, copyOptions.fastMemorySpace);
 
     // Create the fast memory space buffer just before the 'affine.for'
     // operation.
@@ -1470,8 +1470,8 @@ static LogicalResult generateCopy(
   } else {
     // DMA generation.
     // Create a tag (single element 1-d memref) for the DMA.
-    auto tagMemRefType = top.getMemRefType({1}, top.getIntegerType(32), {},
-                                           copyOptions.tagMemorySpace);
+    auto tagMemRefType = MemRefType::get({1}, top.getIntegerType(32), {},
+                                         copyOptions.tagMemorySpace);
     auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
 
     SmallVector<Value *, 4> tagIndices({zeroIndex});
@@ -1532,7 +1532,7 @@ static LogicalResult generateCopy(
     auto dimExpr = b.getAffineDimExpr(regionSymbols.size() + i);
     remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap = b.getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
+  auto indexRemap = AffineMap::get(regionSymbols.size() + rank, 0, remapExprs);
 
   // Record the begin since it may be invalidated by memref replacement.
   Block::iterator prevOfBegin;

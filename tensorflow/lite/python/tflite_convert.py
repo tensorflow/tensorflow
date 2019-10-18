@@ -199,8 +199,8 @@ def _convert_tf1_model(flags):
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
 
-  if flags.experimental_enable_mlir_converter:
-    converter.experimental_enable_mlir_converter = True
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
 
   # Convert model.
   output_data = converter.convert()
@@ -224,8 +224,8 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_enable_mlir_converter:
-    converter.experimental_enable_mlir_converter = True
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -529,7 +529,7 @@ def _get_parser(use_v2_converter):
 
   # Enable MLIR-TFLite converter.
   parser.add_argument(
-      "--experimental_enable_mlir_converter",
+      "--experimental_new_converter",
       action="store_true",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion."))

@@ -43,22 +43,22 @@ namespace {
 
 Value* CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                            int32_t val, mlir::Location location) {
-  auto type = builder->getTensorType(shape, builder->getIntegerType(32));
+  auto type = RankedTensorType::get(shape, builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
 Value* CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                            float val, mlir::Location location) {
-  auto type = builder->getTensorType(shape, builder->getF32Type());
+  auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
 Value* CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                            ArrayRef<int64_t> values, mlir::Location location) {
-  auto type = builder->getTensorType(static_cast<int>(shape.size()),
-                                     builder->getIntegerType(64));
+  auto type = RankedTensorType::get(static_cast<int>(shape.size()),
+                                    builder->getIntegerType(64));
   auto attr = DenseElementsAttr::get(type, values);
   return builder->create<ConstantOp>(location, type, attr);
 }
@@ -80,7 +80,7 @@ Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
       [transpose_type](int64_t dim) { return transpose_type.getDimSize(dim); },
       perm);
   auto elem_type = transpose_type.getElementType();
-  auto result_type = builder->getTensorType(transpose_shape, elem_type);
+  auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 
   return builder->create<TF::TransposeOp>(location, result_type,
                                           value_to_transpose, perm_op);
@@ -117,7 +117,7 @@ Value* SliceRankedTensor(OpBuilder* builder, Value* input,
 
   return builder->create<TF::SliceOp>(
       location,
-      builder->getTensorType(
+      RankedTensorType::get(
           size_values,
           input->getType().cast<RankedTensorType>().getElementType()),
       input, slice_i2c_begin, slice_i2c_size);
@@ -330,7 +330,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   }
   SmallVector<int64_t, 2> output_shape{1, -1};
   auto input_types = fused_func_op_.getType().getInputs();
-  auto output_type = builder_.getTensorType(
+  auto output_type = mlir::RankedTensorType::get(
       output_shape,
       input_->getType().cast<RankedTensorType>().getElementType());
   fused_func_op_.setType(mlir::FunctionType::get(input_types, output_type,
@@ -349,7 +349,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 
   // Create the fused LSTM op.
   SmallVector<int64_t, 2> output_shape = {1, n_output_};
-  auto result_type = builder_.getTensorType(
+  auto result_type = mlir::RankedTensorType::get(
       output_shape,
       input_->getType().cast<RankedTensorType>().getElementType());
   lstm_ = builder_.create<mlir::TFL::LSTMOp>(
@@ -368,7 +368,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   // Cast the static shaped lstm result to FuncOp's signature -
   // Ranked but unknown 2nd dimension to support stacking these.
   SmallVector<int64_t, 2> func_output_shape = {1, -1};
-  auto func_result_type = builder_.getTensorType(
+  auto func_result_type = mlir::RankedTensorType::get(
       func_output_shape,
       input_->getType().cast<RankedTensorType>().getElementType());
 

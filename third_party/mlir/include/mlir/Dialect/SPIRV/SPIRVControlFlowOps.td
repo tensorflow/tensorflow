@@ -385,6 +385,8 @@ def SPV_SelectionOp : SPV_Op<"selection"> {
   let hasOpcode = 0;
 
   let autogenSerialization = 0;
+
+  let hasCanonicalizer = 1;
 }
 
 #endif // SPIRV_CONTROLFLOW_OPS

@@ -255,11 +255,16 @@ def CallOp : Std_Op<"call", [CallOpInterface]> {
       result.addAttribute("callee", builder->getSymbolRefAttr(callee));
       result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState &result, StringRef callee,"
+    "Builder *builder, OperationState &result, SymbolRefAttr callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
       result.addOperands(operands);
-      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addAttribute("callee", callee);
       result.addTypes(results);
+  }]>, OpBuilder<
+    "Builder *builder, OperationState &result, StringRef callee,"
+    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+      build(builder, result, builder->getSymbolRefAttr(callee), results,
+            operands);
   }]>];
 
   let extraClassDeclaration = [{
@@ -1062,8 +1067,8 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      auto resultType = builder->getTensorType(memrefType.getShape(),
-          memrefType.getElementType());
+      auto resultType = RankedTensorType::get(memrefType.getShape(),
+                                              memrefType.getElementType());
       result.addOperands(memref);
       result.addTypes(resultType);
   }]>];

@@ -279,7 +279,7 @@ class WithBroadcastableCmpOpBuilder {
   Type resultType;
   if (x->getType().isa<UnrankedTensorType>() ||
       y->getType().isa<UnrankedTensorType>()) {
-    resultType = builder->getTensorType(builder->getI1Type());
+    resultType = UnrankedTensorType::get(builder->getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
@@ -289,7 +289,7 @@ class WithBroadcastableCmpOpBuilder {
                       "operands have no broadcastable shapes");
     }
 
-    resultType = builder->getTensorType(resultShape, builder->getI1Type());
+    resultType = RankedTensorType::get(resultShape, builder->getI1Type());
   }
   return build(builder, result, resultType, x, y);
 }]

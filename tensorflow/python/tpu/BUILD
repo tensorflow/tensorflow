@@ -9,14 +9,10 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 # tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
     default_visibility = [
-        "//cloud/vmm/testing/tests/tpu:__subpackages__",
-        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
-        "//medical/pathology:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//vr/perception:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

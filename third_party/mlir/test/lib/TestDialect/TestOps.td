@@ -458,6 +458,15 @@ def : Pat<(OpNativeCodeCall1 $input1, $input2,
                              ConstBoolAttrFalse, $attr1, $attr2),
           (UseOpResult $input2)>;
 
+def OpNativeCodeCall3 : TEST_Op<"native_code_call3"> {
+  let arguments = (ins I32:$input);
+  let results = (outs I32);
+}
+// Test that NativeCodeCall is not ignored if it is not used to directly
+// replace the matched root op.
+def : Pattern<(OpNativeCodeCall3 $input),
+              [(NativeCodeCall<"createOpI($_builder, $0)"> $input), (OpK)]>;
+
 // Test AllAttrConstraintsOf.
 def OpAllAttrConstraint1 : TEST_Op<"all_attr_constraint_of1"> {
   let arguments = (ins I64ArrayAttr:$attr);
@@ -546,6 +555,14 @@ def : Pattern<
         (OpSymbolBindingD $res_b, $res_c, $attr)],
     // Use bound symbols in additional constraints
     [(HasOneUse $res_a)]>;
+
+def OpSymbolBindingNoResult : TEST_Op<"symbol_binding_no_result", []> {
+  let arguments = (ins I32:$operand);
+}
+
+// Test that we can bind to an op without results and reference it later.
+def : Pat<(OpSymbolBindingNoResult:$op $operand),
+          (NativeCodeCall<"handleNoResultOp($_builder, $0)"> $op)>;
 
 //===----------------------------------------------------------------------===//
 // Test Patterns (Attributes)

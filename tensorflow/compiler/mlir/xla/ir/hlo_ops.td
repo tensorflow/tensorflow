@@ -59,7 +59,7 @@ def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 // Any integer or floating-point tensor types
 def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -523,6 +523,19 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   let results = (outs HLO_Tensor);
 }
 
+def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_FftTypeAttr: $fft_type,
+    I64ElementsAttr:$fft_length
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(b/129422361) Attributes are not supported by the codegen.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -536,8 +549,8 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Attributes are not by the codegen. The optional argument
-  // (dimensions) needs to be added as an attribute.
+  // TODO(b/129422361) Attributes are not supported by the codegen. The
+  // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 

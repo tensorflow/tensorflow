@@ -584,8 +584,8 @@ static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
 
   // Ignore all the characters that are valid in an identifier in the symbol
   // name.
-  symName =
-      symName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
+  symName = symName.drop_while(
+      [](char c) { return llvm::isAlnum(c) || c == '.' || c == '_'; });
   if (symName.empty())
     return true;
 

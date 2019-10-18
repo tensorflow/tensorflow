@@ -1245,7 +1245,7 @@ class Context(object):
               "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
-                       dev.device_type())
+                       dev.device_type)
 
     if self._virtual_device_map.get(dev) == virtual_devices:
       return
