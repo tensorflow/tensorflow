@@ -189,7 +189,7 @@ cc_library(
         ":platform",
         ":types",
         "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/lib/strings:string_utils",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 
@@ -768,6 +768,7 @@ filegroup(
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
+            "error.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
