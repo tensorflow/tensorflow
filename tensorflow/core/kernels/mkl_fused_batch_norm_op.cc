@@ -819,7 +819,7 @@ class MklFusedBatchNormOp : public OpKernel {
     AllocateOutputSetMklShape(context, kSavedMeanIndex, saved_mean_tensor,
                               tf_shape_scale, mkl_shape_saved_mean);
     CHECK_NOTNULL(*saved_mean_tensor);
-    // set NAN mean value in case of empty input tensor
+    // set 0 mean value in case of empty input tensor
     auto saved_mean_data = (*saved_mean_tensor)->flat<U>().data();
     std::fill_n(saved_mean_data, num_elements, static_cast<U>(0));
 
@@ -829,7 +829,7 @@ class MklFusedBatchNormOp : public OpKernel {
                               saved_variance_tensor, tf_shape_scale,
                               mkl_shape_saved_variance);
     CHECK_NOTNULL(*saved_variance_tensor);
-    // set NAN variance value in case of empty input tensor
+    // set 0 variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
     std::fill_n(saved_variance_data, num_elements, static_cast<U>(0));
 
