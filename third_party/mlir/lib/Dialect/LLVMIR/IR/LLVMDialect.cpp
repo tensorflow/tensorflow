@@ -1115,6 +1115,21 @@ unsigned LLVMFuncOp::getNumFuncArguments() {
   return getType().getUnderlyingType()->getFunctionNumParams();
 }
 
+// Hook for OpTrait::FunctionLike, returns the number of function results.
+// Depends on the type attribute being correct as checked by verifyType
+unsigned LLVMFuncOp::getNumFuncResults() {
+  llvm::FunctionType *funcType =
+      cast<llvm::FunctionType>(getType().getUnderlyingType());
+  // We model LLVM functions that return void as having zero results,
+  // and all others as having one result.
+  // If we modeled a void return as one result, then it would be possible to
+  // attach an MLIR result attribute to it, and it isn't clear what semantics we
+  // would assign to that.
+  if (funcType->getReturnType()->isVoidTy())
+    return 0;
+  return 1;
+}
+
 static LogicalResult verify(LLVMFuncOp op) {
   if (op.isExternal())
     return success();
