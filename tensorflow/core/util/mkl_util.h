@@ -340,7 +340,7 @@ class MklDnnShape {
 
     assert(mdd1.primitive_kind == mkldnn::primitive::kind::memory);
     assert(mdd2.primitive_kind == mkldnn::primitive::kind::memory);
-    bool base_equal = true && mdd1.ndims == mdd2.ndims &&
+    bool base_equal = mdd1.ndims == mdd2.ndims &&
                       array_cmp(mdd1.dims, mdd2.dims, mdd1.ndims) &&
                       mdd1.data_type == mdd2.data_type &&
                       mdd1.format == mdd2.format;
