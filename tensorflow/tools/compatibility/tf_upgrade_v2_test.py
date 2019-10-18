@@ -303,7 +303,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             if tf_name in keyword_renames:
               # If we rename arguments, new function must be available in 2.0.
               # We should not be using compat.v1 in this case.
-              self.assertFalse(
+              self.fail(
                   "Function '%s' is not in 2.0 when converting\n%s\nto\n%s" %
                   (new_function_name, text_input, text))
             continue
