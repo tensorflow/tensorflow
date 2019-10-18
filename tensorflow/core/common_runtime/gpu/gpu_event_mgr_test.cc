@@ -441,7 +441,6 @@ class EMBenchmarkHelper {
 
     params->step_container = nullptr;
     params->slice_reader_cache = nullptr;
-    params->input_device_contexts = nullptr;
     params->resource_manager = gpu_helper_->gpu()->resource_manager();
 
     params->stats_collector = nullptr;
