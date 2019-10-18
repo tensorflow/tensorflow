@@ -392,11 +392,14 @@ class Function(object):
         It requires that the whole function is compilable by XLA. If None
         (default), compile the function with XLA when running on TPU and go
         through the regular function execution path when running on other
-        devices.
+        devices. Note: only works in eager mode, throws RuntimeException
+        otherwise.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
+      NotImplementedError: if `experimental_compile` is True, and the code is
+        not run in eager mode.
     """
     self._lock = threading.Lock()
     self._python_function = python_function
@@ -414,6 +417,9 @@ class Function(object):
     self._name = name
     self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
+    if experimental_compile and not context.executing_eagerly():
+      raise NotImplementedError(
+          "Experimental compile only supported in eager mode.")
 
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
