@@ -68,7 +68,7 @@ class RandomDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  virtual string op_name() const override {
+  virtual string dataset_type() const override {
     return RandomDatasetOp::kDatasetType;
   }
 
