@@ -142,9 +142,9 @@ maps", and those with no symbols as "non-symbolic affine maps".
 dimension indices and symbols into a list of results, with affine expressions
 combining the indices and symbols. Affine maps distinguish between
 [indices and symbols](#dimensions-and-symbols) because indices are inputs to the
-affine map when the latter may be called through an operation, such as
-[affine.apply](#affineapply-operation) operation, whereas symbols are bound when
-an affine mapping is established (e.g. when a memref is formed, establishing a
+affine map when the map is called (through an operation such as
+[affine.apply](#affineapply-operation)), whereas symbols are bound when
+the map is established (e.g. when a memref is formed, establishing a
 memory [layout map](../LangRef.md#layout-map)).
 
 Affine maps are used for various core structures in MLIR. The restrictions we
