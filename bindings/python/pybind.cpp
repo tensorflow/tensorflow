@@ -306,7 +306,7 @@ struct PythonLoopContext {
 
   PythonValueHandle enter() {
     ValueHandle iv(lb.value.getType());
-    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    builder = new AffineLoopNestBuilder(&iv, lb.value, ub.value, step);
     return iv;
   }
 
@@ -318,7 +318,7 @@ struct PythonLoopContext {
 
   PythonValueHandle lb, ub;
   int64_t step;
-  LoopBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonLoopNestContext {
