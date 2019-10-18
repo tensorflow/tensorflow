@@ -173,7 +173,6 @@ cc_library(
         ":AffineOps",
         ":Analysis",
         ":IR",
-        ":LoopOps",
         ":StandardOps",
         ":Support",
         ":TransformUtils",

@@ -17,7 +17,6 @@ add_dependencies(MLIREDSC MLIRReferenceImplementationTestGen)
 target_link_libraries(MLIREDSC
   PUBLIC
     MLIRAffineOps
-    MLIRLoopOps
     MLIRStandardOps
     MLIRTransformUtils
     MLIRVectorOps
