@@ -446,7 +446,8 @@ def model_iteration(model,
         val_results = [val_results]
       epoch_logs = cbks.make_logs(
           model, epoch_logs, val_results, mode, prefix='val_')
-      if val_iterator and epoch < epochs - 1:
+          
+      if reset_dataset_after_each_epoch and epoch < epochs - 1:
         _reinitialize_iterator(val_iterator, model._distribution_strategy)
 
     if mode == ModeKeys.TRAIN:
