@@ -21,6 +21,7 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const AutoShardDatasetOp::kAutoShardPolicy;
 /* static */ constexpr const char* const AutoShardDatasetOp::kDatasetType;
 /* static */ constexpr const char* const AutoShardDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AutoShardDatasetOp::kNumWorkers;
