@@ -541,6 +541,31 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   // Loop over each spatial dimension.
   for (int64 spatial_dimension = 0;
        spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+    const auto& window_dim = window.dimensions(spatial_dimension);
+    // These two conditions will create an N^2 iteration pattern with only N
+    // valid elements. This is a performance optimization and produces the same
+    // result as the whole loop.
+    if (input_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        kernel_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        input_limits[spatial_dimension] == window_dim.base_dilation() &&
+        window_dim.window_dilation() == 1 &&
+        std::max<int64>(1, input_limits[spatial_dimension] - 1) ==
+            window_dim.stride() &&
+        window_dim.padding_low() == 0 && window_dim.padding_high() == 0) {
+      valid_position_counts.push_back(input_limits[spatial_dimension]);
+      continue;
+    }
+
+    if (input_limits[spatial_dimension] == 1 &&
+        kernel_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        window_dim.window_dilation() == 1 && window_dim.base_dilation() == 1 &&
+        window_dim.stride() == 1 &&
+        window_dim.padding_high() == output_limits[spatial_dimension] - 1 &&
+        window_dim.padding_low() == output_limits[spatial_dimension] - 1) {
+      valid_position_counts.push_back(output_limits[spatial_dimension]);
+      continue;
+    }
+
     int64 valid_position_count = 0;
     // Loop over each point in the kernel.
     for (int64 kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
@@ -550,7 +575,6 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
            ++output_idx) {
         // Calculate lhs (input) index without taking base dilation into
         // account.
-        const auto& window_dim = window.dimensions(spatial_dimension);
         const int64 undilated_index = output_idx * window_dim.stride() -
                                       window_dim.padding_low() +
                                       kernel_idx * window_dim.window_dilation();
