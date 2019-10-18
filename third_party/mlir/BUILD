@@ -619,6 +619,23 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "GPUToNVVMGen",
+    strip_include_prefix = "lib/Conversion/GPUToNVVM",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToNVVM/GPUToNVVM.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToNVVM/GPUToNVVM.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":NVVMOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUToNVVMTransforms",
     srcs = ["lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp"],
@@ -629,6 +646,7 @@ cc_library(
     deps = [
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUToNVVMGen",
         ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
