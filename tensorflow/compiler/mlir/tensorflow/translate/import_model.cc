@@ -732,7 +732,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
     mlir::Type element_type, const shape_inference::ShapeHandle& handle,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
-    return builder.getTensorType(element_type);
+    return mlir::UnrankedTensorType::get(element_type);
   }
 
   // Sentinel for an unknown dimension size. getTensorType interprets any
@@ -751,7 +751,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
       dimensions.push_back(context->Value(dim_handle));
   }
 
-  return builder.getTensorType(
+  return mlir::RankedTensorType::get(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
@@ -1711,7 +1711,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
                                                      builder, &element_type));
     llvm::SmallVector<int64_t, 4> shape;
     TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-    arg_types.push_back(builder.getTensorType(shape, element_type));
+    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
   }
 
   // Output nodes as function returns.

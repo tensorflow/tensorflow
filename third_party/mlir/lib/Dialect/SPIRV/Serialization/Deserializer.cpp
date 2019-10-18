@@ -954,8 +954,8 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
            << wordIndex << " of " << operands.size() << " processed";
   }
   auto varOp = opBuilder.create<spirv::GlobalVariableOp>(
-      unknownLoc, opBuilder.getTypeAttr(type),
-      opBuilder.getStringAttr(variableName), initializer);
+      unknownLoc, TypeAttr::get(type), opBuilder.getStringAttr(variableName),
+      initializer);
 
   // Decorations.
   if (decorations.count(variableID)) {
@@ -1065,7 +1065,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(unknownLoc, "OpTypeVector references undefined <id> ")
              << operands[1];
     }
-    typeMap[operands[0]] = opBuilder.getVectorType({operands[2]}, elementTy);
+    typeMap[operands[0]] = VectorType::get({operands[2]}, elementTy);
   } break;
   case spirv::Opcode::OpTypePointer: {
     if (operands.size() != 3) {
@@ -1391,7 +1391,7 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
 
   auto resultID = operands[1];
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
-    auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
+    auto attr = DenseElementsAttr::get(vectorType, elements);
     // For normal constants, we just record the attribute (and its type) for
     // later materialization at use sites.
     constantMap.try_emplace(resultID, attr, resultType);

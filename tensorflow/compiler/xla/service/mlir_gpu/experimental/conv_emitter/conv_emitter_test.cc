@@ -56,9 +56,9 @@ mlir::Type ShapeToMlirType(const xla::Shape& shape, mlir::Builder* builder) {
     physical_layout.push_back(
         shape.dimensions(shape.layout().minor_to_major(i)));
   }
-  return builder->getMemRefType(
+  return mlir::MemRefType::get(
       physical_layout, element_type,
-      {builder->getAffineMap(major_to_minor.size(), 0, major_to_minor)});
+      {mlir::AffineMap::get(major_to_minor.size(), 0, major_to_minor)});
 }
 
 std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {

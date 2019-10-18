@@ -88,7 +88,7 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
   Type final_type =
       GetQuantizedType(builder, input_type, min_value, max_value,
                        num_bits.getInt(), narrow_range.getValue(), is_signed);
-  return builder.getTypeAttr(final_type);
+  return TypeAttr::get(final_type);
 }
 
 // Changes the axis of the input per-channel quantized type to match the
@@ -151,7 +151,7 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
       }
       Type final_type = quantized_type.castFromExpressedType(target);
       if (!final_type) return {};
-      return builder.getTypeAttr(final_type);
+      return TypeAttr::get(final_type);
     }
   }
   return {};

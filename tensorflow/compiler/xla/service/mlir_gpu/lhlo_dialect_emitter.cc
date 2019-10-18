@@ -44,6 +44,7 @@ using ::mlir::Builder;
 using ::mlir::FuncOp;
 using ::mlir::Identifier;
 using ::mlir::Location;
+using ::mlir::MemRefType;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
@@ -95,8 +96,7 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
   return Status::OK();
 }
 
-StatusOr<::mlir::MemRefType> ConvertTensorType(const Shape& shape,
-                                               Builder builder) {
+StatusOr<MemRefType> ConvertTensorType(const Shape& shape, Builder builder) {
   llvm::SmallVector<int64_t, 4> array;
   array.reserve(shape.dimensions_size());
   for (const auto dim : shape.dimensions()) {
@@ -104,21 +104,21 @@ StatusOr<::mlir::MemRefType> ConvertTensorType(const Shape& shape,
   }
   switch (shape.element_type()) {
     case PrimitiveType::PRED:
-      return builder.getMemRefType(array, builder.getI1Type());
+      return MemRefType::get(array, builder.getI1Type());
     case PrimitiveType::F16:
-      return builder.getMemRefType(array, builder.getF16Type());
+      return MemRefType::get(array, builder.getF16Type());
     case PrimitiveType::F32:
-      return builder.getMemRefType(array, builder.getF32Type());
+      return MemRefType::get(array, builder.getF32Type());
     case PrimitiveType::F64:
-      return builder.getMemRefType(array, builder.getF64Type());
+      return MemRefType::get(array, builder.getF64Type());
     case PrimitiveType::S8:
-      return builder.getMemRefType(array, builder.getIntegerType(8));
+      return MemRefType::get(array, builder.getIntegerType(8));
     case PrimitiveType::S16:
-      return builder.getMemRefType(array, builder.getIntegerType(16));
+      return MemRefType::get(array, builder.getIntegerType(16));
     case PrimitiveType::S32:
-      return builder.getMemRefType(array, builder.getIntegerType(32));
+      return MemRefType::get(array, builder.getIntegerType(32));
     case PrimitiveType::S64:
-      return builder.getMemRefType(array, builder.getIntegerType(64));
+      return MemRefType::get(array, builder.getIntegerType(64));
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", PrimitiveType_Name(shape.element_type())));

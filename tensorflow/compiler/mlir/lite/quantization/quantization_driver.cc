@@ -415,7 +415,7 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto quantize =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   auto dequantize = builder_.create<TFL::DequantizeOp>(loc, expressed_type,
@@ -474,7 +474,7 @@ void QuantizationDriver::RequantizeValue(Value *value, RequantizeState *state,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto requantize_op =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   value->replaceAllUsesWith(requantize_op);
