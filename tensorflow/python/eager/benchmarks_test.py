@@ -145,8 +145,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
   ctx = context.context()
   with context.execution_mode(execution_mode):
     # call func to warm up
-    for _ in xrange(100):
-      func()
+    func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
