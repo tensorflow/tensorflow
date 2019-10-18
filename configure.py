@@ -840,6 +840,9 @@ def set_gcc_host_compiler_path(environ_cp):
       error_msg='Invalid gcc path. %s cannot be found.',
   )
 
+  # Resolve sym-links in paths to match Bazel
+  gcc_host_compiler_path = os.path.realpath(gcc_host_compiler_path)
+  
   write_action_env_to_bazelrc('GCC_HOST_COMPILER_PATH', gcc_host_compiler_path)
 
 
