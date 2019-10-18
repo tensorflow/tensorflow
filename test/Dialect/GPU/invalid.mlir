@@ -304,7 +304,7 @@ func @reduce_op_and_body(%arg0 : f32) {
 // -----
 
 func @reduce_invalid_op(%arg0 : f32) {
-  // expected-error@+1 {{op "foo" is invalid}}
+  // expected-error@+1 {{gpu.all_reduce' op attribute 'op' failed to satisfy constraint}}
   %res = "gpu.all_reduce"(%arg0) ({}) {op = "foo"} : (f32) -> (f32)
   return
 }

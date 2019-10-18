@@ -73,10 +73,21 @@ def gpu_Yield : GPU_Op<"yield", [Terminator]>,
   }];
 }
 
+// These mirror the XLA ComparisonDirection enum.
+def gpu_AllReduceOpAdd : StrEnumAttrCase<"add">;
+def gpu_AllReduceOpMul : StrEnumAttrCase<"mul">;
+
+def gpu_AllReduceOperationAttr : StrEnumAttr<"AllReduceOperationAttr",
+    "built-in reduction operations supported by gpu.allreduce.",
+    [
+      gpu_AllReduceOpAdd,
+      gpu_AllReduceOpMul,
+    ]>;
 
 def gpu_AllReduce : GPU_Op<"all_reduce",
     [SameOperandsAndResultType, IsolatedFromAbove]>,
-    Arguments<(ins AnyType:$value, OptionalAttr<StrAttr>:$op)>,
+    Arguments<(ins AnyType:$value,
+               OptionalAttr<gpu_AllReduceOperationAttr>:$op)>,
     Results<(outs AnyType)> {
   let summary = "Reduce values among workgroup.";
   let description = [{

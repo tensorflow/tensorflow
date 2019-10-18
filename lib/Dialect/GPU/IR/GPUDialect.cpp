@@ -141,11 +141,6 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
   if (allReduce.body().empty() != allReduce.op().hasValue())
     return allReduce.emitError(
         "expected either an op attribute or a non-empty body");
-  if (allReduce.op()) {
-    SmallVector<StringRef, 2> supportedOps{"add", "mul"};
-    if (!llvm::is_contained(supportedOps, *allReduce.op()))
-      return allReduce.emitError("op \"") << *allReduce.op() << "\" is invalid";
-  }
   if (!allReduce.body().empty()) {
     if (allReduce.body().front().getNumArguments() != 2)
       return allReduce.emitError("expected two region arguments");
