@@ -192,3 +192,55 @@ Example:
 ```mlir {.mlir}
   %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
 ```
+
+### `gpu.yield`
+
+Is a special terminator operation for blocks inside regions in gpu ops. It
+returns values to the immediately enclosing gpu op.
+
+Example:
+
+```mlir {.mlir}
+gpu.yield %f0, %f1 : f32, f32
+```
+
+
+### `gpu.all_reduce`
+
+The "all_reduce" op reduces the value of every work item across a local
+workgroup. The result is equal for all work items of a workgroup.
+
+For example, both
+
+```mlir {.mlir}
+%1 = "gpu.all_reduce"(%0) ({}) { op = "add" } : (f32) -> (f32)
+%2 = "gpu.all_reduce"(%0) ({
+^bb(%lhs : f32, %rhs : f32):
+  %sum = addf %lhs, %rhs : f32
+  "gpu.yield"(%sum) : (f32) -> ()
+}) : (f32) -> (f32)
+```
+compute the sum of each work item's %0 value. The first version specifies
+the accumulation as operation, whereas the second version specifies the
+accumulation as code region. The accumulation operation must either be
+`add` or `mul`.
+
+Either none or all work items of a workgroup need to execute this op
+in convergence.
+
+### `gpu.barrier`
+
+The "barrier" op synchronizes all work items of a workgroup. It is used
+to coordinate communication between the work items of the workgroup.
+
+```mlir {.mlir}
+gpu.barrier
+```
+waits until all work items in the workgroup have reached this point
+and all memory accesses made by these work items prior to the op are
+visible to all work items in the workgroup. Data hazards between work items
+accessing the same memory can be avoided by synchronizing work items
+in-between these accesses.
+
+Either none or all work items of a workgroup need to execute this op
+in convergence.

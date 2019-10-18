@@ -82,6 +82,8 @@ module attributes {gpu.container_module} {
       %one = constant 1.0 : f32
       %sum = "gpu.all_reduce"(%one) ({}) {op = "add"} : (f32) -> (f32)
 
+      "gpu.barrier"() : () -> ()
+
       "some_op"(%bIdX, %tIdX) : (index, index) -> ()
       %42 = load %arg1[%bIdX] : memref<?xf32, 1>
       return

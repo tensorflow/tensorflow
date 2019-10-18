@@ -68,7 +68,8 @@ def gpu_Yield : GPU_Op<"yield", [Terminator]>,
 
     Example:
 
-       gpu.yield %f0, %f1 : f32, f32
+       ```gpu.yield %f0, %f1 : f32, f32
+       ```
   }];
 }
 
@@ -79,8 +80,8 @@ def gpu_AllReduce : GPU_Op<"all_reduce",
     Results<(outs AnyType)> {
   let summary = "Reduce values among workgroup.";
   let description = [{
-    The "all_reduce" op reduces the value of every invocation across a local
-    workgroup. The result is equal for all invocations of a local workgroup.
+    The "all_reduce" op reduces the value of every work item across a local
+    workgroup. The result is equal for all work items of a workgroup.
 
     For example, both
     ```
@@ -91,16 +92,38 @@ def gpu_AllReduce : GPU_Op<"all_reduce",
         "gpu.yield"(%sum) : (f32) -> ()
       }) : (f32) -> (f32)
     ```
-    compute the sum of each invocation's %0 value. The first version specifies
+    compute the sum of each work item's %0 value. The first version specifies
     the accumulation as operation, whereas the second version specifies the
     accumulation as code region. The accumulation operation must either be
     `add` or `mul`.
 
-    Either none or all invocations of a local workgroup need to execute this op
+    Either none or all work items of a workgroup need to execute this op
     in convergence.
   }];
   let regions = (region AnyRegion:$body);
   let verifier = [{ return ::verifyAllReduce(*this); }];
+}
+
+def gpu_Barrier : GPU_Op<"barrier"> {
+  let summary = "Synchronizes all work items of a workgroup.";
+  let description = [{
+    The "barrier" op synchronizes all work items of a workgroup. It is used
+    to coordinate communication between the work items of the workgroup.
+
+    ```
+      gpu.barrier
+    ```
+    waits until all work items in the workgroup have reached this point
+    and all memory accesses made by these work items prior to the op are
+    visible to all work items in the workgroup. Data hazards between work items
+    accessing the same memory can be avoided by synchronizing work items
+    in-between these accesses.
+
+    Either none or all work items of a workgroup need to execute this op
+    in convergence.
+  }];
+  let parser = [{ return success(); }];
+  let printer = [{ p << getOperationName(); }];
 }
 
 #endif // GPU_OPS

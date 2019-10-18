@@ -68,7 +68,18 @@ module attributes {gpu.kernel_module} {
       %xor = xor %lhs, %rhs : i32
       "gpu.yield"(%xor) : (i32) -> ()
     }) : (i32) -> (i32)
+    std.return
+  }
+}
 
+// -----
+
+module attributes {gpu.kernel_module} {
+  // CHECK-LABEL: func @gpu_sync()
+  func @gpu_sync()
+      attributes { gpu.kernel } {
+    // CHECK: nvvm.barrier0
+    gpu.barrier
     std.return
   }
 }

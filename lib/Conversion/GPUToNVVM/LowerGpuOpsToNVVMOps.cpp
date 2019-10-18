@@ -447,6 +447,9 @@ private:
   static constexpr int kWarpSize = 32;
 };
 
+/// Import the GPU Ops to NVVM Patterns.
+#include "GPUToNVVM.cpp.inc"
+
 /// A pass that replaces all occurrences of GPU device operations with their
 /// corresponding NVVM equivalent.
 ///
@@ -462,6 +465,7 @@ public:
     OwningRewritePatternList patterns;
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
+    populateWithGenerated(&getContext(), &patterns);
     patterns.insert<
         GPUIndexIntrinsicOpLowering<gpu::ThreadId, NVVM::ThreadIdXOp,
                                     NVVM::ThreadIdYOp, NVVM::ThreadIdZOp>,
