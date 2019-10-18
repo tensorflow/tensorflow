@@ -105,8 +105,14 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
       (external_state_policy_ == ExternalStatePolicy::kFail);
 
   GraphDef graph_def;
-  OP_REQUIRES_OK(
-      ctx, AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def));
+  Status s = AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def);
+  if (!s.ok()) {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Failed to clone the input pipeline because the input pipeline graph "
+        "could not be serialized: ",
+        s.error_message()));
+    return;
+  }
   // In case we allow stateful ops, we walk the graph and find all the stateful
   // ops in the Graph. We then log a warning indicating what ops' state we are
   // going to throw away.
