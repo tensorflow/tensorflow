@@ -258,7 +258,7 @@ tf_module {
   }
   member_method {
     name: "AutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "AvgPool"
@@ -1242,7 +1242,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalAutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "ExperimentalBytesProducedStatsDataset"

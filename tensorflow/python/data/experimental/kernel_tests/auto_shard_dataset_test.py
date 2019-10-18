@@ -21,6 +21,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
@@ -232,6 +233,40 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for f in (3, 8)
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWorkersGreaterThanNumFilesWithDataSharding(self):
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        distribute_options.AutoShardPolicy.DATA)
+
+    dataset = core_readers._TFRecordDataset(self.test_filenames)
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    # Should return "Record (0,5) of file (0 --> 9)" since we are sharding by
+    # individual elements, we should be able to get some data from all files.
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in (0, 5)
+    ]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileShardingWithoutReaderDatasetOp(self):
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        distribute_options.AutoShardPolicy.FILE)
+
+    dataset = dataset_ops.Dataset.range(1024)
+    dataset = dataset.with_options(options)
+
+    # We are specifying that we want a file sharding policy, and this pipeline
+    # doesn't start with file reading, so we should error out.
+    with self.assertRaises(errors.NotFoundError):
+      dataset = distribute._AutoShardDataset(dataset, 10, 0)
+      self.evaluate(self.getNext(dataset)())
 
   @combinations.generate(test_base.default_test_combinations())
   def testWorkersGreaterThanNumFiles(self):
