@@ -365,7 +365,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-def load_keras_model(saved_model_path):
+def load_keras_model(saved_model_path, custom_objects=None):
   """Loads a keras.Model from SavedModel.
 
   load_model reinstantiates model state by:
@@ -394,6 +394,8 @@ def load_keras_model(saved_model_path):
 
   Args:
     saved_model_path: a string specifying the path to an existing SavedModel.
+    custom_objects: a dictionary mapping string names to custom classes
+      or functions.
 
   Returns:
     a keras.Model instance.
@@ -404,7 +406,7 @@ def load_keras_model(saved_model_path):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json)
+  model = model_from_json(model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(
