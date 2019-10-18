@@ -2282,6 +2282,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",

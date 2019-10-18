@@ -166,7 +166,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_enable_mlir_converter = False
+    self.experimental_new_converter = False
     self._debug_info = None
 
   def _grappler_config(self):
@@ -256,7 +256,7 @@ class TFLiteConverterBase(object):
         "quantize_to_float16": float16_quantize,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_enable_mlir_converter,
+        "enable_mlir_converter": self.experimental_new_converter,
     }
     return args
 
@@ -278,7 +278,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
+    experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:
@@ -544,7 +544,7 @@ class TFLiteConverter(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
+    experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:

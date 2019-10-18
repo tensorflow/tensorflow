@@ -708,6 +708,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
+    tags = ["notap"],  # TODO(b/142890611)
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
