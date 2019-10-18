@@ -29,9 +29,28 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/SideEffectsInterface.h"
 
 using namespace mlir;
 using namespace mlir::loop;
+
+//===----------------------------------------------------------------------===//
+// LoopOpsDialect Interfaces
+//===----------------------------------------------------------------------===//
+namespace {
+
+struct LoopSideEffectsInterface : public SideEffectsDialectInterface {
+  using SideEffectsDialectInterface::SideEffectsDialectInterface;
+
+  SideEffecting isSideEffecting(Operation *op) const override {
+    if (isa<IfOp>(op) || isa<ForOp>(op)) {
+      return Recursive;
+    }
+    return SideEffectsDialectInterface::isSideEffecting(op);
+  };
+};
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // LoopOpsDialect
@@ -43,6 +62,7 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/LoopOps/LoopOps.cpp.inc"
       >();
+  addInterfaces<LoopSideEffectsInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -109,6 +129,18 @@ static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseOptionalAttributeDict(result.attributes))
     return failure();
 
+  return success();
+}
+
+Region &ForOp::getLoopBody() { return region(); }
+
+bool ForOp::isDefinedOutsideOfLoop(Value *value) {
+  return !region().isAncestor(value->getParentRegion());
+}
+
+LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
+  for (auto *op : ops)
+    op->moveBefore(this->getOperation());
   return success();
 }
 

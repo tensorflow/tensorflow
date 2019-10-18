@@ -25,6 +25,7 @@ import inspect
 import itertools
 import os
 
+from absl import logging
 import numpy as np
 
 import six
@@ -213,12 +214,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
+    logging.vlog(2, "Initializing backend '%s'" % name)
     try:
       backend = factory()
     except RuntimeError:
-      # If the backend isn't built into the binary, or if it has no devices, we
-      # expect a RuntimeError.
-      continue
+      if name == 'cpu':
+        # We always expect CPU to initialize successfully.
+        raise
+      else:
+        # If the backend isn't built into the binary, or if it has no devices,
+        # we expect a RuntimeError.
+        continue
     _local_backends[name] = backend
   return _local_backends
 

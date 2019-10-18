@@ -154,6 +154,8 @@ renames = {
         'tf.math.angle',
     'tf.app.run':
         'tf.compat.v1.app.run',
+    'tf.app.flags':
+        'tf.compat.v1.app.flags',
     'tf.assert_greater_equal':
         'tf.compat.v1.assert_greater_equal',
     'tf.assert_integer':

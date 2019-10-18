@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import device
 from tensorflow.python.ops import gen_collective_ops
 
 
@@ -48,8 +47,6 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
   Raises:
     ValueError: if any of the input parameter constraints are not met.
   """
-  if not device.canonical_name(t.device):
-    raise ValueError('Device assignment required for collective ops')
   if group_size <= 1:
     raise ValueError('Parameter group_size to all_reduce must be at least 2.')
   return gen_collective_ops.collective_reduce(
@@ -83,8 +80,6 @@ def all_gather(t, group_size, group_key, instance_key,
   Raises:
     ValueError: if any of the input parameter constraints are not met.
   """
-  if not device.canonical_name(t.device):
-    raise ValueError('Device assignment required for collective ops')
   if group_size <= 1:
     raise ValueError('Parameter group_size to all_gather must be at least 2.')
   return gen_collective_ops.collective_gather(
@@ -129,8 +124,6 @@ def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
   identical use syntax for send and receive sides may simplify tool-driven
   generation of broadcast.
   """
-  if not device.canonical_name(t.device):
-    raise ValueError('Device assignment required for collective ops')
   if group_size <= 1:
     raise ValueError(
         'Parameter group_size to broadcast_send must be at least 2.')

@@ -25,6 +25,9 @@ def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 
+class ConstantSplat<string value> : NativeCodeCall<
+    "getSplat($_builder, $0, " # value # ")">;
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -83,6 +86,74 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_RealDivOp, HLO_DivOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
+
+// IEEE compliant floating point tensors.
+def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
+
+// Performs a substitution of FloorDiv, pseudo code below:
+//
+//  return floor(div(x, y))
+def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
+        (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r)))>;
+
+// Performs a substituion of FloorDir for integer tensors, which required
+// additional correction for a negative numerator / denominator. Equivalent
+// psuedocode is shown below:
+//
+// if ((x < 0) != (y < 0)) {
+//   T abs_x = std::abs(x);
+//   T abs_y = std::abs(y);
+//   return -(abs_x + abs_y - 1) / abs_y;
+// } else {
+//   return x / y;
+// }
+//
+// BraodcastToDimensions is used to compute the broadcast attr to higher
+// dimensions. This computes the braodcast of 'l' to broadcast('l', 'r')
+// without returning the broadcast of 'r' to broadcast('l', 'r').
+//
+// NOTE: This should be optimized for unsigned integers.
+def : Pat<(TF_FloorDivOp IntegerTensor:$l, IntegerTensor:$r),
+        (HLO_SelectOp
+         (HLO_CompareOp
+          (HLO_CompareOp $l, (HLO_ConstOp (ConstantSplat<"0"> $l)),
+           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+          (HLO_CompareOp $r, (HLO_ConstOp (ConstantSplat<"0"> $r)),
+           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+          (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
+        (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+          (HLO_DivOp
+           (HLO_NegOp:$neg (HLO_AddOp (HLO_AbsOp $l),
+                       (HLO_SubOp (HLO_AbsOp $r),
+                        (HLO_ConstOp (ConstantSplat<"1"> $r)),
+                        (NullDenseIntElementsAttr)),
+                     (BinBroadcastDimensions $l, $r))),
+           (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs)))>;
+
+// Performs a substitution of FloorMod designed to correct for possibly negative
+// values. Pseudocode shown below:
+//
+//   T trunc_mod = std::fmod(x, y);
+//   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
+      (HLO_SelectOp
+       (HLO_AndOp
+        (HLO_CompareOp
+         (HLO_RemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
+         (HLO_ConstOp:$l_zeros (ConstantSplat<"0"> $l)),
+         (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE),
+        (HLO_CompareOp
+         (HLO_CompareOp:$r_cmp $r,
+          (HLO_ConstOp:$r_zeros (ConstantSplat<"0"> $r)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+         (HLO_CompareOp:$rem_cmp $rem, $r_zeros,
+          (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
+         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
+        (NullDenseIntElementsAttr)),
+        (HLO_AddOp $r,
+         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
 // Logical binary op patterns.
@@ -154,6 +225,30 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
+// Pad op patterns.
+//===----------------------------------------------------------------------===//
+
+def ZeroPaddingAttr : NativeCodeCall <
+  "$_builder.getDenseElementsAttr("
+    "$_builder.getTensorType($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
+    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})"
+    ".cast<DenseIntElementsAttr>()">;
+
+class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
+  "SliceDenseIntElementsAttrColumn2D("
+    "&$_builder, $0, " # column # " )">;
+
+class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
+  "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
+
+
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), AnyTensor:$c),
+          (HLO_PadOp $input, $c,
+           (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
+           (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
+           (ZeroPaddingAttr $padding))>;
+
+//===----------------------------------------------------------------------===//
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -179,8 +274,6 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
-class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat($_builder, $0, " # value # ")">;
 
 // TODO(hinsu): Support dynamic but ranked input by using scalar constants
 // along with broadcast_dimensions attribute. Similarly, Relu6 op with

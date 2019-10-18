@@ -67,19 +67,6 @@ typedef struct {
 
 /// Minimal C API for exposing EDSCs to Swift, Python and other languages.
 
-/// Returns a simple scalar mlir::Type using the following convention:
-///   - makeScalarType(c, "bf16") return an `mlir::FloatType::getBF16`
-///   - makeScalarType(c, "f16") return an `mlir::FloatType::getF16`
-///   - makeScalarType(c, "f32") return an `mlir::FloatType::getF32`
-///   - makeScalarType(c, "f64") return an `mlir::FloatType::getF64`
-///   - makeScalarType(c, "index") return an `mlir::IndexType::get`
-///   - makeScalarType(c, "i", bitwidth) return an
-///     `mlir::IntegerType::get(bitwidth)`
-///
-/// No other combinations are currently supported.
-mlir_type_t makeScalarType(mlir_context_t context, const char *name,
-                           unsigned bitwidth);
-
 /// Returns an `mlir::MemRefType` of the element type `elemType` and shape
 /// `sizes`.
 mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
@@ -99,6 +86,12 @@ mlir_attr_t makeIntegerAttr(mlir_type_t type, int64_t value);
 
 /// Returns an `mlir::BoolAttr` with the given value.
 mlir_attr_t makeBoolAttr(mlir_context_t context, bool value);
+
+/// Parses an MLIR type from the string `type` in the given context. Returns a
+/// NULL type on error. If non-NULL, `charsRead` will contain the number of
+/// characters that were processed by the parser.
+mlir_type_t mlirParseType(const char *type, mlir_context_t context,
+                          uint64_t *charsRead);
 
 /// Returns the arity of `function`.
 unsigned getFunctionArity(mlir_func_t function);

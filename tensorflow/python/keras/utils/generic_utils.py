@@ -212,6 +212,12 @@ def serialize_keras_object(instance):
   raise ValueError('Cannot serialize', instance)
 
 
+def _in_custom_objects(item, custom_objects=None):
+  """Returns True if the item is in either local or global custom objects."""
+  return ((item in _GLOBAL_CUSTOM_OBJECTS) or
+          (custom_objects and item in custom_objects))
+
+
 def class_and_config_for_serialized_keras_object(
     config,
     module_objects=None,
@@ -236,7 +242,9 @@ def class_and_config_for_serialized_keras_object(
   cls_config = config['config']
   deserialized_objects = {}
   for key, item in cls_config.items():
-    if (isinstance(item, dict) and '__passive_serialization__' in item):
+    if ((isinstance(item, dict) and '__passive_serialization__' in item) or
+        (isinstance(item, six.string_types) and
+         _in_custom_objects(item, custom_objects))):
       deserialized_objects[key] = deserialize_keras_object(
           item,
           module_objects=module_objects,
@@ -256,6 +264,7 @@ def deserialize_keras_object(identifier,
                              printable_module_name='object'):
   if identifier is None:
     return None
+
   if isinstance(identifier, dict):
     # In this case we are dealing with a Keras config dictionary.
     config = identifier
@@ -297,8 +306,8 @@ def deserialize_keras_object(identifier,
       return obj()
     return obj
   else:
-    raise ValueError('Could not interpret serialized ' + printable_module_name +
-                     ': ' + identifier)
+    raise ValueError('Could not interpret serialized %s: %s' %
+                     (printable_module_name, identifier))
 
 
 def func_dump(func):

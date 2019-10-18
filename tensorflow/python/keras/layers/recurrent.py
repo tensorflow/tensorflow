@@ -40,13 +40,17 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+
+RECURRENT_DROPOUT_WARNING_MSG = (
+    'RNN `implementation=2` is not supported when `recurrent_dropout` is set. '
+    'Using `implementation=1`.')
 
 
 @keras_export('keras.layers.StackedRNNCells')
@@ -690,7 +694,7 @@ class RNN(Layer):
            constants=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -774,8 +778,7 @@ class RNN(Layer):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -828,29 +831,6 @@ class RNN(Layer):
                        ' initial states.')
     return inputs, initial_state, constants
 
-  def _convert_inputs_if_ragged(self, inputs):
-    """Converts any ragged tensors to dense."""
-
-    def _convert_ragged_input(inputs):
-      if isinstance(inputs, ragged_tensor.RaggedTensor):
-        return inputs.to_tensor()
-      return inputs
-
-    flat_inputs = nest.flatten(inputs)
-    contains_ragged = K.py_any(
-        isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
-
-    if not contains_ragged:
-      return inputs, None
-
-    inputs = nest.map_structure(_convert_ragged_input, inputs)
-    # Multiple mask are not yet supported, so one mask is used on all inputs.
-    # We approach this similarly when using row lengths to ignore steps.
-    nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
-                                       'int32')
-
-    return inputs, nested_row_lengths
-
   def _validate_args_if_ragged(self, is_ragged_input, mask):
     if not is_ragged_input:
       return
@@ -864,14 +844,6 @@ class RNN(Layer):
       raise ValueError('The input received constains RaggedTensors and does '
                        'not support unrolling. Disable unrolling by passing '
                        '`unroll=False` in the RNN Layer constructor.')
-
-  def _maybe_convert_to_ragged(self, is_ragged_input, output,
-                               nested_row_lengths):
-    """Converts any ragged input back to its initial structure."""
-    if not is_ragged_input:
-      return output
-
-    return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
 
   def _maybe_reset_cell_dropout_mask(self, cell):
     if isinstance(cell, DropoutRNNCellMixin):
@@ -1737,7 +1709,11 @@ class GRUCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     self.reset_after = reset_after
     self.state_size = self.units
     self.output_size = self.units
@@ -1854,9 +1830,6 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         matrix_x = K.bias_add(matrix_x, input_bias)
 
       x_z, x_r, x_h = array_ops.split(matrix_x, 3, axis=-1)
-
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
@@ -2291,7 +2264,11 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     # tuple(_ListWrapper) was silently dropping list content in at least 2.7.10,
     # and fixed after 2.7.16. Converting the state_size to wrapper around
     # NoDependency(), so that the base_layer.__setattr__ will not convert it to
@@ -2415,8 +2392,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       if 0. < self.dropout < 1.:
         inputs = inputs * dp_mask[0]
       z = K.dot(inputs, self.kernel)
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
       z += K.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
         z = K.bias_add(z, self.bias)

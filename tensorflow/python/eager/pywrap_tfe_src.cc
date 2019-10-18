@@ -225,7 +225,7 @@ bool IsInteger(PyObject* py_value) {
 #if PY_MAJOR_VERSION >= 3
   return PyLong_Check(py_value);
 #else
-  return PyInt_Check(py_value);
+  return PyInt_Check(py_value) || PyLong_Check(py_value);
 #endif
 }
 
@@ -240,6 +240,7 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
   tensorflow::Safe_PyObjectPtr dimension_value(
       PyObject_GetAttrString(py_value, "_value"));
   if (dimension_value == nullptr) {
+    PyErr_Clear();
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat("Expecting a Dimension for attr ", key,

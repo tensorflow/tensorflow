@@ -157,6 +157,11 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor);
 
+// Symmetric quantizer.
+void NeonSymmetricQuantizeFloats(const float* values, const int size,
+                                 int8_t* quantized_values, float min, float max,
+                                 float* scaling_factor);
+
 // Shift left a vector in place with v_size size.
 void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
 

@@ -86,12 +86,27 @@ Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
                                           value_to_transpose, perm_op);
 }
 
+ArrayRef<int64_t> GetRankedTensorShape(Value* value) {
+  return value->getType().cast<RankedTensorType>().getShape();
+}
+
 Value* SliceRankedTensor(OpBuilder* builder, Value* input,
                          ArrayRef<int64_t> begin_shape,
                          ArrayRef<int64_t> begin_values,
                          ArrayRef<int64_t> size_shape,
                          ArrayRef<int64_t> size_values,
                          mlir::Location location) {
+  // If the size of the tensor to be sliced from the input overflows
+  // the input tensor's dimenions, return 0-valued tensor of the requested
+  // shape.
+  ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
+  for (int i = 0; i < input_shape.size(); i++) {
+    if (begin_values[i] < 0 ||
+        (begin_values[i] + size_values[i] > input_shape[i])) {
+      return CreateF32SplatConst(builder, size_shape, 0, location);
+    }
+  }
+
   // Create a dense constant op for slice's begin
   auto slice_i2c_begin =
       CreateI64DenseConst(builder, begin_shape, begin_values, location);

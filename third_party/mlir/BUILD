@@ -19,6 +19,7 @@ package_group(
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = [
         "//...",
+        "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
         "//tensorflow/core/tfrt_delegate/...",
@@ -158,7 +159,6 @@ cc_library(
     name = "EDSC",
     srcs = [
         "lib/EDSC/Builders.cpp",
-        "lib/EDSC/CoreAPIs.cpp",
         "lib/EDSC/Helpers.cpp",
         "lib/EDSC/Intrinsics.cpp",
     ],
@@ -173,10 +173,28 @@ cc_library(
         ":AffineOps",
         ":Analysis",
         ":IR",
+        ":LoopOps",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
         ":VectorOps",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
+    name = "EDSCInterface",
+    srcs = [
+        "lib/EDSC/CoreAPIs.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Core.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
         "@llvm//:support",
     ],
 )
@@ -193,6 +211,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/AffineOps/AffineOps.td",
         "include/mlir/Dialect/AffineOps/AffineOpsBase.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -221,6 +240,7 @@ filegroup(
     name = "LoopOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/LoopOps/LoopOps.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -293,15 +313,18 @@ cc_library(
     name = "AffineOps",
     srcs = [
         "include/mlir/Transforms/InliningUtils.h",
+        "include/mlir/Transforms/LoopLikeInterface.h",
         "lib/Dialect/AffineOps/AffineOps.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/AffineOps/AffineOps.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOpsIncGen",
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":StandardOps",
         ":Support",
         "@llvm//:support",
@@ -351,10 +374,13 @@ cc_library(
     ],
     hdrs = [
         "include/mlir/Dialect/LoopOps/LoopOps.h",
+        "include/mlir/Transforms/LoopLikeInterface.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":LoopOpsIncGen",
         ":StandardOps",
         ":Support",
@@ -604,6 +630,7 @@ cc_library(
     deps = [
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
@@ -851,8 +878,10 @@ gentbl(
 filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
+        "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+        "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",
@@ -966,11 +995,14 @@ gentbl(
 cc_library(
     name = "SPIRVDialect",
     srcs = [
+        "include/mlir/Transforms/InliningUtils.h",
+        "lib/Dialect/SPIRV/LayoutUtils.cpp",
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/LayoutUtils.h",
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
@@ -1116,10 +1148,31 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "LoopLikeOpInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Transforms/LoopLikeInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Transforms/LoopLikeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Transforms/LoopLikeInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "Transforms",
     srcs = [
         "lib/Transforms/AffineDataCopyGeneration.cpp",
+        "lib/Transforms/AffineLoopInvariantCodeMotion.cpp",
         "lib/Transforms/CSE.cpp",
         "lib/Transforms/Canonicalizer.cpp",
         "lib/Transforms/DialectConversion.cpp",
@@ -1143,6 +1196,7 @@ cc_library(
         "include/mlir/Transforms/DialectConversion.h",
         "include/mlir/Transforms/LowerAffine.h",
         "include/mlir/Transforms/Passes.h",
+        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
@@ -1150,6 +1204,7 @@ cc_library(
         ":Analysis",
         ":EDSC",
         ":IR",
+        ":LoopLikeOpInterfaceIncGen",
         ":LoopOps",
         ":Pass",
         ":StandardOps",
@@ -1515,6 +1570,7 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
+        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
@@ -1630,7 +1686,6 @@ cc_binary(
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
-        ":SPIRVTransforms",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
@@ -2024,6 +2079,7 @@ cc_library(
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
+        "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],

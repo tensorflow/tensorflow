@@ -147,24 +147,20 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_invariant_code_motion",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
-        "//tensorflow/core:lib",  # fixdeps: keep
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "@llvm//:aarch64_code_gen",  # fixdeps: keep
-        "@llvm//:aarch64_disassembler",  # fixdeps: keep
-        "@llvm//:arm_code_gen",  # fixdeps: keep
-        "@llvm//:arm_disassembler",  # fixdeps: keep
         "@llvm//:core",
-        "@llvm//:mc",  # fixdeps: keep
+        "@llvm//:mc",
         "@llvm//:object",
         "@llvm//:support",
-        "@llvm//:target",  # fixdeps: keep
-        "@llvm//:x86_code_gen",  # fixdeps: keep
+        "@llvm//:target",
         "@llvm//:x86_disassembler",  # fixdeps: keep
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ] + select({
         "//tensorflow:linux_ppc64le": [
-            "@llvm//:powerpc_disassembler",
-            "@llvm//:powerpc_code_gen",
+            "@llvm//:powerpc_disassembler",  # fixdeps: keep
+            "@llvm//:powerpc_code_gen",  # fixdeps: keep
         ],
         "//conditions:default": [
         ],

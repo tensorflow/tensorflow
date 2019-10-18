@@ -47,7 +47,16 @@ class ArrayTest(PForTestCase):
         axes = [0] if y is x_i else [0, 2, -1]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
-          outputs.append(array_ops.gather(y, i, axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(2, dtypes.int64),
+                                          axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          2,
+                                          axis=math_ops.cast(
+                                              axis, dtypes.int64)))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(i, dtypes.int64),
+                                          axis=axis))
           outputs.append(array_ops.gather(y, [i], axis=axis))
           outputs.append(array_ops.gather(y, [i, 2], axis=axis))
           outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))

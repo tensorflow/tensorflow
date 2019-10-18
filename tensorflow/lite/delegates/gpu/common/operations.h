@@ -289,8 +289,8 @@ enum class PaddingContentType {
 struct PadAttributes {
   PaddingContentType type = PaddingContentType::ZEROS;
 
-  HWC prepended;
-  HWC appended;
+  BHWC prepended;
+  BHWC appended;
 };
 
 // @return shape of a tensor after Pad operation is applied to the given input.

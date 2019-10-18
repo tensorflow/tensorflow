@@ -105,7 +105,8 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
       for grappler_node_name in grappler_created_node_names:
         node_op_type = dump_data.node_op_type(grappler_node_name)
         # Look for the node created by Grappler's arithmetic optimization.
-        if node_op_type in ("AddN", "Mul"):
+        if ((test_util.IsMklEnabled() and node_op_type in ("_MklAddN", "Mul"))
+            or (node_op_type in ("AddN", "Mul"))):
           datum = dump_data.get_tensors(grappler_node_name, 0, "DebugIdentity")
           self.assertEqual(1, len(datum))
           self.assertAllClose(datum[0], [[3, 6], [9, 12]])

@@ -30,6 +30,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -222,6 +223,9 @@ class TimeDistributed(Wrapper):
 
     input_shape = K.int_shape(inputs)
     if input_shape[0] and not self._always_use_reshape:
+      inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
+      is_ragged_input = row_lengths is not None
+
       # batch size matters, use rnn-based implementation
       def step(x, _):
         output = self.layer(x, **kwargs)
@@ -231,33 +235,41 @@ class TimeDistributed(Wrapper):
           step,
           inputs,
           initial_states=[],
-          input_length=input_shape[1],
+          input_length=row_lengths[0] if is_ragged_input else input_shape[1],
           mask=mask,
           unroll=False)
-      y = outputs
+      y = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       # No batch size specified, therefore the layer will be able
       # to process batches of any size.
       # We can go with reshape-based implementation for performance.
-      input_length = input_shape[1]
-      if not input_length:
-        input_length = array_ops.shape(inputs)[1]
-      inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
-      # Shape: (num_samples * timesteps, ...). And track the
-      # transformation in self._input_map.
-      input_uid = generic_utils.object_list_uid(inputs)
-      inputs = array_ops.reshape(inputs, inner_input_shape)
-      self._input_map[input_uid] = inputs
-      # (num_samples * timesteps, ...)
-      if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
-        inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
-        kwargs['mask'] = K.reshape(mask, inner_mask_shape)
-      y = self.layer(inputs, **kwargs)
-      # Shape: (num_samples, timesteps, ...)
-      output_shape = self.compute_output_shape(input_shape).as_list()
-      output_shape = self._get_shape_tuple(
-          (-1, input_length), y, 1, output_shape[2:])
-      y = array_ops.reshape(y, output_shape)
+      if isinstance(inputs, ragged_tensor.RaggedTensor):
+        y = self.layer(inputs.values, **kwargs)
+        y = ragged_tensor.RaggedTensor.from_row_lengths(
+            y,
+            inputs.nested_row_lengths()[0])
+      else:
+        input_length = input_shape[1]
+        if not input_length:
+          input_length = array_ops.shape(inputs)[1]
+        inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+        # Shape: (num_samples * timesteps, ...). And track the
+        # transformation in self._input_map.
+        input_uid = generic_utils.object_list_uid(inputs)
+        inputs = array_ops.reshape(inputs, inner_input_shape)
+        self._input_map[input_uid] = inputs
+        # (num_samples * timesteps, ...)
+        if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
+          inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
+          kwargs['mask'] = K.reshape(mask, inner_mask_shape)
+
+        y = self.layer(inputs, **kwargs)
+
+        # Shape: (num_samples, timesteps, ...)
+        output_shape = self.compute_output_shape(input_shape).as_list()
+        output_shape = self._get_shape_tuple((-1, input_length), y, 1,
+                                             output_shape[2:])
+        y = array_ops.reshape(y, output_shape)
 
     return y
 

@@ -196,3 +196,6 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     return self.operator.matmul(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _eigvals(self):
+    return 1. / self.operator.eigvals()

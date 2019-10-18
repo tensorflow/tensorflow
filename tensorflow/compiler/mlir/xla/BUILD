@@ -81,6 +81,21 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "xla_canonicalize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/canonicalize.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+    ],
+)
+
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
@@ -92,6 +107,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:conv_ops",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -140,7 +156,7 @@ cc_library(
     srcs = ["transforms/lhlo_fuse_linalg.cc"],
     deps = [
         ":lhlo",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:Pass",
@@ -239,6 +255,7 @@ cc_library(
     deps = [
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
+        ":xla_canonicalize_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

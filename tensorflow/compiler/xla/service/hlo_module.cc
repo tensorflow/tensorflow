@@ -226,6 +226,9 @@ string HloModule::ToString(const HloPrintOptions& options) const {
                                  ? MakeComputationPostOrderAndSortedByNames()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
+    if (!options.print_computation(computation)) {
+      continue;
+    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }

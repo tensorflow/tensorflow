@@ -38,9 +38,6 @@ tf_cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":util",
         "//tensorflow/lite/testing:tflite_driver",
@@ -87,9 +84,6 @@ cc_test(
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":input_generator",
         "@com_google_googletest//:gtest_main",
@@ -113,9 +107,6 @@ tf_cc_test(
     srcs = ["diff_analyzer_test.cc"],
     data = [
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":diff_analyzer",

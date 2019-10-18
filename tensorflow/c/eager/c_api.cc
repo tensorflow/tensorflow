@@ -258,7 +258,8 @@ tensorflow::Status GetReplacedFromExistingWorkers(
 
 tensorflow::Status CreateRemoteContexts(
     const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
-    int keep_alive_secs, const tensorflow::ServerDef& server_def,
+    tensorflow::uint64 context_view_id, int keep_alive_secs,
+    const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
@@ -290,6 +291,7 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::eager::CreateContextResponse* response =
         new tensorflow::eager::CreateContextResponse();
     request.set_context_id(context_id);
+    request.set_context_view_id(context_view_id);
     *request.mutable_server_def() = server_def;
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
@@ -415,8 +417,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   }
 
   tensorflow::uint64 context_id = ctx->context->GetContextId();
+  tensorflow::uint64 context_view_id = ctx->context->GetContextViewId();
   if (reset_context) {
     context_id = tensorflow::EagerContext::NewContextId();
+    context_view_id = 0;
     // Make master eager context accessible by local eager service, which might
     // receive send tensor requests from remote workers.
     LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
@@ -461,17 +465,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
         &existing_workers, context_id, ctx->context->GetContextViewId(),
         server_def, remote_eager_workers.get(), &replaced_workers));
-    if (!replaced_workers.empty()) {
-      // Also adding replaced workers so that we recreate remote devices and
-      // contexts, and re-register functions on those workers
-      added_workers.insert(added_workers.end(), replaced_workers.begin(),
-                           replaced_workers.end());
-      for (const string& w : replaced_workers) {
-        existing_workers.erase(
-            std::remove(existing_workers.begin(), existing_workers.end(), w),
-            existing_workers.end());
-      }
-    }
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Updating cluster with following changes";
       for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
@@ -480,10 +473,21 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       for (const string& w : replaced_workers)
         VLOG(1) << "  Replaced worker " << w;
     }
+    if (!replaced_workers.empty()) {
+      // Treat replaced workers as removed then added back, so that we recreate
+      // remote devices and contexts, and re-register functions on those workers
+      removed_workers.insert(removed_workers.end(), replaced_workers.begin(),
+                             replaced_workers.end());
+      added_workers.insert(added_workers.end(), replaced_workers.begin(),
+                           replaced_workers.end());
+      for (const string& w : replaced_workers) {
+        existing_workers.erase(
+            std::remove(existing_workers.begin(), existing_workers.end(), w),
+            existing_workers.end());
+      }
+    }
     LOG_AND_RETURN_IF_ERROR(
         RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
-    LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(replaced_workers, remote_device_mgr.get()));
     LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
         added_workers, grpc_server->master_env()->worker_cache,
         remote_device_mgr.get()));
@@ -512,15 +516,20 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   // Initialize remote eager workers.
   // TODO(b/138847548) Create remote eager contexts in async mode by default.
   if (reset_context) {
-    LOG_AND_RETURN_IF_ERROR(
-        CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
-                             server_def, remote_eager_workers.get(),
-                             ctx->context->Executor().Async(), base_request));
+    LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+        remote_workers, context_id, context_view_id, keep_alive_secs,
+        server_def, remote_eager_workers.get(),
+        ctx->context->Executor().Async(), base_request));
   } else {
-    LOG_AND_RETURN_IF_ERROR(
-        CreateRemoteContexts(added_workers, context_id, keep_alive_secs,
-                             server_def, remote_eager_workers.get(),
-                             ctx->context->Executor().Async(), base_request));
+    // The master's context_view_id will be incremented by one
+    // the UpdateRemoteMaster call later. We want all new workers and
+    // existing workers to also have the updated context_view_id, so
+    // we must set their context_view_id to the existing master's
+    // context_view_id + 1.
+    LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+        added_workers, context_id, context_view_id + 1, keep_alive_secs,
+        server_def, remote_eager_workers.get(),
+        ctx->context->Executor().Async(), base_request));
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
@@ -528,9 +537,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         }
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-          existing_workers, context_id, ctx->context->GetContextViewId() + 1,
-          server_def, remote_eager_workers.get(),
-          ctx->context->Executor().Async(), base_request));
+          existing_workers, context_id, context_view_id + 1, server_def,
+          remote_eager_workers.get(), ctx->context->Executor().Async(),
+          base_request));
     }
   }
 
