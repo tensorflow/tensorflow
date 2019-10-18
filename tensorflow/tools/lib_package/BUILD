@@ -163,6 +163,7 @@ genrule(
         "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
+        "@six_archive//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -235,6 +236,7 @@ genrule(
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
+        "@six_archive//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

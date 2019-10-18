@@ -268,26 +268,6 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(PyObject* value, DataType dtype) {
   return new TFE_TensorHandle(handle);
 }
 
-const char* MaybeUpdateDevice(TFE_Context* ctx, DataType dtype,
-                              const char* device_name) {
-  if (!(device_name == nullptr || strcmp(device_name, "") == 0) ||
-      dtype == DT_INVALID || DataTypeAlwaysOnHost(dtype)) {
-    return device_name;
-  }
-
-  // Approximately follow the logic of SelectDevice and
-  // ColocationGraph::FilterSupportedDevices. Unlike the latter, though,
-  // here we do not sort by device name to avoid allocating a temporary.
-  const auto& devices = *(ctx->context->devices());
-  const auto first_local_gpu =
-      std::find_if(devices.begin(), devices.end(), [](const Device* dev) {
-        return dev->IsLocal() && dev->device_type() == DEVICE_GPU;
-      });
-  return first_local_gpu == devices.end()
-             ? nullptr
-             : strdup((*first_local_gpu)->name().c_str());
-}
-
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
                                                PyObject* value,
                                                tensorflow::DataType dtype,
@@ -369,9 +349,6 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  device_name =
-      MaybeUpdateDevice(ctx, static_cast<DataType>(handle_dtype), device_name);
-
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
   // memory. We approximate the same behavior for eager execution - keeping
   // int32 tensors in host memory.
@@ -418,10 +395,6 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
 TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
                                        DataType dtype,
                                        const char* device_name) {
-  // The device is updated twice: before the conversion using the
-  // desired dtype (if given), and after, using the effective dtype.
-  device_name = MaybeUpdateDevice(ctx, dtype, device_name);
-
   // Reduce the overhead of allocation/transfer-to-device for scalars by
   // caching the corresponding handles. Note that currently only Python
   // scalars are cached.
@@ -433,14 +406,7 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
     handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
     if (handle == nullptr) return nullptr;
     if (!PyFloat_Check(value) || std::isfinite(PyFloat_AS_DOUBLE(value))) {
-      // ConvertToEagerTensorUncached might have decided to allocate a
-      // tensor on a different device (e.g. due to TF_INT32 hack). Resolve
-      // device name from handle.
-      const auto* dev = handle->handle->op_device();
-      static constexpr char kEmpty[] = "";
-      cache->Insert(value, dtype,
-                    dev == nullptr ? kEmpty : strdup(dev->name().c_str()),
-                    handle);
+      cache->Insert(value, dtype, device_name, handle);
     }
     return handle;
   } else {

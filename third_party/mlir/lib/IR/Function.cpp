@@ -57,7 +57,7 @@ void FuncOp::build(Builder *builder, OperationState &result, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute(getTypeAttrName(), builder->getTypeAttr(type));
+  result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
   result.attributes.append(attrs.begin(), attrs.end());
   result.addRegion();
 }

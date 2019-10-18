@@ -142,14 +142,14 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
   }
   // The layer stats contain only the first min/max pairs.
   ElementsAttr layer_stats = DenseFPElementsAttr::get(
-      b.getTensorType({2}, b.getF32Type()), {min_maxs[0], min_maxs[1]});
+      RankedTensorType::get({2}, b.getF32Type()), {min_maxs[0], min_maxs[1]});
   ElementsAttr axis_stats;
   IntegerAttr axis;
 
   if (info.params_size() > 1) {
     SmallVector<int64_t, 4> axis_stats_shape{info.params_size(), 2};
     axis_stats = DenseFPElementsAttr::get(
-        b.getTensorType(axis_stats_shape, b.getF32Type()), min_maxs);
+        RankedTensorType::get(axis_stats_shape, b.getF32Type()), min_maxs);
     axis = b.getI64IntegerAttr(info.meta().quantize_axis());
   }
 

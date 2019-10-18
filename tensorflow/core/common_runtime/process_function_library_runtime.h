@@ -39,11 +39,20 @@ class FunctionArgsInterface {
  public:
   virtual ~FunctionArgsInterface() {}
 
+  virtual bool HasRemoteInputs() const = 0;
+
   virtual Status GetLocalArg(const int index, Tensor* val) const = 0;
+
+  virtual std::vector<Tensor> GetLocalTensors() const = 0;
+
+  virtual const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const = 0;
 
 #if !defined(IS_MOBILE_PLATFORM)
   virtual Status GetRemoteArg(const int index,
-                              eager::RemoteTensorHandle* val) const = 0;
+                              eager::RemoteTensorHandle* val) const {
+    return errors::Unimplemented(
+        "Serializing a remote argument is not implemented.");
+  }
 #endif  // IS_MOBILE_PLATFORM
 };
 
@@ -171,9 +180,7 @@ class ProcessFunctionLibraryRuntime {
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
                    const FunctionArgsInterface& args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) const {
-    done(errors::Unimplemented("Unimplemented."));
-  }
+                   FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
@@ -345,6 +352,12 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
+  void InstantiateRemote(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::Handle* handle,
+      FunctionLibraryRuntime::DoneCallback done);
+
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
@@ -390,10 +403,11 @@ class ProcessFunctionLibraryRuntime {
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
-    Status DistributedInit(
+    void DistributedInit(
         DistributedFunctionLibraryRuntime* parent, const string& function_name,
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-        const FunctionLibraryRuntime::InstantiateOptions& options);
+        const FunctionLibraryRuntime::InstantiateOptions& options,
+        FunctionLibraryRuntime::DoneCallback done);
 
     bool is_cross_process() {
       mutex_lock l(mu_);

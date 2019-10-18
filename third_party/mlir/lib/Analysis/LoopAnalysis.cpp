@@ -77,7 +77,7 @@ void mlir::buildTripCountMapAndOperands(
   SmallVector<AffineExpr, 4> lbSplatExpr(ubValueMap.getNumResults(),
                                          lbMap.getResult(0));
   auto lbMapSplat =
-      b.getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
+      AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
   AffineValueMap lbSplatValueMap(lbMapSplat, lbOperands);
 
   AffineValueMap tripCountValueMap;

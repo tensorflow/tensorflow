@@ -645,6 +645,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

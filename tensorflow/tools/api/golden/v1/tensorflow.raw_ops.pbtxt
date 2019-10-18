@@ -913,6 +913,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "DatasetToGraphV2"
+    argspec: "args=[\'input_dataset\', \'external_state_policy\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "DatasetToSingleElement"
     argspec: "args=[\'dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

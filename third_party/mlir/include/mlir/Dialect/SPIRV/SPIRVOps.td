@@ -485,6 +485,15 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     OptionalAttr<I32Attr>:$alignment
   );
 
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "Value *ptr, Value *value, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addOperands(ptr);
+      state.addOperands(value);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
+
   let results = (outs);
 }
 

@@ -47,6 +47,7 @@ using mlir::DenseFPElementsAttr;
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
 using mlir::OpaqueElementsAttr;
+using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
@@ -109,7 +110,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   TF_RETURN_IF_ERROR(ConvertDataType(input_dtype, *builder, &elt_type));
   SmallVector<int64_t, 4> shape;
   ConvertToMlirShape(input_shape, &shape);
-  auto type = builder->getTensorType(shape, elt_type);
+  auto type = RankedTensorType::get(shape, elt_type);
 
 #define CONVERT_FLAT(DTYPE, CTYPE) \
   case DTYPE:                      \
@@ -125,8 +126,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
       auto* dialect = builder->getContext()->getRegisteredDialect("tf");
-      return builder->getOpaqueElementsAttr(dialect, type,
-                                            MangleTensor(input_tensor));
+      return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
   }
 
 #undef CONVERT_FLAT

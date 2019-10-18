@@ -303,6 +303,8 @@ LogicalResult ExportXlaOp(DynamicUpdateSliceOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(FftOp op, OpLoweringContext ctx) { return failure(); }
+
 LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   return failure();
 }

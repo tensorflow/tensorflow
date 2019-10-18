@@ -21,21 +21,56 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "absl/memory/memory.h"
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
 class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
+
+class EagerKernelArgs : public FunctionArgsInterface {
+ public:
+  EagerKernelArgs() {}
+
+  explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
+      : tensor_args_(std::move(tensor_args)) {}
+
+  ~EagerKernelArgs() override{};
+
+  bool HasRemoteInputs() const override { return false; };
+
+  Status GetLocalArg(const int index, Tensor* val) const override;
+
+  std::vector<Tensor> GetLocalTensors() const override;
+
+  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const override {
+    return &tensor_args_;
+  };
+
+ protected:
+  gtl::InlinedVector<TensorValue, 4> tensor_args_;
+};
 
 // KernelAndDevice encapsulates the logic needed to run a computation eagerly.
 // The computation can be a single instantiated kernel (implemented by
@@ -72,15 +107,19 @@ class KernelAndDevice : public core::RefCounted {
   // Not thread safe.
   ~KernelAndDevice() override {}
 
+  virtual bool IsFunction() { return false; }
+
   // TODO(ashankar): Handle list-valued inputs.
-  virtual Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+  virtual Status Run(const EagerKernelArgs& inputs,
                      std::vector<Tensor>* outputs,
-                     CancellationManager* cancellation_manager) = 0;
+                     CancellationManager* cancellation_manager,
+                     const absl::optional<int64>& op_id) = 0;
 
   virtual Status Run(ScopedStepContainer* step_container,
-                     const gtl::InlinedVector<TensorValue, 4>& inputs,
+                     const EagerKernelArgs& inputs,
                      std::vector<Tensor>* outputs,
-                     CancellationManager* cancellation_manager) = 0;
+                     CancellationManager* cancellation_manager,
+                     const absl::optional<int64>& op_id) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -137,14 +176,14 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
-             std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager) override;
+  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+             CancellationManager* cancellation_manager,
+             const absl::optional<int64>& op_id) override;
 
-  Status Run(ScopedStepContainer* step_container,
-             const gtl::InlinedVector<TensorValue, 4>& inputs,
+  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager) override;
+             CancellationManager* cancellation_manager,
+             const absl::optional<int64>& op_id) override;
 
   const OpKernel* kernel() const override { return kernel_.get(); }
 
@@ -197,15 +236,19 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   virtual ~KernelAndDeviceFunc();
 
+  bool IsFunction() override { return true; };
+
+  Status InstantiateFunc(const NodeDef& ndef, GraphCollector* graph_collector);
+
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+             CancellationManager* cancellation_manager,
+             const absl::optional<int64>& op_id) override;
+  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager) override;
-  Status Run(ScopedStepContainer* step_container,
-             const gtl::InlinedVector<TensorValue, 4>& inputs,
-             std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager) override;
+             CancellationManager* cancellation_manager,
+             const absl::optional<int64>& op_id) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 

@@ -232,7 +232,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
                                                      original_shape.end());
       normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(rewriter.getTensorType(
+      auto new_cst = cst.reshape(RankedTensorType::get(
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
       if (!IsBroadcastableElementsAttrAndType(new_type, filter->getType())) {
@@ -323,7 +323,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       int64_t bias_size = bias_and_slice.first;
       int64_t slice_size = bias_and_slice.second;
       ShapedType new_bias_type =
-          rewriter.getTensorType({bias_size}, filter_type.getElementType());
+          RankedTensorType::get({bias_size}, filter_type.getElementType());
 
       // The new bias should be a 1-D tensor with length equals to the bias
       // dimension of the weight.

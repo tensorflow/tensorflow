@@ -28,4 +28,8 @@ tf_module {
     name: "shared_embedding_columns"
     argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'max_sequence_lengths\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
+  member_method {
+    name: "shutdown_tpu_system"
+    argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
 }

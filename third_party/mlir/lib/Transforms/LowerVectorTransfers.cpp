@@ -126,7 +126,7 @@ struct VectorTransferRewriter : public RewritePattern {
 /// Analyzes the `transfer` to find an access dimension along the fastest remote
 /// MemRef dimension. If such a dimension with coalescing properties is found,
 /// `pivs` and `vectorView` are swapped so that the invocation of
-/// LoopNestBuilder captures it in the innermost loop.
+/// AffineLoopNestBuilder captures it in the innermost loop.
 template <typename VectorTransferOpTy>
 void coalesceCopy(VectorTransferOpTy transfer,
                   SmallVectorImpl<edsc::ValueHandle *> *pivs,
@@ -288,7 +288,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
-  LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
+  AffineLoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     local(ivs) = remote(clip(transfer, view, ivs));
   });
@@ -349,7 +349,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
   std_store(vectorValue, vec, {constant_index(0)});
-  LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
+  AffineLoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     remote(clip(transfer, view, ivs)) = local(ivs);
   });

@@ -101,7 +101,7 @@ LogicalResult RewriteAssignAddVariableOp(TF::AssignAddVariableOp assign_add_op,
   Type type;
   s = tensorflow::ConvertDataType(dtype_proto, *builder, &type);
   if (!s.ok()) return assign_add_op.emitError() << s.error_message();
-  type = builder->getTensorType(type);
+  type = UnrankedTensorType::get(type);
 
   builder->setInsertionPoint(assign_add_op);
 

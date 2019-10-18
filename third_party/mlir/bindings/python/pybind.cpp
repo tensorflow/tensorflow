@@ -306,7 +306,7 @@ struct PythonLoopContext {
 
   PythonValueHandle enter() {
     ValueHandle iv(lb.value.getType());
-    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    builder = new AffineLoopNestBuilder(&iv, lb.value, ub.value, step);
     return iv;
   }
 
@@ -318,7 +318,7 @@ struct PythonLoopContext {
 
   PythonValueHandle lb, ub;
   int64_t step;
-  LoopBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonLoopNestContext {
@@ -348,7 +348,7 @@ struct PythonLoopNestContext {
     handlePtrs.reserve(steps.size());
     for (auto &h : handles)
       handlePtrs.push_back(&h.value);
-    builder = new LoopNestBuilder(
+    builder = new AffineLoopNestBuilder(
         handlePtrs, std::vector<ValueHandle>(lbs.begin(), lbs.end()),
         std::vector<ValueHandle>(ubs.begin(), ubs.end()), steps);
     return handles;
@@ -363,7 +363,7 @@ struct PythonLoopNestContext {
   std::vector<PythonValueHandle> lbs;
   std::vector<PythonValueHandle> ubs;
   std::vector<int64_t> steps;
-  LoopNestBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonBlockAppender {

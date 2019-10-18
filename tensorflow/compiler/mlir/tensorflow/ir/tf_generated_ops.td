@@ -458,6 +458,30 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   }];
 }
 
+def TF_BiasAddGradOp : TF_Op<"BiasAddGrad", [NoSideEffect]> {
+  let summary = [{
+The backward operation for "BiasAdd" on the "bias" tensor.
+  }];
+
+  let description = [{
+It accumulates all the values from out_backprop into the feature dimension.
+For NHWC data format, the feature dimension is the last. For NCHW data format,
+the feature dimension is the third-to-last.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$out_backprop,
+
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
   let summary = [{
 Bitcasts a tensor from one type to another without copying data.
@@ -3142,6 +3166,35 @@ tensor, so its value can change during training.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RFFTOp : TF_Op<"RFFT", [NoSideEffect]> {
+  let summary = "Real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 1-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most dimension of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
+`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
+followed by the `fft_length / 2` positive-frequency terms.
+
+Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {

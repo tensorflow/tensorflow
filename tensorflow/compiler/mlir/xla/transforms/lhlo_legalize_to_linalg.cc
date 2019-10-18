@@ -172,7 +172,7 @@ class LhloToLinalgOpConverter : public ConversionPattern {
       }
       nloops = std::max(nloops, static_cast<unsigned>(memref_type.getRank()));
       indexing_maps.emplace_back(
-          rewriter.getAffineMapAttr(rewriter.getMultiDimIdentityMap(nloops)));
+          AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
       auto& result_or_body_arg =
           arg.index() < operandCount ? body_arg_types : body_result_types;
       result_or_body_arg.emplace_back(memref_type.getElementType());

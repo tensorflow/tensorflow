@@ -26,6 +26,16 @@ static Value *chooseOperand(Value *input1, Value *input2, BoolAttr choice) {
   return choice.getValue() ? input1 : input2;
 }
 
+static void createOpI(PatternRewriter &rewriter, Value *input) {
+  rewriter.create<OpI>(rewriter.getUnknownLoc(), input);
+}
+
+void handleNoResultOp(PatternRewriter &rewriter, OpSymbolBindingNoResult op) {
+  // Turn the no result op to a one-result op.
+  rewriter.create<OpSymbolBindingB>(op.getLoc(), op.operand()->getType(),
+                                    op.operand());
+}
+
 namespace {
 #include "TestPatterns.inc"
 } // end anonymous namespace

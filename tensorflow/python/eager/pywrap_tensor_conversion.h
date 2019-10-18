@@ -94,8 +94,6 @@ struct TFE_TensorHandleCache {
   // Not guarded by a mutex because the code is only used while the
   // GIL is held.
   absl::flat_hash_map<Key, tensorflow::TensorHandle*> cache;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(TFE_TensorHandleCache);
 };
 
 }  // namespace tensorflow

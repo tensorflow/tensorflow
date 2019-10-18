@@ -653,11 +653,11 @@ static Type getCheckedI1SameShape(Builder *build, Type type) {
   if (type.isIntOrIndexOrFloat())
     return i1Type;
   if (auto tensorType = type.dyn_cast<RankedTensorType>())
-    return build->getTensorType(tensorType.getShape(), i1Type);
+    return RankedTensorType::get(tensorType.getShape(), i1Type);
   if (type.isa<UnrankedTensorType>())
-    return build->getTensorType(i1Type);
+    return UnrankedTensorType::get(i1Type);
   if (auto vectorType = type.dyn_cast<VectorType>())
-    return build->getVectorType(vectorType.getShape(), i1Type);
+    return VectorType::get(vectorType.getShape(), i1Type);
   return Type();
 }
 
@@ -2241,7 +2241,7 @@ OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
 
 static Type getTensorTypeFromMemRefType(Builder &b, Type type) {
   if (auto memref = type.dyn_cast<MemRefType>())
-    return b.getTensorType(memref.getShape(), memref.getElementType());
+    return RankedTensorType::get(memref.getShape(), memref.getElementType());
   return b.getNoneType();
 }
 

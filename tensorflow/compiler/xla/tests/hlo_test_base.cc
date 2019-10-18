@@ -316,8 +316,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -331,8 +330,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                                             bool run_hlo_passes,
                                             ExecutionProfile* profile,
                                             string backend_config) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -386,8 +384,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   std::vector<std::unique_ptr<Executable>> executables(n);
 
   for (int i = 0; i < n; ++i) {
-    auto module_or_status =
-        HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+    auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
     if (!module_or_status.ok()) {
       return ::testing::AssertionFailure()
              << "Error while parsing HLO text format: "
@@ -458,8 +455,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "

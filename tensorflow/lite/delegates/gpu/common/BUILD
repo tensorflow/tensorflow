@@ -238,3 +238,14 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "workgroup_selection",
+    srcs = ["workgroup_selection.cc"],
+    hdrs = ["workgroup_selection.h"],
+    deps = [
+        ":status",
+        ":types",
+        ":util",
+    ],
+)

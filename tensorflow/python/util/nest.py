@@ -653,8 +653,7 @@ def _yield_flat_up_to(shallow_tree, input_tree, is_seq, path=()):
 def assert_shallow_structure(shallow_tree,
                              input_tree,
                              check_types=True,
-                             expand_composites=False,
-                             check_subtrees_length=True):
+                             expand_composites=False):
   """Asserts that `shallow_tree` is a shallow structure of `input_tree`.
 
   That is, this function tests if the `input_tree` structure can be created from
@@ -677,14 +676,6 @@ def assert_shallow_structure(shallow_tree,
     assert_shallow_structure(shallow_tree, input_tree)
   ```
 
-  The following code will not raise an exception:
-  ```python
-    shallow_tree = ["a", "b"]
-    input_tree = ["c", ["d", "e"], "f"]
-    assert_shallow_structure(shallow_tree, input_tree,
-      check_subtrees_length=False)
-  ```
-
   Args:
     shallow_tree: an arbitrarily nested structure.
     input_tree: an arbitrarily nested structure.
@@ -694,10 +685,6 @@ def assert_shallow_structure(shallow_tree,
       name and _fields attribute to be the same class.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
-    check_subtrees_length: if `True` (default) the subtrees `shallow_tree` and
-      `input_tree` have to be the same length. If `False` sequences are treated
-      as key-value like mappings allowing them to be considered as valid
-      subtrees. Note that this may drop parts of the `input_tree`.
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
     TypeError: If the sequence types of `shallow_tree` are different from
@@ -758,7 +745,7 @@ def assert_shallow_structure(shallow_tree,
                         "be a TypeSpec.  Input has type: %s."
                         % type(input_tree))
     else:
-      if check_subtrees_length and len(input_tree) != len(shallow_tree):
+      if len(input_tree) != len(shallow_tree):
         raise ValueError(
             _STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
                 input_length=len(input_tree), shallow_length=len(shallow_tree)))
@@ -777,12 +764,11 @@ def assert_shallow_structure(shallow_tree,
                                             _yield_value(input_tree)):
       assert_shallow_structure(shallow_branch, input_branch,
                                check_types=check_types,
-                               expand_composites=expand_composites,
-                               check_subtrees_length=check_subtrees_length)
+                               expand_composites=expand_composites)
 
 
 def flatten_up_to(shallow_tree, input_tree, check_types=True,
-                  expand_composites=False, check_subtrees_length=True):
+                  expand_composites=False):
   """Flattens `input_tree` up to `shallow_tree`.
 
   Any further depth in structure in `input_tree` is retained as elements in the
@@ -835,18 +821,6 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
   flatten_up_to([0, 1, 2], [0, 1, 2])  # Output: [0, 1, 2]
   ```
 
-  Non-Full-Subtree case:
-
-  ```python
-    shallow_tree = ["a", "b"]
-    input_tree = ["c", ["d", "e"], "f"]
-    flattened = flatten_up_to(shallow_tree, input_tree,
-      check_subtrees_length=False)
-
-    # Output is:
-    # ["c", ["d", "e"]]
-  ```
-
   Args:
     shallow_tree: a possibly pruned structure of input_tree.
     input_tree: an arbitrarily nested structure or a scalar object.
@@ -855,10 +829,6 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
       same type as the corresponding node in input_tree.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
-    check_subtrees_length: if `True` (default) the subtrees `shallow_tree` and
-      `input_tree` have to be the same length. If `False` sequences are treated
-      as key-value like mappings allowing them to be considered as valid
-      subtrees. Note that this may drop parts of the `input_tree`.
 
   Returns:
     A Python list, the partially flattened version of `input_tree` according to
@@ -875,8 +845,7 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
   assert_shallow_structure(shallow_tree,
                            input_tree,
                            check_types=check_types,
-                           expand_composites=expand_composites,
-                           check_subtrees_length=check_subtrees_length)
+                           expand_composites=expand_composites)
   # Discard paths returned by _yield_flat_up_to.
   return list(v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_seq))
 
@@ -884,8 +853,7 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
 def flatten_with_tuple_paths_up_to(shallow_tree,
                                    input_tree,
                                    check_types=True,
-                                   expand_composites=False,
-                                   check_subtrees_length=True):
+                                   expand_composites=False):
   """Flattens `input_tree` up to `shallow_tree`.
 
   Any further depth in structure in `input_tree` is retained as elements in the
@@ -965,10 +933,6 @@ def flatten_with_tuple_paths_up_to(shallow_tree,
       same type as the corresponding node in input_tree.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
-    check_subtrees_length: if `True` (default) the subtrees `shallow_tree` and
-      `input_tree` have to be the same length. If `False` sequences are treated
-      as key-value like mappings allowing them to be considered as valid
-      subtrees. Note that this may drop parts of the `input_tree`.
 
   Returns:
     A Python list, the partially flattened version of `input_tree` according to
@@ -985,8 +949,7 @@ def flatten_with_tuple_paths_up_to(shallow_tree,
   assert_shallow_structure(shallow_tree,
                            input_tree,
                            check_types=check_types,
-                           expand_composites=expand_composites,
-                           check_subtrees_length=check_subtrees_length)
+                           expand_composites=expand_composites)
   return list(_yield_flat_up_to(shallow_tree, input_tree, is_seq))
 
 
@@ -1143,7 +1106,6 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
 
   check_types = kwargs.pop("check_types", True)
   expand_composites = kwargs.pop("expand_composites", False)
-  check_subtrees_length = kwargs.pop("check_subtrees_length", True)
   is_seq = is_sequence_or_composite if expand_composites else is_sequence
 
   for input_tree in inputs:
@@ -1151,8 +1113,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
         shallow_tree,
         input_tree,
         check_types=check_types,
-        expand_composites=expand_composites,
-        check_subtrees_length=check_subtrees_length)
+        expand_composites=expand_composites)
 
   # Flatten each input separately, apply the function to corresponding elements,
   # then repack based on the structure of the first input.
@@ -1161,8 +1122,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
           shallow_tree,
           input_tree,
           check_types,
-          expand_composites=expand_composites,
-          check_subtrees_length=check_subtrees_length) for input_tree in inputs
+          expand_composites=expand_composites) for input_tree in inputs
   ]
   flat_path_list = [path for path, _
                     in _yield_flat_up_to(shallow_tree, inputs[0], is_seq)]

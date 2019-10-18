@@ -58,7 +58,7 @@ public:
     }
 
     rewriter.replaceOpWithNewOp<spirv::GlobalVariableOp>(
-        op, rewriter.getTypeAttr(decoratedType), globalVarAttrs);
+        op, TypeAttr::get(decoratedType), globalVarAttrs);
     return matchSuccess();
   }
 };
