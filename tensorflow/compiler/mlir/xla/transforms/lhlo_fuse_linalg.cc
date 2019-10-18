@@ -30,7 +30,13 @@ using linalg::LinalgOp;
 struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
   void runOnFunction() override {
     auto func = getFunction();
-    OperationFolder state(func.getContext());
+
+    // TODO(pifon): Remove assumption that the function has a single block.
+    if (func.getBlocks().size() != 1) {
+      emitError(func.getLoc(), "The function needs to have a single block.");
+      signalPassFailure();
+      return;
+    }
 
     // The fusion in Linalg is currently possible only when the consumer op is
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
@@ -40,6 +46,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
+    OperationFolder state(func.getContext());
     func.walk([&](linalg::GenericOp generic_op) {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
@@ -56,10 +63,6 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
-    // TODO(pifon): Remove assumption that the function has a single block.
-    if (func.getBlocks().size() != 1) {
-      emitError(func.getLoc(), "The function needs to have a single block.");
-    }
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     linalg::Aliases aliases;
     linalg::LinalgDependenceGraph graph(aliases, linalg_ops);

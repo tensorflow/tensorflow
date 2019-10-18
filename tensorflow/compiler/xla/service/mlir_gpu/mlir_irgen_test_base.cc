@@ -111,6 +111,7 @@ StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
   compiler->SetErrorHandler(error_handler);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   compiler->RemoveModuleHook();
+  compiler->RemoveErrorHandler();
 
   if (status.ok()) {
     return errors;

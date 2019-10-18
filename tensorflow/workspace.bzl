@@ -171,11 +171,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "8091c578608ea2646e45926f863c9395d3f2873ea771fcd10eda851c91dbd447",
-        strip_prefix = "eigen-eigen-c906e1142b6b",
+        sha256 = "a1d0e38b15fa3d2106cbe2a7895c7f1b33d200eba31692c611521f932784eea7",
+        strip_prefix = "eigen-eigen-64707ac3b06d",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/c906e1142b6b.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/c906e1142b6b.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/64707ac3b06d.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/64707ac3b06d.tar.gz",
         ],
     )
 
@@ -728,17 +728,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.8.0.zip",
             "https://github.com/NVlabs/cub/archive/1.8.0.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "rocprim_archive",
-        build_file = clean_dep("//third_party:rocprim.BUILD"),
-        sha256 = "3c178461ead70ce6adb60c836a35a52564968af31dfa81f4157ab72b5f14d31f",
-        strip_prefix = "rocPRIM-4a33d328f8352df1654271939da66914f2334424",
-        urls = [
-            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/4a33d328f8352df1654271939da66914f2334424.tar.gz",
-            "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/4a33d328f8352df1654271939da66914f2334424.tar.gz",
         ],
     )
 

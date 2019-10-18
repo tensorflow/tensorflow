@@ -135,11 +135,10 @@ private:
     case spirv::BuiltIn::LocalInvocationId:
     case spirv::BuiltIn::GlobalInvocationId: {
       auto ptrType = spirv::PointerType::get(
-          builder.getVectorType({3}, builder.getIntegerType(32)),
+          VectorType::get({3}, builder.getIntegerType(32)),
           spirv::StorageClass::Input);
       newVarOp = builder.create<spirv::GlobalVariableOp>(
-          loc, builder.getTypeAttr(ptrType), builder.getStringAttr(name),
-          nullptr);
+          loc, TypeAttr::get(ptrType), builder.getStringAttr(name), nullptr);
       newVarOp.setAttr(
           convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn)),
           builder.getStringAttr(stringifyBuiltIn(builtin)));

@@ -45,11 +45,9 @@ EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
                 [&instructions_with_error](const HloInstruction* instr,
                                            const string& instr_name, int indent,
                                            bool is_root) {
-                  string tab;
-                  for (int i = 0; i < indent; i++) {
-                    tab += "  ";
-                  }
-                  string result = tab + (is_root ? "ROOT " : "") + instr_name;
+                  const string tab(2 * indent, ' ');
+                  string result =
+                      absl::StrCat(tab, is_root ? "ROOT " : "", instr_name);
                   if (!instructions_with_error.count(instr)) {
                     return result;
                   }

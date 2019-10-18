@@ -33,7 +33,7 @@ def AffineMapAttr : Attr<
     CPred<"$_self.isa<AffineMapAttr>()">, "AffineMap attribute"> {
   let storageType = [{ AffineMapAttr }];
   let returnType = [{ AffineMap }];
-  let constBuilderCall = "$_builder.getAffineMapAttr($0)";
+  let constBuilderCall = "AffineMapAttr::get($0)";
 }
 
 def AffineMapArrayAttr : TypedArrayAttrBase<AffineMapAttr,

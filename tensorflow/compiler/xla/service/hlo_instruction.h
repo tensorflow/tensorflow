@@ -311,11 +311,8 @@ class HloPrintOptions {
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
                                                  const string& instr_name,
                                                  int indent, bool is_root) {
-    string tab;
-    for (int i = 0; i < indent; i++) {
-      tab += "  ";
-    }
-    return tab + (is_root ? "ROOT " : "") + instr_name;
+    return absl::StrCat(string(2 * indent, ' '), is_root ? "ROOT " : "",
+                        instr_name);
   };
   HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
     return true;

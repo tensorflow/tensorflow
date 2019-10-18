@@ -191,8 +191,6 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
 // Note: We do not need saturation because the int8 * int8 is safe from overflow
 // in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
 // initial output value is not exceiptionally large.
-//
-// TODO(b/142062560): optimize this.
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                     int32_t n_row, int32_t n_col,
                                     int32_t* output);

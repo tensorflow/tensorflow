@@ -869,7 +869,7 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
                      ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   if (isConstant)
     result.addAttribute("constant", builder->getUnitAttr());
   if (value)
@@ -939,7 +939,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
     }
   }
 
-  result.addAttribute("type", parser.getBuilder().getTypeAttr(types[0]));
+  result.addAttribute("type", TypeAttr::get(types[0]));
   return success();
 }
 
@@ -1026,7 +1026,7 @@ void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
   result.addRegion();
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   result.attributes.append(attrs.begin(), attrs.end());
   if (argAttrs.empty())
     return;

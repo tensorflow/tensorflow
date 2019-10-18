@@ -131,7 +131,12 @@ void GPUToSPIRVPass::runOnModule() {
           builder.getI32IntegerAttr(
               static_cast<int32_t>(spirv::AddressingModel::Logical)),
           builder.getI32IntegerAttr(
-              static_cast<int32_t>(spirv::MemoryModel::GLSL450)));
+              static_cast<int32_t>(spirv::MemoryModel::GLSL450)),
+          builder.getStrArrayAttr(
+              spirv::stringifyCapability(spirv::Capability::Shader)),
+          builder.getStrArrayAttr(spirv::stringifyExtension(
+              spirv::Extension::SPV_KHR_storage_buffer_storage_class)));
+      // Hardwire the capability to be Shader.
       OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);

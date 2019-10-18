@@ -17,8 +17,8 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def ZeroDenseElementsAttr : NativeCodeCall<
-  "$_builder.getDenseElementsAttr("
-    "$_builder.getTensorType({}, getElementTypeOrSelf($0->getType())) , {"
+  "DenseElementsAttr::get("
+    "RankedTensorType::get({}, getElementTypeOrSelf($0->getType())) , {"
       "$_builder.getZeroAttr(getElementTypeOrSelf($0->getType()))})">;
 
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),

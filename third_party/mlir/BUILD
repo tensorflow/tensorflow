@@ -173,6 +173,7 @@ cc_library(
         ":AffineOps",
         ":Analysis",
         ":IR",
+        ":LoopOps",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -619,6 +620,23 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "GPUToNVVMGen",
+    strip_include_prefix = "lib/Conversion/GPUToNVVM",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToNVVM/GPUToNVVM.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToNVVM/GPUToNVVM.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":NVVMOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUToNVVMTransforms",
     srcs = ["lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp"],
@@ -629,6 +647,8 @@ cc_library(
     deps = [
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUToNVVMGen",
+        ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
@@ -876,6 +896,7 @@ gentbl(
 filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
+        "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
@@ -992,11 +1013,14 @@ gentbl(
 cc_library(
     name = "SPIRVDialect",
     srcs = [
+        "include/mlir/Transforms/InliningUtils.h",
+        "lib/Dialect/SPIRV/LayoutUtils.cpp",
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/LayoutUtils.h",
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
@@ -1564,6 +1588,7 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
+        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
@@ -1679,7 +1704,6 @@ cc_binary(
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
-        ":SPIRVTransforms",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
@@ -2073,6 +2097,7 @@ cc_library(
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
+        "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],

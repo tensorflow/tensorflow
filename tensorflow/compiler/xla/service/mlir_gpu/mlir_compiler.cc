@@ -505,6 +505,8 @@ void MlirCompiler::SetErrorHandler(ErrorHandler error_handler) {
   error_handler_ = error_handler;
 }
 
+void MlirCompiler::RemoveErrorHandler() { error_handler_ = nullptr; }
+
 }  // namespace mlir_gpu
 }  // namespace xla
 

@@ -206,7 +206,7 @@ void VectorTransferReadOp::build(Builder *builder, OperationState &result,
     result.addOperands({*paddingValue});
   }
   result.addAttribute(getPermutationMapAttrName(),
-                      builder->getAffineMapAttr(permutationMap));
+                      AffineMapAttr::get(permutationMap));
   result.addTypes(vectorType);
 }
 
@@ -383,7 +383,7 @@ void VectorTransferWriteOp::build(Builder *builder, OperationState &result,
   result.addOperands({srcVector, dstMemRef});
   result.addOperands(dstIndices);
   result.addAttribute(getPermutationMapAttrName(),
-                      builder->getAffineMapAttr(permutationMap));
+                      AffineMapAttr::get(permutationMap));
 }
 
 auto VectorTransferWriteOp::getIndices() -> operand_range {

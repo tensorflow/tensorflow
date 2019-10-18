@@ -104,6 +104,8 @@ public:
   // Precondition: isNativeCodeCall()
   StringRef getNativeCodeTemplate() const;
 
+  void print(raw_ostream &os) const;
+
 private:
   // Returns true if the TableGen Init `def` in this DagLeaf is a DefInit and
   // also a subclass of the given `superclass`.
@@ -175,6 +177,8 @@ public:
   // Returns the native code call template inside this DAG node.
   // Precondition: isNativeCodeCall()
   StringRef getNativeCodeTemplate() const;
+
+  void print(raw_ostream &os) const;
 
 private:
   const llvm::DagInit *node; // nullptr means null DagNode

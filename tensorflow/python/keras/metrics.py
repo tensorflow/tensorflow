@@ -1824,6 +1824,8 @@ class AUC(Metric):
       self.label_weights = None
 
     self._built = False
+    if not self.multi_label:
+      self._build(None)
 
   def _build(self, shape):
     """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
@@ -1854,9 +1856,15 @@ class AUC(Metric):
         'false_negatives',
         shape=variable_shape,
         initializer=init_ops.zeros_initializer)
-    with ops.init_scope():
-      if not context.executing_eagerly():
-        K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+
+    if self.multi_label:
+      with ops.init_scope():
+        # This should only be necessary for handling v1 behavior. In v2, AUC
+        # should be initialized outside of any tf.functions, and therefore in
+        # eager mode.
+        if not context.executing_eagerly():
+          K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+
     self._built = True
 
   def update_state(self, y_true, y_pred, sample_weight=None):

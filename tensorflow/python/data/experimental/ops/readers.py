@@ -24,6 +24,7 @@ import gzip
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -750,7 +751,7 @@ class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
 def make_batched_features_dataset_v2(file_pattern,
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
@@ -852,6 +853,8 @@ def make_batched_features_dataset_v2(file_pattern,
     TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
+  if reader is None:
+    reader = core_readers.TFRecordDataset
 
   if reader_num_threads is None:
     reader_num_threads = 1
@@ -932,7 +935,7 @@ def make_batched_features_dataset_v2(file_pattern,
 def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
@@ -1042,9 +1045,13 @@ class SqlDatasetV1(dataset_ops.DatasetV1Adapter):
     super(SqlDatasetV1, self).__init__(wrapped)
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-CsvDataset = CsvDatasetV1
-SqlDataset = SqlDatasetV1
-make_batched_features_dataset = make_batched_features_dataset_v1
-make_csv_dataset = make_csv_dataset_v1
+if tf2.enabled():
+  CsvDataset = CsvDatasetV2
+  SqlDataset = SqlDatasetV2
+  make_batched_features_dataset = make_batched_features_dataset_v2
+  make_csv_dataset = make_csv_dataset_v2
+else:
+  CsvDataset = CsvDatasetV1
+  SqlDataset = SqlDatasetV1
+  make_batched_features_dataset = make_batched_features_dataset_v1
+  make_csv_dataset = make_csv_dataset_v1

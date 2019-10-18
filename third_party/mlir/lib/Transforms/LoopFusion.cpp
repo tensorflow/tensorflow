@@ -953,8 +953,8 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   } else {
     newMemSpace = oldMemRefType.getMemorySpace();
   }
-  auto newMemRefType = top.getMemRefType(
-      newShape, oldMemRefType.getElementType(), {}, newMemSpace);
+  auto newMemRefType = MemRefType::get(newShape, oldMemRefType.getElementType(),
+                                       {}, newMemSpace);
   // Gather alloc operands for the dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
@@ -988,7 +988,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   }
   auto indexRemap = zeroOffsetCount == rank
                         ? AffineMap()
-                        : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs);
+                        : AffineMap::get(outerIVs.size() + rank, 0, remapExprs);
   // Replace all users of 'oldMemRef' with 'newMemRef'.
   LogicalResult res =
       replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,

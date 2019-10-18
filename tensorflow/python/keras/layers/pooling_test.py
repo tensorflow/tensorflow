@@ -45,7 +45,7 @@ class GlobalPoolingTest(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_1d_masking_support(self):
     model = keras.Sequential()
-    model.add(keras.layers.Masking(mask_value=0., input_shape=(3, 4)))
+    model.add(keras.layers.Masking(mask_value=0., input_shape=(None, 4)))
     model.add(keras.layers.GlobalAveragePooling1D())
     model.compile(loss='mae', optimizer='rmsprop')
 

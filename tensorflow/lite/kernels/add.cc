@@ -177,8 +177,6 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
   tflite::ArithmeticParams op_params;
-  // requires_flat_size_broadcast is used for BroadcastAdd4DSlow.
-  const bool requires_flat_size_broadcast = !HaveSameShapes(input1, input2);
   const bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
       GetTensorShape(input1), GetTensorShape(input2), &op_params);
 #define TF_LITE_ADD(type, opname, data_type)                             \
@@ -193,13 +191,13 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
                GetTensorData<data_type>(output))
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
-      if (requires_flat_size_broadcast) {
+      if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int32_t);
       } else {
         TF_LITE_ADD(reference_ops, Add, int32_t);
       }
     } else {
-      if (requires_flat_size_broadcast) {
+      if (need_broadcast) {
         TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, int32_t);
       } else {
         TF_LITE_ADD(optimized_ops, Add, int32_t);
@@ -207,7 +205,7 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
     }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
-      if (requires_flat_size_broadcast) {
+      if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, float);
       } else {
         TF_LITE_ADD(reference_ops, Add, float);
@@ -215,8 +213,6 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
     } else {
       if (need_broadcast) {
         TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, float);
-      } else if (requires_flat_size_broadcast) {
-        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, float);
       } else {
         TF_LITE_ADD(optimized_ops, Add, float);
       }

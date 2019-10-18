@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -44,7 +43,7 @@ XLA_TEST_F(TrivialAllReduceTest, OneOperand) {
     ROOT crs = f32[3] all-reduce(p), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   EXPECT_EQ(literal, ExecuteAndTransfer(std::move(module), {&literal}));
@@ -66,7 +65,7 @@ XLA_TEST_F(TrivialAllReduceTest, MultipleOperands) {
     ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
@@ -93,7 +92,7 @@ XLA_TEST_F(TrivialAllReduceTest, ConstantOperand) {
     ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
-      ParseAndReturnUnverifiedModule(module_str, GetModuleConfigForTest())
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});

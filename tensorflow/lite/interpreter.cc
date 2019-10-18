@@ -52,7 +52,7 @@ namespace tflite {
 
 namespace {
 
-// Gets the current TfLiteQuantization from the legacy fLiteQuantizationParams.
+// Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
 TfLiteQuantization GetQuantizationFromLegacy(
     const TfLiteQuantizationParams& legacy_quantization) {
   TfLiteQuantization quantization;

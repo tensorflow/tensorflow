@@ -32,6 +32,7 @@ cc_library(
     deps = [
         ":eager_client",
         ":remote_execute_node",
+        ":remote_mgr",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -136,6 +137,7 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:session_mgr",
@@ -207,5 +209,6 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/types:optional",
     ],
 )

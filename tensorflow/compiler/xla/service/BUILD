@@ -116,7 +116,9 @@ cc_library(
     deps = [
         ":bfloat16_support",
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
+        ":tuple_simplifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -2412,7 +2414,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/interpreter:platform_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -4425,5 +4426,17 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "collective_ops_utils",
+    srcs = ["collective_ops_utils.cc"],
+    hdrs = ["collective_ops_utils.h"],
+    deps = [
+        ":computation_placer",
+        ":hlo",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:statusor",
     ],
 )
