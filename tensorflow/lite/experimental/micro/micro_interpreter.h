@@ -60,14 +60,19 @@ class MicroInterpreter {
 
   TfLiteTensor* input(size_t index);
   size_t inputs_size() const { return subgraph_->inputs()->Length(); }
+  const flatbuffers::Vector<int32_t>* inputs() { return subgraph_->inputs(); }
 
   TfLiteTensor* output(size_t index);
   size_t outputs_size() const { return subgraph_->outputs()->Length(); }
+  const flatbuffers::Vector<int32_t>* outputs() { return subgraph_->outputs(); }
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
 
+  size_t operators_size() const {return operators_->size(); }
+  std::pair<TfLiteNode, const TfLiteRegistration*> node_and_registration(
+      int node_index);
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
 

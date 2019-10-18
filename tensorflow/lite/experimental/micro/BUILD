@@ -20,6 +20,7 @@ cc_library(
         "micro_mutable_op_resolver.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
+        "micro_optional_debug_tools.cc",
     ],
     hdrs = [
         "compatibility.h",
@@ -32,6 +33,7 @@ cc_library(
         "micro_mutable_op_resolver.h",
         "simple_memory_allocator.h",
         "test_helpers.h",
+        "micro_optional_debug_tools.h",
     ],
     copts = [
         "-Werror",
