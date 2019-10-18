@@ -21,7 +21,6 @@ from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import xla
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -73,8 +72,7 @@ class PForTest(PForTestCase):
     def compute(x):
       return math_ops.reduce_mean(x, axis=0, keepdims=True)
 
-    # experimental_compile is only supported in eager mode.
-    @def_function.function(experimental_compile=context.executing_eagerly())
+    @def_function.function(experimental_compile=True)
     def vectorized_compute(x):
       return pfor_control_flow_ops.vectorized_map(compute, x)
 
@@ -105,8 +103,7 @@ class PForTest(PForTestCase):
   def test_reduce_mean(self):
     x = random_ops.random_uniform([8, 3])
 
-    # experimental_compile is only supported in eager mode.
-    @def_function.function(experimental_compile=context.executing_eagerly())
+    @def_function.function(experimental_compile=True)
     def f():
 
       def loop_fn(i, pfor_config):
