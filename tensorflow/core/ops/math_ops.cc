@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
@@ -1390,14 +1389,27 @@ REGISTER_OP("Any")
 namespace {
 
 template <typename T>
-Status SetRangeSizeFromTensors(const Tensor& start_t, const Tensor& limit_t,
-                               const Tensor& delta_t,
-                               InferenceContext* const c) {
-  const T start = start_t.scalar<T>()();
-  const T limit = limit_t.scalar<T>()();
-  const T delta = delta_t.scalar<T>()();
-  int64 size;
-  TF_RETURN_IF_ERROR(RangeSize(start, limit, delta, &size));
+Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
+                 const Tensor* delta_t, InferenceContext* const c) {
+  T start = start_t->scalar<T>()();
+  T limit = limit_t->scalar<T>()();
+  T delta = delta_t->scalar<T>()();
+  if (start > limit && delta > T(0)) {
+    return errors::InvalidArgument(
+        "Requires start <= limit when delta > 0: ", start, "/", limit);
+  }
+  if (start < limit && delta < T(0)) {
+    return errors::InvalidArgument(
+        "Requires start >= limit when delta < 0: ", start, "/", limit);
+  }
+  if (delta == T(0)) {
+    return errors::InvalidArgument("Requires delta != 0");
+  }
+
+  auto size = (std::is_integral<T>::value
+                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
+                      std::abs(delta))
+                   : (std::ceil(std::abs((limit - start) / delta))));
   c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }
@@ -1409,7 +1421,7 @@ REGISTER_OP("Range")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {bfloat16, half, float, double, int32, int64} = DT_INT32")
+    .Attr("Tidx: {bfloat16, float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1428,19 +1440,15 @@ REGISTER_OP("Range")
         return Status::OK();
       }
       if (dtype == DT_INT32) {
-        return SetRangeSizeFromTensors<int32>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<int32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
-        return SetRangeSizeFromTensors<int64>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<int64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
-        return SetRangeSizeFromTensors<float>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {
-        return SetRangeSizeFromTensors<double>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<double>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_BFLOAT16) {
-        return SetRangeSizeFromTensors<bfloat16>(*start_t, *limit_t, *delta_t,
-                                                 c);
-      } else if (dtype == DT_HALF) {
-        return SetRangeSizeFromTensors<Eigen::half>(*start_t, *limit_t,
-                                                    *delta_t, c);
+        return RangeSize<bfloat16>(start_t, limit_t, delta_t, c);
       } else {
         return errors::InvalidArgument("Unsupported dtype", dtype);
       }
@@ -1452,7 +1460,7 @@ REGISTER_OP("LinSpace")
     .Input("stop: T")
     .Input("num: Tidx")
     .Output("output: T")
-    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
