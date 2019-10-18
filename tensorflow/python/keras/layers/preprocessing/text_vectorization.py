@@ -182,7 +182,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # This is an explicit regex of all the tokens that will be stripped if
     # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
     # stripping, a Callable should be passed into the 'standardize' arg.
-    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\t\n\']'
+    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
 
     self._standardize = standardize
     self._split = split
@@ -295,8 +295,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     if not reset_state:
       raise ValueError("TextVectorization does not support streaming adapts.")
     self.build(data.shape)
-    # TODO(askerryryan): Look into making preprocessing a model that can be
-    # passed as a subgraph to dataset.map.
+    # TODO(b/142870340): Look at passing preprocess as subgraph to dataset.map.
     preprocessed_inputs = self._preprocess(data)
     super(TextVectorization,
           self).adapt(self._to_numpy(preprocessed_inputs), reset_state)
@@ -454,11 +453,11 @@ class TextVectorization(CombinerPreprocessingLayer):
     elif callable(self._standardize):
       inputs = self._standardize(inputs)
     elif self._standardize is not None:
-      raise RuntimeError(("%s is not a supported standardization. "
-                          "TextVectorization supports the following options "
-                          "for `standardize`: None, "
-                          "'lower_and_strip_punctuation', or a "
-                          "Callable.") % self._standardize)
+      raise ValueError(("%s is not a supported standardization. "
+                        "TextVectorization supports the following options "
+                        "for `standardize`: None, "
+                        "'lower_and_strip_punctuation', or a "
+                        "Callable.") % self._standardize)
 
     if self._split is not None:
       # If we are splitting, we validate that the 1st axis is of dimension 1 and
@@ -472,7 +471,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       elif callable(self._split):
         inputs = self._split(inputs)
       else:
-        raise RuntimeError(
+        raise ValueError(
             ("%s is not a supported splitting."
              "TextVectorization supports the following options "
              "for `split`: None, 'whitespace', or a Callable.") % self._split)
@@ -590,8 +589,7 @@ class _TextVectorizationCombiner(Combiner):
 
   def merge(self, accumulators):
     """Merge several accumulators to a single accumulator."""
-    # TODO(askerryryan): Think about performance and benchmark different options
-    # for the merge algo.
+    # TODO(b/142871075): Benchmark different alternatives for merge algorithm.
     concat_vocab = np.concatenate(
         [getattr(acc, _ACCUMULATOR_VOCAB_NAME) for acc in accumulators])
     concat_counts = np.concatenate(

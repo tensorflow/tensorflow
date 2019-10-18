@@ -48,14 +48,11 @@ def get_layer_class():
     return text_vectorization_v1.TextVectorization
 
 
-# TODO(askerryryan): Update all tests to providee one string per example since
-# pre-tokenized input is not officially supported by the API.
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationLayerTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
 
-  # TODO(askerryryan): Fix tf-idf weight setting and add test for TFIDF mode.
   @parameterized.named_parameters(
       {
           "testcase_name":
@@ -167,6 +164,26 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
           },
           "expected_output": [[0, 1, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 2],
                               [1, 1, 0, 0, 0]],
+      },
+      {
+          "testcase_name":
+              "test_tokens_idf_mode",
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "standardize": None,
+              "split": None,
+              "output_mode": text_vectorization.TFIDF
+          },
+          "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
+                              [0, 0, 0, 1.466337, 0], [0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 1.7917595], [0, 0, 0, 1.4663371, 0],
+                              [0, 1.098612, 0, 0, 0], [2.3978953, 0, 0, 0, 0]],
       },
       {
           "testcase_name":
@@ -335,6 +352,40 @@ class TextVectorizationPreprocessingTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_string_multiple_preprocessing_steps(self):
+    input_array = np.array([["earth wInD and firE"],
+                            ["\tfire\tand\nearth!!    michig@n  "]])
+    expected_output = [[
+        b"earth",
+        b"wind",
+        b"and",
+        b"fire",
+        b"earth wind",
+        b"wind and",
+        b"and fire",
+    ],
+                       [
+                           b"fire",
+                           b"and",
+                           b"earth",
+                           b"michign",
+                           b"fire and",
+                           b"and earth",
+                           b"earth michign",
+                       ]]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        ngrams=2,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_string_splitting_with_non_1d_array_fails(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -344,6 +395,27 @@ class TextVectorizationPreprocessingTest(
         output_mode=None)
     with self.assertRaisesRegex(RuntimeError,
                                 ".*tokenize strings, the first dimension.*"):
+      _ = layer(input_data)
+
+  def test_standardization_with_invalid_standardize_arg(self):
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize="unexpected_standardization",
+        split=None,
+        output_mode=None)
+    with self.assertRaisesRegex(ValueError,
+                                ".*is not a supported standardization.*"):
+      _ = layer(input_data)
+
+  def test_splitting_with_invalid_split_arg(self):
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split="unexpected_split_arg",
+        output_mode=None)
+    with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
 
