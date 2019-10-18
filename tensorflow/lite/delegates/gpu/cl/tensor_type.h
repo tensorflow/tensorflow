@@ -37,6 +37,10 @@ enum class TensorStorageType {
 struct TensorDescriptor {
   DataType data_type;
   TensorStorageType storage_type;
+
+  bool operator==(const TensorDescriptor& d) const {
+    return data_type == d.data_type && storage_type == d.storage_type;
+  }
 };
 
 std::string ToString(TensorStorageType type);

@@ -91,29 +91,23 @@ class InferenceContext {
 
  private:
   void CopyInAndOutIds(const GraphFloat32& graph);
-  Status ConvertOperations(
-      const CreationContext& creation_context, const GraphFloat32& graph,
-      ModelHints hints,
-      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
+  Status ConvertOperations(const CreationContext& creation_context,
+                           const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
+  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                           const CreationContext& creation_context,
+                           const GraphFloat32& graph);
   void Merge();
-  Status AllocateMemory(
-      const GraphFloat32& graph, const CLDevice& device, CLContext* context,
-      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
+  Status AllocateMemory(const CLDevice& device, CLContext* context);
 
-  Status AllocateMemoryForBuffers(
-      const GraphFloat32& graph, const CLDevice& device, CLContext* context,
-      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
+  Status AllocateMemoryForBuffers(const CLDevice& device, CLContext* context);
 
-  Status AllocateMemoryForStrongShapes(
-      const GraphFloat32& graph, const CLDevice& device, CLContext* context,
-      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
+  Status AllocateMemoryForStrongShapes(const CLDevice& device,
+                                       CLContext* context);
 
   // utility function
-  void GetUsages(
-      const std::function<bool(const TensorDescriptor&)>& functor,
-      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors,
-      std::map<ValueId, int2>* usages) const;
+  void GetUsages(const std::function<bool(const TensorDescriptor&)>& functor,
+                 std::map<ValueId, int2>* usages);
 
   void BindMemoryToOperations();
   Status Compile(const CreationContext& creation_context);
@@ -137,6 +131,33 @@ class InferenceContext {
   // Memory is allocated only once, in ConvertOperations, and is not modified
   //  anywhere.
   std::vector<CLNode> nodes_;
+
+  struct DummyTensor {
+    BHWC shape;
+    TensorDescriptor descriptor;
+
+    bool operator==(const DummyTensor& b) const {
+      return shape == b.shape && descriptor == b.descriptor;
+    }
+  };
+
+  class TensorReserver {
+   public:
+    ValueId Add(const DummyTensor& dummy) {
+      reservations_[next_] = dummy;
+      return next_++;
+    }
+    void Add(ValueId id, const DummyTensor& dummy) {
+      reservations_[id] = dummy;
+    }
+    void SetNext(ValueId id) { next_ = id; }
+    DummyTensor Get(ValueId id) { return reservations_[id]; }
+
+   private:
+    std::unordered_map<ValueId, DummyTensor> reservations_;
+    ValueId next_;
+  };
+  TensorReserver tensor_reserver_;
 
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
