@@ -314,22 +314,41 @@ Status InferenceContext::ConvertOperations(
       op_def.dst_tensors.push_back(
           tensor_reserver_.Get(outputs[j]->id).descriptor);
     }
-    std::unique_ptr<GPUOperation> gpu_op;
+    GPUOperationsSubgraph gpu_subgraph;
     RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints,
-                                         inputs, outputs, node, &gpu_op));
-    CLNode cl_node;
-    cl_node.operations.push_back(std::move(gpu_op));
-    cl_node.ranges.push_back(int2(0, static_cast<int>(inputs.size())));
-    cl_node.inputs.resize(inputs.size());
-    for (int j = 0; j < inputs.size(); ++j) {
-      cl_node.inputs[j] = inputs[j]->id;
+                                         inputs, outputs, node, &gpu_subgraph));
+    std::unordered_map<int, ValueId> mapping_to_global_ids;
+    for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
+      const auto& t = gpu_subgraph.new_tensors[j];
+      auto global_id = tensor_reserver_.Add({t.first, t.second});
+      mapping_to_global_ids[j] = global_id;
     }
-    cl_node.outputs.resize(outputs.size());
-    for (int j = 0; j < outputs.size(); ++j) {
-      cl_node.outputs[j] = outputs[j]->id;
+    for (auto& gpu_op : gpu_subgraph.operations) {
+      CLNode cl_node;
+      cl_node.operations.push_back(std::move(gpu_op.operation));
+      cl_node.ranges.push_back(
+          int2(0, static_cast<int>(gpu_op.input_ids.size())));
+      cl_node.inputs.resize(gpu_op.input_ids.size());
+      for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
+        int id = gpu_op.input_ids[j];
+        if (id >= 0) {
+          cl_node.inputs[j] = inputs[id]->id;
+        } else {
+          cl_node.inputs[j] = mapping_to_global_ids[-(id + 1)];
+        }
+      }
+      cl_node.outputs.resize(gpu_op.output_ids.size());
+      for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
+        int id = gpu_op.input_ids[j];
+        if (id >= 0) {
+          cl_node.outputs[j] = outputs[id]->id;
+        } else {
+          cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
+        }
+      }
+      cl_node.name = node.operation.type + " " + std::to_string(node.id);
+      nodes_.push_back(std::move(cl_node));
     }
-    cl_node.name = node.operation.type + " " + std::to_string(node.id);
-    nodes_.push_back(std::move(cl_node));
   }
 
   return OkStatus();
