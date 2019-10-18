@@ -152,6 +152,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     # It is safe to use the fast, reshape-based approach with all of our
     # built-in Layers.
@@ -464,6 +465,7 @@ class Bidirectional(Wrapper):
     super(Bidirectional, self).__init__(layer, **kwargs)
     self._setattr_tracking = True
     self.input_spec = layer.input_spec
+    self._supports_ragged_inputs = True
 
   def _verify_layer_config(self):
     """Ensure the forward and backward layers have valid common property."""

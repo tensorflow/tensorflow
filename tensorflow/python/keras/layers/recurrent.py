@@ -423,6 +423,7 @@ class RNN(Layer):
     self._states = None
     self.constants_spec = None
     self._num_constants = 0
+    self._supports_ragged_inputs = True
 
   @property
   def states(self):
