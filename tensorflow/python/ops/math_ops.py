@@ -3290,21 +3290,36 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   element of the input is identical to the first element of the output:
 
   ```python
-  tf.cumsum([a, b, c])  # [a, a + b, a + b + c]
+  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  x = tf.constant([2, 4, 6, 8])
+  tf.cumsum(x)    # [ 2,  6, 12, 20]
+  
+  # using varying `axis` values
+  y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
+
+  tf.cumsum(y, axis=0)    # [[ 2,  4,  6,  8],
+                          #  [ 3,  7, 11, 15]]
+
+  tf.cumsum(y, axis=1)    # [[ 2,  6, 12, 20],
+                          #  [ 1,  4,  9, 16]]
   ```
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
 
   ```python
-  tf.cumsum([a, b, c], exclusive=True)  # [0, a, a + b]
+  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+  x = tf.constant([2, 4, 6, 8])
+  tf.cumsum(x, exclusive=True)   # [ 0,  2,  6, 12]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
 
   ```python
-  tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  x = tf.constant([2, 4, 6, 8])
+  tf.cumsum(x, reverse=True)    # [20, 18, 14,  8]
   ```
 
   This is more efficient than using separate `tf.reverse` ops.
@@ -3312,7 +3327,9 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   The `reverse` and `exclusive` kwargs can also be combined:
 
   ```python
-  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  x = tf.constant([2, 4, 6, 8])
+  tf.cumsum(x, exclusive=True, reverse=True)    # [18, 14,  8,  0]
   ```
 
   Args:
