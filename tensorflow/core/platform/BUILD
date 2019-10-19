@@ -804,12 +804,6 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
-filegroup(
-    name = "legacy_human_readable_json_src",
-    srcs = tf_platform_srcs(["human_readable_json.cc"]),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
 # TODO(gunan): Remove the following once references in core/BUILD is removed.
 exports_files(
     glob(
