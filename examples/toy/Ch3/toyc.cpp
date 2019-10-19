@@ -79,7 +79,8 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
   return parser.ParseModule();
 }
 
-int loadMLIR(mlir::MLIRContext &context, mlir::OwningModuleRef &module) {
+int loadMLIR(llvm::SourceMgr &sourceMgr, mlir::MLIRContext &context,
+             mlir::OwningModuleRef &module) {
   // Handle '.toy' input to the compiler.
   if (inputType != InputType::MLIR &&
       !llvm::StringRef(inputFilename).endswith(".mlir")) {
@@ -97,7 +98,6 @@ int loadMLIR(mlir::MLIRContext &context, mlir::OwningModuleRef &module) {
   }
 
   // Parse the input mlir.
-  llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
   module = mlir::parseSourceFile(sourceMgr, &context);
   if (!module) {
@@ -113,7 +113,9 @@ int dumpMLIR() {
 
   mlir::MLIRContext context;
   mlir::OwningModuleRef module;
-  if (int error = loadMLIR(context, module))
+  llvm::SourceMgr sourceMgr;
+  mlir::SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+  if (int error = loadMLIR(sourceMgr, context, module))
     return error;
 
   if (EnableOpt) {
