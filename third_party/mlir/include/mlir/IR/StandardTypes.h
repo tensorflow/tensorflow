@@ -149,6 +149,34 @@ public:
   const llvm::fltSemantics &getFloatSemantics();
 };
 
+/// The 'complex' type represents a complex number with a parameterized element
+/// type, which is composed of a real and imaginary value of that element type.
+///
+/// The element must be a floating point or integer scalar type.
+///
+class ComplexType
+    : public Type::TypeBase<ComplexType, Type, detail::ComplexTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a ComplexType with the provided element type.
+  static ComplexType get(Type elementType);
+
+  /// Get or create a ComplexType with the provided element type.  This emits
+  /// and error at the specified location and returns null if the element type
+  /// isn't supported.
+  static ComplexType getChecked(Type elementType, Location location);
+
+  /// Verify the construction of an integer type.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Type elementType);
+
+  Type getElementType();
+
+  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
+};
+
 /// This is a common base class between Vector, UnrankedTensor, RankedTensor,
 /// and MemRef types because they share behavior and semantics around shape,
 /// rank, and fixed element type. Any type with these semantics should inherit
@@ -256,8 +284,8 @@ public:
     // Note: Non standard/builtin types are allowed to exist within tensor
     // types. Dialects are expected to verify that tensor types have a valid
     // element type within that dialect.
-    return type.isIntOrFloat() || type.isa<VectorType>() ||
-           type.isa<OpaqueType>() ||
+    return type.isIntOrFloat() || type.isa<ComplexType>() ||
+           type.isa<VectorType>() || type.isa<OpaqueType>() ||
            (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
   }
 
@@ -383,37 +411,6 @@ private:
   using Base::getImpl;
 };
 
-/// The 'complex' type represents a complex number with a parameterized element
-/// type, which is composed of a real and imaginary value of that element type.
-///
-/// The element must be a floating point or integer scalar type.
-///
-class ComplexType
-    : public Type::TypeBase<ComplexType, Type, detail::ComplexTypeStorage> {
-public:
-  using Base::Base;
-
-  /// Get or create a ComplexType with the provided element type.
-  static ComplexType get(Type elementType);
-
-  /// Get or create a ComplexType with the provided element type.  This emits
-  /// and error at the specified location and returns null if the element type
-  /// isn't supported.
-  static ComplexType getChecked(Type elementType, Location location);
-
-  /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
-
-  Type getElementType();
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
-
-private:
-  static ComplexType getCheckedImpl(Type elementType,
-                                    Optional<Location> location);
-};
 
 /// Tuple types represent a collection of other types. Note: This type merely
 /// provides a common mechanism for representing tuples in MLIR. It is up to

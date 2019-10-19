@@ -72,6 +72,7 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass();
 // Creates an instance of TensorFlow Lite dialect SplitMergedOperandsPass.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass();
 
+std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 }  // namespace TFL
 
 }  // namespace mlir

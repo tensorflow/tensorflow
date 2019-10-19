@@ -130,7 +130,7 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
     } else {
-      result_type = builder->getTensorType(builder->getI1Type());
+      result_type = UnrankedTensorType::get(builder->getI1Type());
     }
   }
   return result_type;
@@ -957,14 +957,14 @@ void RangeOp::build(Builder *builder, OperationState &result, Value *start,
         llvm::APInt::Rounding::DOWN);
     return RangeOp::build(
         builder, result,
-        builder->getTensorType(
+        RankedTensorType::get(
             size.getSExtValue(),
             start->getType().cast<TensorType>().getElementType()),
         start, limit, delta);
   }
   return RangeOp::build(
       builder, result,
-      builder->getTensorType(
+      RankedTensorType::get(
           {-1}, start->getType().cast<TensorType>().getElementType()),
       start, limit, delta);
 }
@@ -974,7 +974,7 @@ void RangeOp::build(Builder *builder, OperationState &result, Value *start,
 
 void RankOp::build(Builder *builder, OperationState &result, Value *input) {
   return RankOp::build(builder, result,
-                       builder->getTensorType({}, builder->getIntegerType(32)),
+                       RankedTensorType::get({}, builder->getIntegerType(32)),
                        input);
 }
 
@@ -1062,7 +1062,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
   auto etype = ttype.getElementType();
 
   auto unranked = [builder, etype, &result, shape, tensor]() {
-    return ReshapeOp::build(builder, result, builder->getTensorType(etype),
+    return ReshapeOp::build(builder, result, UnrankedTensorType::get(etype),
                             tensor, shape);
   };
 
@@ -1108,7 +1108,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
       const_shape[unknown_index] = product_tshape / product_cshape;
     }
     return ReshapeOp::build(builder, result,
-                            builder->getTensorType(const_shape, etype), tensor,
+                            RankedTensorType::get(const_shape, etype), tensor,
                             shape);
   }
   return unranked();
@@ -1175,8 +1175,8 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   for (int i = 0; i < rank; ++i)
     dimensions.push_back(b.getIntegerAttr(elementType, shape[i]));
 
-  auto resultType = b.getTensorType({rank}, elementType);
-  return b.getDenseElementsAttr(resultType, dimensions);
+  auto resultType = RankedTensorType::get({rank}, elementType);
+  return DenseElementsAttr::get(resultType, dimensions);
 }
 
 void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
@@ -1186,7 +1186,7 @@ void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
   auto out_type = use32Bit.getValue() ? builder->getIntegerType(32)
                                       : builder->getIntegerType(64);
   return ShapeOp::build(builder, result,
-                        builder->getTensorType({rank}, out_type), input);
+                        RankedTensorType::get({rank}, out_type), input);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1414,7 +1414,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value *x,
   // If value is unranked, then so is results.
   if (!x_type.hasRank())
     return TransposeOp::build(builder, result,
-                              builder->getTensorType(x_type.getElementType()),
+                              UnrankedTensorType::get(x_type.getElementType()),
                               x, perm);
 
   // TODO(jpienaar): Handle unknown perm case.
@@ -1434,9 +1434,9 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value *x,
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(
-        builder, result, builder->getTensorType(const_shape, etype), x, perm);
+        builder, result, RankedTensorType::get(const_shape, etype), x, perm);
   }
-  return TransposeOp::build(builder, result, builder->getTensorType(etype), x,
+  return TransposeOp::build(builder, result, UnrankedTensorType::get(etype), x,
                             perm);
 }
 

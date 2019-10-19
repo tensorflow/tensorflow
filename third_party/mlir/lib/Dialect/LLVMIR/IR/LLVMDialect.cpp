@@ -869,7 +869,7 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
                      ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   if (isConstant)
     result.addAttribute("constant", builder->getUnitAttr());
   if (value)
@@ -939,7 +939,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
     }
   }
 
-  result.addAttribute("type", parser.getBuilder().getTypeAttr(types[0]));
+  result.addAttribute("type", TypeAttr::get(types[0]));
   return success();
 }
 
@@ -1026,7 +1026,7 @@ void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
   result.addRegion();
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   result.attributes.append(attrs.begin(), attrs.end());
   if (argAttrs.empty())
     return;
@@ -1113,6 +1113,21 @@ LogicalResult LLVMFuncOp::verifyType() {
 // Depends on the type attribute being correct as checked by verifyType
 unsigned LLVMFuncOp::getNumFuncArguments() {
   return getType().getUnderlyingType()->getFunctionNumParams();
+}
+
+// Hook for OpTrait::FunctionLike, returns the number of function results.
+// Depends on the type attribute being correct as checked by verifyType
+unsigned LLVMFuncOp::getNumFuncResults() {
+  llvm::FunctionType *funcType =
+      cast<llvm::FunctionType>(getType().getUnderlyingType());
+  // We model LLVM functions that return void as having zero results,
+  // and all others as having one result.
+  // If we modeled a void return as one result, then it would be possible to
+  // attach an MLIR result attribute to it, and it isn't clear what semantics we
+  // would assign to that.
+  if (funcType->getReturnType()->isVoidTy())
+    return 0;
+  return 1;
 }
 
 static LogicalResult verify(LLVMFuncOp op) {
@@ -1357,6 +1372,9 @@ bool LLVMType::isPointerTy() { return getUnderlyingType()->isPointerTy(); }
 /// Struct type utilities.
 LLVMType LLVMType::getStructElementType(unsigned i) {
   return get(getContext(), getUnderlyingType()->getStructElementType(i));
+}
+unsigned LLVMType::getStructNumElements() {
+  return getUnderlyingType()->getStructNumElements();
 }
 bool LLVMType::isStructTy() { return getUnderlyingType()->isStructTy(); }
 

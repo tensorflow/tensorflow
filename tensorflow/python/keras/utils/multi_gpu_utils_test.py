@@ -43,11 +43,14 @@ class TestMultiGPUModel(test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     super(TestMultiGPUModel, self).__init__(methodName)
-    physical_devices = config.list_physical_devices('GPU')
-    if len(physical_devices) == 1:
+    gpu_devices = config.list_physical_devices('GPU')
+    xla_gpu_devices = config.list_physical_devices('XLA_GPU')
+    # NOTE: XLA devices don't support the set_virtual_device_configuration
+    # codepaths.
+    if len(gpu_devices) == 1 and not xla_gpu_devices:
       # A GPU is available, simulate 2 instead.
       config.set_virtual_device_configuration(
-          physical_devices[0], [
+          gpu_devices[0], [
               context.VirtualDeviceConfiguration(500),
               context.VirtualDeviceConfiguration(500)
           ])

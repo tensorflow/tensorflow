@@ -82,6 +82,8 @@ using mlir::OpBuilder;
 using mlir::Operation;
 using mlir::OperationState;
 using mlir::OwningModuleRef;
+using mlir::RankedTensorType;
+using mlir::UnrankedTensorType;
 using mlir::Value;
 using mlir::quant::QuantizedType;
 using tflite::TensorT;
@@ -175,16 +177,16 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
   }
 
   if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
-    return builder.getTensorType({}, elem_type);
+    return RankedTensorType::get({}, elem_type);
   }
 
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());
-    return builder.getTensorType(shape, elem_type);
+    return RankedTensorType::get(shape, elem_type);
   }
 
-  return builder.getTensorType(elem_type);
+  return UnrankedTensorType::get(elem_type);
 }
 
 // Extract the min max information in the tensor and create the quant stats op.
@@ -211,14 +213,16 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   }
   // The layer stats contain only the first min/max pairs.
   mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
-      b.getTensorType({2}, b.getF32Type()), {min_maxs[0], min_maxs[1]});
+      mlir::RankedTensorType::get({2}, b.getF32Type()),
+      {min_maxs[0], min_maxs[1]});
   mlir::ElementsAttr axis_stats;
   mlir::IntegerAttr axis;
   if (mins.size() > 1) {
     llvm::SmallVector<int64_t, 4> axis_stats_shape{
         static_cast<int64_t>(mins.size()), 2};
     axis_stats = mlir::DenseFPElementsAttr::get(
-        b.getTensorType(axis_stats_shape, b.getF32Type()), min_maxs);
+        mlir::RankedTensorType::get(axis_stats_shape, b.getF32Type()),
+        min_maxs);
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
   return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
@@ -399,14 +403,14 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-    value = builder.getOpaqueElementsAttr(&dialect, shaped_type, mangled);
+    value = mlir::OpaqueElementsAttr::get(&dialect, shaped_type, mangled);
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }
 
   if (IsQuantized(tensor)) {
     auto op = builder.create<tfl::QConstOp>(
-        loc, builder.getTypeAttr(shaped_type), value);
+        loc, mlir::TypeAttr::get(shaped_type), value);
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
@@ -490,7 +494,7 @@ StatusOr<Operation*> ConvertOp(
 
     // Special case for quantize: return type must also be in qtype attribute
     if (op_name == "tfl.quantize") {
-      op_state.addAttribute("qtype", builder.getTypeAttr(type));
+      op_state.addAttribute("qtype", mlir::TypeAttr::get(type));
     }
 
     op_state.addTypes({type});

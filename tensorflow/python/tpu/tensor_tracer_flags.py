@@ -58,6 +58,7 @@ _FLAG_NAME_EXCLUDED_OPTYPES = 'excluded_optypes'
 _FLAG_NAME_INCLUDED_OPNAMES = 'included_opnames'
 _FLAG_NAME_INCLUDED_OPTYPES = 'included_optypes'
 _FLAG_NAME_INCLUDED_CORES = 'included_cores'
+_FLAG_NAME_TRACE_LEVEL = 'trace_level'
 _FLAG_NAME_TRACE_DIR = 'trace_dir'
 _FLAG_NAME_REPORT_FILE = 'report_file'
 _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
@@ -67,6 +68,8 @@ _FLAG_NAME_OP_RANGE = 'op_range'
 _FLAG_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
+
+_TT_DEFAULT_TRACE_LEVEL = 3
 
 
 class TTParameters(object):
@@ -119,6 +122,8 @@ class TTParameters(object):
         _FLAG_NAME_INCLUDED_CORES)
     self.include_less_interesting_ops, _ = self.get_flag_value(
         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS)
+    self.trace_level = self._get_flag_int_value(
+        _FLAG_NAME_TRACE_LEVEL, _TT_DEFAULT_TRACE_LEVEL)
 
   def _is_conditional_trace_mode(self):
     return self.trace_mode == TRACE_MODE_FULL_IF_NAN
@@ -239,7 +244,7 @@ class TTParameters(object):
         _FLAG_NAME_INCLUDED_CORES, _FLAG_NAME_REPORT_FILE,
         _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS, _FLAG_NAME_OP_RANGE,
-        _FLAG_DUMP_BEFORE_AFTER_GRAPHS
+        _FLAG_DUMP_BEFORE_AFTER_GRAPHS, _FLAG_NAME_TRACE_LEVEL
     ]
     tensor_tracer_flags = self._env.get(_FLAGS_ENV_VAR)
     if not tensor_tracer_flags:

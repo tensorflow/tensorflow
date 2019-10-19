@@ -137,6 +137,33 @@ template <typename T> static LogicalResult verifyIndexOp(T op) {
   return success();
 }
 
+static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
+  if (allReduce.body().empty() != allReduce.op().hasValue())
+    return allReduce.emitError(
+        "expected either an op attribute or a non-empty body");
+  if (!allReduce.body().empty()) {
+    if (allReduce.body().front().getNumArguments() != 2)
+      return allReduce.emitError("expected two region arguments");
+    for (auto *argument : allReduce.body().front().getArguments()) {
+      if (argument->getType() != allReduce.getType())
+        return allReduce.emitError("incorrect region argument type");
+    }
+    unsigned yieldCount = 0;
+    for (Block &block : allReduce.body()) {
+      if (auto yield = dyn_cast<gpu::Yield>(block.getTerminator())) {
+        if (yield.getNumOperands() != 1)
+          return allReduce.emitError("expected one gpu.yield operand");
+        if (yield.getOperand(0)->getType() != allReduce.getType())
+          return allReduce.emitError("incorrect gpu.yield type");
+        ++yieldCount;
+      }
+    }
+    if (yieldCount == 0)
+      return allReduce.emitError("expected gpu.yield op in region");
+  }
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
 

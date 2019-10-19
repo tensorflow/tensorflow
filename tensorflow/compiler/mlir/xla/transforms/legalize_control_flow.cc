@@ -89,7 +89,7 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   }
 
   auto cond_op = builder.create<mlir::CallOp>(
-      loc, while_op.cond(), builder.getTensorType({}, builder.getI1Type()),
+      loc, while_op.cond(), RankedTensorType::get({}, builder.getI1Type()),
       cond_block_arguments);
   auto cond_value =
       builder.create<mlir::ExtractElementOp>(loc, cond_op.getResult(0))

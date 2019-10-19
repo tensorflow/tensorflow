@@ -47,6 +47,25 @@ limitations under the License.
 
 namespace tensorflow {
 
+Status EagerKernelArgs::GetLocalArg(const int index, Tensor* val) const {
+  Tensor* arg = tensor_args_.at(index).tensor;
+  if (arg) {
+    *val = *arg;
+    return Status::OK();
+  } else {
+    return errors::NotFound("Argument ", index, " has no local tensor.");
+  }
+}
+
+std::vector<Tensor> EagerKernelArgs::GetLocalTensors() const {
+  std::vector<Tensor> lcoal_inputs;
+  lcoal_inputs.reserve(tensor_args_.size());
+  for (const TensorValue& tensor_value : tensor_args_) {
+    lcoal_inputs.push_back(*tensor_value.tensor);
+  }
+  return lcoal_inputs;
+}
+
 std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
     const {
   if (runner_) {
@@ -94,8 +113,8 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
-                                 GraphCollector* graph_collector) {
+Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
+                                            GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
   const FunctionDef* function_def;
   if (flr_ == nullptr) {
@@ -171,30 +190,38 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
 
-  TF_RETURN_IF_ERROR(
-      pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
+  return pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_);
+}
+
+Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
+                                 GraphCollector* graph_collector) {
+  TF_RETURN_IF_ERROR(InstantiateFunc(ndef, graph_collector));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
-Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+Status KernelAndDeviceOp::Run(const EagerKernelArgs& inputs,
                               std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager) {
+                              CancellationManager* cancellation_manager,
+                              const absl::optional<int64>& op_id) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager);
+  return this->Run(&step_container, inputs, outputs, cancellation_manager,
+                   op_id);
 }
 
-Status KernelAndDeviceFunc::Run(
-    const gtl::InlinedVector<TensorValue, 4>& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager) {
+Status KernelAndDeviceFunc::Run(const EagerKernelArgs& inputs,
+                                std::vector<Tensor>* outputs,
+                                CancellationManager* cancellation_manager,
+                                const absl::optional<int64>& op_id) {
   const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
   ScopedStepContainer step_container(0, [&devices](const string& name) {
     for (Device* device : devices) {
       device->resource_manager()->Cleanup(name).IgnoreError();
     }
   });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager);
+  return this->Run(&step_container, inputs, outputs, cancellation_manager,
+                   op_id);
 }
 
 namespace {
@@ -209,9 +236,10 @@ struct OpExecutionState : public core::RefCounted {
 }  // anonymous namespace
 
 Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
-                              const gtl::InlinedVector<TensorValue, 4>& inputs,
+                              const EagerKernelArgs& inputs,
                               std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager) {
+                              CancellationManager* cancellation_manager,
+                              const absl::optional<int64>& op_id) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -223,20 +251,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                              tensorflow::HOST_MEMORY);
   }
 
-  gtl::InlinedVector<DeviceContext*, 4> input_device_contexts;
-  for (int i = 0; i < inputs.size(); i++) {
-    DeviceContext* device_context = nullptr;
-    if (device_->tensorflow_gpu_device_info() != nullptr) {
-      device_context = device_->tensorflow_gpu_device_info()->default_context;
-    }
-    input_device_contexts.push_back(device_context);
-  }
-
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
+  params.inputs = inputs.GetTensorValues();
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.input_alloc_attrs = &in_attrs;
@@ -268,7 +287,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.step_container = step_container;
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
-  params.input_device_contexts = &input_device_contexts;
 
   OpKernelContext context(&params);
 
@@ -308,10 +326,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::Run(
-    ScopedStepContainer* step_container,
-    const gtl::InlinedVector<TensorValue, 4>& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager) {
+Status KernelAndDeviceFunc::Run(ScopedStepContainer* step_container,
+                                const EagerKernelArgs& inputs,
+                                std::vector<Tensor>* outputs,
+                                CancellationManager* cancellation_manager,
+                                const absl::optional<int64>& op_id) {
   FunctionLibraryRuntime::Options opts;
 
   // We don't pass rendezvous from eager context because we can get tensor
@@ -334,15 +353,12 @@ Status KernelAndDeviceFunc::Run(
 
   opts.stats_collector = nullptr;
   opts.runner = get_runner();
+  opts.op_id = op_id;
 
   Notification done;
   Status status;
   outputs->clear();
-  std::vector<Tensor> input_vector;
-  input_vector.reserve(inputs.size());
-  for (const TensorValue& tensor_value : inputs) {
-    input_vector.push_back(*tensor_value.tensor);
-  }
+
   {
     profiler::TraceMe activity(
         [&] {
@@ -350,7 +366,7 @@ Status KernelAndDeviceFunc::Run(
                               "#");
         },
         profiler::TraceMeLevel::kInfo);
-    pflr_->Run(opts, handle_, input_vector, outputs,
+    pflr_->Run(opts, handle_, inputs, outputs,
                [&status, &done](const Status& s) {
                  status = s;
                  done.Notify();

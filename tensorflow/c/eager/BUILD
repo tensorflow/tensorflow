@@ -154,7 +154,32 @@ tf_cuda_cc_test(
     tags = [
         "guitar",
         "multi_gpu",
-        "no_oss",  # TODO(b/136267687): re-enable after fixing flakiness
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_remote_test",
+    size = "small",
+    srcs = [
+        "c_api_remote_test.cc",
+    ],
+    extra_copts = tfe_xla_copts(),
+    tags = [
+        "guitar",
+        "multi_gpu",
+        "no_oss",
     ],
     deps = [
         ":c_api",

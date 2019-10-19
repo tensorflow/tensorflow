@@ -1756,7 +1756,6 @@ class Operation(object):
     self._inputs_val = None
 
     # pylint: disable=protected-access
-    self._id_value = self._graph._next_id()
     self._original_op = original_op
     self._traceback = tf_stack.extract_stack()
 
@@ -1803,7 +1802,7 @@ class Operation(object):
       tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
       self._outputs.append(tensor)
 
-    self._graph._add_op(self, self._id_value, name)  # pylint: disable=protected-access
+    self._id_value = self._graph._add_op(self, name)  # pylint: disable=protected-access
 
     if not c_op:
       self._control_flow_post_processing(input_tensors=inputs)
@@ -2894,19 +2893,24 @@ class Graph(object):
     if self._finalized:
       raise RuntimeError("Graph is finalized and cannot be modified.")
 
-  def _add_op(self, op, op_id, op_name):
-    """Adds 'op' to the graph.
+  def _add_op(self, op, op_name):
+    """Adds 'op' to the graph and returns the unique ID for the added Operation.
 
     Args:
       op: the Operation to add.
-      op_id: the ID of the Operation.
       op_name: the name of the Operation.
+
+    Returns:
+      An integer that is a unique ID for the added Operation.
     """
     self._check_not_finalized()
     with self._lock:
+      self._next_id_counter += 1
+      op_id = self._next_id_counter
       self._nodes_by_id[op_id] = op
       self._nodes_by_name[op_name] = op
       self._version = max(self._version, op_id)
+      return op_id
 
   @property
   def _c_graph(self):
@@ -3687,13 +3691,6 @@ class Graph(object):
     """
     op = self._get_operation_by_tf_operation(tf_output.oper)
     return op.outputs[tf_output.index]
-
-  def _next_id(self):
-    """Id for next Operation instance. Also increments the internal id."""
-    self._check_not_finalized()
-    with self._lock:
-      self._next_id_counter += 1
-      return self._next_id_counter
 
   @property
   def _last_id(self):

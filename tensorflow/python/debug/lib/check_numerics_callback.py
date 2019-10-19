@@ -58,6 +58,32 @@ IGNORE_OP_OUTPUTS = (
     (b"FusedBatchNormV3", 5),  # reserve_space_3
 )
 
+# Some frequently used ops are generally safe and we can skip them to reduce
+# overhead. NOTE: This list is compiled by observing operations called by
+# models in practice and is not a comprehensive list of safe operations.
+SAFE_OPS = (
+    b"Concat",
+    b"ConcatV2",
+    b"ExpandDims",
+    b"Fill",
+    b"Gather",
+    b"Maximum",
+    b"Minimum",
+    b"Reshape",
+    b"Slice",
+    b"Squeeze",
+    b"Stack",
+    b"StridedSlice",
+    b"StridedSliceGrad",
+    b"TensorListConcatV2",
+    b"TensorListGather",
+    b"TensorListGetItem",
+    b"TensorListPopBack",
+    b"TensorListStack",
+    b"Transpose",
+    b"Unpack",
+)
+
 
 def limit_string_length(string, max_len=50):
   """Limit the length of input string.
@@ -190,7 +216,8 @@ def _check_numerics_callback(op_type,
   """Eager-function unified callback for checking numerics."""
   del attrs, op_name  # Unused
   op_type_bytes = compat.as_bytes(op_type)
-  if op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
+  if (op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS or
+      op_type_bytes in SAFE_OPS):
     return
   if graph:
     # Under graph mode. Insert check_numerics op.

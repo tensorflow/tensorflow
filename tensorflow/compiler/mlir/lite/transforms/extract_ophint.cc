@@ -216,17 +216,17 @@ struct OphintCompositeOp {
           Operation* first_use = current_identity_op->getNextNode();
           builder->setInsertionPoint(first_use);
           Location loc = first_use->getLoc();
-          auto shape_type = builder->getTensorType({input_type.getRank() + 1},
-                                                   builder->getIntegerType(32));
+          auto shape_type = RankedTensorType::get({input_type.getRank() + 1},
+                                                  builder->getIntegerType(32));
           SmallVector<Attribute, 4> result_shape_data(reshape_op_shape.size());
           for (int i = 0; i < reshape_op_shape.size(); ++i) {
             result_shape_data[i] = builder->getI32IntegerAttr(
                 static_cast<int32_t>(reshape_op_shape[i]));
           }
           auto shape_attr =
-              builder->getDenseElementsAttr(shape_type, result_shape_data);
+              DenseElementsAttr::get(shape_type, result_shape_data);
           auto shape = builder->create<ConstantOp>(loc, shape_type, shape_attr);
-          auto reshape_output_type = builder->getTensorType(
+          auto reshape_output_type = RankedTensorType::get(
               reshape_op_shape, input_type.getElementType());
           Operation* reshape = builder->create<TFL::ReshapeOp>(
               first_use->getLoc(), reshape_output_type, input, shape);
@@ -254,7 +254,7 @@ struct OphintCompositeOp {
             pack_shape.push_back(dim);
           }
           auto pack_input_type =
-              builder->getTensorType(pack_shape, type.getElementType());
+              RankedTensorType::get(pack_shape, type.getElementType());
           builder->setInsertionPoint(first_use);
           Operation* pack_op = builder->create<TFL::PackOp>(
               first_use->getLoc(), pack_input_type, pack_input_operands,
@@ -298,7 +298,7 @@ struct OphintCompositeOp {
           shape.push_back(dim);
         }
         aggregated_output_types[kv.first] =
-            builder->getTensorType(shape, first_output_type.getElementType());
+            RankedTensorType::get(shape, first_output_type.getElementType());
       } else if (operand.aggregation == kStrategyLast) {
         Value* last_output =
             operand.ops.at(operand.ops.size() - 1)->getOperand(0);

@@ -89,7 +89,7 @@ namespace {
 // Returns 1D 64-bit dense elements attribute with the given values.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                         Builder* builder) {
-  RankedTensorType ty = builder->getTensorType(
+  RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
   return DenseElementsAttr::get<int64_t>(ty, values)
       .cast<DenseIntElementsAttr>();
@@ -652,7 +652,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
   auto x_ranked = x.dyn_cast<RankedTensorType>();
   auto y_ranked = y.dyn_cast<RankedTensorType>();
   if (!x || !y) {
-    return builder->getTensorType(element_type);
+    return UnrankedTensorType::get(element_type);
   }
 
   auto shape_x = x_ranked.getShape();
@@ -669,7 +669,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
         out_shape[i] = std::max(x_val, y_val);
       }
     }
-    return builder->getTensorType(out_shape, element_type);
+    return RankedTensorType::get(out_shape, element_type);
   }
 
   auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
@@ -687,7 +687,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
     }
   }
 
-  return builder->getTensorType(out_shape, element_type);
+  return RankedTensorType::get(out_shape, element_type);
 }
 }  // namespace
 
@@ -765,7 +765,7 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
     shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
                                   stride_vals[i]));
   }
-  return builder->getTensorType(shape, ranked_ty.getElementType());
+  return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
 //===----------------------------------------------------------------------===//

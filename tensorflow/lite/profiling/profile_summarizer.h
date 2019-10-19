@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_PROFILE_SUMMARIZER_H_
 #define TENSORFLOW_LITE_PROFILING_PROFILE_SUMMARIZER_H_
 
+#include <functional>
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
@@ -37,18 +38,31 @@ class ProfileSummarizer {
 
   // Returns a string detailing the accumulated runtime stats in a tab-separated
   // format which can be pasted into a spreadsheet for further analysis.
-  std::string GetOutputString() const {
-    return stats_calculator_->GetOutputString();
+  std::string GetOutputString() {
+    return GenerateReport("profile", /*include_output_string*/ true);
   }
 
-  std::string GetShortSummary() const {
-    return stats_calculator_->GetShortSummary();
+  std::string GetShortSummary() {
+    return GenerateReport("summary", /*include_output_string*/ false);
   }
 
-  bool HasProfiles() const { return stats_calculator_->num_runs() >= 1; }
+  tensorflow::StatsCalculator* GetStatsCalculator(uint32_t subgraph_index);
+
+  bool HasProfiles() {
+    for (auto& stats_calc : stats_calculator_map_) {
+      auto subgraph_stats = stats_calc.second.get();
+      if (subgraph_stats->num_runs() >= 1) return true;
+    }
+    return false;
+  }
 
  private:
-  std::unique_ptr<tensorflow::StatsCalculator> stats_calculator_;
+  // Map storing stats per subgraph.
+  std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>
+      stats_calculator_map_;
+
+  // GenerateReport returns the report of subgraphs in a string format.
+  std::string GenerateReport(std::string tag, bool include_output_string);
 };
 
 }  // namespace profiling

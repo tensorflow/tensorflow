@@ -249,6 +249,15 @@ public:
     return op_filter_iterator<OpT>(end(), end());
   }
 
+  /// Return an iterator range over the operation within this block excluding
+  /// the terminator operation at the end.
+  llvm::iterator_range<iterator> without_terminator() {
+    if (begin() == end())
+      return {begin(), end()};
+    auto endIt = --end();
+    return {begin(), endIt};
+  }
+
   //===--------------------------------------------------------------------===//
   // Terminator management
   //===--------------------------------------------------------------------===//

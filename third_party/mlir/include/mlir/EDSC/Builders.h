@@ -24,6 +24,7 @@
 #define MLIR_EDSC_BUILDERS_H_
 
 #include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
@@ -161,8 +162,14 @@ public:
   /// Constructs a new AffineForOp and captures the associated induction
   /// variable. A ValueHandle pointer is passed as the first argument and is the
   /// *only* way to capture the loop induction variable.
-  LoopBuilder(ValueHandle *iv, ArrayRef<ValueHandle> lbHandles,
-              ArrayRef<ValueHandle> ubHandles, int64_t step);
+  static LoopBuilder makeAffine(ValueHandle *iv,
+                                ArrayRef<ValueHandle> lbHandles,
+                                ArrayRef<ValueHandle> ubHandles, int64_t step);
+  /// Constructs a new loop::ForOp and captures the associated induction
+  /// variable. A ValueHandle pointer is passed as the first argument and is the
+  /// *only* way to capture the loop induction variable.
+  static LoopBuilder makeLoop(ValueHandle *iv, ValueHandle lbHandle,
+                              ValueHandle ubHandle, ValueHandle stepHandle);
   LoopBuilder(const LoopBuilder &) = delete;
   LoopBuilder(LoopBuilder &&) = default;
 
@@ -172,7 +179,10 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a LoopBuilder.
-  ValueHandle operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+
+private:
+  LoopBuilder() = default;
 };
 
 /// Explicit nested LoopBuilder. Offers a compressed multi-loop builder to avoid
@@ -182,30 +192,50 @@ public:
 /// Usage:
 ///
 /// ```c++
-///    LoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1, 1})(
+///    AffineLoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1,
+///    1})(
 ///      [&](){
 ///        ...
 ///      });
 /// ```
 ///
 /// ```c++
-///    LoopNestBuilder({&i}, {lb}, {ub}, {1})([&](){
-///      LoopNestBuilder({&j}, {lb}, {ub}, {1})([&](){
-///        LoopNestBuilder({&k}, {lb}, {ub}, {1})([&](){
+///    AffineLoopNestBuilder({&i}, {lb}, {ub}, {1})([&](){
+///      AffineLoopNestBuilder({&j}, {lb}, {ub}, {1})([&](){
+///        AffineLoopNestBuilder({&k}, {lb}, {ub}, {1})([&](){
 ///          ...
 ///        }),
 ///      }),
 ///    });
 /// ```
-class LoopNestBuilder {
+class AffineLoopNestBuilder {
 public:
-  LoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
-                  ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
+  // This entry point accomodates the fact that AffineForOp implicitly uses
+  // multiple `lbs` and `ubs` with one single `iv` and `step` to encode `max`
+  // and and `min` constraints respectively.
+  AffineLoopNestBuilder(ValueHandle *iv, ArrayRef<ValueHandle> lbs,
+                        ArrayRef<ValueHandle> ubs, int64_t step);
+  AffineLoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+                        ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
-  ValueHandle operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(llvm::function_ref<void(void)> fun = nullptr);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
+};
+
+/// Helper class to sugar building loop.for loop nests from ranges.
+/// This is similar to edsc::AffineLoopNestBuilder except it operates on
+/// loop.for.
+class LoopNestBuilder {
+public:
+  LoopNestBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
+                  ArrayRef<ValueHandle> lbs, ArrayRef<ValueHandle> ubs,
+                  ArrayRef<ValueHandle> steps);
+  void operator()(std::function<void(void)> fun = nullptr);
+
+private:
+  llvm::SmallVector<LoopBuilder, 4> loops;
 };
 
 // This class exists solely to handle the C++ vexing parse case when

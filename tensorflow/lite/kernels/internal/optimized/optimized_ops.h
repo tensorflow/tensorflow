@@ -1543,7 +1543,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Add");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
@@ -1741,6 +1741,39 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
   }
 }
 
+// Scalar-broadcast add that can be used for inner loop of more general
+// broadcast add, so that, for example, scalar-broadcast with batch will still
+// be fast.
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               float broadcast_value, const float* input2_data,
+                               float* output_data) {
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t output_activation_min_vector =
+      vdupq_n_f32(params.float_activation_min);
+  const float32x4_t output_activation_max_vector =
+      vdupq_n_f32(params.float_activation_max);
+  const float32x4_t broadcast_value_dup = vdupq_n_f32(broadcast_value);
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input2_val_original = vld1q_f32(input2_data + i);
+
+    const float32x4_t output =
+        vaddq_f32(input2_val_original, broadcast_value_dup);
+
+    const float32x4_t clamped =
+        vmaxq_f32(output_activation_min_vector,
+                  vminq_f32(output_activation_max_vector, output));
+    vst1q_f32(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8* input1_data,
                 const RuntimeShape& input2_shape, const uint8* input2_data,
@@ -1749,7 +1782,7 @@ inline void Add(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Add/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
@@ -1768,7 +1801,7 @@ inline void Add(const ArithmeticParams& params,
 
   const int input1_shift = params.input1_shift;
   const int flat_size =
-      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int16 output_activation_min = params.quantized_activation_min;
   const int16 output_activation_max = params.quantized_activation_max;
 
@@ -1813,8 +1846,10 @@ inline void Add(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar + input2_map.array();
   } else {
-    // Should not come here.
-    TFLITE_DCHECK(false);
+    reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
+                                      input2_shape, input2_data, output_shape,
+                                      output_data);
+    return;
   }
   output_map = output_map.cwiseMax(params.quantized_activation_min);
   output_map = output_map.cwiseMin(params.quantized_activation_max);
@@ -1915,7 +1950,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
+inline void BroadcastAddFivefold(const ArithmeticParams& params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const float* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
@@ -1924,14 +1959,10 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
                                  float* output_data) {
   gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/float");
 
-  ArithmeticParams switched_params = unswitched_params;
-
   const bool use_unswitched =
-      unswitched_params.broadcast_category ==
+      params.broadcast_category ==
       tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
 
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
   const float* input1_data =
       use_unswitched ? unswitched_input1_data : unswitched_input2_data;
   const float* input2_data =
@@ -1977,11 +2008,30 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   } else {
-    // TODO(renjieliu): Optimze for scalar broadcast case.
-    reference_ops::BroadcastAdd4DSlow(
-        unswitched_params, unswitched_input1_shape, unswitched_input1_data,
-        unswitched_input2_shape, unswitched_input2_data, output_shape,
-        output_data);
+    // Special case of y4 == 1, in which the innermost loop is a single element
+    // and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except simplified
+    // for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const float* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
@@ -2049,7 +2099,7 @@ inline void Mul(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Mul");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
@@ -2060,7 +2110,7 @@ inline void Mul(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Mul/int32/activation");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
   for (int i = 0; i < flat_size; ++i) {
@@ -2091,8 +2141,9 @@ inline void MulNoActivation(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
-    // Should not come here.
-    TFLITE_DCHECK(false);
+    reference_ops::BroadcastMul4DSlow(params, input1_shape, input1_data,
+                                      input2_shape, input2_data, output_shape,
+                                      output_data);
   }
 }
 
@@ -2105,7 +2156,7 @@ inline void Mul(const ArithmeticParams& params,
   // properly optimized version.
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2130,7 +2181,7 @@ inline void Mul(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2294,6 +2345,8 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
 }
 
 // Broadcast mul that can often be used for inner loop of broadcast Mul.
+// This function will handle scalar_value (LHS) * vector_values (RHS).
+// Since it's a float function, input params does not matter here.
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
                                const float broadcast_value,
                                const float* input2_data, float* output_data) {
@@ -2332,7 +2385,7 @@ inline void Mul(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Mul/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -2461,6 +2514,8 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
+          // The input may be switched here, but the common parameters here
+          // do not matter as they will not influence the float math execution.
           MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
                              output_data_ptr);
           input2_data_ptr += y3;
@@ -2604,7 +2659,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             float* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubNonBroadcast");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -2621,7 +2676,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               int32* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubWithActivation/int32");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -2638,7 +2693,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               float* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubWithActivation/float");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,

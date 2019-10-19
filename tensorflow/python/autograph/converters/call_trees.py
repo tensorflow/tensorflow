@@ -62,7 +62,8 @@ class _ArgTemplateBuilder(object):
 
   def _consume_args(self):
     if self._arg_accumulator:
-      self._argspec.append(gast.Tuple(elts=self._arg_accumulator, ctx=None))
+      self._argspec.append(
+          gast.Tuple(elts=self._arg_accumulator, ctx=gast.Load()))
       self._arg_accumulator = []
 
   def add_arg(self, a):
@@ -84,7 +85,7 @@ class _ArgTemplateBuilder(object):
       for i in range(1, len(self._argspec)):
         result = gast.BinOp(result, gast.Add(), self._argspec[i])
       return result
-    return gast.Tuple([], None)
+    return gast.Tuple([], gast.Load())
 
 
 class CallTreeTransformer(converter.Base):

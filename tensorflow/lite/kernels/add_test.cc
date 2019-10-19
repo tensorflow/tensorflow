@@ -190,6 +190,24 @@ TEST(IntegerAddOpModel, WithBroadcast) {
   }
 }
 
+TEST(IntegerAddOpModel, Int32MultiDimBroadcast) {
+  IntegerAddOpModel m({TensorType_INT32, {1, 2}}, {TensorType_INT32, {2, 1}},
+                      {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {3, 5});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 6, 7, 9}));
+}
+
+TEST(IntegerAddOpModel, Float32MultiDimBroadcast) {
+  FloatAddOpModel m({TensorType_FLOAT32, {1, 2}}, {TensorType_FLOAT32, {2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {3, 5});
+  m.PopulateTensor<float>(m.input2(), {1, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 6, 7, 9}));
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsNoActivation() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);

@@ -280,7 +280,7 @@ public:
     Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
                                rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -770,5 +770,5 @@ mlir::linalg::createLowerLinalgToLLVMPass() {
 }
 
 static PassRegistration<LowerLinalgToLLVMPass>
-    pass("linalg-convert-to-llvm",
+    pass("convert-linalg-to-llvm",
          "Lower the operations from the linalg dialect into the LLVM dialect");

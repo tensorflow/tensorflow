@@ -177,57 +177,76 @@ ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
   }
 }
 
-Status ClusterFunctionLibraryRuntime::Instantiate(
+void ClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
-    FunctionLibraryRuntime::LocalHandle* handle) {
-  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
+    FunctionLibraryRuntime::LocalHandle* handle,
+    FunctionLibraryRuntime::DoneCallback done) {
+  auto target = options.target;
+  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   WorkerInterface* wi =
-      worker_session_->worker_cache()->GetOrCreateWorker(options.target);
+      worker_session_->worker_cache()->GetOrCreateWorker(target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
     worker_session_->worker_cache()->ListWorkers(&workers);
-    return errors::InvalidArgument(
-        "Could not find worker with target: ", options.target,
-        " Available workers: ", absl::StrJoin(workers, ", "));
+    done(errors::InvalidArgument(
+        "Could not find worker with target: ", target,
+        " Available workers: ", absl::StrJoin(workers, ", ")));
+    return;
   }
 
   // Make RPC and obtain a graph handle.
   GraphDef gdef;
-  std::vector<string> send_keys, recv_keys;
+  auto* send_keys = new std::vector<string>;
+  auto* recv_keys = new std::vector<string>;
   auto construct_graph_fn = [&](const FunctionLibraryDefinition* lib_def) {
     const FunctionDef* fdef = lib_def->Find(function_name);
     const OpDef& sig = fdef->signature();
     TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, *lib_def,
-                                              &gdef, &send_keys, &recv_keys));
+                                              &gdef, send_keys, recv_keys));
     return Status::OK();
   };
+  Status s;
   if (options.lib_def) {
-    TF_RETURN_IF_ERROR(construct_graph_fn(options.lib_def));
+    s = construct_graph_fn(options.lib_def);
   } else {
-    TF_RETURN_IF_ERROR(construct_graph_fn(&lib_def));
+    s = construct_graph_fn(&lib_def);
+  }
+  if (!s.ok()) {
+    done(s);
+    return;
   }
 
-  RegisterGraphRequest req;
-  req.set_session_handle(worker_session_->session_name());
-  req.set_create_worker_session_called(create_worker_session_called_);
-  *req.mutable_graph_def() = std::move(gdef);
-  req.mutable_graph_options()
+  auto* req = new RegisterGraphRequest;
+  req->set_session_handle(worker_session_->session_name());
+  req->set_create_worker_session_called(create_worker_session_called_);
+  *req->mutable_graph_def() = std::move(gdef);
+  req->mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
-  RegisterGraphResponse resp;
-  TF_RETURN_IF_ERROR(wi->RegisterGraph(&req, &resp));
+  auto* resp = new RegisterGraphResponse;
 
-  mutex_lock l(mu_);
-  *handle = function_data_.size();
-  function_data_.push_back(FunctionData(resp.graph_handle(), options.target, wi,
-                                        send_keys, recv_keys));
-  VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
-          << options.target << " (this: " << this << ")"
-          << " with handle: " << *handle;
-  return Status::OK();
+  wi->RegisterGraphAsync(
+      req, resp,
+      [this, handle, req, resp, wi, function_name, target, send_keys, recv_keys,
+       done](const Status& status) {
+        if (status.ok()) {
+          mutex_lock l(mu_);
+          *handle = function_data_.size();
+          function_data_.push_back(FunctionData(resp->graph_handle(), target,
+                                                wi, *send_keys, *recv_keys));
+          VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
+                  << target << " (this: " << this << ")"
+                  << " with handle: " << *handle;
+        }
+        done(status);
+        delete recv_keys;
+        delete send_keys;
+        delete req;
+        delete resp;
+      });
 }
 
 void ClusterFunctionLibraryRuntime::Run(

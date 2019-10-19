@@ -1078,6 +1078,17 @@ ENTRY %Parameters1.v4 () -> f32[] {
 
 )"
 },
+// rng-get-and-update-state
+{
+"RngGetAndUpdateState",
+R"(HloModule rng_get_and_update_state
+
+ENTRY %RngGetAndUpdateState () -> u64[2] {
+  ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=4096
+}
+
+)"
+},
   });
   // clang-format on
 }

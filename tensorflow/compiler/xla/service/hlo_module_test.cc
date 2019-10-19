@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -215,7 +214,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+                          ParseAndReturnVerifiedModule(text));
   ASSERT_FALSE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module_copy,
@@ -237,7 +236,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+                          ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module_copy,
@@ -274,7 +273,7 @@ ENTRY ReduceR3ToR2.v3 {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+                          ParseAndReturnVerifiedModule(text));
 
   // Perform various transformations on the graph:
   //

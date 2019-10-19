@@ -26,6 +26,16 @@ static Value *chooseOperand(Value *input1, Value *input2, BoolAttr choice) {
   return choice.getValue() ? input1 : input2;
 }
 
+static void createOpI(PatternRewriter &rewriter, Value *input) {
+  rewriter.create<OpI>(rewriter.getUnknownLoc(), input);
+}
+
+void handleNoResultOp(PatternRewriter &rewriter, OpSymbolBindingNoResult op) {
+  // Turn the no result op to a one-result op.
+  rewriter.create<OpSymbolBindingB>(op.getLoc(), op.operand()->getType(),
+                                    op.operand());
+}
+
 namespace {
 #include "TestPatterns.inc"
 } // end anonymous namespace
@@ -115,7 +125,7 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
                                   parentRegion.end());
 
     // Drop this operation.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -139,7 +149,7 @@ struct TestRegionRewriteUndo : public RewritePattern {
     rewriter.create<TestValidOp>(op->getLoc(), ArrayRef<Value *>());
 
     // Drop this operation.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -153,7 +163,7 @@ struct TestDropOp : public ConversionPattern {
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };

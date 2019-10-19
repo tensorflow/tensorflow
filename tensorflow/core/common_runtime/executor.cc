@@ -275,7 +275,6 @@ struct NodeItem {
 };
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<DeviceContext*, 4> DeviceContextVec;
 typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
 // Immutable view of a Graph organized for efficient execution.
@@ -895,8 +894,7 @@ class ExecutorState {
           ref_mu(other.ref_mu),
           has_value(other.has_value),
           val_field_is_set(other.val_field_is_set),
-          alloc_attr(other.alloc_attr),
-          device_context(other.device_context) {
+          alloc_attr(other.alloc_attr) {
       if (val_field_is_set) {
         val.Init(*other.val);
       }
@@ -914,7 +912,6 @@ class ExecutorState {
       has_value = other.has_value;
       val_field_is_set = other.val_field_is_set;
       alloc_attr = other.alloc_attr;
-      device_context = other.device_context;
       if (val_field_is_set) {
         val.Init(*other.val);
       }
@@ -930,7 +927,6 @@ class ExecutorState {
       has_value = other.has_value;
       val_field_is_set = other.val_field_is_set;
       alloc_attr = other.alloc_attr;
-      device_context = other.device_context;
       if (val_field_is_set) {
         val.Init(std::move(*other.val));
       }
@@ -959,10 +955,6 @@ class ExecutorState {
 
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
-
-    // Every entry carries an optional DeviceContext containing
-    // Device-specific information about how the Tensor was produced.
-    DeviceContext* device_context = nullptr;
   };
 
   // Contains the device context assigned by the device at the beginning of a
@@ -1374,7 +1366,6 @@ class ExecutorState {
   // Before invoking item->kernel, fills in its "inputs".
   Status PrepareInputs(const NodeItem& item, Entry* first_input,
                        TensorValueVec* inputs,
-                       DeviceContextVec* input_device_contexts,
                        AllocatorAttributeVec* input_alloc_attrs,
                        bool* is_input_dead);
 
@@ -1600,9 +1591,8 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 }
 
 // State kept alive for executing an asynchronous node in another
-// thread.  NOTE: We need to make a copy of p.input,
-// p.input_device_contexts, and p.input_alloc_attrs for asynchronous
-// kernels because OpKernelContext methods like input_type(i) needs
+// thread.  NOTE: We need to make a copy of p.input and p.input_alloc_attrs for
+// asynchronous kernels because OpKernelContext methods like input_type(i) needs
 // the param points to valid input type vector. It's not an issue for
 // sync kernels because these vectors are kept on the stack.
 struct ExecutorState::AsyncState {
@@ -1610,7 +1600,6 @@ struct ExecutorState::AsyncState {
              const NodeItem* _item, Entry* _first_input,
              NodeExecStatsInterface* _stats)
       : saved_inputs(*p.inputs),
-        saved_input_device_contexts(*p.input_device_contexts),
         saved_input_alloc_attrs(*p.input_alloc_attrs),
         params(p),
         tagged_node(_tagged_node),
@@ -1621,12 +1610,10 @@ struct ExecutorState::AsyncState {
         ctx(ParamsButClearingEigenGPUDevice(&params), item->num_outputs),
         stats(_stats) {
     params.inputs = &saved_inputs;
-    params.input_device_contexts = &saved_input_device_contexts;
     params.input_alloc_attrs = &saved_input_alloc_attrs;
   }
 
   TensorValueVec saved_inputs;
-  DeviceContextVec saved_input_device_contexts;
   AllocatorAttributeVec saved_input_alloc_attrs;
   OpKernelContext::Params params;
   TaggedNode tagged_node;
@@ -1682,7 +1669,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
   // Parameters passed to OpKernel::Compute.
   TensorValueVec inputs;
-  DeviceContextVec input_device_contexts;
   AllocatorAttributeVec input_alloc_attrs;
 
   OpKernelContext::Params params;
@@ -1710,7 +1696,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
-  params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
@@ -1790,8 +1775,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     } else {
       // Prepares inputs.
       bool is_input_dead = false;
-      s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
-                        &input_alloc_attrs, &is_input_dead);
+      s = PrepareInputs(item, first_input, &inputs, &input_alloc_attrs,
+                        &is_input_dead);
       if (!s.ok()) {
         // Clear inputs.
         int num_inputs = item.num_inputs;
@@ -1961,13 +1946,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
                                     TensorValueVec* inputs,
-                                    DeviceContextVec* input_device_contexts,
                                     AllocatorAttributeVec* input_alloc_attrs,
                                     bool* is_input_dead) {
   inputs->clear();
   inputs->resize(item.num_inputs);
-  input_device_contexts->clear();
-  input_device_contexts->resize(item.num_inputs);
   input_alloc_attrs->clear();
   input_alloc_attrs->resize(item.num_inputs);
 
@@ -1977,7 +1959,6 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
   for (int i = 0; i < item.num_inputs; ++i) {
     const bool expect_ref = IsRefType(item.input_type(i));
     Entry* entry = first_input + i;
-    (*input_device_contexts)[i] = entry->device_context;
     (*input_alloc_attrs)[i] = entry->alloc_attr;
 
     // i-th input.
@@ -2084,9 +2065,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     return s;
   }
 
-  // Get the device_context for this node id, if it exists.
-  DeviceContext* device_context = device_context_;
-
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
     if (val.tensor == nullptr) {
@@ -2098,9 +2076,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       }
     } else {
       Entry* out = &((*outputs)[i]);
-
-      // Set the device context of the output entry.
-      out->device_context = device_context;
 
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);

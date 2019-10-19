@@ -88,6 +88,45 @@ parseArgumentList(OpAsmParser &parser, bool allowVariadic,
   return success();
 }
 
+/// Parse a function result list.
+///
+///   function-result-list ::= function-result-list-parens
+///                          | non-function-type
+///   function-result-list-parens ::= `(` `)`
+///                                 | `(` function-result-list-no-parens `)`
+///   function-result-list-no-parens ::= function-result (`,` function-result)*
+///   function-result ::= type attribute-dict?
+///
+static ParseResult parseFunctionResultList(
+    OpAsmParser &parser, SmallVectorImpl<Type> &resultTypes,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &resultAttrs) {
+  if (failed(parser.parseOptionalLParen())) {
+    // We already know that there is no `(`, so parse a type.
+    // Because there is no `(`, it cannot be a function type.
+    Type ty;
+    if (parser.parseType(ty))
+      return failure();
+    resultTypes.push_back(ty);
+    resultAttrs.emplace_back();
+    return success();
+  }
+
+  // Special case for an empty set of parens.
+  if (succeeded(parser.parseOptionalRParen()))
+    return success();
+
+  // Parse individual function results.
+  do {
+    resultTypes.emplace_back();
+    resultAttrs.emplace_back();
+    if (parser.parseType(resultTypes.back()) ||
+        parser.parseOptionalAttributeDict(resultAttrs.back())) {
+      return failure();
+    }
+  } while (succeeded(parser.parseOptionalComma()));
+  return parser.parseRParen();
+}
+
 /// Parse a function signature, starting with a name and including the
 /// parameter list.
 static ParseResult parseFunctionSignature(
@@ -95,12 +134,14 @@ static ParseResult parseFunctionSignature(
     SmallVectorImpl<OpAsmParser::OperandType> &argNames,
     SmallVectorImpl<Type> &argTypes,
     SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs, bool &isVariadic,
-    SmallVectorImpl<Type> &results) {
+    SmallVectorImpl<Type> &resultTypes,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &resultAttrs) {
   if (parseArgumentList(parser, allowVariadic, argTypes, argNames, argAttrs,
                         isVariadic))
     return failure();
-  // Parse the return types if present.
-  return parser.parseOptionalArrowTypeList(results);
+  if (succeeded(parser.parseOptionalArrow()))
+    return parseFunctionResultList(parser, resultTypes, resultAttrs);
+  return success();
 }
 
 /// Parser implementation for function-like operations.  Uses `funcTypeBuilder`
@@ -111,8 +152,9 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
                                 mlir::impl::FuncTypeBuilder funcTypeBuilder) {
   SmallVector<OpAsmParser::OperandType, 4> entryArgs;
   SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 4> resultAttrs;
   SmallVector<Type, 4> argTypes;
-  SmallVector<Type, 4> results;
+  SmallVector<Type, 4> resultTypes;
   auto &builder = parser.getBuilder();
 
   // Parse the name as a symbol reference attribute.
@@ -127,13 +169,13 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   auto signatureLocation = parser.getCurrentLocation();
   bool isVariadic = false;
   if (parseFunctionSignature(parser, allowVariadic, entryArgs, argTypes,
-                             argAttrs, isVariadic, results))
+                             argAttrs, isVariadic, resultTypes, resultAttrs))
     return failure();
 
   std::string errorMessage;
-  if (auto type = funcTypeBuilder(builder, argTypes, results,
+  if (auto type = funcTypeBuilder(builder, argTypes, resultTypes,
                                   impl::VariadicFlag(isVariadic), errorMessage))
-    result.addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
+    result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
   else
     return parser.emitError(signatureLocation)
            << "failed to construct function type"
@@ -145,11 +187,17 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
       return failure();
 
   // Add the attributes to the function arguments.
-  SmallString<8> argAttrName;
+  SmallString<8> attrNameBuf;
   for (unsigned i = 0, e = argTypes.size(); i != e; ++i)
     if (!argAttrs[i].empty())
-      result.addAttribute(getArgAttrName(i, argAttrName),
+      result.addAttribute(getArgAttrName(i, attrNameBuf),
                           builder.getDictionaryAttr(argAttrs[i]));
+
+  // Add the attributes to the function results.
+  for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
+    if (!resultAttrs[i].empty())
+      result.addAttribute(getResultAttrName(i, attrNameBuf),
+                          builder.getDictionaryAttr(resultAttrs[i]));
 
   // Parse the optional function body.
   auto *body = result.addRegion();
@@ -161,11 +209,29 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   return success();
 }
 
+// Print a function result list.
+static void printFunctionResultList(OpAsmPrinter &p, ArrayRef<Type> types,
+                                    ArrayRef<ArrayRef<NamedAttribute>> attrs) {
+  assert(!types.empty() && "Should not be called for empty result list.");
+  auto &os = p.getStream();
+  bool needsParens =
+      types.size() > 1 || types[0].isa<FunctionType>() || !attrs[0].empty();
+  if (needsParens)
+    os << '(';
+  interleaveComma(llvm::zip(types, attrs), os,
+                  [&](const std::tuple<Type, ArrayRef<NamedAttribute>> &t) {
+                    p.printType(std::get<0>(t));
+                    p.printOptionalAttrDict(std::get<1>(t));
+                  });
+  if (needsParens)
+    os << ')';
+}
+
 /// Print the signature of the function-like operation `op`.  Assumes `op` has
 /// the FunctionLike trait and passed the verification.
 static void printSignature(OpAsmPrinter &p, Operation *op,
                            ArrayRef<Type> argTypes, bool isVariadic,
-                           ArrayRef<Type> results) {
+                           ArrayRef<Type> resultTypes) {
   Region &body = op->getRegion(0);
   bool isExternal = body.empty();
 
@@ -190,14 +256,21 @@ static void printSignature(OpAsmPrinter &p, Operation *op,
   }
 
   p << ')';
-  p.printOptionalArrowTypeList(results);
+
+  if (!resultTypes.empty()) {
+    p.getStream() << " -> ";
+    SmallVector<ArrayRef<NamedAttribute>, 4> resultAttrs;
+    for (int i = 0, e = resultTypes.size(); i < e; ++i)
+      resultAttrs.push_back(::mlir::impl::getResultAttrs(op, i));
+    printFunctionResultList(p, resultTypes, resultAttrs);
+  }
 }
 
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
 void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
                                      ArrayRef<Type> argTypes, bool isVariadic,
-                                     ArrayRef<Type> results) {
+                                     ArrayRef<Type> resultTypes) {
   // Print the operation and the function name.
   auto funcName =
       op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
@@ -206,19 +279,27 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
   p.printSymbolName(funcName);
 
   // Print the signature.
-  printSignature(p, op, argTypes, isVariadic, results);
+  printSignature(p, op, argTypes, isVariadic, resultTypes);
 
   // Print out function attributes, if present.
   SmallVector<StringRef, 2> ignoredAttrs = {
       ::mlir::SymbolTable::getSymbolAttrName(), getTypeAttrName()};
 
+  SmallString<8> attrNameBuf;
+
   // Ignore any argument attributes.
   std::vector<SmallString<8>> argAttrStorage;
-  SmallString<8> argAttrName;
   for (unsigned i = 0, e = argTypes.size(); i != e; ++i)
-    if (op->getAttr(getArgAttrName(i, argAttrName)))
-      argAttrStorage.emplace_back(argAttrName);
+    if (op->getAttr(getArgAttrName(i, attrNameBuf)))
+      argAttrStorage.emplace_back(attrNameBuf);
   ignoredAttrs.append(argAttrStorage.begin(), argAttrStorage.end());
+
+  // Ignore any result attributes.
+  std::vector<SmallString<8>> resultAttrStorage;
+  for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
+    if (op->getAttr(getResultAttrName(i, attrNameBuf)))
+      resultAttrStorage.emplace_back(attrNameBuf);
+  ignoredAttrs.append(resultAttrStorage.begin(), resultAttrStorage.end());
 
   auto attrs = op->getAttrs();
   if (attrs.size() > ignoredAttrs.size()) {

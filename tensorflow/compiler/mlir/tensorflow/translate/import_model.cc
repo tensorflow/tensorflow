@@ -732,7 +732,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
     mlir::Type element_type, const shape_inference::ShapeHandle& handle,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
-    return builder.getTensorType(element_type);
+    return mlir::UnrankedTensorType::get(element_type);
   }
 
   // Sentinel for an unknown dimension size. getTensorType interprets any
@@ -751,7 +751,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
       dimensions.push_back(context->Value(dim_handle));
   }
 
-  return builder.getTensorType(
+  return mlir::RankedTensorType::get(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
@@ -1171,7 +1171,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     // call sites, and then fuse them to a single fused location.
     llvm::SmallVector<mlir::Location, 4> node_call_sites;
     node_call_sites.reserve(original_nodes.size());
-    for (int i = 0, e = 0; i != e; ++i) {
+    for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_call_sites.push_back(create_location(node_name, func_name));
@@ -1711,7 +1711,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
                                                      builder, &element_type));
     llvm::SmallVector<int64_t, 4> shape;
     TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-    arg_types.push_back(builder.getTensorType(shape, element_type));
+    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
   }
 
   // Output nodes as function returns.
