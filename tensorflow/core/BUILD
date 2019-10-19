@@ -2298,6 +2298,7 @@ cc_library(
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
