@@ -57,18 +57,11 @@ using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
 TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
-  if (s->allow_fp16) {
-    options.compile_options.precision_loss_allowed = 1;
-  } else {
-    options.compile_options.precision_loss_allowed = 0;
-  }
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
-
-  return evaluation::CreateGPUDelegate(s->model, &options);
+  TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
+  gpu_opts.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+  gpu_opts.is_precision_loss_allowed = s->allow_fp16 ? 1 : 0;
+  return evaluation::CreateGPUDelegate(s->model, &gpu_opts);
 #else
   return evaluation::CreateGPUDelegate(s->model);
 #endif
