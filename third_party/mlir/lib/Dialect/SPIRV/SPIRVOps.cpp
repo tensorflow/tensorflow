@@ -2023,7 +2023,7 @@ struct SelectionOpCanonicalizer : public OpRewritePattern<spirv::SelectionOp> {
                                     selectOp.getResult(), storeOpAttributes);
 
     // `spv.selection` is not needed anymore.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 
