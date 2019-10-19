@@ -68,5 +68,5 @@ if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
 elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
   dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a arm64
 else
-  dpkg-buildpackage -b -rfakeroot -us -uc -tc
+  dpkg-buildpackage -b -rfakeroot -us -uc -tc -d
 fi
