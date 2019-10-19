@@ -36,7 +36,7 @@ abstraction under a unique `namespace`.
 In MLIR, [`Operations`](../../LangRef.md#operations) are the core unit of
 abstraction and computation, similar in many ways to LLVM instructions.
 Operations can have application-specific semantics and can be used to represent
-all of the core IR structures in LLVM: instructions, globals(like functions),
+all of the core IR structures in LLVM: instructions, globals (like functions),
 modules, etc.
 
 Here is the MLIR assembly for the Toy 'transpose' operations:
@@ -51,12 +51,14 @@ Let's break down the anatomy of this MLIR operation:
 
     *   The name given to the result defined by this operation. An operation may
         define zero or more results (we will limit ourselves to single result
-        operations in the context of Toy), which are SSA values.
+        operations in the context of Toy), which are SSA values. The name is
+        used during parsing but is not persistent (e.g., it is not tracked in
+        the in memory representation of the SSA value).
 
 -   `"toy.transpose"`
 
     *   The name of the operation. It is expected to be a unique string, with
-        the namespace of the dialect prefixed before a "`.`". This can be read
+        the namespace of the dialect prefixed before the "`.`". This can be read
         as the `transpose` operation in the `toy` dialect.
 
 -   `(%tensor)`
@@ -103,7 +105,7 @@ MLIR is designed to be a completely extensible system, and as such, the
 infrastructure has the capability to opaquely represent all of its core
 components: attributes, operations, types, etc. This allows MLIR to parse,
 represent, and round-trip any valid IR. For example, we could place our toy
-operation from above into an .mlir file and round-trip through *mlir-opt*
+operation from above into an `.mlir` file and round-trip through *mlir-opt*
 without registering anything:
 
 ```mlir
@@ -122,7 +124,7 @@ transformations and analyses, and are much harder to construct and manipulate.
 This handling can be observed by crafting what should be an invalid IR for Toy
 and see it round-trip without tripping the verifier:
 
-```MLIR(.mlir)
+```mlir
 // RUN: toyc %s -emit=mlir
 
 func @main() {
