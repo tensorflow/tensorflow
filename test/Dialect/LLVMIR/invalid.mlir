@@ -263,3 +263,26 @@ func @null_non_llvm_type() {
   llvm.mlir.null : !llvm.i32
 }
 
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_shfl_pred_1
+func @nvvm_invalid_shfl_pred_1(%arg0 : !llvm.i32, %arg1 : !llvm.i32, %arg2 : !llvm.i32, %arg3 : !llvm.i32) {
+  // expected-error@+1 {{expected return type !llvm<"{ ?, i1 }">}}
+  %0 = nvvm.shfl.sync.bfly %arg0, %arg3, %arg1, %arg2 {return_value_and_is_valid} : !llvm.i32
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_shfl_pred_2
+func @nvvm_invalid_shfl_pred_2(%arg0 : !llvm.i32, %arg1 : !llvm.i32, %arg2 : !llvm.i32, %arg3 : !llvm.i32) {
+  // expected-error@+1 {{expected return type !llvm<"{ ?, i1 }">}}
+  %0 = nvvm.shfl.sync.bfly %arg0, %arg3, %arg1, %arg2 {return_value_and_is_valid} : !llvm<"{ i32 }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_shfl_pred_3
+func @nvvm_invalid_shfl_pred_3(%arg0 : !llvm.i32, %arg1 : !llvm.i32, %arg2 : !llvm.i32, %arg3 : !llvm.i32) {
+  // expected-error@+1 {{expected return type !llvm<"{ ?, i1 }">}}
+  %0 = nvvm.shfl.sync.bfly %arg0, %arg3, %arg1, %arg2 {return_value_and_is_valid} : !llvm<"{ i32, i32 }">
+}

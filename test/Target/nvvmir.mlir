@@ -48,6 +48,16 @@ llvm.func @nvvm_shfl(
   llvm.return %6 : !llvm.i32
 }
 
+llvm.func @nvvm_shfl_pred(
+    %0 : !llvm.i32, %1 : !llvm.i32, %2 : !llvm.i32,
+    %3 : !llvm.i32, %4 : !llvm.float) -> !llvm<"{ i32, i1 }"> {
+  // CHECK: call { i32, i1 } @llvm.nvvm.shfl.sync.bfly.i32p(i32 %{{.*}}, i32 %{{.*}}, i32 %{{.*}}, i32 %{{.*}})
+  %6 = nvvm.shfl.sync.bfly %0, %3, %1, %2 {return_value_and_is_valid} : !llvm<"{ i32, i1 }">
+  // CHECK: call { float, i1 } @llvm.nvvm.shfl.sync.bfly.f32p(i32 %{{.*}}, float %{{.*}}, i32 %{{.*}}, i32 %{{.*}})
+  %7 = nvvm.shfl.sync.bfly %0, %4, %1, %2 {return_value_and_is_valid} : !llvm<"{ float, i1 }">
+  llvm.return %6 : !llvm<"{ i32, i1 }">
+}
+
 llvm.func @nvvm_vote(%0 : !llvm.i32, %1 : !llvm.i1) -> !llvm.i32 {
   // CHECK: call i32 @llvm.nvvm.vote.ballot.sync(i32 %{{.*}}, i1 %{{.*}})
   %3 = nvvm.vote.ballot.sync %0, %1 : !llvm.i32

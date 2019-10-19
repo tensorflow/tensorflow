@@ -1373,6 +1373,9 @@ bool LLVMType::isPointerTy() { return getUnderlyingType()->isPointerTy(); }
 LLVMType LLVMType::getStructElementType(unsigned i) {
   return get(getContext(), getUnderlyingType()->getStructElementType(i));
 }
+unsigned LLVMType::getStructNumElements() {
+  return getUnderlyingType()->getStructNumElements();
+}
 bool LLVMType::isStructTy() { return getUnderlyingType()->isStructTy(); }
 
 /// Utilities used to generate floating point types.

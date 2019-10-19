@@ -44,6 +44,16 @@ func @nvvm_shfl(
   llvm.return %0 : !llvm.i32
 }
 
+func @nvvm_shfl_pred(
+    %arg0 : !llvm.i32, %arg1 : !llvm.i32, %arg2 : !llvm.i32,
+    %arg3 : !llvm.i32, %arg4 : !llvm.float) -> !llvm<"{ i32, i1 }"> {
+  // CHECK: nvvm.shfl.sync.bfly %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm<"{ i32, i1 }">
+  %0 = nvvm.shfl.sync.bfly %arg0, %arg3, %arg1, %arg2 {return_value_and_is_valid} : !llvm<"{ i32, i1 }">
+  // CHECK: nvvm.shfl.sync.bfly %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm<"{ float, i1 }">
+  %1 = nvvm.shfl.sync.bfly %arg0, %arg4, %arg1, %arg2 {return_value_and_is_valid} : !llvm<"{ float, i1 }">
+  llvm.return %0 : !llvm<"{ i32, i1 }">
+}
+
 func @nvvm_vote(%arg0 : !llvm.i32, %arg1 : !llvm.i1) -> !llvm.i32 {
   // CHECK: nvvm.vote.ballot.sync %{{.*}}, %{{.*}} : !llvm.i32
   %0 = nvvm.vote.ballot.sync %arg0, %arg1 : !llvm.i32
