@@ -113,7 +113,8 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
   return kTfLiteOk;
 }
 
-void PrintProfilingInfo(const profiling::ProfileEvent* e, uint32_t op_index,
+void PrintProfilingInfo(const profiling::ProfileEvent* e,
+                        uint32_t subgraph_index, uint32_t op_index,
                         TfLiteRegistration registration) {
   // output something like
   // time (ms) , Node xxx, OpCode xxx, symblic name
@@ -121,9 +122,10 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e, uint32_t op_index,
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
             << (e->end_timestamp_us - e->begin_timestamp_us) / 1000.0
-            << ", Node " << std::setw(3) << std::setprecision(3) << op_index
-            << ", OpCode " << std::setw(3) << std::setprecision(3)
-            << registration.builtin_code << ", "
+            << ", Subgraph " << std::setw(3) << std::setprecision(3)
+            << subgraph_index << ", Node " << std::setw(3)
+            << std::setprecision(3) << op_index << ", OpCode " << std::setw(3)
+            << std::setprecision(3) << registration.builtin_code << ", "
             << EnumNameBuiltinOperator(
                    static_cast<BuiltinOperator>(registration.builtin_code))
             << "\n";
@@ -266,11 +268,14 @@ void RunInference(Settings* s) {
     profiler->StopProfiling();
     auto profile_events = profiler->GetProfileEvents();
     for (int i = 0; i < profile_events.size(); i++) {
+      auto subgraph_index = profile_events[i]->event_subgraph_index;
       auto op_index = profile_events[i]->event_metadata;
+      const auto subgraph = interpreter->subgraph(subgraph_index);
       const auto node_and_registration =
-          interpreter->node_and_registration(op_index);
+          subgraph->node_and_registration(op_index);
       const TfLiteRegistration registration = node_and_registration->second;
-      PrintProfilingInfo(profile_events[i], op_index, registration);
+      PrintProfilingInfo(profile_events[i], subgraph_index, op_index,
+                         registration);
     }
   }
 
