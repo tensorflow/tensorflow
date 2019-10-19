@@ -64,7 +64,7 @@ struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD> {
       std::complex<T>* out, const std::complex<T>& val) {
     T* ptr = reinterpret_cast<T*>(out);
     GpuAtomicAdd(ptr, val.real());
-    GpuAtomicAdd(ptr, val.imag());
+    GpuAtomicAdd(ptr + 1, val.imag());
   }
 };
 
@@ -73,8 +73,8 @@ struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
       std::complex<T>* out, const std::complex<T>& val) {
     T* ptr = reinterpret_cast<T*>(out);
-    GpuAtomicAdd(ptr, -val.real());
-    GpuAtomicAdd(ptr, -val.imag());
+    GpuAtomicSub(ptr, val.real());
+    GpuAtomicSub(ptr + 1, val.imag());
   }
 };
 
