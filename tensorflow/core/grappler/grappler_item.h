@@ -148,9 +148,10 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 // exist. Sets name_to_fanin_node for name to fanin nodes map.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    std::unordered_map<string, const NodeDef*>& name_to_fanin_node,
-    bool* ill_formed); 
- 
+    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
+    bool* ill_formed);
+
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

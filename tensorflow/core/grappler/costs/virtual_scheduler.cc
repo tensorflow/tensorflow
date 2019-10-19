@@ -409,7 +409,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   bool ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
   const std::vector<const NodeDef*> fetch_fanin_nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes, name_to_node, &ill_formed);
+      ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node, &ill_formed);
   if (ill_formed) {
     return errors::InvalidArgument(
         "Ill formed graph or invalid set of fetch nodes specified");
