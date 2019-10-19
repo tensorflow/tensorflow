@@ -100,7 +100,7 @@ public:
         ArrayRef<Value *>({formatSpecifierCst, elementLoad}));
 
     // Notify the rewriter that this operation has been removed.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 
