@@ -350,7 +350,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 }
 
 /// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
-/// and may be recursive.  Return with the 'prettyName' StringRef encompasing
+/// and may be recursive.  Return with the 'prettyName' StringRef encompassing
 /// the entire pretty name.
 ///
 ///   pretty-dialect-sym-body ::= '<' pretty-dialect-sym-contents+ '>'
@@ -2815,7 +2815,7 @@ private:
 
   /// This keeps track of the block names as well as the location of the first
   /// reference for each nested name scope. This is used to diagnose invalid
-  /// block references and memoize them.
+  /// block references and memorize them.
   SmallVector<DenseMap<StringRef, std::pair<Block *, SMLoc>>, 2> blocksByName;
   SmallVector<DenseMap<Block *, SMLoc>, 2> forwardRef;
 
@@ -3250,7 +3250,7 @@ ParseResult OperationParser::parseSuccessors(
 namespace {
 // RAII-style guard for cleaning up the regions in the operation state before
 // deleting them.  Within the parser, regions may get deleted if parsing failed,
-// and other errors may be present, in praticular undominated uses.  This makes
+// and other errors may be present, in particular undominated uses.  This makes
 // sure such uses are deleted.
 struct CleanupOpStateRegions {
   ~CleanupOpStateRegions() {
@@ -3352,7 +3352,7 @@ Operation *OperationParser::parseGenericOperation() {
       return nullptr;
   }
 
-  // Add the sucessors, and their operands after the proper operands.
+  // Add the successors, and their operands after the proper operands.
   for (const auto &succ : llvm::zip(successors, successorOperands)) {
     Block *successor = std::get<0>(succ);
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
@@ -3730,7 +3730,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
-  /// effectively defines the SSA values of `arguments` and assignes their type.
+  /// effectively defines the SSA values of `arguments` and assigns their type.
   ParseResult parseRegion(Region &region, ArrayRef<OperandType> arguments,
                           ArrayRef<Type> argTypes,
                           bool enableNameShadowing) override {

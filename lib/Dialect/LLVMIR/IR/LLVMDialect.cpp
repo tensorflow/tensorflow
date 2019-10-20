@@ -487,8 +487,8 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser &parser,
 
   // Infer the element type from the structure type: iteratively step inside the
   // type by taking the element type, indexed by the position attribute for
-  // stuctures.  Check the position index before accessing, it is supposed to be
-  // in bounds.
+  // structures.  Check the position index before accessing, it is supposed to
+  // be in bounds.
   for (Attribute subAttr : positionArrayAttr) {
     auto positionElementAttr = subAttr.dyn_cast<IntegerAttr>();
     if (!positionElementAttr)
@@ -1470,7 +1470,7 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
                                       LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
-         "expected builder to point to a block constained in an op");
+         "expected builder to point to a block constrained in an op");
   auto module =
       builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
   assert(module && "builder points to an op outside of a module");

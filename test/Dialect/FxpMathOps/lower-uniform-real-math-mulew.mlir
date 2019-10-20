@@ -88,7 +88,7 @@ func @real_mulew_unquantized_result(%arg0 : !type_lhs, %arg1: !type_rhs) -> !typ
 !type_rhs = type tensor<4x!quant.uniform<i8:f32, 3.875e-2>>
 !type_result = type tensor<4x!quant.uniform<i8:f32, 1.065e-4>>
 func @real_mulew_multiplier_gt_1(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_result {
-  // expected-warning@+1 {{unimplemented: cannot multiply with multipler > 1.0}}
+  // expected-warning@+1 {{unimplemented: cannot multiply with multiplier > 1.0}}
   %0 = "fxpmath.real_mul_ew"(%arg0, %arg1) : (!type_lhs, !type_rhs) -> (!type_result)
   return %0 : !type_result
 }

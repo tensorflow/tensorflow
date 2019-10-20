@@ -137,7 +137,7 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
     return op->emitOpError()
            << "Operations with a 'SymbolTable' must have exactly one region";
 
-  // Check that all symboles are uniquely named within child regions.
+  // Check that all symbols are uniquely named within child regions.
   llvm::StringMap<Location> nameToOrigLoc;
   for (auto &block : op->getRegion(0)) {
     for (auto &op : block) {
