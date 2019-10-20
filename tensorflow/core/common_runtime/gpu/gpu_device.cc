@@ -34,6 +34,7 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -610,7 +611,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       return err;
     }
 
-    auto wrapped_done = [to, copy, done = std::move(done)](const Status& s) {
+    auto wrapped_done = [ to, copy, done = std::move(done) ](const Status& s) {
       if (s.ok()) {
         *to = std::move(*copy);
       }
@@ -650,7 +651,7 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     std::list<Notification> notifications;
     Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
-                      const Tensor& from, Tensor* to) {
+        const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
       // have to worry about the notifications list being modified in parallel.
       notifications.emplace_back();
@@ -741,8 +742,8 @@ Status ParseVisibleDeviceList(const string& visible_device_list,
       if (!strings::safe_strto32(platform_gpu_id_str, &platform_gpu_id)) {
         return errors::InvalidArgument(
             "Could not parse entry in 'visible_device_list': '",
-            platform_gpu_id_str,
-            "'. visible_device_list = ", visible_device_list);
+            platform_gpu_id_str, "'. visible_device_list = ",
+            visible_device_list);
       }
       if (platform_gpu_id < 0 ||
           platform_gpu_id >= gpu_manager->VisibleDeviceCount()) {
@@ -1037,32 +1038,32 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #if GOOGLE_CUDA
       err = cudaSetDevice(platform_gpu_id.value());
       if (err != cudaSuccess) {
-        return errors::Internal(
-            "cudaSetDevice() on GPU:", platform_gpu_id.value(),
-            " failed. Status: ", cudaGetErrorString(err));
+        return errors::Internal("cudaSetDevice() on GPU:",
+                                platform_gpu_id.value(), " failed. Status: ",
+                                cudaGetErrorString(err));
       }
       err = cudaFree(nullptr);
       if (err != cudaSuccess) {
         return errors::Internal("CUDA runtime implicit initialization on GPU:",
-                                platform_gpu_id.value(),
-                                " failed. Status: ", cudaGetErrorString(err));
+                                platform_gpu_id.value(), " failed. Status: ",
+                                cudaGetErrorString(err));
       }
 #elif TENSORFLOW_USE_ROCM
       err = hipSetDevice(platform_gpu_id.value());
       if (err != hipSuccess) {
-        return errors::Internal(
-            "hipSetDevice() on GPU:", platform_gpu_id.value(),
-            " failed. Status: ", hipGetErrorString(err));
+        return errors::Internal("hipSetDevice() on GPU:",
+                                platform_gpu_id.value(), " failed. Status: ",
+                                hipGetErrorString(err));
       }
       err = hipFree(nullptr);
       if (err != hipSuccess) {
         return errors::Internal("ROCm runtime implicit initialization on GPU:",
-                                platform_gpu_id.value(),
-                                " failed. Status: ", hipGetErrorString(err));
+                                platform_gpu_id.value(), " failed. Status: ",
+                                hipGetErrorString(err));
       }
 #endif
     }
-    // Reset to the original device.
+// Reset to the original device.
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {
@@ -1173,15 +1174,13 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
     cc_minor = 0;
   }
   // LINT.IfChange
-  return strings::StrCat("device: ", platform_gpu_id.value(),
-                         ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id(),
+  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
+                         desc.name(), ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
-  // LINT.ThenChange(//tensorflow/python/platform/test.py)
+// LINT.ThenChange(//tensorflow/python/platform/test.py)
 #elif TENSORFLOW_USE_ROCM
-  return strings::StrCat("device: ", platform_gpu_id.value(),
-                         ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id());
+  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
+                         desc.name(), ", pci bus id: ", desc.pci_bus_id());
 #endif
 }
 
@@ -1420,8 +1419,8 @@ struct CudaVersion {
   // Initialize from version_name in the form of "3.5"
   explicit CudaVersion(const std::string& version_name) {
     size_t dot_pos = version_name.find('.');
-    CHECK(dot_pos != string::npos)
-        << "Illegal version name: [" << version_name << "]";
+    CHECK(dot_pos != string::npos) << "Illegal version name: [" << version_name
+                                   << "]";
     string major_str = version_name.substr(0, dot_pos);
     CHECK(strings::safe_strto32(major_str, &major_part))
         << "Illegal version name: [" << version_name << "]";
@@ -1446,7 +1445,8 @@ struct CudaVersion {
 };
 
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-    TF_CUDA_CAPABILITIES,};
+    TF_CUDA_CAPABILITIES,
+};
 
 std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;
@@ -1547,12 +1547,13 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\npciBusID: " << description->pci_bus_id()
               << "\nname: " << description->name()
               << " computeCapability: " << cc_major << "." << cc_minor
-              << " coreClockRate(GHz): " << description->clock_rate_ghz()
+              << " coreClock: " << description->clock_rate_ghz() << "GHz"
               << " coreCount: " << description->core_count()
-              << " deviceMemorySize: "
-              << strings::HumanReadableNumBytes(description->device_memory_size())
+              << " deviceMemorySize: " << strings::HumanReadableNumBytes(
+                                              description->device_memory_size())
               << " deviceMemoryBandwidth: "
-              << strings::HumanReadableNumBytes(description->memory_bandwidth()) << "/s";
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description->rocm_amdgpu_isa_version(&isa_version)) {
@@ -1562,13 +1563,14 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     LOG(INFO) << "Found device " << i << " with properties: "
               << "\npciBusID: " << description->pci_bus_id()
               << "\nname: " << description->name()
-              << " AMDGPU ISA: gfx" << isa_version
-              << " coreClockRate(GHz): " << description->clock_rate_ghz()
+              << "    ROCm AMD GPU ISA: gfx" << isa_version
+              << " coreClock: " << description->clock_rate_ghz() << "GHz"
               << " coreCount: " << description->core_count()
-              << " deviceMemorySize: "
-              << strings::HumanReadableNumBytes(description->device_memory_size())
+              << " deviceMemorySize: " << strings::HumanReadableNumBytes(
+                                              description->device_memory_size())
               << " deviceMemoryBandwidth: "
-              << strings::HumanReadableNumBytes(description->memory_bandwidth()) << "/s";
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #endif
   }
 
@@ -1790,10 +1792,10 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   VLOG(2) << this << " RecordTerminated queued_count=" << queued_count
           << " first_available_=" << first_available_
           << " last_completed_=" << last_completed_
-          << " num_pending_=" << num_pending_ << " LC="
-          << ((last_completed_ >= 0)
-                  ? pending_kernels_[last_completed_].queued_count
-                  : -1);
+          << " num_pending_=" << num_pending_
+          << " LC=" << ((last_completed_ >= 0)
+                            ? pending_kernels_[last_completed_].queued_count
+                            : -1);
   DCHECK_NE(first_available_, last_completed_);
   DCHECK_GT(num_pending_, 0);
   // Starting just past the last completed entry, find the entry with
