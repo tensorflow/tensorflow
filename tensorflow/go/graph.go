@@ -133,7 +133,8 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 		return fmt.Errorf("unable to allocate memory")
 	}
 	defer C.free(buf.data)
-	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
+	pbuf := (*[1 << 30]byte)(buf.data)
+	copy(pbuf[:], def)
 
 	status := newStatus()
 
