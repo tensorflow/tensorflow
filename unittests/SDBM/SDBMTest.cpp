@@ -219,7 +219,7 @@ TEST(SDBM, RoundTripEqs) {
 }
 
 TEST(SDBMExpr, Constant) {
-  // We can create consants and query them.
+  // We can create constants and query them.
   auto expr = SDBMConstantExpr::get(dialect(), 42);
   EXPECT_EQ(expr.getValue(), 42);
 

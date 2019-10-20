@@ -268,7 +268,7 @@ spv.module "Logical" "GLSL450" { } attributes {
   extension = ["SPV_KHR_16bit_storage"]
 }
 
-// Module with explict spv._module_end
+// Module with explicit spv._module_end
 // CHECK: spv.module
 spv.module "Logical" "GLSL450" {
   spv._module_end

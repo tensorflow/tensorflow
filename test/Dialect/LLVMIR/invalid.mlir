@@ -162,7 +162,7 @@ func @insertvalue_non_array_position() {
 
 // -----
 
-func @insertvlaue_non_integer_position() {
+func @insertvalue_non_integer_position() {
   // expected-error@+1 {{expected an array of integer literals}}
   llvm.insertvalue %a, %b[0.0] : !llvm<"{i32}">
 }
@@ -206,7 +206,7 @@ func @extractvalue_non_array_position() {
 
 // -----
 
-func @extractvlaue_non_integer_position() {
+func @extractvalue_non_integer_position() {
   // expected-error@+1 {{expected an array of integer literals}}
   llvm.extractvalue %b[0.0] : !llvm<"{i32}">
 }

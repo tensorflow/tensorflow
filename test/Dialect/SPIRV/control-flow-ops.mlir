@@ -108,7 +108,7 @@ func @wrong_accessor_count() -> () {
 
 // -----
 
-func @accessor_argment_disallowed() -> () {
+func @accessor_argument_disallowed() -> () {
   %true = spv.constant true
   // expected-error @+1 {{requires a single operand}}
   "spv.BranchConditional"(%true)[^one(%true : i1), ^two] : (i1) -> ()

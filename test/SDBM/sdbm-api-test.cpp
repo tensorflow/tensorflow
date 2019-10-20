@@ -83,7 +83,7 @@ TEST_FUNC(SDBM_TrivialSimplification) {
   //   d0 - 3 <= 0  <=>  d0 <= 3
   //   d0 - 5 <= 0  <=>  d0 <= 5
   //
-  // which should get simplifed on construction to only the former.
+  // which should get simplified on construction to only the former.
   auto sdbm = SDBM::get({dim(0) - 3, dim(0) - 5}, llvm::None);
 
   //      CHECK:       cst   d0

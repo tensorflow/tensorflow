@@ -97,7 +97,7 @@ def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> 
 // CHECK-NEXT:    tblgen_state.addTypes(output2);
 // CHECK-NEXT:    tblgen_state.addTypes(output3);
 
-// Test that if the only operand is variadic, we acess the first value in the
+// Test that if the only operand is variadic, we access the first value in the
 // pack to set result type
 // ---
 def OpK : NS_Op<"only_input_is_variadic_with_same_value_type_op", [SameOperandsAndResultType]> {

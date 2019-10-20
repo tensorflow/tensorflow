@@ -166,7 +166,7 @@ module attributes {gpu.container_module} {
   module @kernels {
   }
 
-  func @launch_func_missing_module_attirbute(%sz : index) {
+  func @launch_func_missing_module_attribute(%sz : index) {
     // expected-error@+1 {{module 'kernels' is missing the 'gpu.kernel_module' attribute}}
     "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz)
     { kernel = "kernel_1", kernel_module = @kernels }

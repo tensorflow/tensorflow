@@ -189,7 +189,7 @@ func @image_parameters_six_elements(!spv.image<f32, 1D, NoDepth, NonArrayed, Sin
 // -----
 
 // expected-error @+1 {{spv.image delimiter <...> mismatch}}
-func @image_parameters_delimiter(!spv.image f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unkown>) -> ()
+func @image_parameters_delimiter(!spv.image f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 

@@ -167,7 +167,7 @@
 // CHECK: #map{{[0-9]+}} = (d0) -> (-2, 1, -1)
 #map51 = (i) -> (-5 floordiv 3, -5 mod 3, -5 ceildiv 3)
 
-// Parenthesis ellision.
+// Parenthesis elision.
 // CHECK: #map{{[0-9]+}} = (d0) -> (d0 * 16 - (d0 + 1) + 15)
 #map52 = (d0) -> (16*d0 + ((d0 + 1) * -1) + 15)
 

@@ -84,7 +84,7 @@ func @triangular(%arg0: memref<?x?xf32>) {
   // New outer step (original is %c1).
   // COMMON-NEXT:  %[[step:.*]] = muli %c1, %[[size]]
 
-  // Constant adjustement for inner loop has been hoisted out.
+  // Constant adjustment for inner loop has been hoisted out.
   // TILE_74:      %[[adjustment2:.*]] = subi %c2, %c1_{{.*}}
 
   // New outer loop.

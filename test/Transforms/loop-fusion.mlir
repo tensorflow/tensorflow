@@ -1485,7 +1485,7 @@ func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>
   // depth at which we can insert the src loop nest slice into the dst loop
   // lest must be decreased because of a loop carried dependence on loop '%i3'.
   // As a result, the source loop nest is inserted at dst loop nest depth 1,
-  // just above the loop with the carried depenence. In addition, the source
+  // just above the loop with the carried dependence. In addition, the source
   // loop nest iteration bounds on its loop '%i1' are reduced to 1, so the
   // memref size can be reduced to 128x1xf32.
 
@@ -2185,7 +2185,7 @@ func @affine_2mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<1024x1024xf32
     }
   }
 
-  // Should fuse MM intialization loops into their consumers, then fuse the
+  // Should fuse MM initialization loops into their consumers, then fuse the
   // two matmul loops together for input reuse on '%arg0/%arg1'.
 
   // CHECK:        affine.for %{{.*}} = 0 to 1024 {

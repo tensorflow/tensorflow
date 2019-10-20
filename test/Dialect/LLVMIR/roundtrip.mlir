@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @ops(%arg0: !llvm.i32, %arg1: !llvm.float)
 func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
-// Integer artithmetics binary operations.
+// Integer arithmetic binary operations.
 //
 // CHECK-NEXT:  %0 = llvm.add %arg0, %arg0 : !llvm.i32
 // CHECK-NEXT:  %1 = llvm.sub %arg0, %arg0 : !llvm.i32

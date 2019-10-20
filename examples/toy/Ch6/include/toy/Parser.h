@@ -97,7 +97,7 @@ private:
   /// Parse a literal array expression.
   /// tensorLiteral ::= [ literalList ] | number
   /// literalList ::= tensorLiteral | tensorLiteral, literalList
-  std::unique_ptr<ExprAST> ParseTensorLitteralExpr() {
+  std::unique_ptr<ExprAST> ParseTensorLiteralExpr() {
     auto loc = lexer.getLastLocation();
     lexer.consume(Token('['));
 
@@ -108,7 +108,7 @@ private:
     do {
       // We can have either another nested array or a number literal.
       if (lexer.getCurToken() == '[') {
-        values.push_back(ParseTensorLitteralExpr());
+        values.push_back(ParseTensorLiteralExpr());
         if (!values.back())
           return nullptr; // parse error in the nested array.
       } else {
@@ -236,7 +236,7 @@ private:
     case '(':
       return ParseParenExpr();
     case '[':
-      return ParseTensorLitteralExpr();
+      return ParseTensorLiteralExpr();
     case ';':
       return nullptr;
     case '}':

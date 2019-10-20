@@ -1,4 +1,4 @@
-//===- SerializationTest.cpp - SPIR-V Seserialization Tests -------------===//
+//===- SerializationTest.cpp - SPIR-V Serialization Tests -----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

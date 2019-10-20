@@ -30,7 +30,7 @@
                              d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
                              d0 - 1 == 0, d0 + 2 == 0)
 
-// This is an artifically created system to exercise the worst case behavior of
+// This is an artificially created system to exercise the worst case behavior of
 // FM elimination - as a safeguard against improperly constructed constraint
 // systems or fuzz input.
 #set_fuzz_virus = (d0, d1, d2, d3, d4, d5) : ( 1089234*d0 + 203472*d1 + 82342 >= 0,

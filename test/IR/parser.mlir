@@ -965,7 +965,7 @@ func @f16_special_values() {
   // F16 positive infinity.
   // CHECK: constant 0x7C00 : f16
   %3 = constant 0x7C00 : f16
-  // F16 negative inifinity.
+  // F16 negative infinity.
   // CHECK: constant 0xFC00 : f16
   %4 = constant 0xFC00 : f16
 
@@ -1010,7 +1010,7 @@ func @f64_special_values() {
   // CHECK: constant 0xFFF0000001000000 : f64
   %3 = constant 0xFFF0000001000000 : f64
 
-  // F64 positive inifinity.
+  // F64 positive infinity.
   // CHECK: constant 0x7FF0000000000000 : f64
   %4 = constant 0x7FF0000000000000 : f64
   // F64 negative infinity.

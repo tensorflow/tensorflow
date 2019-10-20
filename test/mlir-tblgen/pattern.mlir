@@ -168,7 +168,7 @@ func @verifyI64EnumAttr() -> i32 {
 }
 
 //===----------------------------------------------------------------------===//
-// Test ElelementsAttr
+// Test ElementsAttr
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: rewrite_i32elementsattr
@@ -302,8 +302,8 @@ func @replaceMixedVariadicOutputOp() -> (f32, i32, f32, i32, i32, i32, f32, i32,
   return %0, %1#0, %1#1, %1#2, %2#0, %2#1, %2#2, %2#3, %2#4 : f32, i32, f32, i32, i32, i32, f32, i32, i32
 }
 
-// CHECK-LABEL: @generateVaridicOutputOpInNestedPattern
-func @generateVaridicOutputOpInNestedPattern() -> (i32) {
+// CHECK-LABEL: @generateVariadicOutputOpInNestedPattern
+func @generateVariadicOutputOpInNestedPattern() -> (i32) {
   // CHECK: %[[cnt5:.*]]:5 = "test.mixed_variadic_out3"()
   // CHECK: %[[res:.*]] = "test.mixed_variadic_in3"(%[[cnt5]]#0, %[[cnt5]]#1, %[[cnt5]]#2, %[[cnt5]]#3, %[[cnt5]]#4)
   // CHECK: return %[[res]]

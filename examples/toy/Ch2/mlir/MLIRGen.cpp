@@ -91,7 +91,7 @@ private:
   mlir::ModuleOp theModule;
 
   /// The builder is a helper class to create IR inside a function. The builder
-  /// is stateful, in particular it keeeps an "insertion point": this is where
+  /// is stateful, in particular it keeps an "insertion point": this is where
   /// the next operations will be introduced.
   mlir::OpBuilder builder;
 

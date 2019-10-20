@@ -117,7 +117,7 @@ window in `value`.
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvertDataFormatAttr, "NHWC">:$data_format
   );
 
   let results = (outs

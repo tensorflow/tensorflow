@@ -373,7 +373,7 @@ def : Pat<(OneAttrOp $attr),
           (TwoAttrOp (getNthAttr<0>:$attr), (getNthAttr<1>:$attr)>;
 ```
 
-In the above, `$_self` is substitutated by the attribute bound by `$attr`, which
+In the above, `$_self` is substituted by the attribute bound by `$attr`, which
 is `OnAttrOp`'s array attribute.
 
 Positional placeholders will be substituted by the `dag` object parameters at
