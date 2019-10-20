@@ -151,7 +151,6 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
     bool* ill_formed);
 
-
 }  // end namespace grappler
 }  // end namespace tensorflow
 
