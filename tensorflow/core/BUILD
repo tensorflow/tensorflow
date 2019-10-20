@@ -2296,6 +2296,7 @@ cc_library(
         "//tensorflow/core/platform:cpu_feature_guard",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
