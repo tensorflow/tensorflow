@@ -443,7 +443,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
         raise TypeError(
             "Dataset.as_numpy_iterator() does not support datasets containing "
-            + component_spec.value_type)
+            + str(component_spec.value_type))
 
     return _NumpyIterator(self)
 
