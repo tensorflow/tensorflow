@@ -34,7 +34,7 @@ def main() {
 # CHECK-NEXT:       Proto 'multiply_transpose' @{{.*}}ast.toy:4:1'
 # CHECK-NEXT:       Params: [a, b]
 # CHECK-NEXT:       Block {
-# CHECK-NEXT:         Retur
+# CHECK-NEXT:         Return
 # CHECK-NEXT:           BinOp: * @{{.*}}ast.toy:5:14
 # CHECK-NEXT:             var: a @{{.*}}ast.toy:5:10
 # CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:5:14
