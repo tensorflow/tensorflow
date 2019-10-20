@@ -301,7 +301,7 @@ static LogicalResult runPipeline(OpPassManager &pm, Operation *op,
   // Clear out any computed operation analyses. These analyses won't be used
   // any more in this pipeline, and this helps reduce the current working set
   // of memory. If preserving these analyses becomes important in the future
-  // we can re-evalutate this.
+  // we can re-evaluate this.
   am.clear();
   return result;
 }

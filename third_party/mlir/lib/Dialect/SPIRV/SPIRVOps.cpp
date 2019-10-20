@@ -804,7 +804,7 @@ static ParseResult parseCompositeExtractOp(OpAsmParser &parser,
     } else {
       return parser.emitError(
                  attrLocation,
-                 "expexted an 32-bit integer for index, but found '")
+                 "expected an 32-bit integer for index, but found '")
              << indexAttr << "'";
     }
 
@@ -838,7 +838,7 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 
   if (!indicesArrayAttr.size()) {
     return compExOp.emitOpError(
-        "expexted at least one index for spv.CompositeExtractOp");
+        "expected at least one index for spv.CompositeExtractOp");
   }
 
   int32_t index;
@@ -953,7 +953,7 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
 
   if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
       type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
-    // TODO(antiagainst): support contant struct
+    // TODO(antiagainst): support constant struct
     return type.isa<spirv::ArrayType>();
   }
 
