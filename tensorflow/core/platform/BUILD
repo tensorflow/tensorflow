@@ -664,6 +664,7 @@ filegroup(
             "**/rocm_rocdl_path.cc",
             "**/subprocess.cc",
             "**/tracing.cc",
+            "**/unbounded_work_queue.cc",
             "**/windows_file_system.cc",
             "abi.cc",
             "cpu_info.cc",
