@@ -1545,9 +1545,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
     LOG(INFO) << "Found device " << i << " with properties: "
               << "\npciBusID: " << description->pci_bus_id()
-              << "\nname: " << description->name()
+              << " name: " << description->name()
               << " computeCapability: " << cc_major << "." << cc_minor
-              << " coreClock: " << description->clock_rate_ghz() << "GHz"
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
               << " coreCount: " << description->core_count()
               << " deviceMemorySize: " << strings::HumanReadableNumBytes(
                                               description->device_memory_size())
@@ -1562,9 +1562,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
     LOG(INFO) << "Found device " << i << " with properties: "
               << "\npciBusID: " << description->pci_bus_id()
-              << "\nname: " << description->name()
-              << "    ROCm AMD GPU ISA: gfx" << isa_version
-              << " coreClock: " << description->clock_rate_ghz() << "GHz"
+              << " name: " << description->name()
+              << "     ROCm AMD GPU ISA: gfx" << isa_version
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
               << " coreCount: " << description->core_count()
               << " deviceMemorySize: " << strings::HumanReadableNumBytes(
                                               description->device_memory_size())
