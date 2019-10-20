@@ -556,7 +556,8 @@ void PatternEmitter::emitRewriteLogic() {
       os.indent(4) << "\n";
       // Resolve each symbol for all range use so that we can loop over them.
       os << symbolInfoMap.getAllRangeUse(
-          val, "    for (auto *v : {0}) tblgen_values.push_back(v);", "\n");
+          val, "    for (auto *v : {0}) {{ tblgen_values.push_back(v); }",
+          "\n");
     }
     os.indent(4) << "\n";
     os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
