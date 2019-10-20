@@ -11,19 +11,20 @@ This tutorial is divided in the following chapters:
 
 -   [Chapter #1](Ch-1.md): Introduction to the Toy language, and the definition
     of its AST.
--   [Chapter #2](Ch-2.md): Traversing the AST to emit custom MLIR, introducing
-    base MLIR concepts.
--   [Chapter #3](Ch-3.md): Defining and registering a dialect in MLIR, showing
-    how we can start attaching semantics to our custom operations in MLIR.
--   [Chapter #4](Ch-4.md): High-level language-specific analysis and
-    transformation, showcasing shape inference, generic function specialization,
-    and basic optimizations.
--   [Chapter #5](Ch-5.md): Lowering to lower-level dialects. We'll convert our
-    high level language specific semantics towards a generic linear-algebra
-    oriented dialect for optimizations. Ultimately we will emit LLVM IR for code
-    generation.
--   [Chapter #6](Ch-6.md): A REPL?
--   [Chapter #7](Ch-7.md): Custom backends? GPU using LLVM? TPU? XLA
+-   [Chapter #2](Ch-2.md): Traversing the AST to emit a dialect in MLIR,
+    introducing base MLIR concepts. Here we show how to start attaching
+    semantics to our custom operations in MLIR.
+-   [Chapter #3](Ch-3.md): High-level language-specific optimization using
+    pattern rewriting system.
+-   [Chapter #4](Ch-4.md): Writing generic dialect independent transformations
+    with Interfaces. Here we will show how to plug dialect specific information
+    into generic transformations like shape inference and inlining.
+-   [Chapter #5](Ch-5.md): Partially lowering to lower-level dialects. We'll
+    convert some our high level language specific semantics towards a generic
+    affine oriented dialect for optimization.
+-   [Chapter #6](Ch-6.md): Lowering to LLVM and code generation. Here we'll
+    target LLVM IR for code generation, and detail more of the lowering
+    framework.
 
 ## The Language
 
@@ -38,8 +39,6 @@ of rank <= 2 and the only datatype in Toy is a 64-bit floating point type (aka
 and deallocation is automatically managed. But enough with the long description,
 nothing is better than walking through an example to get a better understanding:
 
-FIXME: update/modify matrix multiplication to use @ instead of *
-
 ```Toy {.toy}
 def main() {
   # Define a variable `a` with shape <2, 3>, initialized with the literal value.
@@ -51,7 +50,7 @@ def main() {
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
 
   # transpose() and print() are the only builtin, the following will transpose
-  # b and perform a matrix multiplication before printing the result.
+  # b and perform an element-wise multiplication before printing the result.
   print(a * transpose(b));
 }
 ```
@@ -113,7 +112,7 @@ Module:
     Proto 'main' @test/ast.toy:9:1'
     Args: []
     Block {
-      VarDecl a<2, 3> @test/ast.toy:11:3
+      VarDecl a<> @test/ast.toy:11:3
         Literal: <2, 3>[<3>[1.000000e+00, 2.000000e+00, 3.000000e+00], <3>[4.000000e+00, 5.000000e+00, 6.000000e+00]] @test/ast.toy:11:17
       VarDecl b<2, 3> @test/ast.toy:12:3
         Literal: <6>[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00] @test/ast.toy:12:17
@@ -142,14 +141,15 @@ Module:
     } // Block
 ```
 
-You can reproduce this result and play with the example in the `examples/toy/Ch1/`
-directory, try running `path/to/BUILD/bin/toyc-ch1 test/ast.toy -emit=ast`.
+You can reproduce this result and play with the example in the
+`examples/toy/Ch1/` directory, try running `path/to/BUILD/bin/toyc-ch1
+test/ast.toy -emit=ast`.
 
 The code for the lexer is fairly straightforward, it is all in a single header:
 `examples/toy/Ch1/include/toy/Lexer.h`. The parser can be found in
 `examples/toy/Ch1/include/toy/Parser.h`, it is a recursive descent parser. If
-you are not familiar with such a Lexer/Parser, these are very similar to the LLVM
-Kaleidoscope equivalent that are detailed in the first two chapters of the
+you are not familiar with such a Lexer/Parser, these are very similar to the
+LLVM Kaleidoscope equivalent that are detailed in the first two chapters of the
 [Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl02.html).
 
 The [next chapter](Ch-2.md) will demonstrate how to convert this AST into MLIR.
