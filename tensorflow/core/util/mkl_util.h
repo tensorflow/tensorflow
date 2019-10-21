@@ -1010,9 +1010,11 @@ memory::data_type MklDnnType<qint32>() {
 }
 template <>
 memory::data_type MklDnnType<bfloat16>() {
-  // TODO(nhasabni): Enable MKL-DNN bfloat16 type later.
-  // Currently, falling back to f32 to get compilation working.
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  return memory::data_type::bf16;
+#else
   return memory::data_type::f32;
+#endif
 }
 
 #ifdef ENABLE_MKLDNN_V1

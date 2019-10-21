@@ -1569,7 +1569,12 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
 
   // Merge all the non-concat dims, and sum the concat dim to make an output
   // shape.
-  const int32 concat_dim = concat_dim_t->scalar<int32>()();
+  int64 concat_dim;
+  if (concat_dim_t->dtype() == DT_INT32) {
+    concat_dim = static_cast<int64>(concat_dim_t->flat<int32>()(0));
+  } else {
+    concat_dim = concat_dim_t->flat<int64>()(0);
+  }
 
   // Minimum required number of dimensions.
   const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;

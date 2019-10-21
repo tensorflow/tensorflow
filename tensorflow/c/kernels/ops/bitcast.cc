@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/ops.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 static void ComputeNewShape(TF_ShapeInferenceContext* ctx,
                             TF_ShapeHandle* shape, size_t input_type_size,
@@ -127,7 +128,7 @@ void RegisterBitcastOp() {
   TF_DeleteStatus(status);
 }
 
-static bool IsBitcastOpRegistered = []() {
+TF_ATTRIBUTE_UNUSED static bool IsBitcastOpRegistered = []() {
   if (SHOULD_REGISTER_OP("Bitcast")) {
     RegisterBitcastOp();
   }

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
@@ -50,10 +49,10 @@ void PrintTo(const ReduceLayout& reduce_layout, ::std::ostream* os) {
 
 class ReduceWithLayoutTest
     : public HloTestBase,
-      public ::testing::WithParamInterface<ReduceLayout> {};
-
-StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
-  const char* const hlo_string = R"(
+      public ::testing::WithParamInterface<ReduceLayout> {
+ public:
+  StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
+    const char* const hlo_string = R"(
 HloModule BadReduce
 
 Sum {
@@ -70,12 +69,11 @@ ENTRY reduce.1 {
 }
 )";
 
-  return ParseAndReturnUnverifiedModule(hlo_string);
-}
+    return ParseAndReturnVerifiedModule(hlo_string);
+  }
+};
 
-// TODO(b/72454718): XLA:GPU does not support executing code compiled without
-// optimizations.
-XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_GPU(Reduce)) {
+XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
   HloInstruction* reduce_instruction =
       module->entry_computation()->root_instruction()->mutable_operand(0);

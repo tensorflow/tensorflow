@@ -78,6 +78,7 @@ class MlirCompiler : public Compiler {
   void SetModuleHook(IRHook module_hook);
   void RemoveModuleHook();
   void SetErrorHandler(ErrorHandler error_handler);
+  void RemoveErrorHandler();
 
  private:
   ::mlir::MLIRContext context_;

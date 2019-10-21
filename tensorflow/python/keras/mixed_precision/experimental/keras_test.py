@@ -46,6 +46,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -535,15 +536,27 @@ class KerasLayerTest(keras_parameterized.TestCase):
 class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""
 
-  def _is_strategy_supported(self, strategy_fn, check_model_type=False):
+  def _skip_if_strategy_unsupported(self, strategy_fn, check_model_type=False):
     if (strategy_fn != default_strategy_fn and
         (testing_utils.should_run_eagerly() or
          (check_model_type and testing_utils.get_model_type() == 'subclass'))):
-      # Distribution strategies do not support subclassed models or running with
-      # `run_eagerly=True`.
-      return False
-    else:
-      return True
+      self.skipTest('Non-default strategies are unsupported with subclassed '
+                    'models or with passing run_eagerly=True to '
+                    'Model.compile()')
+
+  def _skip_if_save_format_unsupported(self, save_format):
+    model_type = testing_utils.get_model_type()
+    if save_format == 'h5' and model_type == 'subclass':
+      self.skipTest('Saving subclassed models with the HDF5 format is '
+                    'unsupported')
+    if (save_format == 'tf' and model_type == 'subclass' and
+        not testing_utils.should_run_tf_function()):
+      self.skipTest('b/142352416: This combination of features is currently '
+                    'broken.')
+    if (save_format == 'tf' and model_type != 'subclass' and
+        not context.executing_eagerly()):
+      self.skipTest('b/134519980: This combination of features is currently '
+                    'broken.')
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -563,17 +576,29 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'use_regularizer': True
       }, {
-          'testcase_name': 'infer',
-          'strategy_fn': create_mirrored_strategy,
-          'policy_name': 'mixed_float16'
-      }, {
           'testcase_name': 'get_config',
           'strategy_fn': create_mirrored_strategy,
-          'get_config': True
-      }, {
-          'testcase_name': 'get_config_with_regularizer',
-          'strategy_fn': create_mirrored_strategy,
           'get_config': True,
+          'use_regularizer': True,
+      }, {
+          'testcase_name': 'saved_model',
+          'strategy_fn': default_strategy_fn,
+          'save_format': 'tf',
+          'use_regularizer': True,
+      }, {
+          'testcase_name': 'h5',
+          'strategy_fn': default_strategy_fn,
+          'save_format': 'h5',
+          'use_regularizer': True,
+      }, {
+          'testcase_name': 'saved_model_distribute',
+          'strategy_fn': create_mirrored_strategy,
+          'save_format': 'tf',
+          'use_regularizer': True,
+      }, {
+          'testcase_name': 'h5_distribute',
+          'strategy_fn': create_mirrored_strategy,
+          'save_format': 'h5',
           'use_regularizer': True,
       }, {
           'testcase_name': 'norun_distributed',
@@ -587,31 +612,24 @@ class KerasModelTest(keras_parameterized.TestCase):
                  use_regularizer=False,
                  policy_name='mixed_float16',
                  get_config=False,
+                 save_format=None,
                  experimental_run_tf_function=True):
-    if not self._is_strategy_supported(strategy_fn, check_model_type=True):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn, check_model_type=True)
+    self._skip_if_save_format_unsupported(save_format)
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
       # Pass loss_scale=None, as this test will fail if the DynamicLossScale
       # skips applying gradients for a step
       with policy.policy_scope(policy.Policy(policy_name, loss_scale=None)):
-        layer_list = []
-        if testing_utils.get_model_type() == 'subclass':
-          # Subclassed models do not have an Input layer, so the model does not
-          # cast inputs to the Input layer's dtype. Therefore, we need to
-          # manually insert a float16 cast.
-          cast_f16_layer = layers.Lambda(
-              lambda x: math_ops.cast(x, 'float16'), input_shape=(1,))
-          layer_list.append(cast_f16_layer)
         layer = AddLayer(
             assert_type=dtypes.float16,
             use_operator=use_operator,
             regularizer=regularizer,
             input_shape=(1,))
         cast_f32_layer = layers.Lambda(lambda x: math_ops.cast(x, 'float32'))
-        layer_list += [layer, cast_f32_layer]
         model = testing_utils.get_model_from_layers(
-            layer_list, input_shape=(1,), input_dtype=dtypes.float16)
+            [layer, cast_f32_layer], input_shape=(1,),
+            input_dtype=dtypes.float16)
         if get_config:
           config = model.get_config()
           model = model.__class__.from_config(
@@ -645,6 +663,42 @@ class KerasModelTest(keras_parameterized.TestCase):
       expected -= 2**-14
     self.assertEqual(backend.eval(layer.v), expected)
 
+    if save_format:
+      with generic_utils.CustomObjectScope(
+          {'AddLayer': AddLayer, 'loss_fn': loss_fn}):
+        self._test_saving(model, dataset, save_format, use_regularizer)
+
+  def _test_saving(self, model, dataset, save_format, use_regularizer):
+    # Save and load model, asserting variable does not change
+    save_path = os.path.join(self.get_temp_dir(), 'model')
+    model.save(save_path, save_format=save_format)
+    model = save.load_model(save_path)
+    (layer,) = (layer for layer in model.layers
+                if 'AddLayer' in layer.__class__.__name__)
+    expected = 1 - 2**-14
+    if use_regularizer:
+      expected -= 2**-14
+    self.assertEqual(backend.eval(layer.v), expected)
+
+    # Continue training, and assert variable is correct value
+    model.fit(dataset)
+    new_expected = expected - 2 ** -14
+    if use_regularizer:
+      new_expected -= 2 ** -14
+    self.assertEqual(backend.eval(layer.v), new_expected)
+
+    # Load saved model again, and assert variable is previous value
+    model = save.load_model(save_path)
+    (layer,) = (layer for layer in model.layers
+                if 'AddLayer' in layer.__class__.__name__)
+    self.assertEqual(backend.eval(layer.v), expected)
+
+    # Ensure various dtype-related aspects of the layer are correct
+    self.assertEqual(layer.dtype, 'float32')
+    self.assertEqual(layer._dtype_policy.name, 'mixed_float16')
+    self.assertEqual(layer.v.dtype, 'float32')
+    self.assertEqual(layer(np.ones((2, 1))).dtype, 'float16')
+
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(
       {
@@ -662,8 +716,7 @@ class KerasModelTest(keras_parameterized.TestCase):
                               strategy_fn,
                               experimental_run_tf_function=True):
     # Note: We do not test mixed precision in this method, only loss scaling.
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     loss_scale = 8.
     batch_size = 4
     with strategy_fn().scope():
@@ -723,8 +776,7 @@ class KerasModelTest(keras_parameterized.TestCase):
     #  * Regularization on some variables and not others.
     #  * A fixed loss scale (if use_loss_scaling is True)
 
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
@@ -819,8 +871,7 @@ class KerasModelTest(keras_parameterized.TestCase):
                                 pass_loss_scale_to_policy=False,
                                 get_config=False,
                                 experimental_run_tf_function=True):
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4
@@ -996,8 +1047,7 @@ class KerasModelTest(keras_parameterized.TestCase):
   def test_save_slot_variables_with_autocast_vars(self,
                                                   strategy_fn,
                                                   var_name='v'):
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     with strategy_fn().scope(), policy.policy_scope('infer_float32_vars'):
       x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float16)
       # Having a var_name other than 'v' tests that a fixed bug (b/134713714)
@@ -1031,8 +1081,7 @@ class KerasModelTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(*TESTCASES)
   def test_save_weights_with_dynamic_loss_scaling(self, strategy_fn):
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     strategy = strategy_fn()
     if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
         not context.executing_eagerly()):
@@ -1091,8 +1140,7 @@ class KerasModelTest(keras_parameterized.TestCase):
           'h5': True,
       })
   def test_save_model_with_dynamic_loss_scaling(self, strategy_fn, h5=False):
-    if not self._is_strategy_supported(strategy_fn):
-      return
+    self._skip_if_strategy_unsupported(strategy_fn)
     # TODO(reedwm): Support and test saving model with a mixed_[b]float16 policy
     # as well.
     strategy = strategy_fn()

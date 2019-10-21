@@ -28,12 +28,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
 
 namespace xla {
 namespace {
@@ -283,6 +282,52 @@ TEST_F(HloCostAnalysisTest, Convolution) {
   // Bytes accessed is sum of inputs and output.
   EXPECT_EQ(analysis.bytes_accessed(),
             sizeof(float) * (10 * 20 + 3 * 3 + 8 * 18));
+}
+
+TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
+  XlaBuilder builder("convolution");
+  constexpr int64 kLarge = 512 * 1024;
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "kernel");
+  ConvGeneralDilated(input, kernel, {kLarge - 1}, {{0, 0}}, {kLarge}, {1},
+                     XlaBuilder::CreateDefaultConvDimensionNumbers(1));
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.flop_count(), 2 * kLarge);
+}
+
+TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
+  XlaBuilder builder("convolution");
+  constexpr int64 kLarge = 512 * 1024;
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/1}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "kernel");
+  ConvGeneralDilated(input, kernel, {1}, {{kLarge - 1, kLarge - 1}}, {1}, {1},
+                     XlaBuilder::CreateDefaultConvDimensionNumbers(1));
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.flop_count(), 2 * kLarge);
 }
 
 TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {

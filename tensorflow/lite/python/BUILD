@@ -115,6 +115,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":tflite_convert",
@@ -200,6 +201,7 @@ py_test(
     ],
 )
 
+<<<<<<< HEAD
 py_test(
     name = "lite_mlir_test",
     srcs = ["lite_mlir_test.py"],
@@ -217,6 +219,8 @@ py_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 py_library(
     name = "util",
     srcs = ["util.py"],

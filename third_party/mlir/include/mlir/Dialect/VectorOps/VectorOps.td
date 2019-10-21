@@ -85,10 +85,10 @@ def OuterProductOp :
 
     Examples
 
-      %2 = vector.extractelement %0, %1: vector<4xf32>, vector<8xf32>
+      %2 = vector.outerproduct %0, %1: vector<4xf32>, vector<8xf32>
       return %2: vector<4x8xf32>
 
-      %3 = vector.extractelement %0, %1, %2:
+      %3 = vector.outerproduct %0, %1, %2:
         vector<4xf32>, vector<8xf32>, vector<4x8xf32>
       return %3: vector<4x8xf32>
   }];

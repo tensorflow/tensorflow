@@ -4,6 +4,7 @@ tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/core/public/version.h
 tensorflow/python/autograph/core/config.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
@@ -205,6 +206,7 @@ tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/cpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/py3/BUILD
+tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/centos6/cuda10.1-cudnn7/cuda/BUILD
@@ -263,6 +265,8 @@ tensorflow/third_party/toolchains/remote/configure.bzl
 tensorflow/third_party/toolchains/remote/execution.bzl.tpl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
+tensorflow/tools/ci_build/release/common.sh
+tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/pip.sh
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/def_file_filter/BUILD
 tensorflow/tools/def_file_filter/BUILD.tpl

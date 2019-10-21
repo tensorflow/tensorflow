@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -36,7 +35,7 @@ class ScatterTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(hlo_text, config));
+                            ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
@@ -158,7 +157,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+                          ParseAndReturnVerifiedModule(hlo_text, config));
   auto actual = ExecuteAndTransfer(std::move(module), {&permutation});
   Literal expected =
       LiteralUtil::CreateR2<int32>({{3, 0, 2, 1}, {1, 3, 2, 0}, {3, 2, 0, 1}});

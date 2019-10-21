@@ -22,13 +22,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-gen_zipped_test_file(
-    name = "zip_conv_edgetpu",
-    file = "conv_edgetpu.zip",
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
-)
-
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
     size = "medium",
@@ -90,7 +83,18 @@ py_library(
         "//tensorflow/lite/toco",
     ],
     deps = [
-        ":generate_examples_lib",
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "op_tests",
+    srcs = glob(["op_tests/*.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -101,12 +105,21 @@ py_library(
     srcs = ["generate_examples_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":op_tests",
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "zip_test_utils",
+    srcs = ["zip_test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":generate_examples_report",
         ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -465,3 +478,16 @@ tf_py_wrap_cc(
 )
 
 tflite_portable_test_suite()
+
+edgetpu_ops = [
+    "conv",
+    "maximum",
+    "minimum",
+]
+
+[gen_zipped_test_file(
+    name = "zip_%s_edgetpu" % op_name,
+    file = "%s_edgetpu.zip" % op_name,
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
+) for op_name in edgetpu_ops]

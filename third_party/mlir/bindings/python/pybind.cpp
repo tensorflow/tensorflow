@@ -150,17 +150,15 @@ struct PythonMLIRModule {
         module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
         moduleManager(*module) {}
 
-  PythonType makeScalarType(const std::string &mlirElemType,
-                            unsigned bitwidth) {
-    return ::makeScalarType(mlir_context_t{&mlirContext}, mlirElemType.c_str(),
-                            bitwidth);
-  }
   PythonType makeMemRefType(PythonType elemType, std::vector<int64_t> sizes) {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
                             int64_list_t{sizes.data(), sizes.size()});
   }
   PythonType makeIndexType() {
     return ::makeIndexType(mlir_context_t{&mlirContext});
+  }
+  PythonType makeType(const std::string &type) {
+    return ::mlirParseType(type.c_str(), mlir_context_t{&mlirContext}, nullptr);
   }
 
   // Declare a function with the given name, input types and their attributes,
@@ -308,7 +306,7 @@ struct PythonLoopContext {
 
   PythonValueHandle enter() {
     ValueHandle iv(lb.value.getType());
-    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    builder = new AffineLoopNestBuilder(&iv, lb.value, ub.value, step);
     return iv;
   }
 
@@ -320,7 +318,7 @@ struct PythonLoopContext {
 
   PythonValueHandle lb, ub;
   int64_t step;
-  LoopBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonLoopNestContext {
@@ -350,7 +348,7 @@ struct PythonLoopNestContext {
     handlePtrs.reserve(steps.size());
     for (auto &h : handles)
       handlePtrs.push_back(&h.value);
-    builder = new LoopNestBuilder(
+    builder = new AffineLoopNestBuilder(
         handlePtrs, std::vector<ValueHandle>(lbs.begin(), lbs.end()),
         std::vector<ValueHandle>(ubs.begin(), ubs.end()), steps);
     return handles;
@@ -365,7 +363,7 @@ struct PythonLoopNestContext {
   std::vector<PythonValueHandle> lbs;
   std::vector<PythonValueHandle> ubs;
   std::vector<int64_t> steps;
-  LoopNestBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonBlockAppender {
@@ -399,7 +397,7 @@ public:
   }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Creating a new EDSC Builder automatically puts it on the stack,
   // effectively entering the block for it.
   void createBlockBuilder() {
@@ -424,7 +422,7 @@ public:
   PythonBlockHandle getHandle() { return handle; }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Calling operator() on a builder pops the builder from the stack,
   // effectively resetting the insertion point to its position before we entered
   // the block.
@@ -525,7 +523,7 @@ struct PythonIndexedValue {
 
   void store(const std::vector<PythonValueHandle> &indices,
              PythonValueHandle value) {
-    // Uses the overloaded `opreator=` to emit a store.
+    // Uses the overloaded `operator=` to emit a store.
     index(indices).indexed = value.value;
   }
 
@@ -789,28 +787,13 @@ PYBIND11_MODULE(pybind, m) {
            "function context for building the body of the function.")
       .def("get_function", &PythonMLIRModule::getNamedFunction,
            "Looks up the function with the given name in the module.")
-      .def(
-          "make_scalar_type",
-          [](PythonMLIRModule &instance, const std::string &type,
-             unsigned bitwidth) {
-            return instance.makeScalarType(type, bitwidth);
-          },
-          py::arg("type"), py::arg("bitwidth") = 0,
-          "Returns a scalar mlir::Type using the following convention:\n"
-          "  - makeScalarType(c, \"bf16\") return an "
-          "`mlir::FloatType::getBF16`\n"
-          "  - makeScalarType(c, \"f16\") return an `mlir::FloatType::getF16`\n"
-          "  - makeScalarType(c, \"f32\") return an `mlir::FloatType::getF32`\n"
-          "  - makeScalarType(c, \"f64\") return an `mlir::FloatType::getF64`\n"
-          "  - makeScalarType(c, \"index\") return an `mlir::IndexType::get`\n"
-          "  - makeScalarType(c, \"i\", bitwidth) return an "
-          "`mlir::IntegerType::get(bitwidth)`\n\n"
-          " No other combinations are currently supported.")
       .def("make_memref_type", &PythonMLIRModule::makeMemRefType,
            "Returns an mlir::MemRefType of an elemental scalar. -1 is used to "
            "denote symbolic dimensions in the resulting memref shape.")
       .def("make_index_type", &PythonMLIRModule::makeIndexType,
            "Returns an mlir::IndexType")
+      .def("make_type", &PythonMLIRModule::makeType,
+           "Returns an mlir::Type defined by the IR passed in as the argument.")
       .def("compile", &PythonMLIRModule::compile,
            "Compiles the mlir::ModuleOp to LLVMIR a creates new opaque "
            "ExecutionEngine backed by the ORC JIT.")

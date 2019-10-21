@@ -366,7 +366,7 @@ def _set_network_attributes_from_metadata(revived_obj):
     # pylint:disable=protected-access
     metadata = revived_obj._serialized_attributes['metadata']
     if metadata.get('dtype') is not None:
-      revived_obj._dtype = metadata['dtype']
+      revived_obj._set_dtype_policy(metadata['dtype'])
     revived_obj.trainable = metadata['trainable']
 
     revived_obj._expects_training_arg = metadata['expects_training_arg']

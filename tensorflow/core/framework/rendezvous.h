@@ -124,6 +124,9 @@ class Rendezvous : public core::RefCounted {
 
  protected:
   ~Rendezvous() override;
+
+  virtual bool is_cross_process() { return false; }
+  friend class ProcessFunctionLibraryRuntime;
 };
 
 // Returns a Rendezvous instance that is limited to use only by

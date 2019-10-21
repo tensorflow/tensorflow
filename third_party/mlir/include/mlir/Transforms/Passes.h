@@ -32,6 +32,7 @@ namespace mlir {
 class AffineForOp;
 class FuncOp;
 class ModuleOp;
+class Pass;
 template <typename T> class OpPassBase;
 
 /// Creates a constant folding pass. Note that this pass solely provides simple
@@ -90,7 +91,11 @@ createLoopFusionPass(unsigned fastMemorySpace = 0,
 
 /// Creates a loop invariant code motion pass that hoists loop invariant
 /// instructions out of the loop.
-std::unique_ptr<OpPassBase<FuncOp>> createLoopInvariantCodeMotionPass();
+std::unique_ptr<Pass> createLoopInvariantCodeMotionPass();
+
+/// Creates a loop invariant code motion pass that hoists loop invariant
+/// instructions out of affine loop.
+std::unique_ptr<OpPassBase<FuncOp>> createAffineLoopInvariantCodeMotionPass();
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
@@ -136,6 +141,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createStripDebugInfoPass();
 /// Creates a pass which tests loop fusion utilities.
 std::unique_ptr<OpPassBase<FuncOp>> createTestLoopFusionPass();
 
+/// Creates a pass which inlines calls and callable operations as defined by the
+/// CallGraph.
+std::unique_ptr<Pass> createInlinerPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

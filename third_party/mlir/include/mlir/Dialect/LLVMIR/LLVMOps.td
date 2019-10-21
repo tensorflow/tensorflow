@@ -488,7 +488,7 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"mlir.global">,
+    : LLVM_ZeroResultOp<"mlir.global", [Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
@@ -516,7 +516,8 @@ def LLVM_GlobalOp
 }
 
 def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
+      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">,
+       Symbol]> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);
@@ -545,6 +546,10 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
     // Hook for OpTrait::FunctionLike, returns the number of function arguments.
     // Depends on the type attribute being correct as checked by verifyType.
     unsigned getNumFuncArguments();
+
+    // Hook for OpTrait::FunctionLike, returns the number of function results.
+    // Depends on the type attribute being correct as checked by verifyType.
+    unsigned getNumFuncResults();
 
     // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
     // attribute is present.  This can check for preconditions of the

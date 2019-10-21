@@ -521,10 +521,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     // The last read cycle counter in the program.
     llvm::Value* last_read_cycle_end_ = nullptr;
 
-    // An alloca used to hold the output of the aux value returned by the rdtscp
-    // intrinsic.
-    llvm::Value* aux_i8ptr_ = nullptr;
-
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.
     std::unordered_map<const HloInstruction*, llvm::Value*> cycle_starts_;

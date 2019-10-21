@@ -67,7 +67,7 @@ def tflite_convert(fn, input_templates, use_mlir=False):
   fn = def_function.function(fn)
   concrete_func = fn.get_concrete_function(*input_templates)
   converter = lite.TFLiteConverterV2([concrete_func])
-  converter.experimental_enable_mlir_converter = use_mlir
+  converter.experimental_new_converter = use_mlir
   return converter.convert()
 
 

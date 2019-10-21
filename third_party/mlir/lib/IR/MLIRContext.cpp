@@ -636,7 +636,7 @@ IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
   };
 
   // If this instance is uniqued, then we handle it separately so that multiple
-  // threads may simulatenously access existing instances.
+  // threads may simultaneously access existing instances.
   if (constraints.size() < IntegerSet::kUniquingThreshold) {
     auto key = std::make_tuple(dimCount, symbolCount, constraints, eqFlags);
     return safeGetOrCreate(impl.integerSets, key, impl.affineMutex,

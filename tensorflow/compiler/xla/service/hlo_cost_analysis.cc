@@ -310,7 +310,7 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
 Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessNestedSubcomputation(map->to_apply()));
+                      ProcessSubcomputation(map->to_apply()));
 
   // Compute the cost of all elements for this Map operation.
   const int64 element_count = ShapeUtil::ElementsIn(map->shape());
@@ -326,7 +326,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessNestedSubcomputation(function));
+                      ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Reduce operation.
   // This counts the number of times the reduction function is applied, so it
@@ -352,7 +352,7 @@ Status HloCostAnalysis::HandleReduceWindow(
   auto function = reduce_window->to_apply();
   // Compute the properties of the reduction function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessNestedSubcomputation(function));
+                      ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this ReduceWindow operation. For each
   // output element there are window_size - 1 reductions to perform.
@@ -377,9 +377,9 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   // Compute the properties of the select and scatter function.
   // Compute the properties of the reduction function.
   TF_ASSIGN_OR_RETURN(const Properties select_properties,
-                      ProcessNestedSubcomputation(instruction->select()));
+                      ProcessSubcomputation(instruction->select()));
   TF_ASSIGN_OR_RETURN(const Properties scatter_properties,
-                      ProcessNestedSubcomputation(instruction->scatter()));
+                      ProcessSubcomputation(instruction->scatter()));
 
   // Compute the cost of all elements for this operation. For each scatter
   // source element there are window_size - 1 select computations to perform and
@@ -541,6 +541,31 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   // Loop over each spatial dimension.
   for (int64 spatial_dimension = 0;
        spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+    const auto& window_dim = window.dimensions(spatial_dimension);
+    // These two conditions will create an N^2 iteration pattern with only N
+    // valid elements. This is a performance optimization and produces the same
+    // result as the whole loop.
+    if (input_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        kernel_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        input_limits[spatial_dimension] == window_dim.base_dilation() &&
+        window_dim.window_dilation() == 1 &&
+        std::max<int64>(1, input_limits[spatial_dimension] - 1) ==
+            window_dim.stride() &&
+        window_dim.padding_low() == 0 && window_dim.padding_high() == 0) {
+      valid_position_counts.push_back(input_limits[spatial_dimension]);
+      continue;
+    }
+
+    if (input_limits[spatial_dimension] == 1 &&
+        kernel_limits[spatial_dimension] == output_limits[spatial_dimension] &&
+        window_dim.window_dilation() == 1 && window_dim.base_dilation() == 1 &&
+        window_dim.stride() == 1 &&
+        window_dim.padding_high() == output_limits[spatial_dimension] - 1 &&
+        window_dim.padding_low() == output_limits[spatial_dimension] - 1) {
+      valid_position_counts.push_back(output_limits[spatial_dimension]);
+      continue;
+    }
+
     int64 valid_position_count = 0;
     // Loop over each point in the kernel.
     for (int64 kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
@@ -550,7 +575,6 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
            ++output_idx) {
         // Calculate lhs (input) index without taking base dilation into
         // account.
-        const auto& window_dim = window.dimensions(spatial_dimension);
         const int64 undilated_index = output_idx * window_dim.stride() -
                                       window_dim.padding_low() +
                                       kernel_idx * window_dim.window_dilation();
@@ -689,7 +713,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   }
   TF_ASSIGN_OR_RETURN(
       current_properties_,
-      ProcessNestedSubcomputation(fusion->fused_instructions_computation()));
+      ProcessSubcomputation(fusion->fused_instructions_computation()));
 
   // Fusion nodes that produce a tuple also produce the entries in the tuple.
   // Ignore the memory accessed inside fused ops, since fusion is supposed to
@@ -733,7 +757,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
 
 Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
   TF_ASSIGN_OR_RETURN(current_properties_,
-                      ProcessUnnestedSubcomputation(call->to_apply()));
+                      ProcessSubcomputation(call->to_apply()));
   current_should_compute_bottleneck_time_ = false;
   return Status::OK();
 }
@@ -763,11 +787,10 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   // something that we can statically analyze, we cannot precisely compute the
   // cost of a while node. For now compute the cost of a single iteration.
   TF_ASSIGN_OR_RETURN(const Properties body_properties,
-                      ProcessUnnestedSubcomputation(xla_while->while_body()));
+                      ProcessSubcomputation(xla_while->while_body()));
 
-  TF_ASSIGN_OR_RETURN(
-      const Properties condition_properties,
-      ProcessUnnestedSubcomputation(xla_while->while_condition()));
+  TF_ASSIGN_OR_RETURN(const Properties condition_properties,
+                      ProcessSubcomputation(xla_while->while_condition()));
 
   current_properties_.clear();
   for (const auto& property : body_properties) {
@@ -786,12 +809,12 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
   // for each property.
   TF_ASSIGN_OR_RETURN(
       const Properties branch0_computation_properties,
-      ProcessUnnestedSubcomputation(conditional->branch_computation(0)));
+      ProcessSubcomputation(conditional->branch_computation(0)));
   current_properties_ = branch0_computation_properties;
   for (int j = 1; j < conditional->branch_count(); ++j) {
     TF_ASSIGN_OR_RETURN(
         const Properties branch_computation_properties,
-        ProcessUnnestedSubcomputation(conditional->branch_computation(j)));
+        ProcessSubcomputation(conditional->branch_computation(j)));
     for (const auto& property : branch_computation_properties) {
       if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_,
                                                property)) {
@@ -824,7 +847,7 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
   const int64 element_count =
       ShapeUtil::ElementsIn(scatter->operand(2)->shape());
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessNestedSubcomputation(scatter->to_apply()));
+                      ProcessSubcomputation(scatter->to_apply()));
   for (const auto& property : sub_properties) {
     if (property.first != kBytesAccessedKey) {
       current_properties_[property.first] = property.second * element_count;
@@ -879,16 +902,8 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
-StatusOr<HloCostAnalysis::Properties>
-HloCostAnalysis::ProcessNestedSubcomputation(HloComputation* computation) {
-  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
-  visitor->ReserveVisitStates(computation->instruction_count());
-  TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
-  return visitor->properties();
-}
-
-StatusOr<HloCostAnalysis::Properties>
-HloCostAnalysis::ProcessUnnestedSubcomputation(HloComputation* computation) {
+StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
+    HloComputation* computation) {
   auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));

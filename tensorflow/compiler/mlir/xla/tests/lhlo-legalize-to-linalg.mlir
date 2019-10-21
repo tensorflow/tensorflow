@@ -53,3 +53,33 @@ func @exp(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
 // CHECK-NEXT: ^bb0(%[[D0:.*]]: f32, %[[D1:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = exp %[[D0]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// CHECK-LABEL: func @float_cmp
+func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  "xla_lhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "EQ"}: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf "oeq", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// CHECK-LABEL: func @int_cmp
+func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>, %result: memref<2x2xi1>) {
+  "xla_lhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "LT"}: (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi "slt", %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// CHECK-LABEL: func @select
+func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "xla_lhlo.select"(%pred, %lhs, %rhs, %result) : (memref<2x2xi1>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[PRED_IN:.*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32

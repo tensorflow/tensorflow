@@ -279,6 +279,8 @@ manual_symbol_renames = {
         "tf.recompute_grad",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
+    "tf.decode_raw":
+        "tf.io.decode_raw",
     "tf.manip.batch_to_space_nd":
         "tf.batch_to_space",
     "tf.quantize_v2":
@@ -550,6 +552,7 @@ manual_symbol_renames = {
         "tf.compat.v1.where",
     "tf.where_v2":
         "tf.compat.v2.where",
+    "tf.app.flags": "tf.compat.v1.app.flags",
 }
 # pylint: enable=line-too-long
 

@@ -225,7 +225,7 @@ bool IsInteger(PyObject* py_value) {
 #if PY_MAJOR_VERSION >= 3
   return PyLong_Check(py_value);
 #else
-  return PyInt_Check(py_value);
+  return PyInt_Check(py_value) || PyLong_Check(py_value);
 #endif
 }
 
@@ -240,6 +240,7 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
   tensorflow::Safe_PyObjectPtr dimension_value(
       PyObject_GetAttrString(py_value, "_value"));
   if (dimension_value == nullptr) {
+    PyErr_Clear();
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat("Expecting a Dimension for attr ", key,
@@ -763,8 +764,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
+static std::atomic<int64_t> _uid;
 
 }  // namespace
 
@@ -969,7 +969,6 @@ const char* TFE_GetPythonString(PyObject* o) {
 }
 
 int64_t get_uid() {
-  tensorflow::mutex_lock l(_uid_mutex);
   return _uid++;
 }
 

@@ -356,6 +356,9 @@ public:
                                     valuesToRemoveIfDead);
   }
 
+  /// This method erases an operation that is known to have no uses.
+  virtual void eraseOp(Operation *op);
+
   /// Split the operations starting at "before" (inclusive) out of the given
   /// block into a new block, and return it.
   virtual Block *splitBlock(Block *block, Block::iterator before) {

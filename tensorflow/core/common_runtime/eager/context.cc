@@ -214,14 +214,6 @@ bool EagerContext::MirrorTensors() const {
 
 #if !defined(IS_MOBILE_PLATFORM)
 void EagerContext::CloseAndClearAllRemoteContexts() {
-  CloseRemoteContexts(remote_contexts_);
-  remote_contexts_.clear();
-}
-
-void EagerContext::CloseRemoteContexts(
-    const std::vector<string>& remote_contexts) {
-  // Close all remote contexts.
-  eager::CloseContextRequest request;
   uint64 context_id;
   {
     mutex_lock l(remote_state_mu_);
@@ -229,6 +221,14 @@ void EagerContext::CloseRemoteContexts(
     context_id = context_id_;
     context_id_ = kInvalidContextId;
   }
+  CloseRemoteContexts(remote_contexts_, context_id);
+  remote_contexts_.clear();
+}
+
+void EagerContext::CloseRemoteContexts(
+    const std::vector<string>& remote_contexts, uint64 context_id) {
+  // Close all remote contexts.
+  eager::CloseContextRequest request;
   request.set_context_id(context_id);
   // Setting context_id to a new value can avoid us issuing DestroyTensorHandle
   // request to closed remote workers.
@@ -763,7 +763,13 @@ Status EagerContext::UpdateRemoteMaster(
   }
 
   if (!remove_remote_contexts.empty()) {
-    CloseRemoteContexts(remove_remote_contexts);
+    // N.B. remove_remote_contexts include both removed and replaced workers. It
+    // is safe to send CloseContextRequest to them using the old copy of eager
+    // client cache (i.e., `remote_eager_workers_`) because the replaced workers
+    // will be resolved to the old eager clients. Thus, it correctly closes
+    // contexts on workers that are replaced by new ones. It must be called
+    // before overwriting `remote_eager_workers_` in current master context.
+    CloseRemoteContexts(remove_remote_contexts, context_id);
     for (const string& remote_context : remove_remote_contexts) {
       remote_contexts_.erase(
           std::remove(remote_contexts_.begin(), remote_contexts_.end(),
@@ -925,6 +931,7 @@ Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
+    uint64 context_view_id,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -945,7 +952,7 @@ Status EagerContext::InitializeRemoteWorker(
 
   remote_contexts_ = remote_contexts;
   context_id_ = context_id;
-  context_view_id_ = 0;
+  context_view_id_ = context_view_id;
 
   rendezvous_creator_ = std::move(rendezvous_creator);
   remote_eager_workers_ = std::move(remote_eager_workers);

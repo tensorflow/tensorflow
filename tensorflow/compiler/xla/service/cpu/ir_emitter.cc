@@ -2860,7 +2860,7 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
 
 llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  if (use_rdtscp_) {
+  if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
         llvm::Intrinsic::getDeclaration(module,
                                         llvm::Intrinsic::readcyclecounter);
@@ -2868,20 +2868,8 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   }
   llvm::Function* func_llvm_x86_rdtscp =
       llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
-  if (!aux_i8ptr_) {
-    llvm::AllocaInst* rdtscp_aux =
-        llvm_ir::EmitAllocaAtFunctionEntry(b->getInt32Ty(), "rdtscp_aux", b);
-    aux_i8ptr_ = b->CreateBitCast(rdtscp_aux, b->getInt8PtrTy());
-  }
-  llvm::ConstantInt* alloca_size = b->getInt64(4);
-  llvm::Function* func_llvm_lifetime_start =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_start);
-  b->CreateCall(func_llvm_lifetime_start, {alloca_size, aux_i8ptr_});
-  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp, aux_i8ptr_);
-  llvm::Function* func_llvm_lifetime_end =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_end);
-  b->CreateCall(func_llvm_lifetime_end, {alloca_size, aux_i8ptr_});
-  return rdtscp_call;
+  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
+  return b->CreateExtractValue(rdtscp_call, {0});
 }
 
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,

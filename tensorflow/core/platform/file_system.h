@@ -17,17 +17,19 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_FILE_SYSTEM_H_
 
 #include <stdint.h>
+
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS

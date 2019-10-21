@@ -80,12 +80,6 @@ public:
   IntegerType getI1Type();
   IntegerType getIntegerType(unsigned width);
   FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
-  MemRefType getMemRefType(ArrayRef<int64_t> shape, Type elementType,
-                           ArrayRef<AffineMap> affineMapComposition = {},
-                           unsigned memorySpace = 0);
-  VectorType getVectorType(ArrayRef<int64_t> shape, Type elementType);
-  RankedTensorType getTensorType(ArrayRef<int64_t> shape, Type elementType);
-  UnrankedTensorType getTensorType(Type elementType);
   TupleType getTupleType(ArrayRef<Type> elementTypes);
   NoneType getNoneType();
 
@@ -105,22 +99,10 @@ public:
   FloatAttr getFloatAttr(Type type, double value);
   FloatAttr getFloatAttr(Type type, const APFloat &value);
   StringAttr getStringAttr(StringRef bytes);
-  StringAttr getStringAttr(StringRef bytes, Type type);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
-  AffineMapAttr getAffineMapAttr(AffineMap map);
-  IntegerSetAttr getIntegerSetAttr(IntegerSet set);
-  TypeAttr getTypeAttr(Type type);
   SymbolRefAttr getSymbolRefAttr(Operation *value);
   SymbolRefAttr getSymbolRefAttr(StringRef value);
-  ElementsAttr getDenseElementsAttr(ShapedType type,
-                                    ArrayRef<Attribute> values);
-  ElementsAttr getDenseIntElementsAttr(ShapedType type,
-                                       ArrayRef<int64_t> values);
-  ElementsAttr getSparseElementsAttr(ShapedType type,
-                                     DenseIntElementsAttr indices,
-                                     DenseElementsAttr values);
-  ElementsAttr getOpaqueElementsAttr(Dialect *dialect, ShapedType type,
-                                     StringRef bytes);
+
   // Returns a 0-valued attribute of the given `type`. This function only
   // supports boolean, integer, and 16-/32-/64-bit float types, and vector or
   // ranked tensor of them. Returns null attribute otherwise.
@@ -149,9 +131,6 @@ public:
   AffineExpr getAffineSymbolExpr(unsigned position);
   AffineExpr getAffineConstantExpr(int64_t constant);
 
-  AffineMap getAffineMap(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> results);
-
   // Special cases of affine maps and integer sets
   /// Returns a zero result affine map with no dimensions or symbols: () -> ().
   AffineMap getEmptyAffineMap();
@@ -175,11 +154,6 @@ public:
   ///   returns:    (d0, d1)[s0] -> (d0 + 2, d1 + s0 + 2)
   AffineMap getShiftedAffineMap(AffineMap map, int64_t shift);
 
-  // Integer set.
-  IntegerSet getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                           ArrayRef<AffineExpr> constraints,
-                           ArrayRef<bool> isEq);
-  // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
 };

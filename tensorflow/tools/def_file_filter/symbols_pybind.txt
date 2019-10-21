@@ -78,3 +78,6 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass

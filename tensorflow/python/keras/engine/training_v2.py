@@ -35,13 +35,15 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 
 # The list of DataAdapter that support validation_split, only numpy and data
 # tensor support validation_split for now.
-_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
+_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter,
+                                 data_adapter.GenericArrayLikeDataAdapter]
 
 # The list of DataAdapter that support model._standardize_user_data. Currently
 # keras.sequence/python generator will cause error when calling
@@ -49,7 +51,9 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
-    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter,
+    data_adapter.TensorLikeDataAdapter,
+    data_adapter.GenericArrayLikeDataAdapter,
+    data_adapter.DatasetAdapter,
     data_adapter.CompositeTensorDataAdapter
 ]
 
@@ -741,14 +745,16 @@ class TrainingContext(object):
   @tf_contextlib.contextmanager
   def on_batch(self, step=0, mode=ModeKeys.TRAIN, size=1):
     """Provide a scope for running one batch."""
-    batch_logs = {'batch': step, 'size': size}
-    self.callbacks._call_batch_hook(
-        mode, 'begin', step, batch_logs)
-    self.progbar.on_batch_begin(step, batch_logs)
-    try:
-      yield batch_logs
-    finally:
-      if not batch_logs.pop('data_exhausted', False):
-        self.callbacks._call_batch_hook(
-            mode, 'end', step, batch_logs)
-        self.progbar.on_batch_end(step, batch_logs)
+    with traceme.TraceMe(
+        'TraceContext', graph_type=mode, step_num=step, batch_size=size):
+      batch_logs = {'batch': step, 'size': size}
+      self.callbacks._call_batch_hook(
+          mode, 'begin', step, batch_logs)
+      self.progbar.on_batch_begin(step, batch_logs)
+      try:
+        yield batch_logs
+      finally:
+        if not batch_logs.pop('data_exhausted', False):
+          self.callbacks._call_batch_hook(
+              mode, 'end', step, batch_logs)
+          self.progbar.on_batch_end(step, batch_logs)

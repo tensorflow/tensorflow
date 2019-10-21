@@ -404,8 +404,6 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
                                   int start_row, int start_col, int end_row,
                                   int end_col, Matrix<float>* dst,
                                   KernelParamsFloat<LhsCols, RhsCols>* params) {
-  using Params = KernelParamsFloat<LhsCols, RhsCols>;
-
   const int depth = lhs.layout.rows;
   RUY_DCHECK_EQ(start_row % LhsCols, 0);
   RUY_DCHECK_EQ(start_col % RhsCols, 0);

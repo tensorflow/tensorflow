@@ -670,6 +670,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_NoInputs(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -681,6 +683,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneInput(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -694,6 +698,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoInputs(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -708,6 +714,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneOutputSignatureKey(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -719,6 +727,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoOutputSignatureKeys(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 

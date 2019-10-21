@@ -224,7 +224,7 @@ struct UniformQuantizedPerAxisTypeStorage : public QuantizedTypeStorage {
   };
 
   // We pass scales and zeroPoints in directly rather than relying on KeyTy
-  // because we have to create new reallocated versions in `constrcut` below.
+  // because we have to create new reallocated versions in `construct` below.
   UniformQuantizedPerAxisTypeStorage(const KeyTy &key, ArrayRef<double> scales,
                                      ArrayRef<int64_t> zeroPoints)
       : QuantizedTypeStorage(key.flags, key.storageType, key.expressedType,
