@@ -26,6 +26,7 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 //===--------------------------------------------------------------------===//
@@ -38,8 +39,8 @@ namespace mlir {
 /// Function arguments or attributes that establish a symbolic connection(e.g.
 /// symbols referenced by name via a string attribute).
 class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                         OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike,
-                         CallableOpInterface::Trait> {
+                         OpTrait::IsIsolatedFromAbove, OpTrait::Symbol,
+                         OpTrait::FunctionLike, CallableOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;

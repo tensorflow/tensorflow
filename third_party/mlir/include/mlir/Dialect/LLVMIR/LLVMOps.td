@@ -488,7 +488,7 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"mlir.global">,
+    : LLVM_ZeroResultOp<"mlir.global", [Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
@@ -516,7 +516,8 @@ def LLVM_GlobalOp
 }
 
 def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
+      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">,
+       Symbol]> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);
