@@ -67,6 +67,3 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
     # Needs to be updated if self.import_renames is changed.
     self.max_submodule_depth = 2
-
-    # TODO(kaftan,annarev): specify replacement from TensorFlow import to
-    # compat.v1 import.

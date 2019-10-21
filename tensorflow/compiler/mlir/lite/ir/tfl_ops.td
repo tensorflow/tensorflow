@@ -2543,7 +2543,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I32, I64, I8, QI8, QUI8]>:$input,
+    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1]>:$input,
     TensorOf<[I32]>:$begin,
     TensorOf<[I32]>:$end,
     TensorOf<[I32]>:$strides,
@@ -2556,7 +2556,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   );
 
   let results = (outs
-    TensorOf<[F32, I32, I64, I8, QI8, QUI8]>:$output
+    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1]>:$output
   );
 
   let hasOptions = 1;

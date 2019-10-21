@@ -40,6 +40,14 @@ public:
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName() { return "test"; }
+
+  LogicalResult verifyRegionArgAttribute(Operation *, unsigned regionIndex,
+                                         unsigned argIndex,
+                                         NamedAttribute) override;
+
+  LogicalResult verifyRegionResultAttribute(Operation *, unsigned regionIndex,
+                                            unsigned resultIndex,
+                                            NamedAttribute) override;
 };
 
 #define GET_OP_CLASSES

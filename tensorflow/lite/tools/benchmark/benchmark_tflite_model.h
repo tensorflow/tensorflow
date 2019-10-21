@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -77,10 +78,27 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
  private:
   struct InputTensorData {
-    InputTensorData() : bytes(0) { data.raw = nullptr; }
-    TfLitePtrUnion data;
+    InputTensorData() : data(nullptr, nullptr) {}
+
+    template <typename T>
+    static InputTensorData Create(int num_elements,
+                                  const std::function<T()>& val_generator) {
+      InputTensorData tmp;
+      tmp.bytes = sizeof(T) * num_elements;
+      T* raw = new T[num_elements];
+      std::generate_n(raw, num_elements, val_generator);
+      // Now initialize the type-erased unique_ptr (with custom deleter) from
+      // 'raw'.
+      tmp.data = std::unique_ptr<void, void (*)(void*)>(
+          static_cast<void*>(raw),
+          [](void* ptr) { delete[] static_cast<T*>(ptr); });
+      return tmp;
+    }
+
+    std::unique_ptr<void, void (*)(void*)> data;
     size_t bytes;
   };
+
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_;

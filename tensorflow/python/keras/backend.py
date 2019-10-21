@@ -5087,6 +5087,7 @@ def separable_conv2d(x,
   return x
 
 
+@keras_export('keras.backend.depthwise_conv2d')
 def depthwise_conv2d(x,
                      depthwise_kernel,
                      strides=(1, 1),
@@ -5973,3 +5974,34 @@ def cast_variables_to_tensor(tensors):
 
 def _is_symbolic_tensor(x):
   return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+
+
+def convert_inputs_if_ragged(inputs):
+  """Converts any ragged tensors to dense."""
+
+  def _convert_ragged_input(inputs):
+    if isinstance(inputs, ragged_tensor.RaggedTensor):
+      return inputs.to_tensor()
+    return inputs
+
+  flat_inputs = nest.flatten(inputs)
+  contains_ragged = py_any(
+      isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
+
+  if not contains_ragged:
+    return inputs, None
+
+  inputs = nest.map_structure(_convert_ragged_input, inputs)
+  # Multiple mask are not yet supported, so one mask is used on all inputs.
+  # We approach this similarly when using row lengths to ignore steps.
+  nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
+                                     'int32')
+  return inputs, nested_row_lengths
+
+
+def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths):
+  """Converts any ragged input back to its initial structure."""
+  if not is_ragged_input:
+    return output
+
+  return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)

@@ -34,7 +34,10 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.saving import saved_model_experimental as saving
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 
 
@@ -45,14 +48,11 @@ def get_layer_class():
     return text_vectorization_v1.TextVectorization
 
 
-# TODO(askerryryan): Update all tests to providee one string per example since
-# pre-tokenized input is not officially supported by the API.
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationLayerTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
 
-  # TODO(askerryryan): Fix tf-idf weight setting and add test for TFIDF mode.
   @parameterized.named_parameters(
       {
           "testcase_name":
@@ -167,6 +167,26 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
       },
       {
           "testcase_name":
+              "test_tokens_idf_mode",
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "standardize": None,
+              "split": None,
+              "output_mode": text_vectorization.TFIDF
+          },
+          "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
+                              [0, 0, 0, 1.466337, 0], [0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 1.7917595], [0, 0, 0, 1.4663371, 0],
+                              [0, 1.098612, 0, 0, 0], [2.3978953, 0, 0, 0, 0]],
+      },
+      {
+          "testcase_name":
               "test_documents_idf_mode",
           "vocab_data":
               np.array([["fire earth earth"], ["earth earth"], ["wind wind"],
@@ -229,6 +249,26 @@ class TextVectorizationPreprocessingTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_custom_normalization(self):
+    input_array = np.array([["Earth", "wInD", "aNd", "firE"],
+                            ["fire|", "an<>d", "{earth}", "michigan@%$"]])
+    expected_output = np.array(
+        [[b"earth", b"wind", b"and", b"fire"],
+         [b"fire|", b"an<>d", b"{earth}", b"michigan@%$"]])
+
+    custom_standardization = gen_string_ops.string_lower
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=custom_standardization,
+        split=None,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_string_splitting(self):
     input_array = np.array([["earth wind and fire"],
                             ["\tfire\tand\nearth    michigan  "]])
@@ -240,6 +280,25 @@ class TextVectorizationPreprocessingTest(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_custom_string_splitting(self):
+    input_array = np.array([["earth>wind>and fire"],
+                            ["\tfire>and\nearth>michigan"]])
+    expected_output = [[b"earth", b"wind", b"and fire"],
+                       [b"\tfire", b"and\nearth", b"michigan"]]
+
+    custom_split = lambda x: ragged_string_ops.string_split_v2(x, sep=">")
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=custom_split,
         ngrams=None,
         output_mode=None)
     int_data = layer(input_data)
@@ -293,6 +352,40 @@ class TextVectorizationPreprocessingTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_string_multiple_preprocessing_steps(self):
+    input_array = np.array([["earth wInD and firE"],
+                            ["\tfire\tand\nearth!!    michig@n  "]])
+    expected_output = [[
+        b"earth",
+        b"wind",
+        b"and",
+        b"fire",
+        b"earth wind",
+        b"wind and",
+        b"and fire",
+    ],
+                       [
+                           b"fire",
+                           b"and",
+                           b"earth",
+                           b"michign",
+                           b"fire and",
+                           b"and earth",
+                           b"earth michign",
+                       ]]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        ngrams=2,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_string_splitting_with_non_1d_array_fails(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -302,6 +395,27 @@ class TextVectorizationPreprocessingTest(
         output_mode=None)
     with self.assertRaisesRegex(RuntimeError,
                                 ".*tokenize strings, the first dimension.*"):
+      _ = layer(input_data)
+
+  def test_standardization_with_invalid_standardize_arg(self):
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize="unexpected_standardization",
+        split=None,
+        output_mode=None)
+    with self.assertRaisesRegex(ValueError,
+                                ".*is not a supported standardization.*"):
+      _ = layer(input_data)
+
+  def test_splitting_with_invalid_split_arg(self):
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split="unexpected_split_arg",
+        output_mode=None)
+    with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
 
@@ -763,10 +877,46 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
       layer.set_vocabulary(vocab_data, df_data)
 
 
+# Custom functions for the custom callable serialization test. Declared here
+# to avoid multiple registrations from run_all_keras_modes().
+@generic_utils.register_keras_serializable(package="Test")
+def custom_standardize_fn(x):
+  return gen_string_ops.string_lower(x)
+
+
+@generic_utils.register_keras_serializable(package="Test")
+def custom_split_fn(x):
+  return ragged_string_ops.string_split_v2(x, sep=">")
+
+
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_serialization_with_custom_callables(self):
+    input_array = np.array([["earth>wind>and Fire"],
+                            ["\tfire>And\nearth>michigan"]])
+    expected_output = [[b"earth", b"wind", b"and fire"],
+                       [b"\tfire", b"and\nearth", b"michigan"]]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=custom_standardize_fn,
+        split=custom_split_fn,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+    serialized_model_data = model.get_config()
+    with CustomObjectScope({"TextVectorization": get_layer_class()}):
+      new_model = keras.Model.from_config(serialized_model_data)
+    new_output_dataset = new_model.predict(input_array)
+    self.assertAllEqual(expected_output, new_output_dataset)
 
   def test_vocabulary_persistence_across_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]

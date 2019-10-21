@@ -331,13 +331,17 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
     fprintf(stderr, "best_score_block_size_log2=%d\n",
             best_score_block_size_log2);
   }
-  firsttime = false;
 
   static const char* explicit_block_size_log2_env =
       getenv("RUY_MAKEBLOCKMAP_EXPLICIT_BLOCK_SIZE_LOG2");
   if (explicit_block_size_log2_env) {
     best_score_block_size_log2 = std::stoi(explicit_block_size_log2_env);
+    if (firsttime || debug_everytime) {
+      fprintf(stderr, "Overridden best_score_block_size_log2=%d\n",
+              best_score_block_size_log2);
+    }
   }
+  firsttime = false;
 #endif
 
   int num_blocks_base_log2 = size_log2 - best_score_block_size_log2;

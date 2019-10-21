@@ -84,6 +84,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

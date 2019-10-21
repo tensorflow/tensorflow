@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["emission_context.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/strings",
         "@local_config_mlir//:IR",
     ],
 )
@@ -95,7 +96,9 @@ cc_library(
     srcs = ["hlo_dialect_emitter.cc"],
     hdrs = ["hlo_dialect_emitter.h"],
     deps = [
+        ":emission_context",
         "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/service:hlo",
         "@com_google_absl//absl/types:span",

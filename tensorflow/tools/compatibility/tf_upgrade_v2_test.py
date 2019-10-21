@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +40,7 @@ from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
 def get_symbol_for_name(root, name):
-  name_parts = name.split(".")
+  name_parts = six.ensure_str(name).split(".")
   symbol = root
   # Iterate starting with second item since 1st item is "tf.".
   for part in name_parts[1:]:
@@ -66,12 +67,13 @@ def get_func_and_args_from_str(call_str):
   Returns:
     (function_name, list of arg names) tuple.
   """
-  open_paren_index = call_str.find("(")
+  open_paren_index = six.ensure_str(call_str).find("(")
   close_paren_index = call_str.rfind(")")
 
-  function_name = call_str[:call_str.find("(")]
-  args = call_str[open_paren_index+1:close_paren_index].split(",")
-  args = [arg.split("=")[0].strip() for arg in args]
+  function_name = call_str[:six.ensure_str(call_str).find("(")]
+  args = six.ensure_str(call_str[open_paren_index +
+                                 1:close_paren_index]).split(",")
+  args = [six.ensure_str(arg).split("=")[0].strip() for arg in args]
   args = [arg for arg in args if arg]  # filter out empty strings
   return function_name, args
 
@@ -96,7 +98,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
           _, attr = tf_decorator.unwrap(child[1])
           api_names_v2 = tf_export.get_v2_names(attr)
           for name in api_names_v2:
-            cls.v2_symbols["tf." + name] = attr
+            cls.v2_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
       visitor.private_map["tf.compat"] = ["v1"]
@@ -109,7 +111,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
           _, attr = tf_decorator.unwrap(child[1])
           api_names_v1 = tf_export.get_v1_names(attr)
           for name in api_names_v1:
-            cls.v1_symbols["tf." + name] = attr
+            cls.v1_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
       traverse.traverse(tf.compat.v1, visitor)
@@ -138,15 +140,16 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testParseError(self):
     _, report, unused_errors, unused_new_text = self._upgrade(
         "import tensorflow as tf\na + \n")
-    self.assertTrue(report.find("Failed to parse") != -1)
+    self.assertNotEqual(six.ensure_str(report).find("Failed to parse"), -1)
 
   def testReport(self):
     text = "tf.angle(a)\n"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
     # This is not a complete test, but it is a sanity test that a report
     # is generating information.
-    self.assertTrue(report.find("Renamed function `tf.angle` to "
-                                "`tf.math.angle`"))
+    self.assertTrue(
+        six.ensure_str(report).find("Renamed function `tf.angle` to "
+                                    "`tf.math.angle`"))
 
   def testRename(self):
     text = "tf.conj(a)\n"
@@ -169,7 +172,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
         _, attr = tf_decorator.unwrap(child[1])
         api_names = tf_export.get_v1_names(attr)
         for name in api_names:
-          _, _, _, text = self._upgrade("tf." + name)
+          _, _, _, text = self._upgrade("tf." + six.ensure_str(name))
           if (text and
               not text.startswith("tf.compat.v1") and
               not text.startswith("tf.compat.v2") and
@@ -198,9 +201,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
         api_names = tf_export.get_v1_names(attr)
         for name in api_names:
           if collect:
-            v1_symbols.add("tf." + name)
+            v1_symbols.add("tf." + six.ensure_str(name))
           else:
-            _, _, _, text = self._upgrade("tf." + name)
+            _, _, _, text = self._upgrade("tf." + six.ensure_str(name))
             if (text and
                 not text.startswith("tf.compat.v1") and
                 not text.startswith("tf.compat.v2") and
@@ -300,7 +303,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             if tf_name in keyword_renames:
               # If we rename arguments, new function must be available in 2.0.
               # We should not be using compat.v1 in this case.
-              self.assertFalse(
+              self.fail(
                   "Function '%s' is not in 2.0 when converting\n%s\nto\n%s" %
                   (new_function_name, text_input, text))
             continue
@@ -337,16 +340,16 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testPositionsMatchArgGiven(self):
     full_dict = tf_upgrade_v2.TFAPIChangeSpec().function_arg_warnings
-    method_names = full_dict.keys()
+    method_names = list(full_dict.keys())
     for method_name in method_names:
-      args = full_dict[method_name].keys()
+      args = list(full_dict[method_name].keys())
       if "contrib" in method_name:
         # Skip descending and fetching contrib methods during test. These are
         # not available in the repo anymore.
         continue
-      elif method_name.startswith("*."):
+      elif six.ensure_str(method_name).startswith("*."):
         # special case for optimizer methods
-        method = method_name.replace("*", "tf.train.Optimizer")
+        method = six.ensure_str(method_name).replace("*", "tf.train.Optimizer")
       else:
         method = method_name
 
@@ -354,7 +357,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
       arg_spec = tf_inspect.getfullargspec(method)
       for (arg, pos) in args:
         # to deal with the self argument on methods on objects
-        if method_name.startswith("*."):
+        if six.ensure_str(method_name).startswith("*."):
           pos += 1
         self.assertEqual(arg_spec[0][pos], arg)
 
@@ -1658,11 +1661,11 @@ def _log_prob(self, x):
 
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
-    self.assertIn("tf.flags has been removed", errors[0])
+    self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
   def test_flags_flags(self):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
-    self.assertIn("tf.flags has been removed", errors[0])
+    self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
   def test_contrib_estimator_head_deprecation(self):
     api_symbols = ["binary_classification_head", "logistic_regression_head",
@@ -1913,6 +1916,12 @@ def _log_prob(self, x):
   def test_saved_model_load_v2(self):
     text = "tf.saved_model.load_v2('/tmp/blah')"
     expected = "tf.compat.v2.saved_model.load('/tmp/blah')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_app_flags(self):
+    text = "flags = tf.app.flags"
+    expected = "flags = tf.compat.v1.app.flags"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 

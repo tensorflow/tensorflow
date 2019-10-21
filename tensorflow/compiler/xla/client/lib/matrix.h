@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 
 #include <array>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -44,6 +45,7 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal = 0);
 //  If k < 0: then the output has shape [..., min(M + k, N)], containing the
 //            diagonal elements (i.e., with indices [..., i - k, i]).
 XlaOp GetMatrixDiagonal(XlaOp x, int k = 0);
+XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k = 0);
 
 // Places diag along the kth diagonal of target.
 XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k = 0);

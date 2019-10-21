@@ -57,10 +57,9 @@ REQUIRED_PACKAGES = [
     'gast == 0.2.2',
     'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.8',
-    'keras_preprocessing >= 1.0.5',
+    'keras_preprocessing >= 1.1.0',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'six >= 1.10.0',
     'protobuf >= 3.8.0',
     'tensorboard >= 2.0.0, < 2.1.0',
     'tensorflow_estimator >= 2.0.0, < 2.1.0',
@@ -73,6 +72,7 @@ REQUIRED_PACKAGES = [
     'mock >= 2.0.0;python_version<"3"',
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
+    'six >= 1.12.0',
 ]
 
 if sys.byteorder == 'little':

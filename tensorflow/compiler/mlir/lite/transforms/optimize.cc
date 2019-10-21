@@ -18,7 +18,11 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <functional>
+#include <map>
+#include <numeric>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -228,7 +232,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
                                                      original_shape.end());
       normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(rewriter.getTensorType(
+      auto new_cst = cst.reshape(RankedTensorType::get(
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
       if (!IsBroadcastableElementsAttrAndType(new_type, filter->getType())) {
@@ -264,6 +268,185 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   }
 };
 
+// Fuse Binary Op with following Affine operation.
+template <typename ConcreteType, typename AffineOpType>
+struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
+  using OpRewritePattern<AffineOpType>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AffineOpType fc_op,
+                                     PatternRewriter &rewriter) const override {
+    // Binary op.
+    Operation *binary_op = fc_op.input()->getDefiningOp();
+    if (!binary_op || binary_op->getNumOperands() != 2)
+      return this->matchFailure();
+    // We only handle the cases the RHS is a scalar.
+    // TODO(fengliuai): Currently the canonicalizer pass couldn't guarantee that
+    // the constant operands are on the RHS, we need to consider LHS constant
+    // operand if necessary.
+    DenseFPElementsAttr cst;
+    if (!matchPattern(binary_op->getOperand(1), m_Constant(&cst)))
+      return this->matchFailure();
+    if (cst.getNumElements() != 1) return this->matchFailure();
+    APFloat cst_value = *cst.float_value_begin();
+
+    // Affine op.
+    Value *filter = fc_op.filter();
+    Value *bias = fc_op.bias();
+    DenseFPElementsAttr filter_cst, bias_cst;
+    if (!matchPattern(filter, m_Constant(&filter_cst))) {
+      // The filter maybe quantized, then we should set it to the real constant.
+      auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter->getDefiningOp());
+      if (!dq) return this->matchFailure();
+      auto q = llvm::dyn_cast_or_null<QuantizeOp>(dq.input()->getDefiningOp());
+      if (!q || !matchPattern(q.input(), m_Constant(&filter_cst))) {
+        return this->matchFailure();
+      }
+      filter = q.input();
+    }
+    if (!bias->getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&bias_cst)))
+      return this->matchFailure();
+    ShapedType filter_type = filter_cst.getType();
+
+    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      if (padding && padding.getValue() != "VALID") return this->matchFailure();
+
+      // The fusion of add/sub is actually applying the following
+      // transformation:
+      // w * (x + c) + b => w * x + (w * c + b)
+      // so we have to update the bias.
+      if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
+
+      auto bias_and_slice =
+          ConcreteType::GetBiasDimAndSliceSize(filter_type.getShape());
+      int64_t bias_size = bias_and_slice.first;
+      int64_t slice_size = bias_and_slice.second;
+      ShapedType new_bias_type =
+          RankedTensorType::get({bias_size}, filter_type.getElementType());
+
+      // The new bias should be a 1-D tensor with length equals to the bias
+      // dimension of the weight.
+      SmallVector<APFloat, 4> new_bias_values;
+      if (bias->getType().isa<NoneType>()) {  // none bias, a list of zeros
+        new_bias_values.resize(bias_size, APFloat(0.0));
+      } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
+        new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
+      } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
+        new_bias_values.insert(new_bias_values.begin(),
+                               bias_cst.float_value_begin(),
+                               bias_cst.float_value_end());
+      } else {
+        return this->matchFailure();
+      }
+
+      int64_t flatten_index = 0;
+      for (auto fp_it = filter_cst.float_value_begin(),
+                fp_end = filter_cst.float_value_end();
+           fp_it != fp_end; ++fp_it) {
+        int bias_index = (flatten_index++ / slice_size) % bias_size;
+
+        new_bias_values[bias_index] =
+            new_bias_values[bias_index] + *fp_it * cst_value;
+      }
+      auto new_bias = DenseFPElementsAttr::get(new_bias_type, new_bias_values);
+      auto new_bias_op =
+          rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
+      fc_op.setOperand(0, binary_op->getOperand(0));
+      fc_op.setOperand(2, new_bias_op);
+    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+      // The fusion of mul/div is actually applying the following
+      // transformation:
+      // w * (x ' c) + b => (w ' c) x + b
+      // so we have to update the weight.
+      bool is_mul = llvm::isa<MulOp>(binary_op);
+      auto new_fitler =
+          filter_cst.mapValues(filter_type.getElementType(), [&](APFloat it) {
+            return (is_mul ? it * cst_value : it / cst_value).bitcastToAPInt();
+          });
+      // We recreate the constant op in case it is shared by the other ops. This
+      // might increase the model size.
+      auto new_filter_op = rewriter.create<ConstOp>(
+          fc_op.getLoc(), filter->getType(), new_fitler);
+      fc_op.setOperand(0, binary_op->getOperand(0));
+      if (fc_op.filter() != filter) {
+        // This filter goes through quantize and dequantize ops. Then we just
+        // need to update the weight to the quantize op.
+        filter->replaceAllUsesWith(new_filter_op);
+      } else {
+        // This filter doesn't go through quantize and dequantize ops, Then
+        // we update the weight of the affine op directly.
+        fc_op.setOperand(1, new_filter_op);
+      }
+    } else {
+      return this->matchFailure();
+    }
+    return this->matchSuccess();
+  }
+};
+
+class FuseBinaryOpToFollowingFullyConnected
+    : public FuseBinaryOpToFollowingAffineOp<
+          FuseBinaryOpToFollowingFullyConnected, FullyConnectedOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingFullyConnected,
+                                      FullyConnectedOp>;
+  explicit FuseBinaryOpToFollowingFullyConnected(MLIRContext *context)
+      : BaseType(context) {}
+
+  // The first dimension of the fully-connected weight needs to match the last
+  // dimension of the op result and also the (broadcasted) size of bias. Then
+  // the size of higher-dimensions is considered as the slice size.
+  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
+      ArrayRef<int64_t> filter_shape) {
+    int64_t depth =
+        std::accumulate(std::next(filter_shape.begin()), filter_shape.end(), 1,
+                        std::multiplies<int64_t>());
+    return {filter_shape.front(), depth};
+  }
+};
+
+class FuseBinaryOpToFollowingDepthwiseConv2D
+    : public FuseBinaryOpToFollowingAffineOp<
+          FuseBinaryOpToFollowingDepthwiseConv2D, DepthwiseConv2DOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingDepthwiseConv2D,
+                                      DepthwiseConv2DOp>;
+  explicit FuseBinaryOpToFollowingDepthwiseConv2D(MLIRContext *context)
+      : BaseType(context) {}
+
+  // The last dimension of the depthwise conv 2d weight needs to match the last
+  // dimension of the op result and also the (broadcasted) size of bias. Then
+  // slice number is just 1.
+  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
+      ArrayRef<int64_t> filter_shape) {
+    return {filter_shape.back(), 1};
+  }
+};
+
+class FuseBinaryOpToFollowingConv2D
+    : public FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D,
+                                             Conv2DOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D, Conv2DOp>;
+  explicit FuseBinaryOpToFollowingConv2D(MLIRContext *context)
+      : BaseType(context) {}
+
+  // The first dimension of the conv 2d weight needs to match the last
+  // dimension of the op result and also the (broadcasted) size of bias. Then
+  // the size of higher-dimensions is considered as the slice size.
+  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
+      ArrayRef<int64_t> filter_shape) {
+    int64_t depth =
+        std::accumulate(std::next(filter_shape.begin()), filter_shape.end(), 1,
+                        std::multiplies<int64_t>());
+    return {filter_shape.front(), depth};
+  }
+};
+
 void Optimize::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *ctx = &getContext();
@@ -272,7 +455,9 @@ void Optimize::runOnFunction() {
   // Add the generated patterns to the list.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul>(ctx);
+                  FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+                  FuseBinaryOpToFollowingDepthwiseConv2D,
+                  FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

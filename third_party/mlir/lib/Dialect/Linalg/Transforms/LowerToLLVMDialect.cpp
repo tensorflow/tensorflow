@@ -280,7 +280,7 @@ public:
     Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
                                rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -443,12 +443,12 @@ public:
     TransposeOpOperandAdaptor adaptor(operands);
     Value *baseDesc = adaptor.view();
 
-    auto tranposeOp = cast<TransposeOp>(op);
+    auto transposeOp = cast<TransposeOp>(op);
     // No permutation, early exit.
-    if (tranposeOp.permutation().isIdentity())
+    if (transposeOp.permutation().isIdentity())
       return rewriter.replaceOp(op, baseDesc), matchSuccess();
 
-    BaseViewConversionHelper helper(op->getLoc(), tranposeOp.getViewType(),
+    BaseViewConversionHelper helper(op->getLoc(), transposeOp.getViewType(),
                                     rewriter, lowering);
     LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
     Value *desc = helper.desc;
@@ -463,7 +463,7 @@ public:
     desc = insertvalue(desc, extractvalue(int64Ty, baseDesc, offPos), offPos);
 
     // Iterate over the dimensions and apply size/stride permutation.
-    for (auto en : llvm::enumerate(tranposeOp.permutation().getResults())) {
+    for (auto en : llvm::enumerate(transposeOp.permutation().getResults())) {
       int sourcePos = en.index();
       int targetPos = en.value().cast<AffineDimExpr>().getPosition();
       Value *size = extractvalue(int64Ty, baseDesc,
@@ -770,5 +770,5 @@ mlir::linalg::createLowerLinalgToLLVMPass() {
 }
 
 static PassRegistration<LowerLinalgToLLVMPass>
-    pass("linalg-convert-to-llvm",
+    pass("convert-linalg-to-llvm",
          "Lower the operations from the linalg dialect into the LLVM dialect");

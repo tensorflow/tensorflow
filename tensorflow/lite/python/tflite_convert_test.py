@@ -124,7 +124,7 @@ class TfLiteConvertV1Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_enable_mlir_converter'
+    flags_str = ('--keras_model_file={} --experimental_new_converter'
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
@@ -157,7 +157,7 @@ class TfLiteConvertV2Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_enable_mlir_converter'
+    flags_str = ('--keras_model_file={} --experimental_new_converter'
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)

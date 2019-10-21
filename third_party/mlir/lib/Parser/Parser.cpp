@@ -350,7 +350,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 }
 
 /// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
-/// and may be recursive.  Return with the 'prettyName' StringRef encompasing
+/// and may be recursive.  Return with the 'prettyName' StringRef encompassing
 /// the entire pretty name.
 ///
 ///   pretty-dialect-sym-body ::= '<' pretty-dialect-sym-contents+ '>'
@@ -1063,9 +1063,9 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseAffineMapOrIntegerSetReference(map, set))
       return nullptr;
     if (map)
-      return builder.getAffineMapAttr(map);
+      return AffineMapAttr::get(map);
     assert(set);
-    return builder.getIntegerSetAttr(set);
+    return IntegerSetAttr::get(set);
   }
 
   // Parse an array attribute.
@@ -1164,7 +1164,7 @@ Attribute Parser::parseAttribute(Type type) {
   default:
     // Parse a type attribute.
     if (Type type = parseType())
-      return builder.getTypeAttr(type);
+      return TypeAttr::get(type);
     return nullptr;
   }
 }
@@ -1381,7 +1381,7 @@ Attribute Parser::parseOpaqueElementsAttr() {
   if (!type)
     return nullptr;
 
-  return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
+  return OpaqueElementsAttr::get(dialect, type, llvm::fromHex(val));
 }
 
 namespace {
@@ -2496,8 +2496,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
   if (exprs.empty())
     map = AffineMap();
   else
-    map = builder.getAffineMap(numDimOperands,
-                               dimsAndSymbols.size() - numDimOperands, exprs);
+    map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
+                         exprs);
   return success();
 }
 
@@ -2525,7 +2525,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
     return AffineMap();
 
   // Parsed a valid affine map.
-  return builder.getAffineMap(numDims, numSymbols, exprs);
+  return AffineMap::get(numDims, numSymbols, exprs);
 }
 
 /// Parse an affine constraint.
@@ -2600,11 +2600,11 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   if (constraints.empty()) {
     /* 0 == 0 */
     auto zero = getAffineConstantExpr(0, getContext());
-    return builder.getIntegerSet(numDims, numSymbols, zero, true);
+    return IntegerSet::get(numDims, numSymbols, zero, true);
   }
 
   // Parsed a valid integer set.
-  return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
+  return IntegerSet::get(numDims, numSymbols, constraints, isEqs);
 }
 
 /// Parse an ambiguous reference to either and affine map or an integer set.
@@ -2815,7 +2815,7 @@ private:
 
   /// This keeps track of the block names as well as the location of the first
   /// reference for each nested name scope. This is used to diagnose invalid
-  /// block references and memoize them.
+  /// block references and memorize them.
   SmallVector<DenseMap<StringRef, std::pair<Block *, SMLoc>>, 2> blocksByName;
   SmallVector<DenseMap<Block *, SMLoc>, 2> forwardRef;
 
@@ -3250,7 +3250,7 @@ ParseResult OperationParser::parseSuccessors(
 namespace {
 // RAII-style guard for cleaning up the regions in the operation state before
 // deleting them.  Within the parser, regions may get deleted if parsing failed,
-// and other errors may be present, in praticular undominated uses.  This makes
+// and other errors may be present, in particular undominated uses.  This makes
 // sure such uses are deleted.
 struct CleanupOpStateRegions {
   ~CleanupOpStateRegions() {
@@ -3352,7 +3352,7 @@ Operation *OperationParser::parseGenericOperation() {
       return nullptr;
   }
 
-  // Add the sucessors, and their operands after the proper operands.
+  // Add the successors, and their operands after the proper operands.
   for (const auto &succ : llvm::zip(successors, successorOperands)) {
     Block *successor = std::get<0>(succ);
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
@@ -3715,7 +3715,7 @@ public:
       return failure();
     // Add AffineMap attribute.
     if (map) {
-      mapAttr = parser.builder.getAffineMapAttr(map);
+      mapAttr = AffineMapAttr::get(map);
       attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
     }
 
@@ -3730,7 +3730,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
-  /// effectively defines the SSA values of `arguments` and assignes their type.
+  /// effectively defines the SSA values of `arguments` and assigns their type.
   ParseResult parseRegion(Region &region, ArrayRef<OperandType> arguments,
                           ArrayRef<Type> argTypes,
                           bool enableNameShadowing) override {

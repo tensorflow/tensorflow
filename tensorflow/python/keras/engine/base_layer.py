@@ -198,6 +198,7 @@ class Layer(module.Module):
     # Provides information about which inputs are compatible with the layer.
     self.input_spec = None
     self.supports_masking = False
+    self._supports_ragged_inputs = False
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
@@ -734,6 +735,12 @@ class Layer(module.Module):
         # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
+        if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
+            and self._supports_ragged_inputs is False):  # pylint: disable=g-bool-id-comparison
+          raise ValueError('Layer %s does not support RaggedTensors as input. '
+                           'Inputs received: %s. You can try converting your '
+                           'input to an uniform tensor.' % (self.name, inputs))
+
         graph = backend.get_graph()
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
@@ -1021,8 +1028,12 @@ class Layer(module.Module):
         (e.g. weight regularization losses).
     """
     def _tag_unconditional(loss):
+      """Process the loss and tag it by setting loss._unconditional_loss."""
       if callable(loss):
-        loss = loss()
+        # We run the loss without autocasting, as regularizers are often
+        # numerically unstable in float16.
+        with base_layer_utils.autocast_context_manager(None):
+          loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):

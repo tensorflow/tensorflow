@@ -1612,7 +1612,8 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(output_dense, output_ragged)
 
     # Test densification of the ragged input
-    dense_tensor, row_lengths = rnn_layer._convert_inputs_if_ragged(ragged_data)
+    dense_tensor, row_lengths = keras.backend.convert_inputs_if_ragged(
+        ragged_data)
     self.assertAllClose(dense_data, dense_tensor)
 
     # Test optional params, all should work except unrolling

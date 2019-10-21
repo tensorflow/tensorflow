@@ -69,8 +69,16 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
   auto minmax = std::minmax_element(values, values + size);
   *min_value = *minmax.first;
   *max_value = *minmax.second;
+
+  PortableSymmetricQuantizeFloats(values, size, quantized_values, *min_value,
+                                  *max_value, scaling_factor);
+}
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float min_value,
+                                     float max_value, float* scaling_factor) {
   const int kScale = 127;
-  const float range = std::max(std::abs(*min_value), std::abs(*max_value));
+  const float range = std::max(std::abs(min_value), std::abs(max_value));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;

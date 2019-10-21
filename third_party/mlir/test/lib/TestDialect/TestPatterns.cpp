@@ -26,6 +26,16 @@ static Value *chooseOperand(Value *input1, Value *input2, BoolAttr choice) {
   return choice.getValue() ? input1 : input2;
 }
 
+static void createOpI(PatternRewriter &rewriter, Value *input) {
+  rewriter.create<OpI>(rewriter.getUnknownLoc(), input);
+}
+
+void handleNoResultOp(PatternRewriter &rewriter, OpSymbolBindingNoResult op) {
+  // Turn the no result op to a one-result op.
+  rewriter.create<OpSymbolBindingB>(op.getLoc(), op.operand()->getType(),
+                                    op.operand());
+}
+
 namespace {
 #include "TestPatterns.inc"
 } // end anonymous namespace
@@ -115,7 +125,7 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
                                   parentRegion.end());
 
     // Drop this operation.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -139,7 +149,7 @@ struct TestRegionRewriteUndo : public RewritePattern {
     rewriter.create<TestValidOp>(op->getLoc(), ArrayRef<Value *>());
 
     // Drop this operation.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -153,7 +163,7 @@ struct TestDropOp : public ConversionPattern {
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -249,6 +259,26 @@ struct TestUpdateConsumerType : public ConversionPattern {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// Non-Root Replacement Rewrite Testing
+/// This pattern generates an invalid operation, but replaces it before the
+/// pattern is finished. This checks that we don't need to legalize the
+/// temporary op.
+struct TestNonRootReplacement : public RewritePattern {
+  TestNonRootReplacement(MLIRContext *ctx)
+      : RewritePattern("test.replace_non_root", 1, ctx) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final {
+    auto resultType = *op->result_type_begin();
+    auto illegalOp = rewriter.create<ILLegalOpF>(op->getLoc(), resultType);
+    auto legalOp = rewriter.create<LegalOpB>(op->getLoc(), resultType);
+
+    rewriter.replaceOp(illegalOp, {legalOp});
+    rewriter.replaceOp(op, {illegalOp});
+    return matchSuccess();
+  }
+};
 } // namespace
 
 namespace {
@@ -301,15 +331,15 @@ struct TestLegalizePatternDriver
         .insert<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
                 TestDropOp, TestPassthroughInvalidOp, TestSplitReturnType,
                 TestChangeProducerTypeI32ToF32, TestChangeProducerTypeF32ToF64,
-                TestChangeProducerTypeF32ToInvalid, TestUpdateConsumerType>(
-            &getContext());
+                TestChangeProducerTypeF32ToInvalid, TestUpdateConsumerType,
+                TestNonRootReplacement>(&getContext());
     mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(),
                                               converter);
 
     // Define the conversion target used for the test.
     ConversionTarget target(getContext());
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-    target.addLegalOp<LegalOpA, TestCastOp, TestValidOp>();
+    target.addLegalOp<LegalOpA, LegalOpB, TestCastOp, TestValidOp>();
     target.addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
     target.addDynamicallyLegalOp<TestReturnOp>([](TestReturnOp op) {
       // Don't allow F32 operands.

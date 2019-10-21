@@ -408,6 +408,7 @@ tf_cuda_library(
         ":thunk",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla:refcounting_hash_map",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:util",

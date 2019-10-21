@@ -30,6 +30,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
@@ -41,6 +42,8 @@
 using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
+
+#define DEBUG_TYPE "mlir-tblgen-rewritergen"
 
 namespace llvm {
 template <> struct format_provider<mlir::tblgen::Pattern::IdentifierLine> {
@@ -191,6 +194,9 @@ std::string PatternEmitter::handleConstantAttr(Attribute attr,
 // Helper function to match patterns.
 void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   Operator &op = tree.getDialectOp(opMap);
+  LLVM_DEBUG(llvm::dbgs() << "start emitting match for op '"
+                          << op.getOperationName() << "' at depth " << depth
+                          << '\n');
 
   int indent = 4 + 2 * depth;
   os.indent(indent) << formatv(
@@ -249,6 +255,9 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
       PrintFatalError(loc, "unhandled case when matching op");
     }
   }
+  LLVM_DEBUG(llvm::dbgs() << "done emitting match for op '"
+                          << op.getOperationName() << "' at depth " << depth
+                          << '\n');
 }
 
 void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
@@ -346,6 +355,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
 }
 
 void PatternEmitter::emitMatchLogic(DagNode tree) {
+  LLVM_DEBUG(llvm::dbgs() << "--- start emitting match logic ---\n");
   emitOpMatch(tree, 0);
 
   for (auto &appliedConstraint : pattern.getConstraints()) {
@@ -383,13 +393,18 @@ void PatternEmitter::emitMatchLogic(DagNode tree) {
                                     names[1], names[2], names[3]));
     }
   }
+  LLVM_DEBUG(llvm::dbgs() << "--- done emitting match logic ---\n");
 }
 
 void PatternEmitter::collectOps(DagNode tree,
                                 llvm::SmallPtrSetImpl<const Operator *> &ops) {
   // Check if this tree is an operation.
-  if (tree.isOperation())
-    ops.insert(&tree.getDialectOp(opMap));
+  if (tree.isOperation()) {
+    const Operator &op = tree.getDialectOp(opMap);
+    LLVM_DEBUG(llvm::dbgs()
+               << "found operation " << op.getOperationName() << '\n');
+    ops.insert(&op);
+  }
 
   // Recurse the arguments of the tree.
   for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i)
@@ -406,8 +421,11 @@ void PatternEmitter::emit(StringRef rewriteName) {
 
   // Collect the set of result operations.
   llvm::SmallPtrSet<const Operator *, 4> resultOps;
-  for (unsigned i = 0, e = pattern.getNumResultPatterns(); i != e; ++i)
+  LLVM_DEBUG(llvm::dbgs() << "start collecting ops used in result patterns\n");
+  for (unsigned i = 0, e = pattern.getNumResultPatterns(); i != e; ++i) {
     collectOps(pattern.getResultPattern(i), resultOps);
+  }
+  LLVM_DEBUG(llvm::dbgs() << "done collecting ops used in result patterns\n");
 
   // Emit RewritePattern for Pattern.
   auto locs = pattern.getLocation();
@@ -437,6 +455,8 @@ void PatternEmitter::emit(StringRef rewriteName) {
   // Register all symbols bound in the source pattern.
   pattern.collectSourcePatternBoundSymbols(symbolInfoMap);
 
+  LLVM_DEBUG(
+      llvm::dbgs() << "start creating local variables for capturing matches\n");
   os.indent(4) << "// Variables for capturing values and attributes used for "
                   "creating ops\n";
   // Create local variables for storing the arguments and results bound
@@ -450,6 +470,8 @@ void PatternEmitter::emit(StringRef rewriteName) {
   // reused for fused loc.
   os.indent(4) << formatv("Operation *tblgen_ops[{0}];\n\n",
                           pattern.getSourcePattern().getNumOps());
+  LLVM_DEBUG(
+      llvm::dbgs() << "done creating local variables for capturing matches\n");
 
   os.indent(4) << "// Match\n";
   os.indent(4) << "tblgen_ops[0] = op0;\n";
@@ -465,6 +487,7 @@ void PatternEmitter::emit(StringRef rewriteName) {
 }
 
 void PatternEmitter::emitRewriteLogic() {
+  LLVM_DEBUG(llvm::dbgs() << "--- start emitting rewrite logic ---\n");
   const Operator &rootOp = pattern.getSourceRootOp();
   int numExpectedResults = rootOp.getNumResults();
   int numResultPatterns = pattern.getNumResultPatterns();
@@ -507,24 +530,40 @@ void PatternEmitter::emitRewriteLogic() {
   }
   os << "}); (void)loc;\n";
 
-  // Process each result pattern and record the result symbol.
-  llvm::SmallVector<std::string, 2> resultValues;
-  for (int i = 0; i < numResultPatterns; ++i) {
+  // Process auxiliary result patterns.
+  for (int i = 0; i < replStartIndex; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
-    resultValues.push_back(handleResultPattern(resultTree, offsets[i], 0));
+    auto val = handleResultPattern(resultTree, offsets[i], 0);
+    // Normal op creation will be streamed to `os` by the above call; but
+    // NativeCodeCall will only be materialized to `os` if it is used. Here
+    // we are handling auxiliary patterns so we want the side effect even if
+    // NativeCodeCall is not replacing matched root op's results.
+    if (resultTree.isNativeCodeCall())
+      os.indent(4) << val << ";\n";
   }
 
-  os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
-  // Only use the last portion for replacing the matched root op's results.
-  auto range = llvm::makeArrayRef(resultValues).drop_front(replStartIndex);
-  for (const auto &val : range) {
+  if (numExpectedResults == 0) {
+    assert(replStartIndex >= numResultPatterns &&
+           "invalid auxiliary vs. replacement pattern division!");
+    // No result to replace. Just erase the op.
+    os.indent(4) << "rewriter.eraseOp(op0);\n";
+  } else {
+    // Process replacement result patterns.
+    os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
+    for (int i = replStartIndex; i < numResultPatterns; ++i) {
+      DagNode resultTree = pattern.getResultPattern(i);
+      auto val = handleResultPattern(resultTree, offsets[i], 0);
+      os.indent(4) << "\n";
+      // Resolve each symbol for all range use so that we can loop over them.
+      os << symbolInfoMap.getAllRangeUse(
+          val, "    for (auto *v : {0}) {{ tblgen_values.push_back(v); }",
+          "\n");
+    }
     os.indent(4) << "\n";
-    // Resolve each symbol for all range use so that we can loop over them.
-    os << symbolInfoMap.getAllRangeUse(
-        val, "    for (auto *v : {0}) tblgen_values.push_back(v);", "\n");
+    os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
   }
-  os.indent(4) << "\n";
-  os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
+
+  LLVM_DEBUG(llvm::dbgs() << "--- done emitting rewrite logic ---\n");
 }
 
 std::string PatternEmitter::getUniqueSymbol(const Operator *op) {
@@ -533,6 +572,10 @@ std::string PatternEmitter::getUniqueSymbol(const Operator *op) {
 
 std::string PatternEmitter::handleResultPattern(DagNode resultTree,
                                                 int resultIndex, int depth) {
+  LLVM_DEBUG(llvm::dbgs() << "handle result pattern: ");
+  LLVM_DEBUG(resultTree.print(llvm::dbgs()));
+  LLVM_DEBUG(llvm::dbgs() << '\n');
+
   if (resultTree.isNativeCodeCall()) {
     auto symbol = handleReplaceWithNativeCodeCall(resultTree);
     symbolInfoMap.bindValue(symbol);
@@ -585,17 +628,27 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
     return handleConstantAttr(enumCase, val);
   }
 
+  LLVM_DEBUG(llvm::dbgs() << "handle argument '" << patArgName << "'\n");
   auto argName = symbolInfoMap.getValueAndRangeUse(patArgName);
   if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
+    LLVM_DEBUG(llvm::dbgs() << "replace " << patArgName << " with '" << argName
+                            << "' (via symbol ref)\n");
     return argName;
   }
   if (leaf.isNativeCodeCall()) {
-    return tgfmt(leaf.getNativeCodeTemplate(), &fmtCtx.withSelf(argName));
+    auto repl = tgfmt(leaf.getNativeCodeTemplate(), &fmtCtx.withSelf(argName));
+    LLVM_DEBUG(llvm::dbgs() << "replace " << patArgName << " with '" << repl
+                            << "' (via NativeCodeCall)\n");
+    return repl;
   }
   PrintFatalError(loc, "unhandled case when rewriting op");
 }
 
 std::string PatternEmitter::handleReplaceWithNativeCodeCall(DagNode tree) {
+  LLVM_DEBUG(llvm::dbgs() << "handle NativeCodeCall pattern: ");
+  LLVM_DEBUG(tree.print(llvm::dbgs()));
+  LLVM_DEBUG(llvm::dbgs() << '\n');
+
   auto fmt = tree.getNativeCodeTemplate();
   // TODO(b/138794486): replace formatv arguments with the exact specified args.
   SmallVector<std::string, 8> attrs(8);
@@ -605,6 +658,8 @@ std::string PatternEmitter::handleReplaceWithNativeCodeCall(DagNode tree) {
   }
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
+    LLVM_DEBUG(llvm::dbgs() << "NativeCodeCall argment #" << i
+                            << " replacement: " << attrs[i] << "\n");
   }
   return tgfmt(fmt, &fmtCtx, attrs[0], attrs[1], attrs[2], attrs[3], attrs[4],
                attrs[5], attrs[6], attrs[7]);
@@ -830,7 +885,11 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
     } else {
       name = p->getName();
     }
+    LLVM_DEBUG(llvm::dbgs()
+               << "=== start generating pattern '" << name << "' ===\n");
     PatternEmitter(p, &recordOpMap, os).emit(name);
+    LLVM_DEBUG(llvm::dbgs()
+               << "=== done generating pattern '" << name << "' ===\n");
     rewriterNames.push_back(std::move(name));
   }
 

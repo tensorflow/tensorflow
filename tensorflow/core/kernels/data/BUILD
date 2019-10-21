@@ -27,6 +27,7 @@ cc_library(
     hdrs = ["dataset_test_base.h"],
     deps = [
         ":batch_dataset_op",
+        ":concatenate_dataset_op",
         ":dataset_utils",
         ":iterator_ops",
         ":map_dataset_op",
@@ -345,12 +346,10 @@ tf_cc_test(
     size = "small",
     srcs = ["padded_batch_dataset_op_test.cc"],
     deps = [
-        ":concatenate_dataset_op",
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
         ":padded_batch_dataset_op",
-        ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

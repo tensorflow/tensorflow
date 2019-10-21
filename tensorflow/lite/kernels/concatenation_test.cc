@@ -158,8 +158,7 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
 TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
   ConcatenationOpModel m0(
       {{TensorType_FLOAT32, {2, 1, 2}}, {TensorType_FLOAT32, {2, 3, 2}}},
-      /*axis=*/1,
-      /*num_inputs=*/2, {TensorType_FLOAT32, {2, 4, 2}});
+      /*axis=*/1, /*num_inputs=*/2, TensorType_FLOAT32);
   m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
   m0.SetInput(1, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0, 7.0f, 8.0f, 9.0f, 10.0f,
                   11.0f, 12.0f});
@@ -167,6 +166,16 @@ TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 1, 2, 3, 4, 5, 6, 4, 7, 7,
                                                 8, 9, 10, 11, 12}));
 }
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapesWrongAxis) {
+  EXPECT_DEATH(
+      ConcatenationOpModel m0(
+          {{TensorType_FLOAT32, {2, 1, 2}}, {TensorType_FLOAT32, {2, 3, 2}}},
+          /*axis=*/0, /*num_inputs=*/2, TensorType_FLOAT32),
+      "Cannot allocate tensors");
+}
+#endif
 
 TEST(ConcatenationOpTest, OneTrivialInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {1}}, /*axis=*/0,

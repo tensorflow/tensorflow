@@ -41,6 +41,7 @@ gentbl(
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
+    test = True,
 )
 
 cc_library(

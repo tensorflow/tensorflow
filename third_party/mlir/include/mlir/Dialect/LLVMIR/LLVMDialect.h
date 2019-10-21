@@ -66,6 +66,10 @@ public:
 
   /// Utilities to identify types.
   bool isFloatTy() { return getUnderlyingType()->isFloatTy(); }
+  bool isIntegerTy() { return getUnderlyingType()->isIntegerTy(); }
+  bool isIntegerTy(unsigned bitwidth) {
+    return getUnderlyingType()->isIntegerTy(bitwidth);
+  }
 
   /// Array type utilities.
   LLVMType getArrayElementType();
@@ -89,6 +93,7 @@ public:
 
   /// Struct type utilities.
   LLVMType getStructElementType(unsigned i);
+  unsigned getStructNumElements();
   bool isStructTy();
 
   /// Utilities used to generate floating point types.

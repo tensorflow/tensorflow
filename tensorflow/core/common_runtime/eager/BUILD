@@ -227,8 +227,11 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":process_function_library_runtime",
         "@farmhash_archive//:farmhash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -291,12 +294,16 @@ tf_cc_test(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
 cc_library(
     name = "execute",
-    srcs = ["execute.cc"],
+    srcs = [
+        "execute.cc",
+        "execute_node.cc",
+    ],
     hdrs = [
         "execute.h",
         "execute_node.h",
@@ -309,8 +316,11 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        ":process_function_library_runtime",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [

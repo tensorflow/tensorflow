@@ -82,16 +82,34 @@ class TextVectorization(CombinerPreprocessingLayer):
     5) transform each sample using this index, either into a vector of ints or
        a dense float vector.
 
+  Some notes on passing Callables to customize splitting and normalization for
+  this layer:
+    1) Any callable can be passed to this Layer, but if you want to serialize
+       this object you should only pass functions that are registered Keras
+       serializables (see `tf.keras.utils.register_keras_serializable` for more
+       details).
+    2) When using a custom callable for `standardize`, the data recieved
+       by the callable will be exactly as passed to this layer. The callable
+       should return a tensor of the same shape as the input.
+    3) When using a custom callable for `split`, the data recieved by the
+       callable will have the 1st dimension squeezed out - instead of
+       `[["string to split"], ["another string to split"]]`, the Callable will
+       see `["string to split", "another string to split"]`. The callable should
+       return a Tensor with the first dimension containing the split tokens -
+       in this example, we should see something like `[["string", "to", "split],
+       ["another", "string", "to", "split"]]`. This makes the callable site
+       natively compatible with `tf.strings.split()`.
+
   Attributes:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
     standardize: Optional specification for standardization to apply to the
       input text. Values can be None (no standardization),
-      LOWER_AND_STRIP_PUNCTUATION (lowercase and remove punctuation) or a
-      Callable. Default is LOWER_AND_STRIP_PUNCTUATION.
+      'lower_and_strip_punctuation' (lowercase and remove punctuation) or a
+      Callable. Default is 'lower_and_strip_punctuation'.
     split: Optional specification for splitting the input text. Values can be
-      None (no splitting), SPLIT_ON_WHITESPACE (split on ASCII whitespace), or a
-      Callable. Default is SPLIT_ON_WHITESPACE.
+      None (no splitting), 'whitespace' (split on ASCII whitespace), or a
+      Callable. The default is 'whitespace'.
     ngrams: Optional specification for ngrams to create from the possibly-split
       input text. Values can be None, an integer or tuple of integers; passing
       an integer will create ngrams up to that integer, and passing a tuple of
@@ -164,7 +182,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # This is an explicit regex of all the tokens that will be stripped if
     # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
     # stripping, a Callable should be passed into the 'standardize' arg.
-    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\t\n\']'
+    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
 
     self._standardize = standardize
     self._split = split
@@ -277,8 +295,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     if not reset_state:
       raise ValueError("TextVectorization does not support streaming adapts.")
     self.build(data.shape)
-    # TODO(askerryryan): Look into making preprocessing a model that can be
-    # passed as a subgraph to dataset.map.
+    # TODO(b/142870340): Look at passing preprocess as subgraph to dataset.map.
     preprocessed_inputs = self._preprocess(data)
     super(TextVectorization,
           self).adapt(self._to_numpy(preprocessed_inputs), reset_state)
@@ -433,21 +450,31 @@ class TextVectorization(CombinerPreprocessingLayer):
     if self._standardize is LOWER_AND_STRIP_PUNCTUATION:
       lowercase_inputs = gen_string_ops.string_lower(inputs)
       inputs = string_ops.regex_replace(lowercase_inputs, self._strip_regex, "")
+    elif callable(self._standardize):
+      inputs = self._standardize(inputs)
     elif self._standardize is not None:
-      # TODO(momernick): Support callables here.
-      raise RuntimeError("Not a supported standardization.")
+      raise ValueError(("%s is not a supported standardization. "
+                        "TextVectorization supports the following options "
+                        "for `standardize`: None, "
+                        "'lower_and_strip_punctuation', or a "
+                        "Callable.") % self._standardize)
 
-    if self._split is SPLIT_ON_WHITESPACE:
-      # If split isn't None, we validate that the 1st axis is of dimension 1 and
+    if self._split is not None:
+      # If we are splitting, we validate that the 1st axis is of dimension 1 and
       # so can be squeezed out. We do this here instead of after splitting for
       # performance reasons - it's more expensive to squeeze a ragged tensor.
       inputs = array_ops.squeeze(inputs, axis=1)
-      # This treats multiple whitespaces as one whitespace, and strips leading
-      # and trailing whitespace.
-      inputs = ragged_string_ops.string_split_v2(inputs)
-    elif self._split is not None:
-      # TODO(momernick): Support callables here.
-      raise RuntimeError("Not a supported splitting.")
+      if self._split is SPLIT_ON_WHITESPACE:
+        # This treats multiple whitespaces as one whitespace, and strips leading
+        # and trailing whitespace.
+        inputs = ragged_string_ops.string_split_v2(inputs)
+      elif callable(self._split):
+        inputs = self._split(inputs)
+      else:
+        raise ValueError(
+            ("%s is not a supported splitting."
+             "TextVectorization supports the following options "
+             "for `split`: None, 'whitespace', or a Callable.") % self._split)
 
     # Note that 'inputs' here can be either ragged or dense depending on the
     # configuration choices for this Layer. The strings.ngrams op, however, does
@@ -562,8 +589,7 @@ class _TextVectorizationCombiner(Combiner):
 
   def merge(self, accumulators):
     """Merge several accumulators to a single accumulator."""
-    # TODO(askerryryan): Think about performance and benchmark different options
-    # for the merge algo.
+    # TODO(b/142871075): Benchmark different alternatives for merge algorithm.
     concat_vocab = np.concatenate(
         [getattr(acc, _ACCUMULATOR_VOCAB_NAME) for acc in accumulators])
     concat_counts = np.concatenate(
