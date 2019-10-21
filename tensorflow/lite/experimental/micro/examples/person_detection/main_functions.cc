@@ -19,21 +19,12 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/person_detection/image_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/person_detect_model_data.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 #include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-namespace tflite {
-namespace ops {
-namespace micro {
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
-TfLiteRegistration* Register_CONV_2D();
-TfLiteRegistration* Register_AVERAGE_POOL_2D();
-}  // namespace micro
-}  // namespace ops
-}  // namespace tflite
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace {

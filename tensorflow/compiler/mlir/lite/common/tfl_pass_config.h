@@ -32,7 +32,9 @@ struct PassConfig {
         emit_quant_adaptor_ops(false),
         lower_tensor_list_ops(false),
         trim_functions_whitelist({}),
-        quant_specs(specs) {}
+        quant_specs(specs),
+        skip_control_dialect(false),
+        form_clusters(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -47,6 +49,14 @@ struct PassConfig {
   llvm::ArrayRef<std::string> trim_functions_whitelist;
   // All information about quantization.
   QuantizationSpecs quant_specs;
+  // If `skip_control_dialect` is true, TF executor dialect is not converted to
+  // TF control dialect prior to legalization to TF Lite.
+  // TODO(b/142911013): Remove flag once control dialect is removed.
+  bool skip_control_dialect;
+  // If `form_clusters` is true (and `skip_control_dialect` is true), clusters
+  // are formed by grouping consecutive ops of the same device, under a
+  // `tf_device.launch` op.
+  bool form_clusters;
 };
 
 }  // namespace TFL

@@ -62,6 +62,25 @@ static std::vector<int64> Convert_broadcast_dimensions(
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
+// Convert a nx2 dense attribute to a list of tuples. This is the way padding
+// is defined in hlo.
+static std::vector<std::pair<int64, int64>> Convert_padding(
+    llvm::Optional<mlir::DenseIntElementsAttr> padding_optional) {
+  if (!padding_optional.hasValue()) return {};
+  mlir::DenseIntElementsAttr padding = *padding_optional;
+  auto it = padding.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(padding.getNumElements() / 2);
+  for (auto& item : out) {
+    int64 left_pad = *it;
+    ++it;
+    int64 right_pad = *it;
+    ++it;
+    item = {left_pad, right_pad};
+  }
+
+  return out;
+}
+
 // Converts the broadcast_sizes attribute into a vector of dimension sizes.
 static std::vector<int64> Convert_broadcast_sizes(
     mlir::DenseIntElementsAttr broadcast_sizes) {
@@ -135,6 +154,40 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   }
 
   return dot_dimension_numbers;
+}
+
+static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
+    mlir::xla_hlo::ConvDimensionNumbers input) {
+  xla::ConvolutionDimensionNumbers output;
+
+  output.set_input_batch_dimension(
+      input.input_batch_dimension().getValue().getSExtValue());
+  output.set_input_feature_dimension(
+      input.input_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.input_spatial_dimensions().getValues<int64>()) {
+    output.add_input_spatial_dimensions(v);
+  }
+
+  output.set_kernel_input_feature_dimension(
+      input.kernel_input_feature_dimension().getValue().getSExtValue());
+  output.set_kernel_output_feature_dimension(
+      input.kernel_output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.kernel_spatial_dimensions().getValues<int64>()) {
+    output.add_kernel_spatial_dimensions(v);
+  }
+
+  output.set_output_batch_dimension(
+      input.output_batch_dimension().getValue().getSExtValue());
+  output.set_output_feature_dimension(
+      input.output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.output_spatial_dimensions().getValues<int64>()) {
+    output.add_output_spatial_dimensions(v);
+  }
+
+  return output;
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The
@@ -276,7 +329,10 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
+                                   op.dimension().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
@@ -284,7 +340,18 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConvGeneralDilated(
+      value_map[op.lhs()], value_map[op.rhs()],
+      Convert_broadcast_dimensions(op.window_strides()),
+      Convert_padding(op.padding()),
+      Convert_broadcast_dimensions(op.lhs_dilation()),
+      Convert_broadcast_dimensions(op.rhs_dilation()),
+      Convert_convolution_dimension_numbers(op.dimension_numbers()),
+      op.feature_group_count().getSExtValue(),
+      op.batch_group_count().getSExtValue(),
+      Convert_precision_config(op.precision_config()).get());
+  return success();
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
@@ -310,11 +377,17 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
+                                       op.index().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
+                            op.iota_dimension().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) { return failure(); }
@@ -354,7 +427,10 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Rev(value_map[op.operand()],
+                           Convert_broadcast_dimensions(op.dimensions()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
@@ -370,7 +446,9 @@ LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Tuple(ctx.builder, GetTuple(op.val(), ctx));
+  return success();
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {

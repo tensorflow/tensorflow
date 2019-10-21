@@ -1,5 +1,6 @@
 # Settings for Blue Pill platforms.
 ifeq ($(TARGET), bluepill)
+  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m3
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 

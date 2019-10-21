@@ -137,7 +137,7 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
     return op->emitOpError()
            << "Operations with a 'SymbolTable' must have exactly one region";
 
-  // Check that all symboles are uniquely named within child regions.
+  // Check that all symbols are uniquely named within child regions.
   llvm::StringMap<Location> nameToOrigLoc;
   for (auto &block : op->getRegion(0)) {
     for (auto &op : block) {
@@ -156,6 +156,13 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
             .append("see existing symbol definition here");
     }
   }
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifySymbol(Operation *op) {
+  if (!op->getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+    return op->emitOpError() << "requires string attribute '"
+                             << mlir::SymbolTable::getSymbolAttrName() << "'";
   return success();
 }
 
@@ -310,5 +317,5 @@ bool SymbolTable::symbolKnownUseEmpty(StringRef symbol, Operation *from) {
                    ? WalkResult::interrupt()
                    : WalkResult::advance();
       });
-  return !walkResult || !walkResult->wasInterrupted();
+  return walkResult && !walkResult->wasInterrupted();
 }

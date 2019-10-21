@@ -1425,7 +1425,10 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
-    tags = ["optonly"],
+    tags = [
+        "notap",  # TODO(b/143079758)
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",

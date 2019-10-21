@@ -53,6 +53,7 @@ from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import _pywrap_stat_summarizer
 from tensorflow.python import _pywrap_py_exception_registry
+from tensorflow.python import _pywrap_kernel_registry
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *

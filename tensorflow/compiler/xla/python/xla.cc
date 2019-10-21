@@ -654,6 +654,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
+  ops.def("NextAfter", &NextAfter);
   ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
           py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");

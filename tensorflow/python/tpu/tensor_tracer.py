@@ -82,12 +82,12 @@ _TENSOR_TRACER_STORAGE = 'tensor_tracer_storage'
 _TT_SNAPSHOT = 'tensor_tracer_snapshot'
 _REPLICA_ID_TAG = '#replica-id: '
 
-_TT_SUMMARY_NORM = 'tensor_tracer_norm'
-_TT_SUMMARY_MAX = 'tensor_tracer_max'
-_TT_SUMMARY_MIN = 'tensor_tracer_min'
-_TT_SUMMARY_MEAN = 'tensor_tracer_mean'
-_TT_SUMMARY_VAR = 'tensor_tracer_var'
-_TT_SUMMARY_SIZE = 'tensor_tracer_size'
+_TT_SUMMARY_NORM = tensor_tracer_flags.TT_SUMMARY_NORM
+_TT_SUMMARY_MAX = tensor_tracer_flags.TT_SUMMARY_MAX
+_TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
+_TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
+_TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
+_TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
 _TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
@@ -508,8 +508,7 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return {self._parameters.trace_mode: 0}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
-      return {_TT_SUMMARY_NORM: 0, _TT_SUMMARY_MAX: 1, _TT_SUMMARY_MIN: 2,
-              _TT_SUMMARY_MEAN: 3, _TT_SUMMARY_VAR: 4, _TT_SUMMARY_SIZE: 5}
+      return self._parameters.summary_signatures
     return {}
 
   def _num_signature_dimensions(self):
@@ -681,16 +680,35 @@ class TensorTracer(object):
       return {self._parameters.trace_mode: _show_norm(tensor)}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return {self._parameters.trace_mode: _show_max_abs(tensor)}
+
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
       tensor = math_ops.cast(tensor, dtypes.float32)
-      tsize = _show_size(tensor)
-      tnorm = _show_norm(tensor, cast_to_f32=False)
-      tmax = _show_max(tensor, cast_to_f32=False)
-      tmin = _show_min(tensor, cast_to_f32=False)
-      tmean, tvar = _show_mean_and_variance(tensor, cast_to_f32=False)
-      return {_TT_SUMMARY_NORM: tnorm, _TT_SUMMARY_MAX: tmax,
-              _TT_SUMMARY_MIN: tmin, _TT_SUMMARY_MEAN: tmean,
-              _TT_SUMMARY_VAR: tvar, _TT_SUMMARY_SIZE: tsize}
+      result_dict = {}
+      # Call mean and variance computation here to avoid adding the same nodes
+      # twice.
+      if (_TT_SUMMARY_MEAN in self._signature_types() or
+          _TT_SUMMARY_VAR in self._signature_types()):
+        mean, variance = _show_mean_and_variance(tensor, cast_to_f32=False)
+
+      for signature_name, _ in sorted(self._signature_types().items(),
+                                      key=lambda x: x[1]):
+        if signature_name == _TT_SUMMARY_NORM:
+          signature_result_tensor = _show_norm(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MAX:
+          signature_result_tensor = _show_max(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MIN:
+          signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SIZE:
+          signature_result_tensor = _show_size(tensor)
+        elif signature_name == _TT_SUMMARY_MEAN:
+          signature_result_tensor = mean
+        elif signature_name == _TT_SUMMARY_VAR:
+          signature_result_tensor = variance
+        else:
+          raise ValueError('Unknown signature type :%s.' % signature_name)
+
+        result_dict[signature_name] = signature_result_tensor
+      return result_dict
 
     raise RuntimeError(
         'Tensor trace fun for %s is not yet implemented'

@@ -60,15 +60,16 @@ def TfSavedModel_Dialect : Dialect {
     This dialect annotates func ops with two argument attributes
     `tf_saved_model.index_path` and `tf_saved_model.bound_input` in order to
     model the calling API of a function with SavedModel semantics.
-    In particular, func's in SavedModel are called with a structured value,
-    which can consist of arbitrarily nested dicts/lists with tensors as leaves
-    (composite tensors here mostly count as just dicts holding other tensors).
+    In particular, func's in SavedModel are called with a structured value, and
+    return a structured value. A structured value consists of arbitrarily nested
+    dicts/lists with tensors as leaves (composite tensors here mostly behave as
+    just dicts holding other tensors).
     The arity of the Python-level function is modeled as an outer list.
     Additionally, any variables or constants used by the function are implicitly
     appended to the argument list of the underlying func in a way that is
     transparent to the caller.
 
-    The function arg attribute
+    The function arg/result attribute
     `tf_saved_model.index_path = [...some list of strings and integers...]}`
     represents the path which one would use to index into a structured
     value to reach a given tensor. For example, given the structured value

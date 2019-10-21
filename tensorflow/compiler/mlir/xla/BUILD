@@ -14,6 +14,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
+        "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",

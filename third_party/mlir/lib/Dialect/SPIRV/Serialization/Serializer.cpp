@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the MLIR SPIR-V module to SPIR-V binary seralization.
+// This file defines the MLIR SPIR-V module to SPIR-V binary serialization.
 //
 //===----------------------------------------------------------------------===//
 
@@ -149,7 +149,7 @@ private:
   template <typename DType>
   LogicalResult processTypeDecoration(Location loc, DType type,
                                       uint32_t resultId) {
-    return emitError(loc, "unhandled decoraion for type:") << type;
+    return emitError(loc, "unhandled decoration for type:") << type;
   }
 
   /// Process member decoration
@@ -371,7 +371,7 @@ LogicalResult Serializer::serialize() {
   processExtension();
   processMemoryModel();
 
-  // Iterate over the module body to serialze it. Assumptions are that there is
+  // Iterate over the module body to serialize it. Assumptions are that there is
   // only one basic block in the moduleOp
   for (auto &op : module.getBlock()) {
     if (failed(processOperation(&op))) {
@@ -1073,7 +1073,7 @@ uint32_t Serializer::prepareConstantScalar(Location loc, Attribute valueAttr,
 uint32_t Serializer::prepareConstantBool(Location loc, BoolAttr boolAttr,
                                          bool isSpec) {
   if (!isSpec) {
-    // We can de-duplicate nomral contants, but not specialization constants.
+    // We can de-duplicate normal constants, but not specialization constants.
     if (auto id = getConstantID(boolAttr)) {
       return id;
     }
@@ -1102,7 +1102,7 @@ uint32_t Serializer::prepareConstantBool(Location loc, BoolAttr boolAttr,
 uint32_t Serializer::prepareConstantInt(Location loc, IntegerAttr intAttr,
                                         bool isSpec) {
   if (!isSpec) {
-    // We can de-duplicate nomral contants, but not specialization constants.
+    // We can de-duplicate normal constants, but not specialization constants.
     if (auto id = getConstantID(intAttr)) {
       return id;
     }
@@ -1168,7 +1168,7 @@ uint32_t Serializer::prepareConstantInt(Location loc, IntegerAttr intAttr,
 uint32_t Serializer::prepareConstantFp(Location loc, FloatAttr floatAttr,
                                        bool isSpec) {
   if (!isSpec) {
-    // We can de-duplicate nomral contants, but not specialization constants.
+    // We can de-duplicate normal constants, but not specialization constants.
     if (auto id = getConstantID(floatAttr)) {
       return id;
     }
@@ -1549,7 +1549,7 @@ template <>
 LogicalResult
 Serializer::processOp<spirv::EntryPointOp>(spirv::EntryPointOp op) {
   SmallVector<uint32_t, 4> operands;
-  // Add the ExectionModel.
+  // Add the ExecutionModel.
   operands.push_back(static_cast<uint32_t>(op.execution_model()));
   // Add the function <id>.
   auto funcID = getFunctionID(op.fn());
