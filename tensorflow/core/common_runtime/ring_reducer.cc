@@ -92,7 +92,7 @@ void RingReducer::Run(StatusCallback done) {
     Status status;
     profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
     CollectiveRemoteAccessLocal::MemCpyAsync(
-        col_ctx_->op_ctx->input_device_context(0),
+        col_ctx_->op_ctx->op_device_context(),
         col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,

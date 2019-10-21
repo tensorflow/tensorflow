@@ -112,7 +112,7 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
     visit(expr.getRHS());
     if (expr.getKind() == mlir::AffineExprKind::Mul)
       assert(expr.getRHS().cast<AffineConstantExpr>().getValue() > 0 &&
-             "nonpositive multipliying coefficient");
+             "nonpositive multiplying coefficient");
   }
   bool isTiled;
   ArrayRef<Value *> tileSizes;

@@ -235,7 +235,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 // This method uses an algorithm// in time linear in the number of operations
 // in the body of the for loop - (using the 'sweep line' paradigm). This method
 // asserts preservation of SSA dominance. A check for that as well as that for
-// memory-based depedence preservation check rests with the users of this
+// memory-based dependence preservation check rests with the users of this
 // method.
 LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                                  bool unrollPrologueEpilogue) {
@@ -531,7 +531,7 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
 
 // Checks each dependence component against the permutation to see if the
 // desired loop interchange would violate dependences by making the
-// dependence componenent lexicographically negative.
+// dependence component lexicographically negative.
 static bool checkLoopInterchangeDependences(
     const std::vector<llvm::SmallVector<DependenceComponent, 2>> &depCompsVec,
     ArrayRef<AffineForOp> loops, ArrayRef<unsigned> loopPermMap) {
@@ -829,7 +829,7 @@ Loops mlir::tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
 
 Loops mlir::tilePerfectlyNested(loop::ForOp rootForOp,
                                 ArrayRef<Value *> sizes) {
-  // Collect prefectly nested loops.  If more size values provided than nested
+  // Collect perfectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
   SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());
@@ -842,7 +842,7 @@ Loops mlir::tilePerfectlyNested(loop::ForOp rootForOp,
 
 // Build the IR that performs ceil division of a positive value by a constant:
 //    ceildiv(a, B) = divis(a + (B-1), B)
-// where divis is roundning-to-zero division.
+// where divis is rounding-to-zero division.
 static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
                               int64_t divisor) {
   assert(divisor > 0 && "expected positive divisor");
@@ -1343,7 +1343,7 @@ static LogicalResult generateCopy(
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
-  // 'regionSymbols' hold values that this memory region is symbolic/paramteric
+  // 'regionSymbols' hold values that this memory region is symbolic/parametric
   // on; these typically include loop IVs surrounding the level at which the
   // copy generation is being done or other valid symbols in MLIR.
   SmallVector<Value *, 8> regionSymbols;

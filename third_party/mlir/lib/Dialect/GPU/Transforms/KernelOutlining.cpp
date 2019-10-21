@@ -1,4 +1,4 @@
-//===- KernelOutlining.cpp - Implementation of GPU kernel outling ---------===//
+//===- KernelOutlining.cpp - Implementation of GPU kernel outlining -------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

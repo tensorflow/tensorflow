@@ -143,6 +143,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
+  //
+  // Note that the cost for sub HLO instructions are also returned if asked. For
+  // example, body and condidition of a while, fused instructions within a
+  // fusion, or the add instruction of a reduce.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
@@ -166,25 +170,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       const ShapeSizeFunction& shape_size, const Properties& per_second_rates);
 
   // Returns the properties computed from visiting the computation rooted at the
-  // given hlo.
-  //
-  // The difference between ProcessNestedSubcomputation and
-  // ProcessUnnestedSubcomputation is that we expect to get profile results for
-  // an unnested subcomputation's individual instructions, while we expect that
-  // a nested subcomputation is completely subsumed by its parent.
-  //
-  // For example, subcomputations inside kFusion and kMap are considered nested,
-  // while subcomputations inside kWhile and kConditional are considered
-  // unnested.
-  //
-  // Another way of thinking of this is, kFusion is implemented on the GPU
-  // backend using just one GPU kernel, while kWhile's body is implemented as a
-  // sequence of kernels, one for each HLO therein.  Backends don't necessarily
-  // need to follow this same implementation strategy, but we assume they do for
-  // the purposes of this platform-generic cost analysis.
-  StatusOr<Properties> ProcessNestedSubcomputation(HloComputation* computation);
-  StatusOr<Properties> ProcessUnnestedSubcomputation(
-      HloComputation* computation);
+  // given hlo. The cost of visited sub HLO instructions is saved to
+  // hlo_properties_, which will be used by functions such as
+  // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
+  StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);

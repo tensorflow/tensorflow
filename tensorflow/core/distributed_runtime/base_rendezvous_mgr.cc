@@ -155,7 +155,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     mutex_lock l(mu_);
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
-        LOG(INFO) << "Skipping rendezvous re-initialization.";
+        VLOG(1) << "Skipping rendezvous re-initialization.";
         return Status::OK();
       }
       Status s = errors::Internal(

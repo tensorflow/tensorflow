@@ -475,7 +475,7 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
   for (auto it : *listInit) {
     auto *dagInit = dyn_cast<llvm::DagInit>(it);
     if (!dagInit)
-      PrintFatalError(def.getLoc(), "all elemements in Pattern multi-entity "
+      PrintFatalError(def.getLoc(), "all elements in Pattern multi-entity "
                                     "constraints should be DAG nodes");
 
     std::vector<std::string> entities;

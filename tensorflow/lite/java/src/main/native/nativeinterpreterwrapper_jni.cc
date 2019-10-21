@@ -209,7 +209,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
     const auto* subgraph = interpreter->subgraph(static_cast<int>(subgraph_i));
     for (size_t node_i = 0; node_i < subgraph->nodes_size(); ++node_i) {
       const auto& registration =
-          interpreter->node_and_registration(static_cast<int>(node_i))->second;
+          subgraph->node_and_registration(static_cast<int>(node_i))->second;
       if (tflite::IsUnresolvedCustomOp(registration) &&
           tflite::IsFlexOp(registration.custom_name)) {
         return JNI_TRUE;

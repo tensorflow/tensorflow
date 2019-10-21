@@ -9,9 +9,7 @@ BUILD_DEB ?= n
 
 MAKEFILE_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 TENSORFLOW_DIR := $(MAKEFILE_DIR)/../../../..
-NAME := $(word 1, $(subst :, ,$(BASE_IMAGE)))
-VERSION := $(word 2, $(subst :, ,$(BASE_IMAGE)))
-TAG_IMAGE := "tflite-builder-$(BASE_IMAGE)"
+TAG_IMAGE := "tflite-runtime-builder-$(subst :,-,$(BASE_IMAGE))"
 
 .PHONY: help \
         docker-image \
@@ -26,10 +24,10 @@ help:
 	@echo "make clean        -- remove built wheel files"
 
 docker-image:
-	docker build -t $(TAG_IMAGE) --build-arg VERSION=$(VERSION) -f Dockerfile.$(NAME) .
+	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) .
 
 docker-shell: docker-image
-	docker run --rm -it -v $(TENSORFLOW_DIR):/tensorflow $(TAG_IMAGE)
+	docker run --rm -it -v $(TENSORFLOW_DIR):/tensorflow --workdir /tensorflow $(TAG_IMAGE)
 
 docker-build: docker-image
 	docker run \
@@ -40,7 +38,7 @@ docker-build: docker-image
 		-v $(CURDIR):/out \
 		--rm -it $(TAG_IMAGE) \
 		/bin/bash -c "tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
-		              cp /tmp/tflite_pip/*.deb /tmp/tflite_pip/$(PYTHON)/dist/*.whl /out"
+		              (cp /tmp/tflite_pip/*.deb /tmp/tflite_pip/$(PYTHON)/dist/*.whl /out 2>/dev/null || true)"
 
 clean:
-	rm -f *.whl
+	rm -f *.whl *.deb
