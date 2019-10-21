@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
+#include <cstdint>
+#include <iterator>
+
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/SMLoc.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 
 namespace mlir {
@@ -56,6 +66,192 @@ void Print(ReturnOp op, OpAsmPrinter* p) {
     *p << " : ";
     interleaveComma(op.getOperandTypes(), *p);
   }
+}
+}  // anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// tf_device.replicate
+//===----------------------------------------------------------------------===//
+
+namespace {
+ParseResult ParseReplicateOpOperands(
+    OpAsmParser* parser, OperationState* state,
+    llvm::SmallVectorImpl<llvm::SmallVector<OpAsmParser::OperandType, 8>>*
+        operands,
+    llvm::SmallVectorImpl<OpAsmParser::OperandType>* region_args,
+    llvm::SmallVectorImpl<Type>* region_arg_types) {
+  // No operands or empty operand list.
+  bool parsed_l_paren = succeeded(parser->parseOptionalLParen());
+  if (!parsed_l_paren || succeeded(parser->parseOptionalRParen()))
+    return success();
+
+  // Parse comma separated operands of the following format:
+  //   [%a, ...] as %block_arg: type
+  do {
+    if (parser->parseOperandList(operands->emplace_back(),
+                                 OpAsmParser::Delimiter::Square) ||
+        parser->parseKeyword("as",
+                             " between replicated inputs and block argument") ||
+        parser->parseRegionArgument(region_args->emplace_back()) ||
+        parser->parseColonType(region_arg_types->emplace_back()))
+      return failure();
+  } while (succeeded(parser->parseOptionalComma()));
+
+  // Parse remaining `)` surrounding operands.
+  return parser->parseRParen();
+}
+
+ParseResult SetOperands(
+    llvm::SMLoc loc, OpAsmParser* parser, OperationState* state,
+    llvm::ArrayRef<llvm::SmallVector<OpAsmParser::OperandType, 8>> operands,
+    llvm::ArrayRef<Type> region_arg_types, int* n) {
+  if (operands.empty()) return success();
+
+  for (const auto& attr : state->attributes)
+    if (attr.first.strref() == "n")
+      if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
+        *n = n_attr.getInt();
+
+  if (*n < 2)
+    return parser->emitError(loc) << "expects 'n' to be at least 2, got " << *n;
+
+  for (int i = 0, e = operands.size(); i < e; ++i) {
+    const auto& operand = operands[i];
+    // Check if replicated input matches `n`.
+    if (operand.size() != *n)
+      return parser->emitError(loc)
+             << "expects number of operands for replicated input " << i
+             << " to be 'n' (" << *n << "), got " << operand.size();
+
+    // Resolve replicated input and block argument type.
+    if (parser->resolveOperands(operand, region_arg_types[i], state->operands))
+      return failure();
+  }
+
+  return success();
+}
+
+ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
+  llvm::SMLoc loc = parser->getCurrentLocation();
+
+  // Parse operands, attributes, and region of op.
+  llvm::SmallVector<llvm::SmallVector<OpAsmParser::OperandType, 8>, 8> operands;
+  llvm::SmallVector<OpAsmParser::OperandType, 8> region_args;
+  llvm::SmallVector<Type, 8> region_arg_types;
+  int n = 0;
+  Region& body = *state->addRegion();
+  if (ParseReplicateOpOperands(parser, state, &operands, &region_args,
+                               &region_arg_types) ||
+      parser->parseOptionalAttributeDict(state->attributes) ||
+      SetOperands(loc, parser, state, operands, region_arg_types, &n) ||
+      parser->parseRegion(body, region_args, region_arg_types))
+    return failure();
+
+  if (body.getBlocks().size() > 1)
+    return parser->emitError(loc) << "expects a single block region";
+
+  // Ensure that the region is well formed: it contains at least a block with
+  // a ReturnOp terminator.
+  ReplicateOp::ensureTerminator(body, parser->getBuilder(), state->location);
+
+  Operation& terminator = body.front().back();
+  if (!isa<ReturnOp>(terminator))
+    return parser->emitError(loc) << "expects a tf_device.return terminator";
+
+  // Get the results type from the terminator type inside the replicate,
+  // replicated each by `n`.
+  state->types.reserve(terminator.getNumOperands() * n);
+  for (const auto& type : terminator.getOperandTypes())
+    state->types.append(n, type);
+
+  return success();
+}
+
+void Print(ReplicateOp op, OpAsmPrinter* p) {
+  *p << op.getOperationName();
+
+  // Print comma separated operands of the following format:
+  //   [%a, ...] as %block_arg: type
+  int n = op.getAttrOfType<IntegerAttr>("n").getInt();
+  if (op.getNumOperands()) {
+    *p << '(';
+    Block& block = op.body().front();
+    interleaveComma(block.getArguments(), *p, [&](BlockArgument* arg) {
+      const int block_arg_num = arg->getArgNumber();
+      *p << '[';
+      p->printOperands(std::next(op.operand_begin(), block_arg_num * n),
+                       std::next(op.operand_begin(), (block_arg_num + 1) * n));
+      *p << "] as " << *arg << ": " << arg->getType();
+    });
+    *p << ')';
+  }
+
+  p->printOptionalAttrDict(op.getAttrs());
+  p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
+}
+
+// Checks if two types are compatible (compatible shapes and same elemental
+// type).
+LogicalResult VerifyCompatibleTypes(Type a, Type b) {
+  if (failed(verifyCompatibleShape(a, b)) ||
+      getElementTypeOrSelf(a) != getElementTypeOrSelf(b))
+    return failure();
+
+  return success();
+}
+
+LogicalResult Verify(ReplicateOp op) {
+  uint64_t n = op.n().getLimitedValue();
+  if (n < 2)
+    return op.emitOpError() << "expects 'n' to be at least 2, got " << n;
+
+  // Check number of devices, if set, matches `n`.
+  if (op.devices().hasValue() && op.devices().getValue().size() != n)
+    return op.emitOpError()
+           << "expects number of devices (" << op.devices().getValue().size()
+           << ") to be equal to 'n' (" << n << ")";
+
+  Block& block = op.body().front();
+
+  // Check number of operands matches `n` * number of block arguments.
+  if (op.getNumOperands() != n * block.getNumArguments())
+    return op.emitOpError()
+           << "expects number of operands (" << op.getNumOperands()
+           << ") to be equal to 'n' * number of block arguments (" << n << " * "
+           << block.getNumArguments() << ")";
+
+  // Check replicated input types match block argument types.
+  for (auto block_arg : block.getArguments()) {
+    Type block_arg_type = block_arg->getType();
+    for (int i = n * block_arg->getArgNumber(), e = i + n; i < e; ++i)
+      if (failed(VerifyCompatibleTypes(block_arg_type,
+                                       op.getOperand(i)->getType())))
+        return op.emitOpError()
+               << "incompatible types for operand " << i
+               << " and block argument " << block_arg->getArgNumber();
+  }
+
+  Operation& terminator = block.back();
+
+  // Check number of results matches `n` * number of return operands.
+  if (op.getNumResults() != n * terminator.getNumOperands())
+    return op.emitOpError()
+           << "expects number of results (" << op.getNumResults()
+           << ") to be equal to 'n' * number of terminator operands (" << n
+           << " * " << terminator.getNumOperands() << ")";
+
+  // Check replicated output types match return operand types.
+  for (auto operand_type_and_idx :
+       llvm::enumerate(terminator.getOperandTypes())) {
+    Type operand_type = operand_type_and_idx.value();
+    int operand_idx = operand_type_and_idx.index();
+    for (int i = n * operand_idx, e = i + n; i < e; ++i)
+      if (failed(VerifyCompatibleTypes(operand_type, op.getType(i))))
+        return op.emitOpError() << "incompatible types for result " << i
+                                << " and terminator operand " << operand_idx;
+  }
+
+  return success();
 }
 }  // anonymous namespace
 
