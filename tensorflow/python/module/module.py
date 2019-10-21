@@ -134,7 +134,7 @@ class Module(tracking.AutoTrackable):
     """Returns a `tf.name_scope` instance for this class."""
     if tf2.enabled():
       return self._name_scope
-      # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
+    # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
     return ops.name_scope(self._scope_name)
 
   @property
@@ -347,7 +347,6 @@ def _flatten_module(module,
       if predicate(leaf):
         if with_path:
           yield module_path + leaf_path, leaf
-          
         yield leaf
 
       if recursive and _is_module(leaf):
