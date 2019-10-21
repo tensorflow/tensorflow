@@ -4487,7 +4487,10 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     shard_count = 16,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notap",  # TODO(b/143097607)
+    ],
 )
 
 cuda_py_test(
