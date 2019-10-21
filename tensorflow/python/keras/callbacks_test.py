@@ -951,9 +951,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           callbacks=cbks,
           epochs=5,
           verbose=0)
-      assert (
+      self.assertAllClose(
           float(keras.backend.get_value(
-              model.optimizer.lr)) - 0.2) < keras.backend.epsilon()
+              model.optimizer.lr)), 0.2, tol=keras.backend.epsilon())
 
       cbks = [keras.callbacks.LearningRateScheduler(lambda x, lr: lr / 2)]
       model.compile(
@@ -968,9 +968,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           callbacks=cbks,
           epochs=2,
           verbose=0)
-      assert (
+      self.assertAllClose(
           float(keras.backend.get_value(
-              model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+              model.optimizer.lr)), 0.01 / 4, tol=keras.backend.epsilon())
 
       cbks = [
           keras.callbacks.LearningRateScheduler(
@@ -993,8 +993,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cosine_decay_np = 0.5 * (1 + np.cos(np.pi * (1 / 2)))
       decayed_learning_rate = 0.01 * cosine_decay_np
 
-      assert (float(keras.backend.get_value(model.optimizer.lr)) -
-              decayed_learning_rate) < keras.backend.epsilon()
+      self.assertAllClose(
+          float(keras.backend.get_value(model.optimizer.lr)),
+              decayed_learning_rate, tol=keras.backend.epsilon())
 
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
