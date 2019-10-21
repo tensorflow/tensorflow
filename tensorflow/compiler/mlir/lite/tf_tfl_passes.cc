@@ -98,6 +98,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
   pass_manager->addPass(mlir::createCanonicalizerPass());
+  pass_manager->addPass(mlir::createCSEPass());
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
@@ -108,25 +109,27 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs,
-                            pass_config.emit_quant_adaptor_ops, pass_manager);
-    }
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
-
+    pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::createCSEPass());
-    // This pass should be always at the end. Some TFL ops like unidirectional
+    // This pass should be always at the end of the floating point model
+    // conversion. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
     // will merge those operands if they have identical values & types. However,
     // it's not desired by TFL. This pass serves as a "fix" pass to split the
     // merged inputs until we have 1st class variable support or reuse
-    // tf.ariable to model this.
+    // tf.variable to model this.
     pass_manager->addPass(mlir::TFL::CreateSplitMergedOperandsPass());
+
+    // Run quantization after all the floating point model conversion is
+    // completed.
+    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
+      AddQuantizationPasses(pass_config.quant_specs,
+                            pass_config.emit_quant_adaptor_ops, pass_manager);
+    }
   }
 }
 
