@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -104,31 +106,122 @@ struct RendezvousKey {
   int64 op_id;
 };
 
-// Encapsulates parameters to Rendezvous::SubmitParticipant.
-struct ParticipantData {
-  explicit ParticipantData(RendezvousKey rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
-
-  int64 element_count;
-  int64 device_ordinal;
-  RendezvousKey rendezvous_key;
-
-  // TODO(b/125951860): We should vet that we're buffer allocating such that
-  // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
-  // on how well the NCCL in-place implementation performs vs the out-of-place
-  // implementation).
-  se::DeviceMemoryBase source_data;
-  se::DeviceMemoryBase destination_data;
-  se::Stream* stream;
-
-  int num_participants() const { return rendezvous_key.num_participants(); }
-
-  string ToString() const {
-    return absl::StrFormat(
-        "ParticipantData{element_count=%d, rendezvous_key=%s, "
-        "device_ordinal=%d, stream=%p}",
-        element_count, rendezvous_key.ToString(), device_ordinal, stream);
+template <typename DescFn>
+void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
+                       const DescFn& desc_fn) {
+  VLOG(3) << "Begin: " << desc_fn();
+  const std::chrono::milliseconds timeout(5000);
+  bool ok = counter->WaitFor(timeout);
+  if (ok) {
+    VLOG(3) << "Finished: " << desc_fn();
+    return;
   }
+  LOG(ERROR) << "This thread has been waiting for " << timeout.count()
+             << "ms for and may be stuck: " << desc_fn();
+  counter->Wait();
+  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+                "Perhaps the timeout is too short: "
+             << desc_fn();
+}
+
+// The set of threads that want to do a collective op together all pick the same
+// Rendezvous object out of the global cache and call SubmitParticipant.
+//
+// The Rendezvous instance handles waiting for all threads to join, ensuring
+// that a clique exists for the desired set of GPUs, etc.
+//
+// Rendezvous objects can only be used once.
+//
+// I: Participant input.
+// O: Participant output.
+template <typename I, typename O>
+class Rendezvous {
+ public:
+  virtual ~Rendezvous() {}
+  explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
+
+  // Runs the all-reduce on the given thread.  If successful, returns
+  //  - a handle to the clique that was used, so that the caller may keep the
+  //    clique alive if it chooses.
+  //  - a BlockingCounter initialized to the number of participants, so that
+  //    the caller can coordinate with the participants one last time if it
+  //    chooses.  This is useful for coordinating destruction of the Rendezvous.
+  StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
+  SubmitParticipant(I participant) {
+    {
+      tensorflow::mutex_lock lock(mu_);
+      CHECK(!initialized_);
+
+      // Spot check for consistent replica counts among submitting threads.
+      if (!participants_.empty() &&
+          (participants_.back().element_count != participant.element_count ||
+           participants_.back().rendezvous_key != participant.rendezvous_key)) {
+        return InvalidArgument(
+            "Mismatch among all-reduce participants.  Expected same "
+            "replica-count, element-count, and rendezvous-key but were %s and "
+            "%s",
+            participants_.back().ToString(), participant.ToString());
+      }
+      participants_.push_back(participant);
+    }
+
+    // Wait for all participants to arrive.
+    all_participants_present_.DecrementCount();
+    WaitAndLogIfStuck(&all_participants_present_, [&] {
+      return absl::StrFormat(
+          "participant for device ordinal %d, stream %p waiting for all "
+          "participants to be arrive at rendezvous %s",
+          participant.device_ordinal, participant.stream, key_.ToString());
+    });
+
+    StatusOr<std::pair<O, bool>> p_or = SubmitParticipantImpl(participant);
+
+    done_.DecrementCount();
+    if (!p_or.ok()) {
+      return p_or.status();
+    }
+    std::pair<O, bool> p = p_or.ValueOrDie();
+
+    O handle = p.first;
+    bool is_primary = p.second;
+
+    // The primary owns the lock on the NCCL clique.  Hold it until all threads
+    // are done.  (We'll release it when we return from this function.)
+    if (is_primary) {
+      WaitAndLogIfStuck(&done_, [&] {
+        return absl::StrFormat(
+            "primary participant waiting for all other participants to "
+            "complete all-reduce %s",
+            key_.ToString());
+      });
+    }
+
+    CleanupImpl(handle, is_primary);
+
+    return std::make_pair(handle, returned_blocking_counter_);
+  }
+
+ protected:
+  // Returns domain-specific output O and whether this replica is primary.
+  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(I participant) = 0;
+
+  virtual void CleanupImpl(O handle, bool is_primary) {}
+
+  tensorflow::mutex mu_;
+
+  bool initialized_ GUARDED_BY(mu_) = false;
+
+  std::vector<I> participants_ GUARDED_BY(mu_);
+
+ private:
+  const RendezvousKey key_;
+
+  tensorflow::BlockingCounter all_participants_present_{
+      key_.num_participants()};
+  tensorflow::BlockingCounter done_{key_.num_participants()};
+  // tensorflow::BlockingCounter returned by SubmitParticipant.
+  std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
+      std::make_shared<tensorflow::BlockingCounter>(key_.num_participants())};
 };
 
 }  // end namespace xla
