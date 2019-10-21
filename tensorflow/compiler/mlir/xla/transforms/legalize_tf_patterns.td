@@ -255,12 +255,17 @@ def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), AnyTensor:$
 def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
-// Matmul op patterns.
+// MatMul op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Lower matmul ops with transpose attributes.
-def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse, ConstBoolAttrFalse),
-          (HLO_DotOp $a, $b, (NullArrayAttr))>;
+def Get2DTransposePerm: NativeCodeCall<
+  "Get2DTransposePerm($0, &$_builder)">;
+
+def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+          (HLO_DotOp
+          (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
+          (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
+          /*precision_config=*/(NullArrayAttr))>;
 
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.
@@ -273,7 +278,6 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
-
 
 // TODO(hinsu): Support dynamic but ranked input by using scalar constants
 // along with broadcast_dimensions attribute. Similarly, Relu6 op with
@@ -343,8 +347,7 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-def : Pat<(TF_TransposeOp:$res AnyStaticShapeTensor:$arg,
-           (TF_ConstOp I64ElementsAttr:$permutation)),
+def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp I64ElementsAttr:$permutation)),
           (HLO_TransposeOp $arg, (CastIntElementsAttr $permutation))>;
 
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {

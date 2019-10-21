@@ -406,7 +406,7 @@ def make_zip_of_tests(options,
         # Build graph
         report["tf_log"] = ""
         report["toco_log"] = ""
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
         with tf.device("/cpu:0"):
           try:

@@ -782,45 +782,50 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 static LogicalResult Verify(TransposeOp op) {
+  // permutation is an attribute of the op so it has static shape.
   auto permutationType = op.permutation().getType();
   auto permutationRank = permutationType.getRank();
   if (permutationRank != 1) {
     return op.emitOpError(llvm::formatv(
         "permutation has rank {0} instead of rank 1", permutationRank));
   }
-
-  auto operandType = op.operand()->getType().cast<RankedTensorType>();
-  auto operandRank = operandType.getRank();
   auto permutationSize = permutationType.getNumElements();
-  if (permutationSize != operandRank) {
-    return op.emitOpError(llvm::formatv(
-        "permutation size ({0}) does not match operand rank ({1})",
-        permutationSize, operandRank));
+
+  auto operandType = op.operand()->getType().dyn_cast<RankedTensorType>();
+  if (operandType) {
+    auto operandRank = operandType.getRank();
+    if (operandRank != permutationSize) {
+      return op.emitOpError(llvm::formatv(
+          "operand rank ({0}) does not match permutation size ({1})",
+          operandRank, permutationSize));
+    }
   }
 
-  auto resultType = op.getResult()->getType().cast<RankedTensorType>();
-  auto resultRank = resultType.getRank();
-  if (resultRank != operandRank) {
-    return op.emitOpError(
-        llvm::formatv("result rank ({0}) does not match operand rank ({1})",
-                      resultRank, operandRank));
+  auto resultType = op.getResult()->getType().dyn_cast<RankedTensorType>();
+  if (resultType) {
+    auto resultRank = resultType.getRank();
+    if (resultRank != permutationSize) {
+      return op.emitOpError(llvm::formatv(
+          "result rank ({0}) does not match permutation size ({1})", resultRank,
+          permutationSize));
+    }
   }
 
-  auto resultShape = resultType.getShape();
+  if (!resultType || !operandType) return success();
 
-  auto expectedShape = SmallVector<int64_t, 10>(operandRank);
+  auto operandRank = operandType.getRank();
+  SmallVector<int64_t, 4> expectedShape(operandRank);
   for (int i = 0; i != operandRank; ++i) {
     auto permutedDim = op.permutation().getValue<IntegerAttr>(i).getInt();
     expectedShape[i] = operandType.getDimSize(permutedDim);
   }
 
-  if (resultShape != llvm::makeArrayRef(expectedShape)) {
+  auto expectedType =
+      RankedTensorType::get(expectedShape, resultType.getElementType());
+  if (failed(verifyCompatibleShape(resultType, expectedType))) {
     return op.emitOpError(llvm::formatv(
-        "result shape is [{0}"
-        "] instead of [{1}"
-        "]",
-        llvm::make_range(resultShape.begin(), resultShape.end()),
-        llvm::make_range(expectedShape.begin(), expectedShape.end())));
+        "result type {0} is incompatible with the expected type {1}",
+        resultType, expectedType));
   }
 
   return success();

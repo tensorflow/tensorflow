@@ -82,9 +82,6 @@ py_library(
     name = "dumping_callback",
     srcs = ["lib/dumping_callback.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-    ],
     deps = [
         ":debug_events_writer",
         ":op_callbacks_common",
@@ -707,8 +704,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
     ],
-    shard_count = 4,
-    tags = ["notap"],  # TODO(b/142890611)
+    shard_count = 6,
+    tags = [
+        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+    ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 

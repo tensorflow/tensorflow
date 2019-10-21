@@ -542,18 +542,27 @@ void PatternEmitter::emitRewriteLogic() {
       os.indent(4) << val << ";\n";
   }
 
-  // Process replacement result patterns.
-  os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
-  for (int i = replStartIndex; i < numResultPatterns; ++i) {
-    DagNode resultTree = pattern.getResultPattern(i);
-    auto val = handleResultPattern(resultTree, offsets[i], 0);
+  if (numExpectedResults == 0) {
+    assert(replStartIndex >= numResultPatterns &&
+           "invalid auxiliary vs. replacement pattern division!");
+    // No result to replace. Just erase the op.
+    os.indent(4) << "rewriter.eraseOp(op0);\n";
+  } else {
+    // Process replacement result patterns.
+    os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
+    for (int i = replStartIndex; i < numResultPatterns; ++i) {
+      DagNode resultTree = pattern.getResultPattern(i);
+      auto val = handleResultPattern(resultTree, offsets[i], 0);
+      os.indent(4) << "\n";
+      // Resolve each symbol for all range use so that we can loop over them.
+      os << symbolInfoMap.getAllRangeUse(
+          val, "    for (auto *v : {0}) {{ tblgen_values.push_back(v); }",
+          "\n");
+    }
     os.indent(4) << "\n";
-    // Resolve each symbol for all range use so that we can loop over them.
-    os << symbolInfoMap.getAllRangeUse(
-        val, "    for (auto *v : {0}) tblgen_values.push_back(v);", "\n");
+    os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
   }
-  os.indent(4) << "\n";
-  os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
+
   LLVM_DEBUG(llvm::dbgs() << "--- done emitting rewrite logic ---\n");
 }
 

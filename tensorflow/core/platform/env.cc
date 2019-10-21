@@ -23,11 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>

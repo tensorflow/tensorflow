@@ -166,11 +166,11 @@ build:rbe --remote_cache=remotebuildexecution.googleapis.com
 build:rbe --remote_executor=remotebuildexecution.googleapis.com
 build:rbe --remote_local_fallback=false
 build:rbe --remote_timeout=600
-build:rbe --spawn_strategy=remote
-build:rbe --strategy=Genrule=remote
-build:rbe --strategy=Closure=remote
-build:rbe --strategy=Javac=remote
-build:rbe --strategy=TestRunner=remote
+build:rbe --spawn_strategy=remote,worker,sandboxed,local
+build:rbe --strategy=Genrule=remote,worker,sandboxed,local
+build:rbe --strategy=Closure=remote,worker,sandboxed,local
+build:rbe --strategy=Javac=remote,worker,sandboxed,local
+build:rbe --strategy=TestRunner=remote,worker,sandboxed,local
 build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
 

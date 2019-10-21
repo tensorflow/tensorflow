@@ -306,7 +306,7 @@ struct PythonLoopContext {
 
   PythonValueHandle enter() {
     ValueHandle iv(lb.value.getType());
-    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    builder = new AffineLoopNestBuilder(&iv, lb.value, ub.value, step);
     return iv;
   }
 
@@ -318,7 +318,7 @@ struct PythonLoopContext {
 
   PythonValueHandle lb, ub;
   int64_t step;
-  LoopBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonLoopNestContext {
@@ -397,7 +397,7 @@ public:
   }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Creating a new EDSC Builder automatically puts it on the stack,
   // effectively entering the block for it.
   void createBlockBuilder() {
@@ -422,7 +422,7 @@ public:
   PythonBlockHandle getHandle() { return handle; }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Calling operator() on a builder pops the builder from the stack,
   // effectively resetting the insertion point to its position before we entered
   // the block.
@@ -523,7 +523,7 @@ struct PythonIndexedValue {
 
   void store(const std::vector<PythonValueHandle> &indices,
              PythonValueHandle value) {
-    // Uses the overloaded `opreator=` to emit a store.
+    // Uses the overloaded `operator=` to emit a store.
     index(indices).indexed = value.value;
   }
 

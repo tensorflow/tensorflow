@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -220,10 +219,8 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
     std::unique_ptr<HloModule> module =
-        ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,

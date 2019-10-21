@@ -125,7 +125,7 @@ static void emitOperandSerialization(const Operator &op, ArrayRef<SMLoc> loc,
       os << tabs
          << formatv("  for (auto arg : {0}.getODSOperands({1})) {{\n", opVar,
                     operandNum);
-      os << tabs << "    auto argID = findValueID(arg);\n";
+      os << tabs << "    auto argID = getValueID(arg);\n";
       os << tabs << "    if (!argID) {\n";
       os << tabs
          << formatv(

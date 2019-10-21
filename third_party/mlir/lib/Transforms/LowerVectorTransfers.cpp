@@ -25,6 +25,7 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
@@ -54,9 +55,9 @@
 ///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
 ///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
 ///    %f0 = constant 0.0f : f32
-///    affine.for %i0 = 0 to %0 {
-///      affine.for %i1 = 0 to %1 step 256 {
-///        affine.for %i2 = 0 to %2 step 32 {
+///    loop.for %i0 = 0 to %0 {
+///      loop.for %i1 = 0 to %1 step %c256 {
+///        loop.for %i2 = 0 to %2 step %c32 {
 ///          %v = vector.transfer_read %A[%i0, %i1, %i2], (%f0)
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
 ///               memref<?x?x?xf32>, vector<32x256xf32>
@@ -68,8 +69,8 @@
 /// abstraction):
 ///
 /// ```mlir {.mlir}
-///    affine.for %d2 = 0 to 256 {
-///      affine.for %d1 = 0 to 32 {
+///    loop.for %d2 = 0 to %c256 {
+///      loop.for %d1 = 0 to %c32 {
 ///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
 ///        %tmp[%d2, %d1] = %s
 ///      }
@@ -126,7 +127,7 @@ struct VectorTransferRewriter : public RewritePattern {
 /// Analyzes the `transfer` to find an access dimension along the fastest remote
 /// MemRef dimension. If such a dimension with coalescing properties is found,
 /// `pivs` and `vectorView` are swapped so that the invocation of
-/// AffineLoopNestBuilder captures it in the innermost loop.
+/// LoopNestBuilder captures it in the innermost loop.
 template <typename VectorTransferOpTy>
 void coalesceCopy(VectorTransferOpTy transfer,
                   SmallVectorImpl<edsc::ValueHandle *> *pivs,
@@ -282,13 +283,16 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
 
   auto lbs = vectorView.getLbs();
   auto ubs = vectorView.getUbs();
-  auto steps = vectorView.getSteps();
+  SmallVector<ValueHandle, 8> steps;
+  steps.reserve(vectorView.getSteps().size());
+  for (auto step : vectorView.getSteps())
+    steps.push_back(constant_index(step));
 
   // 2. Emit alloc-copy-load-dealloc.
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
-  AffineLoopNestBuilder(pivs, lbs, ubs, steps)([&] {
+  LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     local(ivs) = remote(clip(transfer, view, ivs));
   });
@@ -342,14 +346,17 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 
   auto lbs = vectorView.getLbs();
   auto ubs = vectorView.getUbs();
-  auto steps = vectorView.getSteps();
+  SmallVector<ValueHandle, 8> steps;
+  steps.reserve(vectorView.getSteps().size());
+  for (auto step : vectorView.getSteps())
+    steps.push_back(constant_index(step));
 
   // 2. Emit alloc-store-copy-dealloc.
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
   std_store(vectorValue, vec, {constant_index(0)});
-  AffineLoopNestBuilder(pivs, lbs, ubs, steps)([&] {
+  LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     remote(clip(transfer, view, ivs)) = local(ivs);
   });

@@ -153,7 +153,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 // MemRefDependenceGraph is a graph data structure where graph nodes are
 // top-level operations in a FuncOp which contain load/store ops, and edges
 // are memref dependences between the nodes.
-// TODO(andydavis) Add a more flexible dependece graph representation.
+// TODO(andydavis) Add a more flexible dependence graph representation.
 // TODO(andydavis) Add a depth parameter to dependence graph construction.
 struct MemRefDependenceGraph {
 public:
@@ -224,7 +224,7 @@ public:
     }
   };
 
-  // Edge represents a data dependece between nodes in the graph.
+  // Edge represents a data dependence between nodes in the graph.
   struct Edge {
     // The id of the node at the other end of the edge.
     // If this edge is stored in Edge = Node.inEdges[i], then
@@ -672,7 +672,7 @@ public:
   void dump() const { print(llvm::errs()); }
 };
 
-// Intializes the data dependence graph by walking operations in 'f'.
+// Initializes the data dependence graph by walking operations in 'f'.
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
@@ -921,7 +921,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
          "non-constant number of elts in local buffer");
 
   const FlatAffineConstraints *cst = region.getConstraints();
-  // 'outerIVs' holds the values that this memory region is symbolic/paramteric
+  // 'outerIVs' holds the values that this memory region is symbolic/parametric
   // on; this would correspond to loop IVs surrounding the level at which the
   // slice is being materialized.
   SmallVector<Value *, 8> outerIVs;
@@ -1065,7 +1065,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
 // surrounding 'srcOpInst' into the loop nest surrounding 'dstLoadOpInsts'.
 // The argument 'srcStoreOpInst' is used to calculate the storage reduction on
 // the memref being produced and consumed, which is an input to the cost model.
-// For producer-constumer fusion, 'srcStoreOpInst' will be the same as
+// For producer-consumer fusion, 'srcStoreOpInst' will be the same as
 // 'srcOpInst', as we are slicing w.r.t to that producer.
 // For input-reuse fusion, 'srcOpInst' will be the src loop nest LoadOp which
 // reads from the same memref as dst loop nest load ops, and 'srcStoreOpInst'
@@ -1084,8 +1084,8 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
 //    nest).
 // *) Computes the cost of fusing a slice of the src loop nest into the dst
 //    loop nest at various values of dst loop depth, attempting to fuse
-//    the largest compution slice at the maximal dst loop depth (closest to the
-//    load) to minimize reuse distance and potentially enable subsequent
+//    the largest computation slice at the maximal dst loop depth (closest to
+//    the load) to minimize reuse distance and potentially enable subsequent
 //    load/store forwarding.
 //    NOTE: If the dst loop nest includes multiple loads in 'dstLoadOpInsts' for
 //    the same memref as is written by 'srcOpInst', then the union of slice
@@ -1095,7 +1095,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
 //    NOTE: We attempt to maximize the dst loop depth, but there are cases
 //    where a particular setting for 'dstLoopNest' might fuse an unsliced
 //    loop (within the src computation slice) at a depth which results in
-//    execessive recomputation (see unit tests for examples).
+//    excessive recomputation (see unit tests for examples).
 // *) Compares the total cost of the unfused loop nests to the min cost fused
 //    loop nest computed in the previous step, and returns true if the latter
 //    is lower.
@@ -1612,7 +1612,7 @@ public:
               mdg->addEdge(newMemRefNodeId, dstId, newMemRef);
             }
 
-            // Collect dst loop stats after memref privatizaton transformation.
+            // Collect dst loop stats after memref privatization transformation.
             LoopNestStateCollector dstLoopCollector;
             dstLoopCollector.collect(dstAffineForOp.getOperation());
 
@@ -1876,7 +1876,7 @@ public:
       promoteIfSingleIteration(forOp);
     }
 
-    // Collect dst loop stats after memref privatizaton transformation.
+    // Collect dst loop stats after memref privatization transformation.
     auto dstForInst = cast<AffineForOp>(dstNode->op);
     LoopNestStateCollector dstLoopCollector;
     dstLoopCollector.collect(dstForInst.getOperation());
