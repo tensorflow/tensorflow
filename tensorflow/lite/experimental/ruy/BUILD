@@ -11,6 +11,14 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
