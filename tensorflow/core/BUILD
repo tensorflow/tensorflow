@@ -2586,7 +2586,10 @@ alias(
     actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
-tf_version_info_genrule()
+tf_version_info_genrule(
+    name = "version_info_gen",
+    out = "util/version_info.cc",
+)
 
 cc_library(
     name = "version_lib",

@@ -2330,15 +2330,15 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
-def tf_version_info_genrule():
+def tf_version_info_genrule(name, out):
     native.genrule(
-        name = "version_info_gen",
+        name = name,
         srcs = [
             clean_dep("@local_config_git//:gen/spec.json"),
             clean_dep("@local_config_git//:gen/head"),
             clean_dep("@local_config_git//:gen/branch_ref"),
         ],
-        outs = ["util/version_info.cc"],
+        outs = [out],
         cmd =
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
