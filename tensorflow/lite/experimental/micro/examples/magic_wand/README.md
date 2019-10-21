@@ -63,7 +63,7 @@ The sample has been tested with the following devices:
 To use this sample application with Arduino, we've created an Arduino library
 that includes it as an example that you can open in the Arduino Desktop IDE.
 
-Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
+Download the current nightly build of the library: [magic_wand.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
 
 Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
 Include Library -> Add .ZIP Library...`.
