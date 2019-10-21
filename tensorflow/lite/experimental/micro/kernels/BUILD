@@ -40,8 +40,7 @@ cc_library(
         "svdf.cc",
         "unpack.cc",
     ],
-    hdrs = [
-    ],
+    hdrs = ["micro_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":activation_utils",
@@ -102,8 +101,7 @@ cc_library(
         "svdf.cc",
         "unpack.cc",
     ],
-    hdrs = [
-    ],
+    hdrs = ["micro_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":activation_utils",

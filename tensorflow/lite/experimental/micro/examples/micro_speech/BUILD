@@ -356,7 +356,7 @@ cc_binary(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -377,7 +377,7 @@ cc_binary(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
