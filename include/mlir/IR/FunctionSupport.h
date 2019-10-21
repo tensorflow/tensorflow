@@ -24,7 +24,6 @@
 #define MLIR_IR_FUNCTIONSUPPORT_H
 
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/SmallString.h"
 
 namespace mlir {
@@ -114,7 +113,7 @@ void printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
 namespace OpTrait {
 
 /// This trait provides APIs for Ops that behave like functions.  In particular:
-/// - Ops can be used with SymbolTable in the parent Op and have names;
+/// - Ops must be symbols, i.e. also have the `Symbol` trait;
 /// - Ops have a single region with multiple blocks that corresponds to the body
 ///   of the function;
 /// - the absence of a region corresponds to an external function;
@@ -129,39 +128,20 @@ namespace OpTrait {
 /// no assumption based on it.
 ///
 /// - Concrete ops *must* define a member function `getNumFuncArguments()` that
-/// returns the number of function arguments based exclusively on type (so that
-/// it can be called on function declarations).
+///   returns the number of function arguments based exclusively on type (so
+///   that it can be called on function declarations).
 /// - Concrete ops *must* define a member function `getNumFuncResults()` that
-/// returns the number of function results based exclusively on type (so that
-/// it can be called on function declarations).
+///   returns the number of function results based exclusively on type (so that
+///   it can be called on function declarations).
 /// - To verify that the type respects op-specific invariants, concrete ops may
-/// redefine the `verifyType()` hook that will be called after verifying the
-/// presence of the `type` attribute and before any call to
-/// `getNumFuncArguments`/`getNumFuncResults` from the verifier.
+///   redefine the `verifyType()` hook that will be called after verifying the
+///   presence of the `type` attribute and before any call to
+///   `getNumFuncArguments`/`getNumFuncResults` from the verifier.
 template <typename ConcreteType>
 class FunctionLike : public OpTrait::TraitBase<ConcreteType, FunctionLike> {
 public:
   /// Verify that all of the argument attributes are dialect attributes.
   static LogicalResult verifyTrait(Operation *op);
-
-  //===--------------------------------------------------------------------===//
-  // Name Handling.
-  //===--------------------------------------------------------------------===//
-
-  /// Returns the name of this function.
-  StringRef getName() {
-    return this->getOperation()
-        ->template getAttrOfType<StringAttr>(
-            mlir::SymbolTable::getSymbolAttrName())
-        .getValue();
-  }
-
-  /// Set the name of this function.
-  void setName(StringRef name) {
-    this->getOperation()->setAttr(
-        mlir::SymbolTable::getSymbolAttrName(),
-        StringAttr::get(name, this->getOperation()->getContext()));
-  }
 
   //===--------------------------------------------------------------------===//
   // Body Handling
