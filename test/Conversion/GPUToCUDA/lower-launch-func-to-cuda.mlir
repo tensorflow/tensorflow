@@ -13,7 +13,7 @@ module attributes {gpu.container_module} {
   llvm.func @foo() {
     %0 = "op"() : () -> (!llvm.float)
     %1 = "op"() : () -> (!llvm<"float*">)
-    %cst = constant 8 : index
+    %cst = llvm.mlir.constant(8 : index) : !llvm.i64
 
     // CHECK: %[[addressof:.*]] = llvm.mlir.addressof @[[global]]
     // CHECK: %[[c0:.*]] = llvm.mlir.constant(0 : index)
@@ -27,7 +27,7 @@ module attributes {gpu.container_module} {
     // CHECK: llvm.call @mcuLaunchKernel
     // CHECK: llvm.call @mcuStreamSynchronize
     "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1) { kernel = "kernel", kernel_module = @kernel_module }
-        : (index, index, index, index, index, index, !llvm.float, !llvm<"float*">) -> ()
+        : (!llvm.i64, !llvm.i64, !llvm.i64, !llvm.i64, !llvm.i64, !llvm.i64, !llvm.float, !llvm<"float*">) -> ()
 
     llvm.return
   }
