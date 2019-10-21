@@ -54,6 +54,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Assuming island coarsening above results in a graph with a single island,
     // a canonicalization can be ran to hoist the ops of the single island out.
     pass_manager->addPass(mlir::createCanonicalizerPass());
+
+    if (pass_config.form_clusters)
+      pass_manager->addPass(mlir::TFDevice::CreateClusterFormationPass());
   } else {
     pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
     pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
