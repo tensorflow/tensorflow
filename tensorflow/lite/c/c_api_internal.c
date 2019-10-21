@@ -86,7 +86,7 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic && t->data.raw) {
+  if (t->allocation_type == kTfLiteDynamic) {
     free(t->data.raw);
   }
   t->data.raw = NULL;
