@@ -655,9 +655,12 @@ class RNN(Layer):
       ]
       self._num_constants = len(constants)
       additional_specs += self.constants_spec
-    # at this point additional_inputs cannot be empty
-    is_keras_tensor = K.is_keras_tensor(nest.flatten(additional_inputs)[0])
-    for tensor in nest.flatten(additional_inputs):
+    # additional_inputs can be empty if initial_state or constants are provided
+    # but empty (e.g. the cell is stateless).
+    flat_additional_inputs = nest.flatten(additional_inputs)
+    is_keras_tensor = K.is_keras_tensor(
+        flat_additional_inputs[0]) if flat_additional_inputs else True
+    for tensor in flat_additional_inputs:
       if K.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
