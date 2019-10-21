@@ -137,7 +137,7 @@ template <typename T> static LogicalResult verifyIndexOp(T op) {
   return success();
 }
 
-static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
+static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   if (allReduce.body().empty() != allReduce.op().hasValue())
     return allReduce.emitError(
         "expected either an op attribute or a non-empty body");
@@ -150,7 +150,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
     }
     unsigned yieldCount = 0;
     for (Block &block : allReduce.body()) {
-      if (auto yield = dyn_cast<gpu::Yield>(block.getTerminator())) {
+      if (auto yield = dyn_cast<gpu::YieldOp>(block.getTerminator())) {
         if (yield.getNumOperands() != 1)
           return allReduce.emitError("expected one gpu.yield operand");
         if (yield.getOperand(0)->getType() != allReduce.getType())
@@ -164,8 +164,13 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
   return success();
 }
 
+// Namespace avoids ambiguous ReturnOpOperandAdaptor.
+namespace mlir {
+namespace gpu {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
+} // namespace gpu
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // LaunchOp
@@ -263,7 +268,7 @@ LogicalResult LaunchOp::verify() {
       continue;
     if (block.back().getNumSuccessors() != 0)
       continue;
-    if (!isa<gpu::Return>(&block.back())) {
+    if (!isa<gpu::ReturnOp>(&block.back())) {
       return block.back()
                  .emitError("expected 'gpu.terminator' or a terminator with "
                             "successors")
