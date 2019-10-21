@@ -92,10 +92,9 @@ Status Visitor::HandleBatchNormInference(HloInstruction* batch_norm) {
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
 
-  bool is_batchnorm_with_fp16_inputs = false;
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  bool is_batchnorm_with_fp16_inputs = IsF32BatchNormWithFP16Inputs(batch_norm);
+  if (is_batchnorm_with_fp16_inputs) {
     operands[0] = AddConvert(batch_norm->mutable_operand(0), F16);
-    is_batchnorm_with_fp16_inputs = true;
   }
   operands.push_back(epsilon);
   operands.push_back(feature_index);
@@ -144,10 +143,9 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
 
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
-  bool is_batchnorm_with_fp16_inputs = false;
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  bool is_batchnorm_with_fp16_inputs = IsF32BatchNormWithFP16Inputs(batch_norm);
+  if (is_batchnorm_with_fp16_inputs) {
     operands[0] = AddConvert(batch_norm->mutable_operand(0), F16);
-    is_batchnorm_with_fp16_inputs = true;
   }
   operands.push_back(epsilon);
   operands.push_back(feature_index);
@@ -246,8 +244,8 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
 
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());
-  bool is_batchnorm_with_fp16_inputs = false;
-  if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
+  bool is_batchnorm_with_fp16_inputs = IsF32BatchNormWithFP16Inputs(batch_norm);
+  if (is_batchnorm_with_fp16_inputs) {
     HloInstruction* operand_0_convert = batch_norm->mutable_operand(0);
     operands[0] = AddConvert(operand_0_convert, F16);
     for (auto index = 1; index < operands.size(); index++) {
@@ -259,7 +257,6 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
         operands[index] = AddConvert(batch_norm->mutable_operand(index), F16);
       }
     }
-    is_batchnorm_with_fp16_inputs = true;
   }
   operands[3] = inverse_stddev;
   operands.push_back(epsilon);
