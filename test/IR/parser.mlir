@@ -521,11 +521,14 @@ func @stringquote() -> () {
 
 // CHECK-LABEL: func @unitAttrs
 func @unitAttrs() -> () {
-  // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
+  // CHECK-NEXT: "foo"() {unitAttr}
   "foo"() {unitAttr = unit} : () -> ()
 
-  // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
+  // CHECK-NEXT: "foo"() {unitAttr}
   "foo"() {unitAttr} : () -> ()
+
+  // CHECK-NEXT: "foo"() {nested = {unitAttr}}
+  "foo"() {nested = {unitAttr}} : () -> ()
   return
 }
 
