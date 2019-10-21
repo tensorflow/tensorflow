@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-%include "tensorflow/python/platform/base.i"
 
-%{
+#include "include/pybind11/pybind11.h"
 #include "tensorflow/python/util/kernel_registry.h"
-%}
 
-%ignoreall
+namespace py = pybind11;
 
-%unignore tensorflow;
-%unignore tensorflow::swig;
-%unignore tensorflow::swig::TryFindKernelClass;
-%include "tensorflow/python/util/kernel_registry.h"
-
-%unignoreall
+PYBIND11_MODULE(_pywrap_kernel_registry, m) {
+  m.def("TryFindKernelClass", [](const std::string& serialized_node_def) {
+    return py::bytes(tensorflow::swig::TryFindKernelClass(serialized_node_def));
+  });
+}

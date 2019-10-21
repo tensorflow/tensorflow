@@ -99,6 +99,7 @@ py_library(
     ],
     deps = [
         ":_pywrap_events_writer",
+        ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
@@ -453,6 +454,21 @@ tf_python_pybind_extension(
     module_name = "_pywrap_utils",
     deps = [
         ":pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_kernel_registry",
+    srcs = ["util/kernel_registry_wrapper.cc"],
+    hdrs = ["util/kernel_registry.h"],
+    module_name = "_pywrap_kernel_registry",
+    deps = [
+        ":pybind11_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -871,6 +887,7 @@ py_library(
     deps = [
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_stat_summarizer",
@@ -5138,7 +5155,6 @@ tf_py_wrap_cc(
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "training/quantize_training.i",
-        "util/kernel_registry.i",
         "util/py_checkpoint_reader.i",
         "util/scoped_annotation.i",
         "util/traceme.i",
@@ -5247,6 +5263,7 @@ genrule(
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
         ":py_exception_registry",  # py_exception_registry
+        ":kernel_registry",
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
