@@ -132,6 +132,7 @@ int dumpMLIR() {
     // the operations.
     pm.addPass(mlir::toy::createShapeInferencePass());
     pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
 
     if (mlir::failed(pm.run(*module)))
       return 4;

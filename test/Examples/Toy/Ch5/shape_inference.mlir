@@ -24,9 +24,7 @@ func @main() {
 
 // CHECK-LABEL: func @main()
 // CHECK:         [[VAL_0:%.*]] = "toy.constant"() {value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
-// CHECK:         [[VAL_1:%.*]] = "toy.constant"() {value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
-// CHECK:         [[VAL_2:%.*]] = "toy.transpose"([[VAL_1]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
-// CHECK:         [[VAL_3:%.*]] = "toy.transpose"([[VAL_0]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
-// CHECK:         [[VAL_4:%.*]] = "toy.mul"([[VAL_2]], [[VAL_3]]) : (tensor<3x2xf64>, tensor<3x2xf64>) -> tensor<3x2xf64>
-// CHECK:         "toy.print"([[VAL_4]]) : (tensor<3x2xf64>) -> ()
+// CHECK:         [[VAL_1:%.*]] = "toy.transpose"([[VAL_0]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
+// CHECK:         [[VAL_2:%.*]] = "toy.mul"([[VAL_1]], [[VAL_1]]) : (tensor<3x2xf64>, tensor<3x2xf64>) -> tensor<3x2xf64>
+// CHECK:         "toy.print"([[VAL_2]]) : (tensor<3x2xf64>) -> ()
 // CHECK:         "toy.return"() : () -> ()

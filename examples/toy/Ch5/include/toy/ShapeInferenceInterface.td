@@ -1,4 +1,4 @@
-//===- ShapeInferenceInterface.td - Operation Interface for Shape Inference ----------*- tablegen -*-===//
+//===- ShapeInferenceInterface.td - Shape Inference Interface -*- tablegen -==//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -29,6 +29,11 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def ShapeInferenceOpInterface : OpInterface<"ShapeInference"> {
+  let description = [{
+    Interface to access a registered method to infer the return types for an
+    operation that can be used during type inference.
+  }];
+
   let methods = [
     InterfaceMethod<"Infer and set the output shape for the current operation.",
                     "void", "inferShapes">
