@@ -51,7 +51,7 @@ def main() {
 
   # transpose() and print() are the only builtin, the following will transpose
   # b and perform an element-wise multiplication before printing the result.
-  print(a * transpose(b));
+  print(transpose(a) * transpose(b));
 }
 ```
 
@@ -65,7 +65,7 @@ the previous example by adding a user-defined function:
 ```Toy {.toy}
 # User defined generic function that operates on unknown shaped arguments.
 def multiply_transpose(a, b) {
-  return a * transpose(b);
+  return transpose(a) * transpose(b);
 }
 
 def main() {
@@ -102,10 +102,12 @@ Module:
     Args: [a, b]
     Block {
       Return
-        BinOp: * @test/ast.toy:6:12
-          var: a @test/ast.toy:6:10
-          Call 'transpose' [ @test/ast.toy:6:14
-            var: b @test/ast.toy:6:24
+        BinOp: * @test/ast.toy:6:25
+          Call 'transpose' [ @test/ast.toy:6:10
+            var: a @test/ast.toy:6:20
+          ]
+          Call 'transpose' [ @test/ast.toy:6:25
+            var: b @test/ast.toy:6:35
           ]
     } // Block
   Function

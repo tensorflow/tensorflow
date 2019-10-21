@@ -177,26 +177,7 @@ static void buildMulOp(mlir::Builder *builder, mlir::OperationState &state,
 
 /// Infer the output shape of the MulOp, this is required by the shape inference
 /// interface.
-void MulOp::inferShapes() {
-  auto lhs = getOperand(0)->getType().cast<RankedTensorType>();
-  auto rhs = getOperand(1)->getType().cast<RankedTensorType>();
-  auto lhsRank = lhs.getShape().size();
-  auto rhsRank = rhs.getShape().size();
-  if (lhsRank != rhsRank)
-    return;
-
-  SmallVector<int64_t, 2> dims;
-  if (lhsRank == 1) {
-    // dot product, result shape is <1>
-    dims.push_back(1);
-  } else if (lhsRank == 2) {
-    dims.push_back(lhs.getShape()[0]);
-    dims.push_back(rhs.getShape()[1]);
-  } else {
-    return;
-  }
-  getResult()->setType(RankedTensorType::get(dims, lhs.getElementType()));
-}
+void MulOp::inferShapes() { getResult()->setType(getOperand(0)->getType()); }
 
 static mlir::LogicalResult verify(ReturnOp op) {
   // We know that the parent operation is a function, because of the 'HasParent'

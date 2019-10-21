@@ -2,7 +2,7 @@
 
 # User defined generic function that operates on unknown shaped arguments.
 def multiply_transpose(a, b) {
-  return a * transpose(b);
+  return transpose(a) * transpose(b);
 }
 
 def main() {
@@ -35,10 +35,12 @@ def main() {
 # CHECK-NEXT:       Params: [a, b]
 # CHECK-NEXT:       Block {
 # CHECK-NEXT:         Return
-# CHECK-NEXT:           BinOp: * @{{.*}}ast.toy:5:14
-# CHECK-NEXT:             var: a @{{.*}}ast.toy:5:10
-# CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:5:14
-# CHECK-NEXT:               var: b @{{.*}}ast.toy:5:24
+# CHECK-NEXT:           BinOp: * @{{.*}}ast.toy:5:25
+# CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:5:10
+# CHECK-NEXT:               var: a @{{.*}}ast.toy:5:20
+# CHECK-NEXT:             ]
+# CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:5:25
+# CHECK-NEXT:               var: b @{{.*}}ast.toy:5:35
 # CHECK-NEXT:             ]
 # CHECK-NEXT:       } // Block
 # CHECK-NEXT:     Function

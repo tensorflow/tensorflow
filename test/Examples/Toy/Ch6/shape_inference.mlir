@@ -3,9 +3,10 @@
 // Check the result of inlining+shape inference on an input module.
 
 func @multiply_transpose(%arg0: tensor<*xf64>, %arg1: tensor<*xf64>) -> tensor<*xf64> {
-  %0 = "toy.transpose"(%arg1) : (tensor<*xf64>) -> tensor<*xf64>
-  %1 = "toy.mul"(%arg0, %0) : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
-  "toy.return"(%1) : (tensor<*xf64>) -> ()
+  %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
+  %1 = "toy.transpose"(%arg1) : (tensor<*xf64>) -> tensor<*xf64>
+  %2 = "toy.mul"(%0, %1) : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
+  "toy.return"(%2) : (tensor<*xf64>) -> ()
 }
 func @main() {
   %0 = "toy.constant"() {value = dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
@@ -21,10 +22,11 @@ func @main() {
 // CHECK-NOT: func @multiply_transpose
 // CHECK-NOT: tensor<*xf64>
 
-// CHECK-LABEL: func @main() {
+// CHECK-LABEL: func @main()
 // CHECK:         [[VAL_0:%.*]] = "toy.constant"() {value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
 // CHECK:         [[VAL_1:%.*]] = "toy.constant"() {value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
-// CHECK:         [[VAL_2:%.*]] = "toy.transpose"([[VAL_0]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
-// CHECK:         [[VAL_3:%.*]] = "toy.mul"([[VAL_1]], [[VAL_2]]) : (tensor<2x3xf64>, tensor<3x2xf64>) -> tensor<2x2xf64>
-// CHECK:         "toy.print"([[VAL_3]]) : (tensor<2x2xf64>) -> ()
+// CHECK:         [[VAL_2:%.*]] = "toy.transpose"([[VAL_1]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
+// CHECK:         [[VAL_3:%.*]] = "toy.transpose"([[VAL_0]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
+// CHECK:         [[VAL_4:%.*]] = "toy.mul"([[VAL_2]], [[VAL_3]]) : (tensor<3x2xf64>, tensor<3x2xf64>) -> tensor<3x2xf64>
+// CHECK:         "toy.print"([[VAL_4]]) : (tensor<3x2xf64>) -> ()
 // CHECK:         "toy.return"() : () -> ()
