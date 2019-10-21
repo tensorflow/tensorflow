@@ -550,25 +550,52 @@ func @const() -> tensor<2xi32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: matmul_notranspose
-func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> tensor<5x11xf32> {
-  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
-  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
+// CHECK-SAME: (%[[A:.*]]: tensor<5x7xf32>, %[[B:.*]]: tensor<7x11xf32>)
+func @matmul_notranspose(%a: tensor<5x7xf32>, %b: tensor<7x11xf32>) -> tensor<5x11xf32> {
+  // CHECK: %[[UPDATED_A:.*]] = "xla_hlo.transpose"(%[[A]]) {permutation = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK: %[[UPDATED_B:.*]] = "xla_hlo.transpose"(%[[B]]) {permutation = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK: "xla_hlo.dot"(%[[UPDATED_A]], %[[UPDATED_B]])
+  %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
 
   return %0 : tensor<5x11xf32>
 }
 
-// CHECK-LABEL: matmul_notranspose_dynamic
-func @matmul_notranspose_dynamic(%arg0: tensor<?x7xf32>, %arg1: tensor<7x?xf32>) -> tensor<?x?xf32> {
-  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
-  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<?x7xf32>, tensor<7x?xf32>) -> tensor<?x?xf32>
+// CHECK-LABEL: matmul_transpose_b
+// CHECK-SAME: (%[[A:.*]]: tensor<5x7xf32>, %[[B:.*]]: tensor<11x7xf32>)
+func @matmul_transpose_b(%a: tensor<5x7xf32>, %b: tensor<11x7xf32>) -> tensor<5x11xf32> {
+  // CHECK: %[[UPDATED_A:.*]] = "xla_hlo.transpose"(%[[A]]) {permutation = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK: %[[UPDATED_B:.*]] = "xla_hlo.transpose"(%[[B]]) {permutation = dense<[1, 0]> : tensor<2xi64>}
+  // CHECK: "xla_hlo.dot"(%[[UPDATED_A]], %[[UPDATED_B]])
+  %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = true} : (tensor<5x7xf32>, tensor<11x7xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
+}
+
+// CHECK-LABEL: matmul_transpose_both
+// CHECK-SAME: (%[[A:.*]]: tensor<7x5xf32>, %[[B:.*]]: tensor<11x7xf32>)
+func @matmul_transpose_both(%a: tensor<7x5xf32>, %b: tensor<11x7xf32>) -> tensor<5x11xf32> {
+  // CHECK: %[[UPDATED_A:.*]] = "xla_hlo.transpose"(%[[A]]) {permutation = dense<[1, 0]> : tensor<2xi64>}
+  // CHECK: %[[UPDATED_B:.*]] = "xla_hlo.transpose"(%[[B]]) {permutation = dense<[1, 0]> : tensor<2xi64>}
+  // CHECK: "xla_hlo.dot"(%[[UPDATED_A]], %[[UPDATED_B]])
+  %0 = "tf.MatMul"(%a, %b) {transpose_a = true, transpose_b = true} : (tensor<7x5xf32>, tensor<11x7xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
+}
+
+// Verify that MatMul with ranked inputs are lowered to HLO.
+// CHECK-LABEL: matmul_ranked
+func @matmul_ranked(%a: tensor<?x7xf32>, %b: tensor<7x?xf32>) -> tensor<?x?xf32> {
+  // CHECK: "xla_hlo.dot"
+  %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = false} : (tensor<?x7xf32>, tensor<7x?xf32>) -> tensor<?x?xf32>
 
   return %0 : tensor<?x?xf32>
 }
 
-// CHECK-LABEL: matmul_notranspose_unranked
-func @matmul_notranspose_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
-  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// Verify that MatMul with unranked inputs are lowered to HLO.
+// CHECK-LABEL: matmul_unranked
+func @matmul_unranked(%a: tensor<*xf32>, %b: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "xla_hlo.dot"
+  %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   return %0 : tensor<*xf32>
 }

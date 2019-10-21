@@ -220,6 +220,17 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// MatMul op utilities.
+//===----------------------------------------------------------------------===//
+
+// If the 'transpose' attribute is true returns ElementsAttr to transpose 2D
+// matrix. Otherwise, returns ElementsAttr for identity transpose.
+static DenseIntElementsAttr Get2DTransposePerm(BoolAttr transpose, Builder *b) {
+  if (transpose.getValue()) return GetI64ElementsAttr({1, 0}, b);
+  return GetI64ElementsAttr({0, 1}, b);
+}
+
+//===----------------------------------------------------------------------===//
 // Pad op utilities.
 //===----------------------------------------------------------------------===//
 
