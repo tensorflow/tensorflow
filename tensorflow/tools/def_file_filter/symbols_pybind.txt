@@ -69,6 +69,7 @@ tensorflow::Status::ok()
 tensorflow::Device::attributes
 tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
 [protos_all]  # device_lib
 tensorflow::ConfigProto::ConfigProto
@@ -81,3 +82,4 @@ tensorflow::PyExceptionRegistry::Lookup
 
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
+

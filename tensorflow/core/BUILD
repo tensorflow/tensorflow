@@ -351,6 +351,17 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "quantize_training_hdrs",
+    srcs = [
+        "graph/quantize_training.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "util_port",
     srcs = ["util/port.cc"],
