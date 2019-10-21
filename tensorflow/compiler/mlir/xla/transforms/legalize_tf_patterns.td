@@ -343,8 +343,7 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-def : Pat<(TF_TransposeOp:$res AnyStaticShapeTensor:$arg,
-           (TF_ConstOp I64ElementsAttr:$permutation)),
+def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp I64ElementsAttr:$permutation)),
           (HLO_TransposeOp $arg, (CastIntElementsAttr $permutation))>;
 
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
