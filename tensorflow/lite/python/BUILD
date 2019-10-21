@@ -15,7 +15,6 @@ py_library(
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -26,32 +25,6 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
-    deps = [
-        ":interpreter",
-        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
-)
-
-py_test(
-    name = "interpreter_test_py3",
-    srcs = ["interpreter_test.py"],
-    data = [
-        "//tensorflow/lite/python/testdata:interpreter_test_data",
-        "//tensorflow/lite/python/testdata:test_delegate.so",
-    ],
-    main = "interpreter_test.py",
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
