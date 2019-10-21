@@ -146,6 +146,15 @@ public:
                                                  unsigned argIndex,
                                                  NamedAttribute);
 
+  /// Verify an attribute from this dialect on the result at 'resultIndex' for
+  /// the region at 'regionIndex' on the given operation. Returns failure if
+  /// the verification failed, success otherwise. This hook may optionally be
+  /// invoked from any operation containing a region.
+  virtual LogicalResult verifyRegionResultAttribute(Operation *,
+                                                    unsigned regionIndex,
+                                                    unsigned resultIndex,
+                                                    NamedAttribute);
+
   /// Verify an attribute from this dialect on the given operation. Returns
   /// failure if the verification failed, success otherwise.
   virtual LogicalResult verifyOperationAttribute(Operation *, NamedAttribute) {

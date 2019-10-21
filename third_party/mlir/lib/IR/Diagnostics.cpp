@@ -654,7 +654,7 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
     : SourceMgrDiagnosticVerifierHandler(srcMgr, ctx, llvm::errs()) {}
 
 SourceMgrDiagnosticVerifierHandler::~SourceMgrDiagnosticVerifierHandler() {
-  // Ensure that all expected diagnosics were handled.
+  // Ensure that all expected diagnostics were handled.
   (void)verify();
 }
 

@@ -487,8 +487,8 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser &parser,
 
   // Infer the element type from the structure type: iteratively step inside the
   // type by taking the element type, indexed by the position attribute for
-  // stuctures.  Check the position index before accessing, it is supposed to be
-  // in bounds.
+  // structures.  Check the position index before accessing, it is supposed to
+  // be in bounds.
   for (Attribute subAttr : positionArrayAttr) {
     auto positionElementAttr = subAttr.dyn_cast<IntegerAttr>();
     if (!positionElementAttr)
@@ -1115,6 +1115,21 @@ unsigned LLVMFuncOp::getNumFuncArguments() {
   return getType().getUnderlyingType()->getFunctionNumParams();
 }
 
+// Hook for OpTrait::FunctionLike, returns the number of function results.
+// Depends on the type attribute being correct as checked by verifyType
+unsigned LLVMFuncOp::getNumFuncResults() {
+  llvm::FunctionType *funcType =
+      cast<llvm::FunctionType>(getType().getUnderlyingType());
+  // We model LLVM functions that return void as having zero results,
+  // and all others as having one result.
+  // If we modeled a void return as one result, then it would be possible to
+  // attach an MLIR result attribute to it, and it isn't clear what semantics we
+  // would assign to that.
+  if (funcType->getReturnType()->isVoidTy())
+    return 0;
+  return 1;
+}
+
 static LogicalResult verify(LLVMFuncOp op) {
   if (op.isExternal())
     return success();
@@ -1358,6 +1373,9 @@ bool LLVMType::isPointerTy() { return getUnderlyingType()->isPointerTy(); }
 LLVMType LLVMType::getStructElementType(unsigned i) {
   return get(getContext(), getUnderlyingType()->getStructElementType(i));
 }
+unsigned LLVMType::getStructNumElements() {
+  return getUnderlyingType()->getStructNumElements();
+}
 bool LLVMType::isStructTy() { return getUnderlyingType()->isStructTy(); }
 
 /// Utilities used to generate floating point types.
@@ -1452,7 +1470,7 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
                                       LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
-         "expected builder to point to a block constained in an op");
+         "expected builder to point to a block constrained in an op");
   auto module =
       builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
   assert(module && "builder points to an op outside of a module");

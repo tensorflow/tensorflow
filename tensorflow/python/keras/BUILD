@@ -941,7 +941,7 @@ tf_py_test(
 
 tf_py_test(
     name = "merge_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/merge_test.py"],
     additional_deps = [
         ":keras",

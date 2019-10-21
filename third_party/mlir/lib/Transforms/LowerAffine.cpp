@@ -431,7 +431,7 @@ public:
     if (!maybeExpandedMap)
       return matchFailure();
 
-    // Build std.store valutToStore, memref[expandedMap.results].
+    // Build std.store valueToStore, memref[expandedMap.results].
     rewriter.replaceOpWithNewOp<StoreOp>(op, op.getValueToStore(),
                                          op.getMemRef(), *maybeExpandedMap);
     return matchSuccess();

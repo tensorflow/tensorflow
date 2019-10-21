@@ -546,6 +546,10 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
     // Depends on the type attribute being correct as checked by verifyType.
     unsigned getNumFuncArguments();
 
+    // Hook for OpTrait::FunctionLike, returns the number of function results.
+    // Depends on the type attribute being correct as checked by verifyType.
+    unsigned getNumFuncResults();
+
     // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
     // attribute is present.  This can check for preconditions of the
     // getNumArguments hook not failing.

@@ -251,15 +251,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                              tensorflow::HOST_MEMORY);
   }
 
-  gtl::InlinedVector<DeviceContext*, 4> input_device_contexts;
-  for (int i = 0; i < inputs.GetTensorValues()->size(); i++) {
-    DeviceContext* device_context = nullptr;
-    if (device_->tensorflow_gpu_device_info() != nullptr) {
-      device_context = device_->tensorflow_gpu_device_info()->default_context;
-    }
-    input_device_contexts.push_back(device_context);
-  }
-
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
@@ -296,7 +287,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.step_container = step_container;
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
-  params.input_device_contexts = &input_device_contexts;
 
   OpKernelContext context(&params);
 

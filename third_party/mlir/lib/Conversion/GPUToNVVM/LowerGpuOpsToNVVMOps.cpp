@@ -309,7 +309,7 @@ private:
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize - 1));
     Value *isPartialWarp = rewriter.create<LLVM::ICmpOp>(
         loc, LLVM::ICmpPredicate::slt, activeWidth, warpSize);
-    auto type = operand->getType();
+    auto type = operand->getType().cast<LLVM::LLVMType>();
 
     createIf(
         loc, rewriter, isPartialWarp,
@@ -323,30 +323,31 @@ private:
               loc, int32Type,
               rewriter.create<LLVM::ShlOp>(loc, int32Type, one, activeWidth),
               one);
-          // Bound of offsets which read from a lane within the active range.
-          Value *offsetBound =
-              rewriter.create<LLVM::SubOp>(loc, activeWidth, laneId);
+          auto dialect = lowering.getDialect();
+          auto predTy = LLVM::LLVMType::getInt1Ty(dialect);
+          auto shflTy = LLVM::LLVMType::getStructTy(dialect, {type, predTy});
+          auto returnValueAndIsValidAttr = rewriter.getUnitAttr();
 
-          // Repeatedly shuffle value from 'laneId + i' and accumulate if source
-          // lane is within the active range. The first lane contains the final
-          // result, all other lanes contain some undefined partial result.
+          // Repeatedly shuffle value from 'laneId ^ i' and accumulate if source
+          // lane is within the active range. All lanes contain the final
+          // result, but only the first lane's result is used.
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            // ShflDownOp instead of ShflBflyOp would produce a scan. ShflBflyOp
-            // also produces the correct reduction on lane 0 though.
             Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
-                loc, type, activeMask, value, offset, maskAndClamp);
-            // TODO(csigg): use the second result from the shuffle op instead.
-            Value *isActiveSrcLane = rewriter.create<LLVM::ICmpOp>(
-                loc, LLVM::ICmpPredicate::slt, offset, offsetBound);
+                loc, shflTy, activeMask, value, offset, maskAndClamp,
+                returnValueAndIsValidAttr);
+            Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
+                loc, predTy, shfl, rewriter.getIndexArrayAttr(1));
             // Skip the accumulation if the shuffle op read from a lane outside
             // of the active range.
             createIf(
                 loc, rewriter, isActiveSrcLane,
                 [&] {
+                  Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
+                      loc, type, shfl, rewriter.getIndexArrayAttr(0));
                   return llvm::SmallVector<Value *, 1>{
-                      accumFactory(loc, value, shfl, rewriter)};
+                      accumFactory(loc, value, shflValue, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
@@ -362,9 +363,10 @@ private:
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
-                loc, type, activeMask, value, offset, maskAndClamp);
-            value = accumFactory(loc, value, shfl, rewriter);
+            Value *shflValue = rewriter.create<NVVM::ShflBflyOp>(
+                loc, type, activeMask, value, offset, maskAndClamp,
+                /*return_value_and_is_valid=*/UnitAttr());
+            value = accumFactory(loc, value, shflValue, rewriter);
           }
           return llvm::SmallVector<Value *, 1>{value};
         });
