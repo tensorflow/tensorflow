@@ -141,28 +141,20 @@ class NcclComm {
 
 absl::optional<ncclRedOp_t> MatchAllReduceComputation(
     const HloComputation* computation) {
-  namespace m = match;
-  const HloInstruction* root = computation->root_instruction();
-
-  auto match_opcode = [&](HloOpcode opcode) {
-    return Match(
-        root, m::Op()
-                  .WithOpcode(opcode)
-                  .WithBinaryOperandsAnyOrder(m::Parameter(0), m::Parameter(1))
-                  .WithShape(m::Shape().IsEffectiveScalar()));
-  };
-
-  if (match_opcode(HloOpcode::kAdd)) {
-    return ncclSum;
-  } else if (match_opcode(HloOpcode::kMultiply)) {
-    return ncclProd;
-  } else if (match_opcode(HloOpcode::kMinimum)) {
-    return ncclMin;
-  } else if (match_opcode(HloOpcode::kMaximum)) {
-    return ncclMax;
-  } else {
-    return absl::nullopt;
+  if (absl::optional<ReductionKind> kind =
+          MatchReductionComputation(computation)) {
+    switch (*kind) {
+      case ReductionKind::SUM:
+        return ncclSum;
+      case ReductionKind::PRODUCT:
+        return ncclProd;
+      case ReductionKind::MIN:
+        return ncclMin;
+      case ReductionKind::MAX:
+        return ncclMax;
+    }
   }
+  return absl::nullopt;
 }
 
 absl::optional<ncclDataType_t> MatchNcclDataType(const HloInstruction* crs) {

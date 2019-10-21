@@ -22,11 +22,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
+
+enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
+
+// Atempts to match computation to one of the possible cases in ReductionKind.
+absl::optional<ReductionKind> MatchReductionComputation(
+    const HloComputation* computation);
 
 // Figures out which devices (named by their replica-ids) are participating in
 // the all-reduce subgroup that contains device_ordinal.
