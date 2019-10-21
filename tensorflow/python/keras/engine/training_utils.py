@@ -31,6 +31,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -1647,7 +1648,8 @@ def infer_steps_for_dataset(model,
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
   if (model._in_multi_worker_mode() and
-      dataset.options().experimental_distribute.auto_shard):
+      (dataset.options().experimental_distribute.auto_shard_policy !=
+       AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
