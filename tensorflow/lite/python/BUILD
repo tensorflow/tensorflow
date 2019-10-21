@@ -201,26 +201,6 @@ py_test(
     ],
 )
 
-<<<<<<< HEAD
-py_test(
-    name = "lite_mlir_test",
-    srcs = ["lite_mlir_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-        "no_windows",
-    ],
-    deps = [
-        ":lite",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
-    ],
-)
-
-=======
->>>>>>> upstream/master
 py_library(
     name = "util",
     srcs = ["util.py"],
