@@ -216,6 +216,7 @@ cc_library(
         "transforms/tpu_rewrite_pass.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
+        "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
         "transforms/bridge.h",
