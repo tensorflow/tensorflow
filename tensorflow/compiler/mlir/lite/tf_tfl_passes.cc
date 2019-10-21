@@ -47,13 +47,24 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
-  pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
+  if (pass_config.skip_control_dialect) {
+    // Merge islands.
+    pass_manager->addPass(
+        mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
+    // Assuming island coarsening above results in a graph with a single island,
+    // a canonicalization can be ran to hoist the ops of the single island out.
+    pass_manager->addPass(mlir::createCanonicalizerPass());
+  } else {
+    pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
+    pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  }
+
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
     pass_manager->addPass(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
   }
-  pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+
   if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
     // ops are constant folded into variant types.
