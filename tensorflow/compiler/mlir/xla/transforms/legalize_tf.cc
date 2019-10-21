@@ -801,30 +801,22 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //
 // Sample result with 2-d f16 inputs with B batches of with N elements each.
 //
+//    %reduce_dim = tf.Const dense<[1]> : tensor<1xi64>
+//
 //    // Subtract each element by their batches' max to improve numerical
 //    // stability.
-//    %neg_infinity = constant dense<0xFF800000> : tensor<f16>
-//    %max = "xla_hlo.reduce"(%input, %neg_infinity) ["xla_hlo.max"]
-//             {dimensions = 1}
-//           : (tensor<BxNxf16>, tensor<1xf16>) -> tensor<Bxf16>
+//    %max = "tf.Max"(%input, %reduce_dim)
+//           : (tensor<BxNxf16>, tensor<1xi64>) -> tensor<Bxf16>
 //    %sub = "xla_hlo.sub"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
 //    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
-//
-//    // Cast to f32 to avoid precision loss in summation.
-//    %exp_f32 = "xla_hlo.convert"(%exp) : (tensor<BxNxbf16>) -> tensor<BxNxf32>
-//    %zero = constant dense<0.000000e+00> : tensor<f32>
-//    %sum = "xla_hlo.reduce"(%exp, %zero) ["xla_hlo.add"] {dimensions = 1}
-//            : (tensor<BxNxf32>, tensor<1xf32>) -> tensor<Bxf32>
-//
-//    %sum_f16 = "xla_hlo.convert"(%sum) : (tensor<BxNxbf32>) -> tensor<BxNxf16>
+//    %sum = "tf.Sum"(%exp, %reduce_dim)
+//            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
 //    // Softmax computation:
 //    %softmax = "xla_hlo.div"(%exp, %sum_f16) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
-//
-// TODO(hinsu): Use tf.Max and tf.Sum instead of lowering directly to xla.
 template <typename OpTy, bool use_log = true>
 class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
  public:
@@ -840,14 +832,14 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     if (!type) return Pattern::matchFailure();
 
     auto loc = op.getLoc();
-
     int rank = type.getRank();
 
     // Note that the TensorFlow Softmax op verifies that the input rank is
     // greater than or equal to one so both of the following sequences are
     // valid.
     auto batch_dims = GetI64ElementsAttrForSeq(0, rank - 1, &rewriter);
-    auto reduce_dim = GetI64ElementsAttrForSeq(rank - 1, rank, &rewriter);
+    auto reduce_dim = rewriter.create<TF::ConstOp>(
+        loc, GetI64ElementsAttr({rank - 1}, &rewriter));
 
     // Exponential of input values and then their sum can be very large here.
     // Division with large denominator is numerically unstable. To improve
@@ -859,37 +851,20 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     ArrayRef<int64_t> reduce_shape = type.getShape().drop_back();
     RankedTensorType reduce_out_type =
         RankedTensorType::get(reduce_shape, element_type);
-    auto init = GetMinValueForType(element_type, loc, &rewriter);
-    auto max_logits = rewriter.create<xla_hlo::ReduceOp>(
-        loc, reduce_out_type, logits, init.getResult(), reduce_dim);
-    BuildReduceBody<xla_hlo::MaxOp>(element_type, &max_logits.body(),
-                                    &rewriter);
+    auto max_logits =
+        rewriter.create<TF::MaxOp>(loc, reduce_out_type, logits, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(false));
     auto shifted_logits = rewriter.create<xla_hlo::SubOp>(
-        loc, type, logits, max_logits.getResult(0), batch_dims);
+        loc, type, logits, max_logits, batch_dims);
 
     // Exponentiate the inputs.
     Value *exp = rewriter.create<xla_hlo::ExpOp>(loc, type, shifted_logits);
 
-    // Cast the exponentials to the appropriate accumulation type to avoid
-    // precision loss during summation.
-    Type sum_element_type = GetAccumulationType(element_type);
-    Type sum_type = RankedTensorType::get(type.getShape(), sum_element_type);
-    auto casted_exp = rewriter.create<xla_hlo::ConvertOp>(loc, sum_type, exp);
-
     // Compute summation of the exponentials.
-    init = rewriter.create<xla_hlo::ConstOp>(
-        loc, DenseElementsAttr::get(RankedTensorType::get({}, element_type),
-                                    rewriter.getZeroAttr(element_type)));
-    Type sum_out_type = RankedTensorType::get(reduce_shape, sum_element_type);
-    auto exp_sum = rewriter.create<xla_hlo::ReduceOp>(
-        loc, sum_out_type, casted_exp.getResult(), init.getResult(),
-        reduce_dim);
-    BuildReduceBody<xla_hlo::AddOp>(element_type, &exp_sum.body(), &rewriter);
-    Value *sum = exp_sum.getResult(0);
-
-    // Convert the summation result back to the original element type and divide
-    // exponentials by the summations.
-    sum = rewriter.create<xla_hlo::ConvertOp>(loc, reduce_out_type, sum);
+    auto exp_sum =
+        rewriter.create<TF::SumOp>(loc, reduce_out_type, exp, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(false));
+    Value *sum = exp_sum.getResult();
 
     if (use_log) {
       Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
@@ -899,7 +874,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
       rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
                                                   batch_dims);
     }
-
     return Pattern::matchSuccess();
   }
 };
