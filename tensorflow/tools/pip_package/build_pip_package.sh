@@ -262,6 +262,13 @@ function main() {
     elif [[ "$1" == "--nightly_flag" ]]; then
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--gpu" ]]; then
+      # Check that --cpu has not been passed.
+      if [[ ${PROJECT_NAME_CPU} == "1" ]]; then
+        echo "Specifying both --cpu and --gpu to build_pip_package is not allowed."
+        usage
+        exit 1
+      fi
+
       GPU_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
       # Check that --gpu has not been passed.
