@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
+#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace tf_device {
@@ -254,6 +257,36 @@ LogicalResult Verify(ReplicateOp op) {
   return success();
 }
 }  // anonymous namespace
+
+void ReplicateOp::build(
+    Builder* builder, OperationState& state, int n,
+    llvm::ArrayRef<llvm::StringRef> devices,
+    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>> replicated_inputs,
+    llvm::ArrayRef<Type> replica_output_types) {
+  DCHECK_GE(n, 2);
+  state.addAttribute("n", builder->getI32IntegerAttr(n));
+  if (!devices.empty()) {
+    DCHECK_EQ(devices.size(), n);
+    state.addAttribute("devices", builder->getStrArrayAttr(devices));
+  }
+
+  Region* region = state.addRegion();
+  region->push_back(new Block);
+  Block& block = region->front();
+
+  for (auto& replicated_input : replicated_inputs) {
+    DCHECK_EQ(replicated_input.first.size(), n);
+    for (auto& input : replicated_input.first) {
+      DCHECK(succeeded(
+          VerifyCompatibleTypes(input->getType(), replicated_input.second)));
+      state.addOperands(input);
+    }
+    block.addArgument(replicated_input.second);
+  }
+
+  for (const auto& output_type : replica_output_types)
+    state.addTypes(llvm::SmallVector<Type, 8>(n, output_type));
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

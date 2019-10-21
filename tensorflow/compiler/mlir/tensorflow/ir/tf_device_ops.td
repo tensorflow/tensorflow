@@ -180,6 +180,18 @@ For example:
 
   let regions = (region SizedRegion<1>:$body);
 
+  let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
+  }];
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& state, int n, "
+              "llvm::ArrayRef<llvm::StringRef> devices, "
+              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>>"
+              "    replicated_inputs, "
+              "llvm::ArrayRef<Type> replica_output_types">
+  ];
+
   let parser = [{ return Parse$cppClass(&parser, &result); }];
   let printer = [{ return Print(*this, &p); }];
   let verifier = [{ return Verify(*this); }];
