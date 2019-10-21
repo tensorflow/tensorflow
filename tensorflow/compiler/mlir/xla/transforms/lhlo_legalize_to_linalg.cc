@@ -184,6 +184,19 @@ Operation* GetLinalgBodyOp<xla_lhlo::CompareOp>(
 }
 
 template <>
+Operation* GetLinalgBodyOp<xla_lhlo::SelectOp>(Location loc,
+                                               xla_lhlo::SelectOp lhlo_op,
+                                               Type element_type,
+                                               ArrayRef<Type> body_result_types,
+                                               ArrayRef<Value*> block_args,
+                                               OpBuilder b) {
+  Value* pred = block_args[0];
+  Value* lhs = block_args[1];
+  Value* rhs = block_args[2];
+  return b.create<::mlir::SelectOp>(loc, pred, lhs, rhs);
+}
+
+template <>
 Operation* GetLinalgBodyOp<xla_lhlo::ExpOp>(Location loc,
                                             xla_lhlo::ExpOp lhlo_op,
                                             Type element_type,
@@ -283,6 +296,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    LhloToLinalgOpConverter<xla_lhlo::MaxOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MinOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MulOp>,
+                   LhloToLinalgOpConverter<xla_lhlo::SelectOp>,
                    LhloToLinalgOpConverter<xla_lhlo::SubOp>>(context);
 }
 
