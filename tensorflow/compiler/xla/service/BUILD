@@ -532,10 +532,10 @@ tf_cc_test(
     srcs = ["pattern_matcher_test.cc"],
     deps = [
         ":hlo",
-        ":hlo_parser",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
@@ -588,7 +588,6 @@ tf_cc_test(
     srcs = ["hlo_reachability_test.cc"],
     deps = [
         ":hlo",
-        ":hlo_parser",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1424,7 +1423,6 @@ tf_cc_test(
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
-        ":hlo_parser",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -2672,7 +2670,6 @@ tf_cc_test(
     srcs = ["hlo_replication_analysis_test.cc"],
     deps = [
         ":hlo",
-        ":hlo_parser",
         ":hlo_replication_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -3913,10 +3910,14 @@ tf_cc_test(
     srcs = ["tuple_util_test.cc"],
     deps = [
         ":hlo_matchers",
+        ":hlo_module_config",
         ":hlo_parser",
         ":tuple_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -3946,6 +3947,7 @@ tf_cc_test(
         ":while_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
     ],
@@ -4004,7 +4006,6 @@ tf_cc_test(
     srcs = ["while_loop_constant_sinking_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":hlo_parser",
         ":while_loop_constant_sinking",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
