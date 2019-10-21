@@ -509,10 +509,10 @@ cc_library(
         ":platform",
         ":protobuf",
         ":stringpiece",
+        ":strcat",
         ":types",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/strings:string_utils",
     ] + tf_additional_tensor_coding_deps(),
 )
 
@@ -789,6 +789,7 @@ filegroup(
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
+            "tensor_coding.cc",
             "threadpool.cc",
             "tracing.cc",
         ],
