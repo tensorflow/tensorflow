@@ -716,6 +716,10 @@ TfLiteStatus FillQuantizationParams(
           float* float_input_data =
               reinterpret_cast<float*>(buffer->data.data());
 
+          if (tensor->quantization == nullptr) {
+            tensor->quantization = absl::make_unique<QuantizationParametersT>();
+          }
+
           // Fill per channel max and min with respect to channel_dim_index.
           if (input.second.per_axis) {
             if (tensor->shape.size() == 4) {
