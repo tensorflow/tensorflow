@@ -101,11 +101,12 @@ except:
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
+  """Returns list of the name of a GPU device if available or the empty list."""
+  gpus = []
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return compat.as_str(x.name)
-  return ""
+      gpus.append(compat.as_str(x.name))
+  return gpus
 
 
 def assert_ops_in_graph(expected_ops, graph):
