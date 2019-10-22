@@ -23,6 +23,84 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+namespace {
+namespace xtensa {
+namespace hifi3 {
+
+void hifi3_fully_connected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    int8_t* output_data) {
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = output_shape.Dims(0);
+  const int output_depth = output_shape.Dims(1);
+  TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+
+      int32 acc = 0;
+      for (int d = 0; d < accum_depth; ++d) {
+        int32 input_val = input_data[b * accum_depth + d];
+        int32 filter_val = filter_data[out_c * accum_depth + d];
+
+        acc += (filter_val + filter_offset) * (input_val + input_offset);
+      }
+
+      // if (bias_data) {
+      //   acc += bias_data[out_c];
+      // }
+      // acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      // acc += output_offset;
+      // acc = std::max(acc, output_activation_min);
+      // acc = std::min(acc, output_activation_max);
+      // output_data[out_c + output_depth * b] = static_cast<int8_t>(acc);
+    }
+  }
+}
+
+/*
+  ae_int32x2 sum1 = AE_ZERO32();
+  ae_int32x2 sum2 = AE_ZERO32();
+
+  // Load the vectors.
+  const ae_int16x4* vec_1x4 = (const ae_int16x4*) (vec_1);
+  const ae_int16x4* vec_2x4 = (const ae_int16x4*) (vec_2);
+
+  int num_iterations = (n + 3) / 4;
+  while (num_iterations--) {
+    ae_int16x4 reg_1, reg_2;
+    // Load 4 16-bit elements.
+    AE_L16X4_IP(reg_1, vec_1x4, 8);
+    AE_L16X4_IP(reg_2, vec_2x4, 8);
+    // Multiply 4 16-bit numbers, and accumulate them in 4 32-bit accumulators.
+    AE_MULA16X4(sum1, sum2, reg_1, reg_2);
+  }
+  // Reduce the 4 32-bit accumulators into 2 32-bit accumulators.
+  ae_int32x2 sum12 = AE_ADD32(sum1, sum2);
+  // Return the sum of the two accumulators.
+  int sum12_L = AE_MOVAD32_L(sum12);
+  int sum12_H = AE_MOVAD32_H(sum12);
+  return sum12_L + sum12_H;
+*/
+
+}  // namespace hifi3
+}  // namespace xtensa
+}  // namespace
+
 namespace tflite {
 namespace ops {
 namespace micro {

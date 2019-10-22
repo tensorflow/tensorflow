@@ -42,6 +42,7 @@ inline void FullyConnected(
   const int output_depth = output_shape.Dims(1);
   TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  printf("accum_depth: %d\n", accum_depth);
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       int32 acc = 0;
