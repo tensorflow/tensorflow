@@ -36,11 +36,7 @@ class MklEagerOpRewrite : public EagerOpRewrite {
     // Overload Operator== for std::find comparison
     // used by SlowCheckIfKernelRegistered.
     bool operator==(const MklEagerOp& rhs) const {
-      if (op_name.compare(rhs.op_name) == 0) {
-        return true;
-      } else {
-        return false;
-      }
+      return (op_name.compare(rhs.op_name) == 0);
     }
   };
 
@@ -86,8 +82,7 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   bool FastCheckIfKernelRegistered(string op_name, DataType dt);
 
   // This is called by FastCheckIfKernelRegistered once per unique op name and
-  // data
-  // type.
+  // data type.
   bool SlowCheckIfKernelRegistered(string op_name, DataType dt);
 
   // map used by FastCheckIfKernelRegistered.
