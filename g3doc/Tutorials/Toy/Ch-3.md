@@ -134,8 +134,7 @@ and observe our pattern in action:
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64>
 attributes  {toy.generic} {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
-  %1 = "toy.transpose"(%0) : (tensor<*xf64>) -> tensor<*xf64>
-  "toy.return"(%1) : (tensor<*xf64>) -> ()
+  "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
 ```
 
