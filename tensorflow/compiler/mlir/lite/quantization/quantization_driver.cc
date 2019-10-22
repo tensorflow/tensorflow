@@ -415,7 +415,7 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto quantize =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   auto dequantize = builder_.create<TFL::DequantizeOp>(loc, expressed_type,
@@ -474,7 +474,7 @@ void QuantizationDriver::RequantizeValue(Value *value, RequantizeState *state,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto requantize_op =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   value->replaceAllUsesWith(requantize_op);
@@ -688,7 +688,10 @@ bool QuantizationDriver::PropagateParams() {
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
     for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      changed |= SetResultParams(op, i, restricted_outputs[i]);
+      // The restrict can be nullptr if the result has been quantized.
+      if (auto params = restricted_outputs[i]) {
+        changed |= SetResultParams(op, i, params);
+      }
     }
 
     for (auto &it : spec->biases_params) {

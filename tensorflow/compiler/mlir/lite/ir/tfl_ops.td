@@ -221,11 +221,14 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
   }]>;
 
 //===----------------------------------------------------------------------===//
-// TFL native op trait for stateful operands.
+// TFL native op trait for stateful operands and channel indices.
 
 class StatefulOperands<list<int> operands>
     : ParamNativeOpTrait<"TFL::StatefulOperands", StrJoinInt<operands>.result>;
 
+
+class ChannelDimIndex<int index>
+    : ParamNativeOpTrait<"TFL::ChannelDimIndex", !cast<string>(index)>;
 
 //===----------------------------------------------------------------------===//
 // TFL op base class.
@@ -252,8 +255,9 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
   string customOption = ?;
 }
 
-class TFL_ConvOp<string mnemonic, string opSummary> :
-    TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>]> {
+class TFL_ConvOp<string mnemonic, string opSummary, int index> :
+    TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
+    ChannelDimIndex<index>]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -536,7 +540,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   let hasFolder = 1;
 }
 
-def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution">;
+def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
 def TFL_CosOp: TFL_Op<"cos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Cosine operator";
@@ -553,7 +557,7 @@ def TFL_CosOp: TFL_Op<"cos", [NoSideEffect, SameOperandsAndResultType]> {
 }
 
 def TFL_DepthwiseConv2DOp :
-    TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution"> {
+    TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3> {
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
 }
 
@@ -568,7 +572,7 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
-    NoSideEffect, AccumulatorUniformScale<2, 0, 1>]> {
+    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>]> {
   let summary = "Fully connected op";
 
   let arguments = (ins

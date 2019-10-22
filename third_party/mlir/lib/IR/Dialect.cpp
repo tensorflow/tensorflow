@@ -89,6 +89,15 @@ LogicalResult Dialect::verifyRegionArgAttribute(Operation *, unsigned, unsigned,
   return success();
 }
 
+/// Verify an attribute from this dialect on the result at 'resultIndex' for
+/// the region at 'regionIndex' on the given operation. Returns failure if
+/// the verification failed, success otherwise. This hook may optionally be
+/// invoked from any operation containing a region.
+LogicalResult Dialect::verifyRegionResultAttribute(Operation *, unsigned,
+                                                   unsigned, NamedAttribute) {
+  return success();
+}
+
 /// Parse an attribute registered to this dialect.
 Attribute Dialect::parseAttribute(StringRef attrData, Type type,
                                   Location loc) const {

@@ -69,7 +69,6 @@ load(
     "if_android",
     "if_emscripten",
     "if_ios",
-    "if_linux_x86_64",
     "if_mobile",
     "if_not_windows",
     "tf_android_core_proto_headers",
@@ -107,7 +106,6 @@ load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
-    "tf_additional_human_readable_json_deps",
     "tf_additional_lib_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
@@ -353,6 +351,17 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "quantize_training_hdrs",
+    srcs = [
+        "graph/quantize_training.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "util_port",
     srcs = ["util/port.cc"],
@@ -391,16 +400,9 @@ alias(
     actual = "//tensorflow/core/platform:grpc_services",
 )
 
-cc_library(
+alias(
     name = "human_readable_json",
-    srcs = ["//tensorflow/core/platform:legacy_human_readable_json_src"],
-    hdrs = ["//tensorflow/core/platform:human_readable_json.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-    ] + tf_additional_human_readable_json_deps(),
+    actual = "//tensorflow/core/platform:human_readable_json",
 )
 
 cc_library(
@@ -498,6 +500,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
         "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -2244,9 +2249,7 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-        "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
-        "//tensorflow/core/lib/hash:legacy_lib_internal_impl_srcs",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
+        "//tensorflow/core/lib/io:legacy_lib_internal_impl_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
     ],
@@ -2254,12 +2257,48 @@ cc_library(
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
-        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/lib/core:arena",
+        "//tensorflow/core/lib/core:bitmap",
+        "//tensorflow/core/lib/core:blocking_counter",
+        "//tensorflow/core/lib/core:bits",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:notification",
+        "//tensorflow/core/lib/core:raw_coding",
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/core:threadpool_interface",
+        "//tensorflow/core/lib/core:threadpool_options",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/gtl:cleanup",
+        "//tensorflow/core/lib/gtl:compactptrset",
+        "//tensorflow/core/lib/gtl:edit_distance",
+        "//tensorflow/core/lib/gtl:flatmap",
+        "//tensorflow/core/lib/gtl:flatrep",
+        "//tensorflow/core/lib/gtl:flatset",
+        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core/lib/gtl:int_type",
+        "//tensorflow/core/lib/gtl:iterator_range",
+        "//tensorflow/core/lib/gtl:manual_constructor",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/gtl:optional",
+        "//tensorflow/core/lib/gtl:priority_queue_util",
+        "//tensorflow/core/lib/gtl:stl_util",
+        "//tensorflow/core/lib/gtl:top_n",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/lib/hash:hash",
+        "//tensorflow/core/lib/io:compression",
+        "//tensorflow/core/lib/io:inputstream_interface",
+        "//tensorflow/core/lib/io:iterator",
+        "//tensorflow/core/lib/io:path",
+        "//tensorflow/core/lib/io:proto_encode_helper",
+        "//tensorflow/core/lib/io:table_options",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:annotation",
@@ -2268,7 +2307,10 @@ cc_library(
         "//tensorflow/core/platform:cpu_feature_guard",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
@@ -2283,9 +2325,13 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:subprocess",
+        "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
+        "//tensorflow/core/platform:tracing",
+        "//tensorflow/core/platform:unbounded_work_queue",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
@@ -2293,16 +2339,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
     alwayslink = 1,
-)
-
-# File compiled with extra flags to get cpu-specific acceleration.
-cc_library(
-    name = "lib_hash_crc32c_accelerate_internal",
-    srcs = [
-        "//tensorflow/core/lib/hash:legacy_crc32_accelerate_srcs",
-    ],
-    # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(
@@ -2550,7 +2586,10 @@ alias(
     actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
-tf_version_info_genrule()
+tf_version_info_genrule(
+    name = "version_info_gen",
+    out = "util/version_info.cc",
+)
 
 cc_library(
     name = "version_lib",

@@ -77,21 +77,21 @@ StatusOr<::mlir::TensorType> ConvertTensorType(const Shape& shape,
 
   switch (shape.element_type()) {
     case PrimitiveType::PRED:
-      return builder.getTensorType(array, builder.getI1Type());
+      return mlir::RankedTensorType::get(array, builder.getI1Type());
     case PrimitiveType::F16:
-      return builder.getTensorType(array, builder.getF16Type());
+      return mlir::RankedTensorType::get(array, builder.getF16Type());
     case PrimitiveType::F32:
-      return builder.getTensorType(array, builder.getF32Type());
+      return mlir::RankedTensorType::get(array, builder.getF32Type());
     case PrimitiveType::F64:
-      return builder.getTensorType(array, builder.getF64Type());
+      return mlir::RankedTensorType::get(array, builder.getF64Type());
     case PrimitiveType::S8:
-      return builder.getTensorType(array, builder.getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder.getIntegerType(8));
     case PrimitiveType::S16:
-      return builder.getTensorType(array, builder.getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder.getIntegerType(16));
     case PrimitiveType::S32:
-      return builder.getTensorType(array, builder.getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder.getIntegerType(32));
     case PrimitiveType::S64:
-      return builder.getTensorType(array, builder.getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder.getIntegerType(64));
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
@@ -99,6 +99,11 @@ StatusOr<::mlir::TensorType> ConvertTensorType(const Shape& shape,
 }
 
 }  // namespace
+
+mlir::Location HloDialectEmitter::getLocation(
+    const HloInstruction* instr) const {
+  return emission_context_->getLocation(instr);
+}
 
 StatusOr<Value*> HloDialectEmitter::EmitComputation(
     const HloComputation& computation) {
@@ -118,10 +123,8 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   TF_ASSIGN_OR_RETURN(
-      auto inserted,
-      InsertMlirOp(instr->opcode(), builder_,
-                   mlir::OpaqueLoc::get(instr, builder_.getContext()), res_type,
-                   arguments, name_attr));
+      auto inserted, InsertMlirOp(instr->opcode(), builder_, getLocation(instr),
+                                  res_type, arguments, name_attr));
   instruction_to_values_[instr] = inserted;
   return Status::OK();
 }
@@ -181,8 +184,8 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
 
-  auto const_value = builder_.create<hlo::ConstOp>(
-      mlir::OpaqueLoc::get(constant, builder_.getContext()), type, value);
+  auto const_value =
+      builder_.create<hlo::ConstOp>(getLocation(constant), type, value);
   instruction_to_values_[constant] = const_value;
   return Status::OK();
 }
@@ -198,12 +201,12 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   const auto& dimensions = reduce->dimensions();
   const auto dimensions_attr =
       ::mlir::DenseIntElementsAttr::get(
-          builder_.getTensorType(dimensions.size(),
-                                 builder_.getIntegerType(64)),
+          mlir::RankedTensorType::get(dimensions.size(),
+                                      builder_.getIntegerType(64)),
           llvm::makeArrayRef(dimensions))
           .cast<::mlir::DenseIntElementsAttr>();
   auto reduceOp = builder_.create<hlo::ReduceOp>(
-      mlir::OpaqueLoc::get(reduce, builder_.getContext()), return_type,
+      getLocation(reduce), return_type,
       llvm::makeArrayRef(operands).take_front(num_inputs),
       llvm::makeArrayRef(operands).take_back(num_inputs), dimensions_attr);
   {
@@ -217,13 +220,12 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
       arguments.push_back(block->addArgument(param_type));
     }
     reduceOp.body().push_back(block);
-    HloDialectEmitter emitter(&reduceOp.body(), arguments);
+    HloDialectEmitter emitter(emission_context_, &reduceOp.body(), arguments);
     TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
     OpBuilder body_builder(block);
     body_builder.setInsertionPointToEnd(block);
-    body_builder.create<hlo::ReturnOp>(
-        mlir::OpaqueLoc::get(reduce, builder_.getContext()),
-        ArrayRef<Value*>{result});
+    body_builder.create<hlo::ReturnOp>(getLocation(reduce),
+                                       ArrayRef<Value*>{result});
   }
   // TODO(b/137624192) Add support for multiple results.
   instruction_to_values_[reduce] = reduceOp.getResult(0);
@@ -243,8 +245,8 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
-      mlir::OpaqueLoc::get(compare, builder_.getContext()),
-      llvm::makeArrayRef(res_type), arguments, attributes);
+      getLocation(compare), llvm::makeArrayRef(res_type), arguments,
+      attributes);
   return Status::OK();
 }
 

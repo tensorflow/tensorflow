@@ -102,6 +102,86 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
   }
 };
 
+template <typename Device, typename T>
+struct SpatialConvolutionBackwardInputFunc {
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
+    input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
+        filter, output_backward, input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputFunc<Eigen::GpuDevice, T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
+    To32Bit(input_backward).device(d) = Eigen::SpatialConvolutionBackwardInput(
+        To32Bit(filter), To32Bit(output_backward), input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
+  }
+};
+
+template <typename Device, typename T>
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc {
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    // We have to slice the result of a spatial convolution backward
+    // input, before assigning it to the `input_backward` to remove padding.
+    //
+    // TODO(ezhulenev): Pass explicit paddings to Eigen and do not materialize
+    // intermediate result in memory before slicing.
+    input_backward.device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            filter, output_backward, padded_cols, padded_rows, col_stride,
+            row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<Eigen::GpuDevice,
+                                                              T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    To32Bit(input_backward).device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            To32Bit(filter), To32Bit(output_backward), padded_cols, padded_rows,
+            col_stride, row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
+  }
+};
+
 // TODO(vrv): Figure out how to use the MatMulFunctor in matmul_op.h.
 // My initial attempt to do this compiled but failed in the pytest
 // due to a swigdeps error.

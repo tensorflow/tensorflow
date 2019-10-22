@@ -374,9 +374,6 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def test_numpyIsView(self):
     t = constant_op.constant([0.0])
-    if not t.device.endswith("CPU:0"):
-      self.skipTest(".numpy() only returns a view on CPU")
-
     t._numpy()[0] = 42.0
     self.assertAllClose(t, constant_op.constant([42.0]))
 

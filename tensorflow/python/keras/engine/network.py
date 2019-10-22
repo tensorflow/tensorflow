@@ -51,6 +51,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import base as trackable
@@ -291,6 +292,8 @@ class Network(base_layer.Layer):
     self._input_coordinates = []
     self._output_coordinates = []
 
+    self._supports_ragged_inputs = None
+
     # This is for performance optimization when calling the Network on new
     # inputs. Every time the Network is called on a set on input tensors,
     # we compute the output tensors, output masks and output shapes in one pass,
@@ -382,6 +385,7 @@ class Network(base_layer.Layer):
     self._init_call_fn_args()
     self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
+    self._supports_ragged_inputs = None
     self.outputs = []
     self.inputs = []
     self.built = False
@@ -1321,6 +1325,8 @@ class Network(base_layer.Layer):
                         'Note that input tensors are '
                         'instantiated via `tensor = tf.keras.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
+      if isinstance(x, ragged_tensor.RaggedTensor):
+        self._supports_ragged_inputs = True
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [

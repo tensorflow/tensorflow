@@ -126,6 +126,18 @@ unsigned tblgen::Operator::getNumVariadicOperands() const {
       [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
+tblgen::Operator::arg_iterator tblgen::Operator::arg_begin() const {
+  return arguments.begin();
+}
+
+tblgen::Operator::arg_iterator tblgen::Operator::arg_end() const {
+  return arguments.end();
+}
+
+tblgen::Operator::arg_range tblgen::Operator::getArgs() const {
+  return {arg_begin(), arg_end()};
+}
+
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();

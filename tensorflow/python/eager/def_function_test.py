@@ -539,7 +539,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
 
   def testSameVariableTwice(self):
-
     v = variables.Variable(1.0)
 
     @def_function.function
@@ -547,6 +546,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     self.assertAllEqual(add(v, v), 2.0)
+
+  def testVariableUpdate(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(2.0)
+    v3 = variables.Variable(4, dtype=dtypes.int32)
+
+    trace_count = [0]
+
+    @def_function.function
+    def double_variable(x):
+      trace_count[0] += 1
+      x.assign_add(x.read_value())
+
+    self.assertEqual(trace_count[0], 0)
+    double_variable(v1)
+    self.assertEqual(trace_count[0], 1)
+    self.assertEqual(self.evaluate(v1), 2.0)
+    double_variable(v2)
+    self.assertEqual(trace_count[0], 1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertEqual(self.evaluate(v2), 4.0)
+    double_variable(v3)
+    self.assertEqual(trace_count[0], 2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):
     @def_function.function

@@ -384,7 +384,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -426,8 +426,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -1076,7 +1075,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -1166,8 +1165,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 

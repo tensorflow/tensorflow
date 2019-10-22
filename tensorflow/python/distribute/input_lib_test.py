@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
@@ -633,11 +634,11 @@ class DistributedIteratorMultiWorkerTest(
       input_type=["dataset"],
       api_type=["wrap_into_iterator", "wrap_into_dataset"],
       iteration_type=["get_next", "for_loop"],
-      autoshard=[True, False]))
+      auto_shard_policy=[AutoShardPolicy.AUTO, AutoShardPolicy.OFF]))
   def testAutoshardingOption(self, input_type, api_type, iteration_type,
-                             autoshard):
+                             auto_shard_policy):
     ds_option = dataset_ops.Options()
-    ds_option.experimental_distribute.auto_shard = autoshard
+    ds_option.experimental_distribute.auto_shard_policy = auto_shard_policy
     if tf2.enabled():
       dataset_fn = (
           lambda _: dataset_ops.DatasetV2.range(4).with_options(ds_option))
@@ -653,7 +654,7 @@ class DistributedIteratorMultiWorkerTest(
             ["/job:worker/task:0", "/job:worker/task:1"], 1))
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      if autoshard:
+      if auto_shard_policy == AutoShardPolicy.AUTO:
         expected_values = [[0, 1], [2, 3]]
       else:
         expected_values = [[0, 0], [1, 1], [2, 2], [3, 3]]

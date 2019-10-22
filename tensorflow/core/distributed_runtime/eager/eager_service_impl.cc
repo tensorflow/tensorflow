@@ -317,8 +317,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         "built with the same version. Please make sure the operation or "
         "function is registered in the binary running in this process.");
   }
-  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
-                                          types, eager_executor));
+  op.reset(new tensorflow::EagerOperation(
+      eager_context, name, is_function, types, eager_executor, operation.id()));
 
   TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 

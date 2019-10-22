@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the SPIR-V binary to MLIR SPIR-V module deseralization.
+// This file defines the SPIR-V binary to MLIR SPIR-V module deserialization.
 //
 //===----------------------------------------------------------------------===//
 
@@ -92,7 +92,7 @@ private:
   /// in the deserializer.
   LogicalResult processCapability(ArrayRef<uint32_t> operands);
 
-  /// Attaches all collected capabilites to `module` as an attribute.
+  /// Attaches all collected capabilities to `module` as an attribute.
   void attachCapabilities();
 
   /// Processes the SPIR-V OpExtension with `operands` and updates bookkeeping
@@ -135,7 +135,7 @@ private:
   /// Gets the constant's attribute and type associated with the given <id>.
   Optional<std::pair<Attribute, Type>> getConstant(uint32_t id);
 
-  /// Gets the constants's integer attribute with the given <id>. Returns a null
+  /// Gets the constant's integer attribute with the given <id>. Returns a null
   /// IntegerAttr if the given is not registered or does not correspond to an
   /// integer constant.
   IntegerAttr getConstantInt(uint32_t id);
@@ -306,7 +306,7 @@ private:
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
   /// Processing of Some instructions (like OpEntryPoint and OpExecutionMode)
-  /// might need to be defered, since they contain forward references to <id>s
+  /// might need to be deferred, since they contain forward references to <id>s
   /// in the deserialized binary, but module in SPIR-V dialect expects these to
   /// be ssa-uses.
   LogicalResult processInstruction(spirv::Opcode opcode,
@@ -436,7 +436,7 @@ private:
   // Result <id> to extended instruction set name.
   DenseMap<uint32_t, StringRef> extendedInstSets;
 
-  // List of instructions that are processed in a defered fashion (after an
+  // List of instructions that are processed in a deferred fashion (after an
   // initial processing of the entire binary). Some operations like
   // OpEntryPoint, and OpExecutionMode use forward references to function
   // <id>s. In SPIR-V dialect the corresponding operations (spv.EntryPoint and
@@ -444,7 +444,7 @@ private:
   // are deserialized and stored for processing once the entire binary is
   // processed.
   SmallVector<std::pair<spirv::Opcode, ArrayRef<uint32_t>>, 4>
-      deferedInstructions;
+      deferredInstructions;
 };
 } // namespace
 
@@ -462,7 +462,7 @@ LogicalResult Deserializer::deserialize() {
   auto binarySize = binary.size();
   while (curOffset < binarySize) {
     // Slice the next instruction out and populate `opcode` and `operands`.
-    // Interally this also updates `curOffset`.
+    // Internally this also updates `curOffset`.
     if (failed(sliceInstruction(opcode, operands)))
       return failure();
 
@@ -473,8 +473,8 @@ LogicalResult Deserializer::deserialize() {
   assert(curOffset == binarySize &&
          "deserializer should never index beyond the binary end");
 
-  for (auto &defered : deferedInstructions) {
-    if (failed(processInstruction(defered.first, defered.second, false))) {
+  for (auto &deferred : deferredInstructions) {
+    if (failed(processInstruction(deferred.first, deferred.second, false))) {
       return failure();
     }
   }
@@ -564,7 +564,7 @@ LogicalResult Deserializer::processExtInstImport(ArrayRef<uint32_t> words) {
   if (words.size() < 2) {
     return emitError(unknownLoc,
                      "OpExtInstImport must have a result <id> and a literal "
-                     "string for the extensed instruction set name");
+                     "string for the extended instruction set name");
   }
 
   unsigned wordIndex = 1;
@@ -954,8 +954,8 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
            << wordIndex << " of " << operands.size() << " processed";
   }
   auto varOp = opBuilder.create<spirv::GlobalVariableOp>(
-      unknownLoc, opBuilder.getTypeAttr(type),
-      opBuilder.getStringAttr(variableName), initializer);
+      unknownLoc, TypeAttr::get(type), opBuilder.getStringAttr(variableName),
+      initializer);
 
   // Decorations.
   if (decorations.count(variableID)) {
@@ -1049,7 +1049,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       floatTy = opBuilder.getF64Type();
       break;
     default:
-      return emitError(unknownLoc, "unsupported OpTypeFloat bitwdith: ")
+      return emitError(unknownLoc, "unsupported OpTypeFloat bitwidth: ")
              << operands[1];
     }
     typeMap[operands[0]] = floatTy;
@@ -1065,7 +1065,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(unknownLoc, "OpTypeVector references undefined <id> ")
              << operands[1];
     }
-    typeMap[operands[0]] = opBuilder.getVectorType({operands[2]}, elementTy);
+    typeMap[operands[0]] = VectorType::get({operands[2]}, elementTy);
   } break;
   case spirv::Opcode::OpTypePointer: {
     if (operands.size() != 3) {
@@ -1391,7 +1391,7 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
 
   auto resultID = operands[1];
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
-    auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
+    auto attr = DenseElementsAttr::get(vectorType, elements);
     // For normal constants, we just record the attribute (and its type) for
     // later materialization at use sites.
     constantMap.try_emplace(resultID, attr, resultType);
@@ -1489,8 +1489,10 @@ Deserializer::processBranchConditional(ArrayRef<uint32_t> operands) {
     weights = std::make_pair(operands[3], operands[4]);
   }
 
-  opBuilder.create<spirv::BranchConditionalOp>(unknownLoc, condition, trueBlock,
-                                               falseBlock, weights);
+  opBuilder.create<spirv::BranchConditionalOp>(
+      unknownLoc, condition, trueBlock,
+      /*trueArguments=*/ArrayRef<Value *>(), falseBlock,
+      /*falseArguments=*/ArrayRef<Value *>(), weights);
 
   return success();
 }
@@ -1885,7 +1887,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpEntryPoint:
   case spirv::Opcode::OpExecutionMode:
     if (deferInstructions) {
-      deferedInstructions.emplace_back(opcode, operands);
+      deferredInstructions.emplace_back(opcode, operands);
       return success();
     }
     break;

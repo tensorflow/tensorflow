@@ -777,6 +777,7 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    self._supports_ragged_inputs = True
     self._output_shape = output_shape
     self._variable_dict = {}
     # These attributes are inherited from `Layer`.

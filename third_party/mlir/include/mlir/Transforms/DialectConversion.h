@@ -26,6 +26,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace mlir {
 
@@ -221,6 +222,82 @@ public:
 
 private:
   using RewritePattern::rewrite;
+};
+
+/// OpConversionPattern is a wrapper around ConversionPattern that allows for
+/// matching and rewriting against an instance of a derived operation class as
+/// opposed to a raw Operation.
+template <typename SourceOp>
+struct OpConversionPattern : public ConversionPattern {
+  OpConversionPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : ConversionPattern(SourceOp::getOperationName(), benefit, context) {}
+
+  /// Wrappers around the ConversionPattern methods that pass the derived op
+  /// type.
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               ConversionPatternRewriter &rewriter) const final {
+    rewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+  }
+  void rewrite(Operation *op, ArrayRef<Value *> properOperands,
+               ArrayRef<Block *> destinations,
+               ArrayRef<ArrayRef<Value *>> operands,
+               ConversionPatternRewriter &rewriter) const final {
+    rewrite(llvm::cast<SourceOp>(op), properOperands, destinations, operands,
+            rewriter);
+  }
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<Value *>> operands,
+                  ConversionPatternRewriter &rewriter) const final {
+    return matchAndRewrite(llvm::cast<SourceOp>(op), properOperands,
+                           destinations, operands, rewriter);
+  }
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const final {
+    return matchAndRewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+  }
+
+  // TODO(b/142763075): Use OperandAdaptor when it supports access to unnamed
+  // operands.
+
+  /// Rewrite and Match methods that operate on the SourceOp type. These must be
+  /// overridden by the derived pattern class.
+  virtual void rewrite(SourceOp op, ArrayRef<Value *> operands,
+                       ConversionPatternRewriter &rewriter) const {
+    llvm_unreachable("must override matchAndRewrite or a rewrite method");
+  }
+
+  virtual void rewrite(SourceOp op, ArrayRef<Value *> properOperands,
+                       ArrayRef<Block *> destinations,
+                       ArrayRef<ArrayRef<Value *>> operands,
+                       ConversionPatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite for terminators");
+  }
+
+  virtual PatternMatchResult
+  matchAndRewrite(SourceOp op, ArrayRef<Value *> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<Value *>> operands,
+                  ConversionPatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, properOperands, destinations, operands, rewriter);
+    return matchSuccess();
+  }
+
+  virtual PatternMatchResult
+  matchAndRewrite(SourceOp op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, operands, rewriter);
+    return matchSuccess();
+  }
+
+private:
+  using ConversionPattern::matchAndRewrite;
 };
 
 /// Add a pattern to the given pattern list to convert the signature of a FuncOp

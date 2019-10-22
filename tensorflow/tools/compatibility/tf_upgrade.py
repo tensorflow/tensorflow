@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+
+import six
 
 from tensorflow.tools.compatibility import ast_edits
 
@@ -245,7 +248,7 @@ Simple usage:
   else:
     parser.print_help()
   if report_text:
-    open(report_filename, "w").write(report_text)
+    open(report_filename, "w").write(six.ensure_str(report_text))
     print("TensorFlow 1.0 Upgrade Script")
     print("-----------------------------")
     print("Converted %d files\n" % files_processed)

@@ -292,6 +292,15 @@ func @QuantizeLogistic(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>
 // CHECK: return %3 : tensor<1x6x6x16xf32>
 }
 
+// CHECK-LABEL: NotRescaleLogistic
+func @NotRescaleLogistic(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>> {
+  %0 = "tfl.logistic"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>
+  return %0 : tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>
+
+// CHECK:  %[[log:.*]] = "tfl.logistic"(%arg0)
+// CHECK: return %[[log]]
+}
+
 // CHECK-LABEL: NotQuantizeConcatConstantOperand
 func @NotQuantizeConcatConstantOperand(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
   %0 = constant dense<1.0> : tensor<1x2xf32>

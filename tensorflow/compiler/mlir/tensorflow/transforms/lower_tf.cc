@@ -41,7 +41,7 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
   if (axis < 0) axis += ranked_ty.getRank() + 1;
 
   shape.insert(shape.begin() + axis, 1);
-  return builder->getTensorType(shape, ranked_ty.getElementType());
+  return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
@@ -63,9 +63,9 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
                                      PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     auto axis_value = rewriter.create<TF::ConstOp>(
-        loc, DenseElementsAttr::get(
-                 rewriter.getTensorType({}, rewriter.getIntegerType(64)),
-                 op.axis()));
+        loc,
+        DenseElementsAttr::get(
+            RankedTensorType::get({}, rewriter.getIntegerType(64)), op.axis()));
     int64_t axis = op.axis().getSExtValue();
 
     Type prev_input_ty, inferred_ty;

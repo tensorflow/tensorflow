@@ -144,3 +144,33 @@ module attributes {tf_saved_model.semantics} {
   }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{all results should have 'tf_saved_model.index_path' attributes}}
+  func @f() -> tensor<f32>
+  attributes { tf_saved_model.exported_names = ["f"] } {
+    %ret = "some_dialect.some_op"() : () -> tensor<f32>
+    return %ret : tensor<f32>
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // Sanity-check that we are verifying tf_saved_model.index_path attributes
+  // on results as well. The underlying verification logic is shared,
+  // so no need to test all error cases.
+
+  // expected-error@+1 {{'tf_saved_model.index_path' elements should be strings or 64-bit integers}}
+  func @f() -> (tensor<f32> {tf_saved_model.index_path = [1.0]})
+  attributes { tf_saved_model.exported_names = ["f"] } {
+    %ret = "some_dialect.some_op"() : () -> tensor<f32>
+    return %ret : tensor<f32>
+  }
+
+}

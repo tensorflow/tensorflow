@@ -82,8 +82,8 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
     newShape[0] = 2;
     std::copy(oldShape.begin(), oldShape.end(), newShape.begin() + 1);
     auto newMemRefType =
-        bInner.getMemRefType(newShape, oldMemRefType.getElementType(), {},
-                             oldMemRefType.getMemorySpace());
+        MemRefType::get(newShape, oldMemRefType.getElementType(), {},
+                        oldMemRefType.getMemorySpace());
     return newMemRefType;
   };
 
@@ -109,8 +109,8 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   // Create 'iv mod 2' value to index the leading dimension.
   auto d0 = bInner.getAffineDimExpr(0);
   int64_t step = forOp.getStep();
-  auto modTwoMap = bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0,
-                                       {d0.floorDiv(step) % 2});
+  auto modTwoMap = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                                  {d0.floorDiv(step) % 2});
   auto ivModTwoOp = bInner.create<AffineApplyOp>(forOp.getLoc(), modTwoMap,
                                                  forOp.getInductionVar());
 

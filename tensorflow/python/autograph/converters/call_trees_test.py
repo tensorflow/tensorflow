@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 
 class CallTreesTest(converter_testing.TestCase):
 
-  def test_normal_function(self):
+  def test_function_no_args(self):
 
     def test_fn(f):
       return f() + 20
@@ -79,6 +79,24 @@ class CallTreesTest(converter_testing.TestCase):
           ((), None),
           ((20,), None),
       ])
+
+  def test_function_with_single_arg(self):
+
+    def test_fn(f, a):
+      return f(a) + 20
+
+    with self.converted(test_fn, (function_scopes, call_trees), {}) as result:
+      self.assertEqual(result.test_fn(lambda a: a, 1), 21)
+      self.assertListEqual(self.dynamic_calls, [((1,), None)])
+
+  def test_function_with_args_only(self):
+
+    def test_fn(f, a, b):
+      return f(a, b) + 300
+
+    with self.converted(test_fn, (function_scopes, call_trees), {}) as result:
+      self.assertEqual(result.test_fn(lambda a, b: a + b, 1, 20), 321)
+      self.assertListEqual(self.dynamic_calls, [((1, 20), None)])
 
   def test_function_with_kwarg(self):
 
@@ -158,6 +176,20 @@ class CallTreesTest(converter_testing.TestCase):
   #           'd': 4,
   #           'e': 5
   #       })])
+
+  def test_function_with_call_in_lambda_argument(self):
+
+    def f(l, a):
+      return l(a) + 4000
+
+    def g(a, *args):
+      return a + sum(args)
+
+    def test_fn(f, g, a, *args):
+      return f(lambda x: g(x, *args), a)
+
+    with self.converted(test_fn, (function_scopes, call_trees), {}) as result:
+      self.assertEqual(result.test_fn(f, g, 1, *(20, 300)), 4321)
 
   def test_debugger_set_trace(self):
 

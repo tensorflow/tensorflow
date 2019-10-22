@@ -96,6 +96,40 @@ cc_test(
 )
 
 cc_library(
+    name = "cl_test",
+    testonly = 1,
+    srcs = ["cl_test.cc"],
+    hdrs = ["cl_test.h"],
+    deps = [
+        ":gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl:environment",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "concat_test",
+    srcs = ["concat_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":concat_xy",
+        ":concat_z",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "concat_xy",
     srcs = ["concat_xy.cc"],
     hdrs = ["concat_xy.h"],
@@ -125,9 +159,32 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "conv_buffer",
+    srcs = ["conv_buffer.cc"],
+    hdrs = ["conv_buffer.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
 cc_test(
-    name = "concat_test",
-    srcs = ["concat_test.cc"],
+    name = "conv_buffer_test",
+    srcs = ["conv_buffer_test.cc"],
     linkstatic = True,
     tags = [
         "linux",
@@ -135,8 +192,51 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":concat_xy",
-        ":concat_z",
+        ":conv_buffer",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "conv_buffer_1x1",
+    srcs = ["conv_buffer_1x1.cc"],
+    hdrs = ["conv_buffer_1x1.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "conv_buffer_1x1_test",
+    srcs = ["conv_buffer_1x1_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":conv_buffer_1x1",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
@@ -270,86 +370,20 @@ cc_test(
 )
 
 cc_library(
-    name = "conv_buffer",
-    srcs = ["conv_buffer.cc"],
-    hdrs = ["conv_buffer.h"],
+    name = "converter",
+    srcs = ["converter.cc"],
+    hdrs = ["converter.h"],
     deps = [
-        ":gpu_operation",
         ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:buffer",
-        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu:spi",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_errors",
+        "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
-cc_test(
-    name = "conv_buffer_test",
-    srcs = ["conv_buffer_test.cc"],
-    linkstatic = True,
-    tags = [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        ":conv_buffer",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "conv_buffer_1x1",
-    srcs = ["conv_buffer_1x1.cc"],
-    hdrs = ["conv_buffer_1x1.h"],
-    deps = [
-        ":gpu_operation",
-        ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:buffer",
-        "//tensorflow/lite/delegates/gpu/cl:cl_device",
-        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
-        "//tensorflow/lite/delegates/gpu/cl:precision",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
-cc_test(
-    name = "conv_buffer_1x1_test",
-    srcs = ["conv_buffer_1x1_test.cc"],
-    linkstatic = True,
-    tags = [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        ":conv_buffer_1x1",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:util",
     ],
 )
 
@@ -1158,38 +1192,6 @@ cc_test(
 )
 
 cc_library(
-    name = "work_group_picking",
-    srcs = ["work_group_picking.cc"],
-    hdrs = ["work_group_picking.h"],
-    deps = [
-        ":tuning_parameters",
-        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
-        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-    ],
-)
-
-cc_library(
-    name = "converter",
-    srcs = ["converter.cc"],
-    hdrs = ["converter.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu:spi",
-        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
-        "//tensorflow/lite/delegates/gpu/cl:cl_errors",
-        "//tensorflow/lite/delegates/gpu/cl:environment",
-        "//tensorflow/lite/delegates/gpu/cl:precision",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
-        "//tensorflow/lite/delegates/gpu/common:util",
-    ],
-)
-
-cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
@@ -1210,18 +1212,17 @@ cc_library(
 )
 
 cc_library(
-    name = "cl_test",
-    testonly = 1,
-    srcs = ["cl_test.cc"],
-    hdrs = ["cl_test.h"],
+    name = "work_group_picking",
+    srcs = ["work_group_picking.cc"],
+    hdrs = ["work_group_picking.h"],
     deps = [
-        ":gpu_operation",
-        "//tensorflow/lite/delegates/gpu/cl:environment",
-        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
-        "//tensorflow/lite/delegates/gpu/common:shape",
+        ":tuning_parameters",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "@com_google_googletest//:gtest",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:workgroup_selection",
     ],
 )
 

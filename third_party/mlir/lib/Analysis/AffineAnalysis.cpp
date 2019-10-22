@@ -114,7 +114,7 @@ LogicalResult mlir::getIndexSet(MutableArrayRef<AffineForOp> forOps,
 // Computes the iteration domain for 'opInst' and populates 'indexSet', which
 // encapsulates the constraints involving loops surrounding 'opInst' and
 // potentially involving any Function symbols. The dimensional identifiers in
-// 'indexSet' correspond to the loops surounding 'op' from outermost to
+// 'indexSet' correspond to the loops surrounding 'op' from outermost to
 // innermost.
 // TODO(andydavis) Add support to handle IfInsts surrounding 'op'.
 static LogicalResult getInstIndexSet(Operation *op,
@@ -133,11 +133,11 @@ static LogicalResult getInstIndexSet(Operation *op,
 // Position lookups return the absolute position in the new space which
 // has the following format:
 //
-//   [src-dim-identifiers] [dst-dim-identifiers] [symbol-identifers]
+//   [src-dim-identifiers] [dst-dim-identifiers] [symbol-identifiers]
 //
 // Note: access function non-IV dimension identifiers (that have 'dimension'
 // positions in the access function position space) are assigned as symbols
-// in the output position space. Convienience access functions which lookup
+// in the output position space. Convenience access functions which lookup
 // an Value in multiple maps are provided (i.e. getSrcDimOrSymPos) to handle
 // the common case of resolving positions for all access function operands.
 //
@@ -634,7 +634,7 @@ static void computeDirectionVector(
     dependenceDomain->addDimId(j);
   }
 
-  // Add equality contraints for each common loop, setting newly introduced
+  // Add equality constraints for each common loop, setting newly introduced
   // variable at column 'j' to the 'dst' IV minus the 'src IV.
   SmallVector<int64_t, 4> eq;
   eq.resize(dependenceDomain->getNumCols());
@@ -698,7 +698,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //    composed with AffineApplyOps reachable from operands of that access,
 //    until operands of the AffineValueMap are loop IVs or symbols.
 // *) Build iteration domain constraints for each access. Iteration domain
-//    constraints are pairs of inequality contraints representing the
+//    constraints are pairs of inequality constraints representing the
 //    upper/lower loop bounds for each AffineForOp in the loop nest associated
 //    with each access.
 // *) Build dimension and symbol position maps for each access, which map
@@ -709,8 +709,8 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //
 //  [src-dim-identifiers, dst-dim-identifiers, symbols, constant]
 //
-// For example, given the following MLIR code with with "source" and
-// "destination" accesses to the same memref labled, and symbols %M, %N, %K:
+// For example, given the following MLIR code with "source" and "destination"
+// accesses to the same memref label, and symbols %M, %N, %K:
 //
 //   affine.for %i0 = 0 to 100 {
 //     affine.for %i1 = 0 to 50 {
@@ -819,7 +819,7 @@ DependenceResult mlir::checkMemrefAccessDependence(
     return DependenceResult::NoDependence;
   }
   // Build dim and symbol position maps for each access from access operand
-  // Value to position in merged contstraint system.
+  // Value to position in merged constraint system.
   ValuePositionMap valuePosMap;
   buildDimAndSymbolPositionMaps(srcDomain, dstDomain, srcAccessMap,
                                 dstAccessMap, &valuePosMap,

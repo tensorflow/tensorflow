@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "if_mlir_tflite", "py_binary", "tf_py_test")
 
 package(
@@ -33,6 +32,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_convert",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",

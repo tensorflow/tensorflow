@@ -45,6 +45,7 @@ tf_cc_test(
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm//:support",

@@ -352,6 +352,21 @@ def HLO_PrecisionConfigAttr:
           TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
 //===----------------------------------------------------------------------===//
+// Fast Fourier Transform Type enum definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA FftType proto enum.
+def HLO_FFT_TYPE_FFT : StrEnumAttrCase<"FFT">;
+def HLO_FFT_TYPE_IFFT : StrEnumAttrCase<"IFFT">;
+def HLO_FFT_TYPE_RFFT : StrEnumAttrCase<"RFFT">;
+def HLO_FFT_TYPE_IRFFT : StrEnumAttrCase<"IRFFT">;
+
+def HLO_FftTypeAttr : StrEnumAttr<"FftType",
+    "XLA fast fourier transform type.",
+    [HLO_FFT_TYPE_FFT, HLO_FFT_TYPE_IFFT,
+     HLO_FFT_TYPE_RFFT, HLO_FFT_TYPE_IRFFT]>;
+
+//===----------------------------------------------------------------------===//
 // Comparison op definitions.
 //===----------------------------------------------------------------------===//
 
@@ -525,6 +540,16 @@ class BASE_HLO_DotGeneralOp {
   }];
 }
 
+class BASE_HLO_FftOp {
+  string summary = "Fast fourier transform operator";
+
+  string description = [{
+    Returns the fast-fourier-transform of the input array.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#fft.
+  }];
+}
 
 class BASE_HLO_GatherOp{
   string summary = "Gather operator";

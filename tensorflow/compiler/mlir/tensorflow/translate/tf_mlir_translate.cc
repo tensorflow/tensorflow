@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
@@ -65,7 +67,26 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
                                          input_shapes, &specs.inputs));
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.output_arrays,
                                           &specs.output_arrays_order));
-  return ConvertGraphdefToMlir(graphdef, debug_info, specs, context);
+  // TODO(b/142828368): Pruning should not be needed when TF import
+  // supports importing graphs w/ unregistered ops natively.
+  GraphDef pruned_graph_def;
+  if (specs.prune_unused_nodes) {
+    std::vector<string> terminal_nodes(specs.output_arrays.begin(),
+                                       specs.output_arrays.end());
+    for (const auto entry : specs.inputs) {
+      terminal_nodes.push_back(entry.first);
+    }
+    TF_RETURN_IF_ERROR(tensorflow::grappler::SetTransitiveFaninGraph(
+        graphdef, &pruned_graph_def, terminal_nodes));
+    // TODO(ashwinm): Add a separate utility in grappler utils that abstracts
+    // both SetTransitiveFaninGraph and restoring the missing contents from the
+    // original graph like function def library and version.
+    pruned_graph_def.mutable_library()->Swap(graphdef.mutable_library());
+    pruned_graph_def.mutable_versions()->Swap(graphdef.mutable_versions());
+  }
+  return ConvertGraphdefToMlir(
+      specs.prune_unused_nodes ? pruned_graph_def : graphdef, debug_info, specs,
+      context);
 }
 
 mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
