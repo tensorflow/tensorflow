@@ -41,6 +41,7 @@ ifeq ($(TARGET), bluepill)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
     -T $(MAKEFILE_DIR)/downloads/stm32_bare_lib/stm32_linker_layout.lds \
+    -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
     -Wl,--gc-sections
   BUILD_TYPE := micro
