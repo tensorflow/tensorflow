@@ -766,8 +766,8 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 
   let arguments = (ins
-    TF_FpTensor:$input,
-    TF_FpTensor:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -778,7 +778,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -798,8 +798,8 @@ Computes the gradients of convolution with respect to the input.
 
   let arguments = (ins
     I32Tensor:$input_sizes,
-    TF_FpTensor:$filter,
-    TF_FpTensor:$out_backprop,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$out_backprop,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -810,7 +810,7 @@ Computes the gradients of convolution with respect to the input.
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
@@ -3242,13 +3242,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F32, F64, I32, I64]>:$start,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$limit,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$delta
+    TF_FpOrI32OrI64Tensor:$start,
+    TF_FpOrI32OrI64Tensor:$limit,
+    TF_FpOrI32OrI64Tensor:$delta
   );
 
   let results = (outs
-    TensorOf<[BF16, F32, F64, I32, I64]>:$output
+    TF_FpOrI32OrI64Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
