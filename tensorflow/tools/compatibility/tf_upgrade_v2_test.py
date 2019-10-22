@@ -1206,10 +1206,14 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.contrib.saved_model.save_keras_model(model, './saved_models')\n"
         "tf.contrib.saved_model.load_keras_model(saved_model_path)\n")
     expected_text = (
-        "tf.keras.experimental.export_saved_model(model, './saved_models')\n"
-        "tf.keras.experimental.load_from_saved_model(saved_model_path)\n")
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
+        "tf.compat.v1.keras.experimental.export_saved_model(model, "
+        "'./saved_models')\ntf.compat.v1.keras.experimental."
+        "load_from_saved_model(saved_model_path)\n"
+    )
+    _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
+    expected_info = "Please use model.save"
+    self.assertIn(expected_info, report)
 
   def testStatelessMultinomial(self):
     text = (
@@ -2256,11 +2260,19 @@ def _log_prob(self, x):
       result_a, result_b = results[0], results[1]
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
+
   def test_model_to_estimator_checkpoint_warning(self):
     text = "tf.keras.estimator.model_to_estimator(model)"
     _, report, _, _ = self._upgrade(text)
     expected_info = "will save object-based checkpoints"
     self.assertIn(expected_info, report)
+
+  def test_keras_experimental_export_warning(self):
+    text = "tf.keras.experimental.export_saved_model"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "Please use model.save"
+    self.assertIn(expected_info, report)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
