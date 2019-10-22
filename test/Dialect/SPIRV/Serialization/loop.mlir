@@ -22,8 +22,8 @@ spv.module "Logical" "GLSL450" {
       %val0 = spv.Load "Function" %var : i32
 // CHECK-NEXT:     spv.SLessThan
       %cmp = spv.SLessThan %val0, %count : i32
-// CHECK-NEXT:     spv.BranchConditional %{{.*}}, ^bb2, ^bb4
-      spv.BranchConditional %cmp, ^body, ^merge
+// CHECK-NEXT:     spv.BranchConditional %{{.*}} [1, 1], ^bb2, ^bb4
+      spv.BranchConditional %cmp [1, 1], ^body, ^merge
 
 // CHECK-NEXT:   ^bb2:
     ^body:

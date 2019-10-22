@@ -13,6 +13,16 @@ func @branch() -> () {
 
 // -----
 
+func @branch_argument() -> () {
+  %zero = spv.constant 0 : i32
+  // CHECK: spv.Branch ^bb1(%{{.*}}, %{{.*}} : i32, i32)
+  spv.Branch ^next(%zero, %zero: i32, i32)
+^next(%arg0: i32, %arg1: i32):
+  spv.Return
+}
+
+// -----
+
 func @missing_accessor() -> () {
   spv.Branch
   // expected-error @+1 {{expected block name}}
@@ -32,16 +42,6 @@ func @wrong_accessor_count() -> () {
 
 // -----
 
-func @accessor_argument_disallowed() -> () {
-  %zero = spv.constant 0 : i32
-  // expected-error @+1 {{requires zero operands}}
-  "spv.Branch"()[^next(%zero : i32)] : () -> ()
-^next(%arg: i32):
-  spv.Return
-}
-
-// -----
-
 //===----------------------------------------------------------------------===//
 // spv.BranchConditional
 //===----------------------------------------------------------------------===//
@@ -55,6 +55,24 @@ func @cond_branch() -> () {
   spv.Return
 // CHECK: ^bb2
 ^two:
+  spv.Return
+}
+
+// -----
+
+func @cond_branch_argument() -> () {
+  %true = spv.constant true
+  %zero = spv.constant 0 : i32
+  // CHECK: spv.BranchConditional %{{.*}}, ^bb1(%{{.*}}, %{{.*}} : i32, i32), ^bb2
+  spv.BranchConditional %true, ^true1(%zero, %zero: i32, i32), ^false1
+^true1(%arg0: i32, %arg1: i32):
+  // CHECK: spv.BranchConditional %{{.*}}, ^bb3, ^bb4(%{{.*}}, %{{.*}} : i32, i32)
+  spv.BranchConditional %true, ^true2, ^false2(%zero, %zero: i32, i32)
+^false1:
+  spv.Return
+^true2:
+  spv.Return
+^false2(%arg3: i32, %arg4: i32):
   spv.Return
 }
 
@@ -101,18 +119,6 @@ func @wrong_accessor_count() -> () {
   // expected-error @+1 {{must have exactly two successors}}
   "spv.BranchConditional"(%true)[^one] : (i1) -> ()
 ^one:
-  spv.Return
-^two:
-  spv.Return
-}
-
-// -----
-
-func @accessor_argument_disallowed() -> () {
-  %true = spv.constant true
-  // expected-error @+1 {{requires a single operand}}
-  "spv.BranchConditional"(%true)[^one(%true : i1), ^two] : (i1) -> ()
-^one(%arg : i1):
   spv.Return
 ^two:
   spv.Return

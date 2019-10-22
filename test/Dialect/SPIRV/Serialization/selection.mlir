@@ -15,8 +15,8 @@ spv.module "Logical" "GLSL450" {
 // CHECK-NEXT:     spv.constant 0
 // CHECK-NEXT:     spv.Variable
     spv.selection {
-// CHECK-NEXT: spv.BranchConditional %{{.*}}, ^bb1, ^bb2
-      spv.BranchConditional %cond, ^then, ^else
+// CHECK-NEXT: spv.BranchConditional %{{.*}} [5, 10], ^bb1, ^bb2
+      spv.BranchConditional %cond [5, 10], ^then, ^else
 
 // CHECK-NEXT:   ^bb1:
     ^then:
