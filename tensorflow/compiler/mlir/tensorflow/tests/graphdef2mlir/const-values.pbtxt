@@ -1,6 +1,35 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
 node {
+  name: "double"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_DOUBLE
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 3
+          }
+        }
+        tensor_content: "\000\000\000\000\000\000\360?\000\000\000\000\000\000\000@\000\000\000\000\000\000\010@\000\000\000\000\000\000\020@\000\000\000\000\000\000\024@\000\000\000\000\000\000\030@"
+        # CHECK: value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>
+      }
+    }
+  }
+}
+node {
   name: "x"
   op: "Const"
   device: "/device:CPU:0"
@@ -87,4 +116,3 @@ node {
     }
   }
 }
-
