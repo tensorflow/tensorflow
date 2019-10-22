@@ -178,12 +178,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
       GetTensorShape(filter), GetTensorData<int8_t>(filter),
       GetTensorShape(bias), GetTensorData<int32_t>(bias),
       GetTensorShape(output), GetTensorData<int8_t>(output));
-
-  //reference_integer_ops::FullyConnected(
-  //    op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-  //    GetTensorShape(filter), GetTensorData<int8_t>(filter),
-  //    GetTensorShape(bias), GetTensorData<int32_t>(bias),
-  //    GetTensorShape(output), GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
