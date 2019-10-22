@@ -46,23 +46,29 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
     ``` {.ebnf}
     branch-op ::= `spv.Branch` successor
+    successor ::= bb-id branch-use-list?
+    branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
     ```
 
     For example:
 
     ```
     spv.Branch ^target
+    spv.Branch ^target(%0, %1: i32, f32)
     ```
   }];
 
-  let arguments = (ins);
+  let arguments = (ins
+    Variadic<AnyType>:$block_arguments
+  );
 
   let results = (outs);
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState &state, Block *successor", [{
-        state.addSuccessor(successor, {});
+      "Builder *, OperationState &state, "
+      "Block *successor, ArrayRef<Value *> arguments = {}", [{
+        state.addSuccessor(successor, arguments);
       }]
     >
   ];
@@ -70,7 +76,13 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
   let skipDefaultBuilders = 1;
 
   let extraClassDeclaration = [{
+    /// Returns the branch target block.
     Block *getTarget() { return getOperation()->getSuccessor(0); }
+
+    /// Returns the block arguments.
+    operand_range getBlockArguments() {
+      return getOperation()->getSuccessorOperands(0);
+    }
   }];
 
   let autogenSerialization = 0;
@@ -105,17 +117,21 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
     branch-conditional-op ::= `spv.BranchConditional` ssa-use
                               (`[` integer-literal, integer-literal `]`)?
                               `,` successor `,` successor
+    successor ::= bb-id branch-use-list?
+    branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
     ```
 
     For example:
 
     ```
     spv.BranchConditional %condition, ^true_branch, ^false_branch
+    spv.BranchConditional %condition, ^true_branch(%0: i32), ^false_branch(%1: i32)
     ```
   }];
 
   let arguments = (ins
     SPV_Bool:$condition,
+    Variadic<AnyType>:$branch_arguments,
     OptionalAttr<I32ArrayAttr>:$branch_weights
   );
 
@@ -124,12 +140,13 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
   let builders = [
     OpBuilder<
       "Builder *builder, OperationState &state, Value *condition, "
-      "Block *trueBranch, Block *falseBranch, "
-      "Optional<std::pair<uint32_t, uint32_t>> weights",
+      "Block *trueBlock, ArrayRef<Value *> trueArguments, "
+      "Block *falseBlock, ArrayRef<Value *> falseArguments, "
+      "Optional<std::pair<uint32_t, uint32_t>> weights = {}",
       [{
         state.addOperands(condition);
-        state.addSuccessor(trueBranch, {});
-        state.addSuccessor(falseBranch, {});
+        state.addSuccessor(trueBlock, trueArguments);
+        state.addSuccessor(falseBlock, falseArguments);
         if (weights) {
           auto attr =
               builder->getI32ArrayAttr({static_cast<int32_t>(weights->first),
@@ -145,12 +162,57 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
   let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
-    // Branch indices into the successor list.
+    /// Branch indices into the successor list.
     enum { kTrueIndex = 0, kFalseIndex = 1 };
 
+    /// Returns the target block for the true branch.
     Block *getTrueBlock() { return getOperation()->getSuccessor(kTrueIndex); }
 
+    /// Returns the target block for the false branch.
     Block *getFalseBlock() { return getOperation()->getSuccessor(kFalseIndex); }
+
+    /// Returns the number of arguments to the true target block.
+    unsigned getNumTrueBlockArguments() {
+      return getNumSuccessorOperands(kTrueIndex);
+    }
+
+    /// Returns the number of arguments to the false target block.
+    unsigned getNumFalseBlockArguments() {
+      return getNumSuccessorOperands(kFalseIndex);
+    }
+
+    // Iterator and range support for true target block arguments.
+    operand_iterator true_block_argument_begin() {
+      return operand_begin() + getTrueBlockArgumentIndex();
+    }
+    operand_iterator true_block_argument_end() {
+      return true_block_argument_begin() + getNumTrueBlockArguments();
+    }
+    operand_range getTrueBlockArguments() {
+      return {true_block_argument_begin(), true_block_argument_end()};
+    }
+
+    // Iterator and range support for false target block arguments.
+    operand_iterator false_block_argument_begin() {
+      return true_block_argument_end();
+    }
+    operand_iterator false_block_argument_end() {
+      return false_block_argument_begin() + getNumFalseBlockArguments();
+    }
+    operand_range getFalseBlockArguments() {
+      return {false_block_argument_begin(), false_block_argument_end()};
+    }
+
+  private:
+    /// Gets the index of the first true block argument in the operand list.
+    unsigned getTrueBlockArgumentIndex() {
+      return 1; // Omit the first argument, which is the condition.
+    }
+
+    /// Gets the index of the first false block argument in the operand list.
+    unsigned getFalseBlockArgumentIndex() {
+      return getTrueBlockArgumentIndex() + getNumTrueBlockArguments();
+    }
   }];
 }
 

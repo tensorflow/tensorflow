@@ -1489,8 +1489,10 @@ Deserializer::processBranchConditional(ArrayRef<uint32_t> operands) {
     weights = std::make_pair(operands[3], operands[4]);
   }
 
-  opBuilder.create<spirv::BranchConditionalOp>(unknownLoc, condition, trueBlock,
-                                               falseBlock, weights);
+  opBuilder.create<spirv::BranchConditionalOp>(
+      unknownLoc, condition, trueBlock,
+      /*trueArguments=*/ArrayRef<Value *>(), falseBlock,
+      /*falseArguments=*/ArrayRef<Value *>(), weights);
 
   return success();
 }
