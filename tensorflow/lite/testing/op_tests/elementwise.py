@@ -35,7 +35,7 @@ def _make_elementwise_tests(op):
 
     def build_graph(parameters):
       """Build the unary op testing graph."""
-      input_value = tf.placeholder(
+      input_value = tf.compat.v1.placeholder(
           dtype=parameters["input_dtype"],
           name="input1",
           shape=parameters["input_shape"])

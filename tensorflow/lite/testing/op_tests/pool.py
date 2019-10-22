@@ -54,7 +54,7 @@ def make_pool_tests(pool_op_in):
     }]
 
     def build_graph(parameters):
-      input_tensor = tf.placeholder(
+      input_tensor = tf.compat.v1.placeholder(
           dtype=tf.float32, name="input", shape=parameters["input_shape"])
       out = pool_op(
           input_tensor,
