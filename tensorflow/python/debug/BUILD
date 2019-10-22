@@ -1362,6 +1362,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )
