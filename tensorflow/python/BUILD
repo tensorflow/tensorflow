@@ -583,6 +583,20 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_toco_api",
+    srcs = [
+        "lite/toco_python_api_wrapper.cc",
+    ],
+    hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
+    module_name = "_pywrap_toco_api",
+    deps = [
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "cpp_python_util",
     srcs = ["util/util.cc"],
@@ -5188,7 +5202,6 @@ tf_py_wrap_cc(
         "util/traceme.i",
         "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
-        "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
@@ -5292,6 +5305,7 @@ genrule(
         "//tensorflow/core:core_cpu_impl",  # device_lib
         ":py_exception_registry",  # py_exception_registry
         ":kernel_registry",
+        "//tensorflow/lite/toco/python:toco_python_api",  # toco
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
