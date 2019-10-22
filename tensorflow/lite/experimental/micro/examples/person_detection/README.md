@@ -77,7 +77,7 @@ Connect the Arducam pins as follows:
 To use this sample application with Arduino, we've created an Arduino library
 that includes it as an example that you can open in the Arduino IDE.
 
-Download the current nightly build of the library: [person_detection.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/person_detection/person_detection.zip)
+Download the current nightly build of the library: [person_detection.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/person_detection/tensorflow_lite.zip)
 
 Next, import this zip file into the Arduino IDE by going to
 `Sketch -> Include Library -> Add .ZIP Library...`.
