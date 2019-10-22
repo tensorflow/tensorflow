@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
-namespace {
+namespace tflite {
 namespace xtensa {
 namespace hifi3 {
 
-void hifi3_fully_connected(
+void fully_connected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const int8_t* input_data, const RuntimeShape& filter_shape,
     const int8_t* filter_data, const RuntimeShape& bias_shape,
@@ -99,7 +99,7 @@ void hifi3_fully_connected(
 
 }  // namespace hifi3
 }  // namespace xtensa
-}  // namespace
+}  // namespace tflite
 
 namespace tflite {
 namespace ops {
@@ -173,11 +173,17 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  reference_integer_ops::FullyConnected(
+  xtensa::hifi3::fully_connected(
       op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
       GetTensorShape(filter), GetTensorData<int8_t>(filter),
       GetTensorShape(bias), GetTensorData<int32_t>(bias),
       GetTensorShape(output), GetTensorData<int8_t>(output));
+
+  //reference_integer_ops::FullyConnected(
+  //    op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+  //    GetTensorShape(filter), GetTensorData<int8_t>(filter),
+  //    GetTensorShape(bias), GetTensorData<int32_t>(bias),
+  //    GetTensorShape(output), GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
