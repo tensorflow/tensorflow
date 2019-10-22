@@ -203,7 +203,10 @@ py_library(
     ],
 )
 
-tf_py_build_info_genrule()
+tf_py_build_info_genrule(
+    name = "py_build_info_gen",
+    out = "platform/build_info.py",
+)
 
 py_library(
     name = "platform",
