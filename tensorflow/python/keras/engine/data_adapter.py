@@ -379,7 +379,8 @@ class TensorLikeDataAdapter(DataAdapter):
     options.experimental_optimization.apply_default_optimizations = False
     if self._shuffle:
       # See b/141490660 for more details.
-      options.experimental_allow_stateful = True
+      options.experimental_external_state_policy = (
+          dataset_ops.ExternalStatePolicy.IGNORE)
     dataset = dataset.with_options(options)
     return dataset
 

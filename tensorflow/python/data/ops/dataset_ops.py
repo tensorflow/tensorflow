@@ -2448,16 +2448,6 @@ class Options(options_lib.OptionsBase):
       "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
-  experimental_allow_stateful = options_lib.create_option(
-      name="experimental_allow_stateful",
-      ty=bool,
-      docstring="By default, tf.data will refuse to serialize a dataset or "
-      "checkpoint its iterator if the dataset contains a stateful op as the "
-      "serialization / checkpointing won't be able to capture its state. "
-      "Users can -- at their own risk -- override this restriction by "
-      "explicitly specifying that they are fine throwing away the state "
-      "in these ops when they turn this option on.")
-
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=ExternalStatePolicy,
