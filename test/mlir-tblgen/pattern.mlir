@@ -24,6 +24,14 @@ func @verifyZeroArg() -> i32 {
   return %0 : i32
 }
 
+// CHECK-LABEL: verifyInterleavedOperandAttribute
+// CHECK-SAME:    %[[ARG0:.*]]: i32, %[[ARG1:.*]]: i32
+func @verifyInterleavedOperandAttribute(%arg0: i32, %arg1: i32) {
+  // CHECK: "test.interleaved_operand_attr2"(%[[ARG0]], %[[ARG1]]) {attr1 = 15 : i64, attr2 = 42 : i64}
+  "test.interleaved_operand_attr1"(%arg0, %arg1) {attr1 = 15, attr2 = 42} : (i32, i32) -> ()
+  return
+}
+
 // CHECK-LABEL: verifyBenefit
 func @verifyBenefit(%arg0 : i32) -> i32 {
   %0 = "test.op_d"(%arg0) : (i32) -> i32
