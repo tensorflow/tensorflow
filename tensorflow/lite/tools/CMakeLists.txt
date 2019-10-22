@@ -209,6 +209,7 @@ add_custom_command(
 )
 
 add_library(gl_delegate
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/lstm.cc
