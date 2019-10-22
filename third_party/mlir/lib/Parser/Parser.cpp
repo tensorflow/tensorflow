@@ -4333,28 +4333,60 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
   return parseSourceFile(sourceMgr, context);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
-                     size_t &numRead) {
+/// Parses a symbol, of type 'T', and returns it if parsing was successful. If
+/// parsing failed, nullptr is returned. The number of bytes read from the input
+/// string is returned in 'numRead'.
+template <typename T, typename ParserFn>
+static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+                     size_t &numRead, ParserFn &&parserFn) {
   SourceMgr sourceMgr;
-  auto memBuffer =
-      MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
-                                 /*RequiresNullTerminator=*/false);
+  auto memBuffer = MemoryBuffer::getMemBuffer(
+      inputStr, /*BufferName=*/"<mlir_parser_buffer>",
+      /*RequiresNullTerminator=*/false);
   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);
   Parser parser(state);
 
   auto start = parser.getToken().getLoc();
-  auto ty = parser.parseType();
-  if (!ty)
-    return Type();
+  T symbol = parserFn(parser);
+  if (!symbol)
+    return T();
 
   auto end = parser.getToken().getLoc();
   numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
-  return ty;
+  return symbol;
+}
+
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, context, numRead);
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, type, numRead);
+}
+
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(attrStr, context, numRead, [](Parser &parser) {
+    return parser.parseAttribute();
+  });
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(
+      attrStr, type.getContext(), numRead,
+      [type](Parser &parser) { return parser.parseAttribute(type); });
 }
 
 Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseType(typeStr, context, numRead);
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
+                     size_t &numRead) {
+  return parseSymbol<Type>(typeStr, context, numRead,
+                           [](Parser &parser) { return parser.parseType(); });
 }
