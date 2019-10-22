@@ -24,8 +24,8 @@ func @loop_for_step(%arg0: f32, %arg1: index) {
 
 // -----
 
-func @loop_for_step_nonnegative(%arg0: index) {
-  // expected-error@+2 {{constant step operand must be nonnegative}}
+func @loop_for_step_positive(%arg0: index) {
+  // expected-error@+2 {{constant step operand must be positive}}
   %c0 = constant 0 : index
   "loop.for"(%arg0, %arg0, %c0) ({
     ^bb0(%arg1: index):
