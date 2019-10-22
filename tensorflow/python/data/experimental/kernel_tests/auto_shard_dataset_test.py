@@ -254,6 +254,24 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProduces(dataset, expected)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testAutoshardPolicyOff(self):
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        distribute_options.AutoShardPolicy.OFF)
+
+    dataset = core_readers._TFRecordDataset(self.test_filenames)
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    # Should return every record in every file since autosharding is turned off.
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFileShardingWithoutReaderDatasetOp(self):
     options = dataset_ops.Options()
     options.experimental_distribute.auto_shard_policy = (

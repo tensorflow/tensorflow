@@ -67,8 +67,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       "Conv", hlo_config, /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
-  TF_CHECK_OK(xla::ParseHloString(hlo_text, &hlo_module));
-  TF_CHECK_OK(hlo_module.Verify());
+  TF_CHECK_OK(hlo_module.ParseHloStringAndVerifyModule(hlo_text));
   xla::HloInstruction* conv =
       hlo_module.entry_computation()->root_instruction();
 

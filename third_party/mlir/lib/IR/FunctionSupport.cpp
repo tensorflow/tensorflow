@@ -18,6 +18,7 @@
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 
 using namespace mlir;
 

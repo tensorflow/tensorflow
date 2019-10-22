@@ -351,6 +351,17 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "quantize_training_hdrs",
+    srcs = [
+        "graph/quantize_training.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "util_port",
     srcs = ["util/port.cc"],
@@ -2315,6 +2326,7 @@ cc_library(
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:subprocess",
+        "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
@@ -2574,7 +2586,10 @@ alias(
     actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
-tf_version_info_genrule()
+tf_version_info_genrule(
+    name = "version_info_gen",
+    out = "util/version_info.cc",
+)
 
 cc_library(
     name = "version_lib",

@@ -159,6 +159,13 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
   return success();
 }
 
+LogicalResult OpTrait::impl::verifySymbol(Operation *op) {
+  if (!op->getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+    return op->emitOpError() << "requires string attribute '"
+                             << mlir::SymbolTable::getSymbolAttrName() << "'";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // SymbolTable Trait Types
 //===----------------------------------------------------------------------===//
@@ -310,5 +317,5 @@ bool SymbolTable::symbolKnownUseEmpty(StringRef symbol, Operation *from) {
                    ? WalkResult::interrupt()
                    : WalkResult::advance();
       });
-  return !walkResult || !walkResult->wasInterrupted();
+  return walkResult && !walkResult->wasInterrupted();
 }

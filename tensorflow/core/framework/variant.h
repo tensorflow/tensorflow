@@ -26,9 +26,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 

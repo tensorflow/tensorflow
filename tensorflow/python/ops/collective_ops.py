@@ -27,7 +27,7 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
   Args:
     t: the tensor to be reduced.
     group_size: the total number of tensors to be collectively reduced.
-      Each must reside on a different device.
+      Each must reside on a different device.  Should be a positive integer.
     group_key: an integer identifying the group of devices.
     instance_key: an integer identifying the participating group of Ops.
     merge_op: string naming the binary Op to be applied to compute each
@@ -47,8 +47,8 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
   Raises:
     ValueError: if any of the input parameter constraints are not met.
   """
-  if group_size <= 1:
-    raise ValueError('Parameter group_size to all_reduce must be at least 2.')
+  if group_size < 1:
+    raise ValueError('Parameter group_size to all_reduce must be at least 1.')
   return gen_collective_ops.collective_reduce(
       t,
       group_size=group_size,
@@ -67,7 +67,7 @@ def all_gather(t, group_size, group_key, instance_key,
   Args:
     t: the tensor to participate in the accumulation.
     group_size: the total number of tensors to be collectively accumulated.
-      Each must reside on a different device.
+      Each must reside on a different device.  Should be a positive integer.
     group_key: an integer identifying the group of devices.
     instance_key: an integer identifying the participating group of Ops.
     communication_hint: preferred collective communication.  The implementation
@@ -80,8 +80,8 @@ def all_gather(t, group_size, group_key, instance_key,
   Raises:
     ValueError: if any of the input parameter constraints are not met.
   """
-  if group_size <= 1:
-    raise ValueError('Parameter group_size to all_gather must be at least 2.')
+  if group_size < 1:
+    raise ValueError('Parameter group_size to all_gather must be at least 1.')
   return gen_collective_ops.collective_gather(
       t,
       shape=[0],
