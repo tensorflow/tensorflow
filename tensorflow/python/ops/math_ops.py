@@ -317,7 +317,23 @@ class DivideDelegateWithName(object):
 @tf_export("math.divide", "divide")
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
-  """Computes Python style division of `x` by `y`."""
+  """Computes Python style division of `x` by `y`.
+  
+  For example:
+  ```python
+  import tensorflow as tf
+  x = tf.constant([16, 12, 11])
+  y = tf.constant([4, 6, 2])
+  tf.divide(x,y)  # [4. , 2. , 5.5]
+  ```
+  Args:
+    x: A `Tensor`
+    y: A `Tensor`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with same shape as input
+  """
 
   if name is not None:
     # Cannot use tensors operator overload, because it has no way to track
