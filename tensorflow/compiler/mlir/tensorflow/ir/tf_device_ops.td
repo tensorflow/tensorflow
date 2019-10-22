@@ -189,7 +189,12 @@ For example:
               "llvm::ArrayRef<llvm::StringRef> devices, "
               "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>>"
               "    replicated_inputs, "
-              "llvm::ArrayRef<Type> replica_output_types">
+              "llvm::ArrayRef<Type> replica_output_types">,
+    OpBuilder<"Builder* builder, OperationState& state, int n, "
+              "llvm::ArrayRef<llvm::StringRef> devices, "
+              "llvm::ArrayRef<std::pair<Operation::operand_range, Type>>"
+              "    replicated_inputs, "
+              "Operation::result_type_range replica_output_types">
   ];
 
   let parser = [{ return Parse$cppClass(&parser, &result); }];
