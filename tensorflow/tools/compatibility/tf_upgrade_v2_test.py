@@ -101,7 +101,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             cls.v2_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
-      visitor.private_map["tf.compat"] = ["v1"]
+      visitor.private_map["tf.compat"] = ["v1", "v2"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
@@ -114,6 +114,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             cls.v1_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
+      visitor.private_map["tf.compat"] = ["v1", "v2"]
       traverse.traverse(tf.compat.v1, visitor)
 
   def _upgrade(self, old_file_text):
