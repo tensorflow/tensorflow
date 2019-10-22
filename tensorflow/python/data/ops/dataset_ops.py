@@ -368,7 +368,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     """
     if (context.executing_eagerly()
         or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -1841,7 +1841,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2330,7 +2330,7 @@ def get_legacy_output_classes(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_classes` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
     A nested structure of Python `type` objects matching the structure of the

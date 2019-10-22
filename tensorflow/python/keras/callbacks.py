@@ -171,7 +171,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
