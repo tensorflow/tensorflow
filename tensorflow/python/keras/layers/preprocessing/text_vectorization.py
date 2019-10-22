@@ -21,6 +21,7 @@ import collections
 import json
 
 import numpy as np
+import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -116,23 +117,24 @@ class TextVectorization(CombinerPreprocessingLayer):
       integers will create ngrams for the specified values in the tuple. Passing
       None means that no ngrams will be created.
     output_mode: Optional specification for the output of the layer. Values can
-      be INT, BINARY, COUNT or TFIDF, which control the outputs as follows:
-        INT: Outputs integer indices, one integer index per split string token.
-        BINARY: Outputs a single int array per batch, of either vocab_size or
+      be "int", "binary", "count" or "tf-idf", configuring the layer as follows:
+        "int": Outputs integer indices, one integer index per split string
+          token.
+        "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
           to that index exists at least once in the batch item.
-        COUNT: As BINARY, but the int array contains a count of the number of
-          times the token at that index appeared in the batch item.
-        TFIDF: As BINARY, but the TF-IDF algorithm is applied to find the value
-          in each token slot.
+        "count": As "binary", but the int array contains a count of the number
+          of times the token at that index appeared in the batch item.
+        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
+          value in each token slot.
     output_sequence_length: Only valid in INT mode. If set, the output will have
       its time dimension padded or truncated to exactly `output_sequence_length`
       values, resulting in a tensor of shape [batch_size,
       output_sequence_length] regardless of how many tokens resulted from the
       splitting step. Defaults to None.
-    pad_to_max_tokens: Only valid in  BINARY, COUNT, and TFIDF modes. If True,
-      the output will have its feature axis padded to `max_tokens` even if the
-      number of unique tokens in the vocabulary is less than max_tokens,
+    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
+      True, the output will have its feature axis padded to `max_tokens` even if
+      the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
       vocabulary size. Defaults to True.
   """
@@ -155,13 +157,42 @@ class TextVectorization(CombinerPreprocessingLayer):
     elif "dtype" not in kwargs:
       kwargs["dtype"] = dtypes.string
 
-    # TODO(momernick): Validate the inputs. The following must apply:
-    # 'standardize' must be one of (None, LOWER_AND_STRIP, callable)
-    # 'split' must be one of (None, WHITESPACE, callable)
-    # 'ngrams' must be one of (None, int, tuple(int))
+    # 'standardize' must be one of (None, LOWER_AND_STRIP_PUNCTUATION, callable)
+    _validate_string_arg(
+        standardize,
+        allowable_strings=[LOWER_AND_STRIP_PUNCTUATION],
+        arg_name="standardize")
+
+    # 'split' must be one of (None, SPLIT_ON_WHITESPACE, callable)
+    _validate_string_arg(
+        split, allowable_strings=[SPLIT_ON_WHITESPACE], arg_name="split")
+
     # 'output_mode' must be one of (None, INT, COUNT, BINARY, TFIDF)
+    _validate_string_arg(
+        output_mode,
+        allowable_strings=[INT, COUNT, BINARY, TFIDF],
+        arg_name="output_mode",
+        allow_callables=False)
+
+    # 'ngrams' must be one of (None, int, tuple(int))
+    if not (ngrams is None or
+            isinstance(ngrams, int) or
+            isinstance(ngrams, tuple) and
+            all(isinstance(item, int) for item in ngrams)):
+      raise ValueError(("`ngrams` must be None, an integer, or a tuple of "
+                        "integers. Got %s") % (ngrams,))
+
     # 'output_sequence_length' must be one of (None, int) and is only
     # set if output_mode is INT.
+    if (output_mode == INT and not (isinstance(output_sequence_length, int) or
+                                    (output_sequence_length is None))):
+      raise ValueError("`output_sequence_length` must be either None or an "
+                       "integer when `output_mode` is 'int'. "
+                       "Got %s" % output_sequence_length)
+
+    if output_mode != INT and output_sequence_length is not None:
+      raise ValueError("`output_sequence_length` must not be set if "
+                       "`output_mode` is not 'int'.")
 
     self._max_tokens = max_tokens
 
@@ -544,6 +575,28 @@ class TextVectorization(CombinerPreprocessingLayer):
 
     # We can only get here if we didn't recognize the passed mode.
     raise ValueError("Unknown output mode %s" % self._output_mode)
+
+
+def _validate_string_arg(input_data,
+                         allowable_strings,
+                         arg_name,
+                         allow_none=True,
+                         allow_callables=True):
+  """Validates the correctness of a string-based arg for VectorizeText."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = "`None`, " if allow_none else ""
+    allowed_args += "a `Callable`, " if allow_callables else ""
+    allowed_args += "or one of the following values: %s" % allowable_strings
+    raise ValueError(
+        ("VectorizeText's %s arg received an invalid value %s. " +
+         "Allowed values are %s.") % (arg_name, input_data, allowed_args))
 
 
 class _TextVectorizationCombiner(Combiner):
