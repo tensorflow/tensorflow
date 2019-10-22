@@ -30,6 +30,7 @@
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
+#include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -190,7 +191,10 @@ struct PythonMLIRModule {
   // Create a boolean attribute.
   PythonAttribute boolAttr(bool value);
 
-  void compile() {
+  // Compile the module save the execution engine. "optLevel" and
+  // "codegenOptLevel" contain the levels of optimization to run (0 to 3) for
+  // transformations and codegen. -1 means ExecutionEngine default.
+  void compile(int optLevel, int codegenOptLevel) {
     PassManager manager(module->getContext());
     manager.addPass(mlir::createCanonicalizerPass());
     manager.addPass(mlir::createCSEPass());
@@ -201,7 +205,24 @@ struct PythonMLIRModule {
       return;
     }
 
-    auto created = mlir::ExecutionEngine::create(*module);
+    // Make sure the executione engine runs LLVM passes for the specified
+    // optimization level.
+    auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+    assert(tmBuilderOrError);
+    auto tmOrError = tmBuilderOrError->createTargetMachine();
+    assert(tmOrError);
+    targetMachine = std::move(tmOrError.get());
+    auto transformer = mlir::makeLLVMPassesTransformer(
+        /*llvmPasses=*/{},
+        optLevel == -1 ? llvm::Optional<unsigned>() : optLevel,
+        targetMachine.get(),
+        /*optPassesInsertPos=*/0);
+
+    auto created = mlir::ExecutionEngine::create(
+        *module, transformer,
+        codegenOptLevel == -1
+            ? llvm::Optional<llvm::CodeGenOpt::Level>()
+            : static_cast<llvm::CodeGenOpt::Level>(codegenOptLevel));
     llvm::handleAllErrors(created.takeError(),
                           [](const llvm::ErrorInfoBase &b) {
                             b.log(llvm::errs());
@@ -236,7 +257,11 @@ private:
   // One single module in a python-exposed MLIRContext for now.
   mlir::OwningModuleRef module;
   mlir::ModuleManager moduleManager;
+
+  // An execution engine and an associated target machine. The latter must
+  // outlive the former since it may be used by the transformation layers.
   std::unique_ptr<mlir::ExecutionEngine> engine;
+  std::unique_ptr<llvm::TargetMachine> targetMachine;
 };
 
 struct PythonFunctionContext {
@@ -796,7 +821,9 @@ PYBIND11_MODULE(pybind, m) {
            "Returns an mlir::Type defined by the IR passed in as the argument.")
       .def("compile", &PythonMLIRModule::compile,
            "Compiles the mlir::ModuleOp to LLVMIR a creates new opaque "
-           "ExecutionEngine backed by the ORC JIT.")
+           "ExecutionEngine backed by the ORC JIT. The arguments, if present, "
+           "indicates the level of LLVM optimizations to run (similar to -O?).",
+           py::arg("optLevel") = -1, py::arg("codegenOptLevel") = -1)
       .def("get_ir", &PythonMLIRModule::getIR,
            "Returns a dump of the MLIR representation of the module. This is "
            "used for serde to support out-of-process execution as well as "
