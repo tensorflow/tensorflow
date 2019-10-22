@@ -25,12 +25,14 @@ struct ObjectTypeGetter {
   ObjectType operator()(OpenGlTexture) const {
     return ObjectType::OPENGL_TEXTURE;
   }
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
   ObjectType operator()(OpenClBuffer) const {
     return ObjectType::OPENCL_BUFFER;
   }
   ObjectType operator()(OpenClTexture) const {
     return ObjectType::OPENCL_TEXTURE;
   }
+#endif
   ObjectType operator()(CpuMemory) const { return ObjectType::CPU_MEMORY; }
 };
 
@@ -40,8 +42,10 @@ struct ObjectValidityChecker {
   bool operator()(OpenGlTexture obj) const {
     return obj.id != GL_INVALID_INDEX && obj.format != GL_INVALID_ENUM;
   }
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
   bool operator()(OpenClBuffer obj) const { return obj.memobj; }
   bool operator()(OpenClTexture obj) const { return obj.memobj; }
+#endif
   bool operator()(CpuMemory obj) const {
     return obj.data != nullptr && obj.size_bytes > 0 &&
            (data_type == DataType::UNKNOWN ||
@@ -77,10 +81,12 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
       return absl::get_if<OpenGlBuffer>(&obj);
     case ObjectType::OPENGL_TEXTURE:
       return absl::get_if<OpenGlTexture>(&obj);
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
     case ObjectType::OPENCL_BUFFER:
       return absl::get_if<OpenClBuffer>(&obj);
     case ObjectType::OPENCL_TEXTURE:
       return absl::get_if<OpenClTexture>(&obj);
+#endif
     case ObjectType::UNKNOWN:
       return false;
   }

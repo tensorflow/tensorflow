@@ -39,7 +39,9 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
 #include <CL/cl.h>
+#endif
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -69,8 +71,10 @@ enum class ObjectType {
   OPENGL_SSBO,
   OPENGL_TEXTURE,
   CPU_MEMORY,
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
   OPENCL_TEXTURE,
   OPENCL_BUFFER,
+#endif
 };
 
 struct OpenGlBuffer {
@@ -89,6 +93,7 @@ struct OpenGlTexture {
   GLenum format = GL_INVALID_ENUM;
 };
 
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
 struct OpenClBuffer {
   OpenClBuffer() = default;
   explicit OpenClBuffer(cl_mem new_memobj) : memobj(new_memobj) {}
@@ -103,6 +108,7 @@ struct OpenClTexture {
   cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
 };
+#endif
 
 struct VulkanMemory {
   VulkanMemory() = default;
@@ -196,7 +202,11 @@ bool IsValid(const TensorObjectDef& def);
 uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
-                                   CpuMemory, OpenClBuffer, OpenClTexture>;
+                                   CpuMemory
+#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
+                                   ,OpenClBuffer, OpenClTexture
+#endif
+                                   >;
 
 // @return true if object is set and corresponding values are defined.
 bool IsValid(const TensorObjectDef& def, const TensorObject& object);
