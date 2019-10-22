@@ -22,6 +22,13 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+gen_zipped_test_file(
+    name = "zip_conv_edgetpu",
+    file = "conv_edgetpu.zip",
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
+)
+
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
     size = "medium",
@@ -478,16 +485,3 @@ tf_py_wrap_cc(
 )
 
 tflite_portable_test_suite()
-
-edgetpu_ops = [
-    "conv",
-    "maximum",
-    "minimum",
-]
-
-[gen_zipped_test_file(
-    name = "zip_%s_edgetpu" % op_name,
-    file = "%s_edgetpu.zip" % op_name,
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
-) for op_name in edgetpu_ops]
