@@ -1,0 +1,338 @@
+set(TENSORFLOW_LITE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../)
+set(CMAKE_CXX_STANDARD 11)
+
+add_library(tensorflow-lite
+  ${TENSORFLOW_LITE_DIR}/allocation.cc
+  ${TENSORFLOW_LITE_DIR}/arena_planner.cc
+  ${TENSORFLOW_LITE_DIR}/external_cpu_backend_context.cc
+  ${TENSORFLOW_LITE_DIR}/graph_info.cc
+  ${TENSORFLOW_LITE_DIR}/interpreter.cc
+  ${TENSORFLOW_LITE_DIR}/minimal_logging.cc
+  ${TENSORFLOW_LITE_DIR}/minimal_logging_default.cc
+  ${TENSORFLOW_LITE_DIR}/mmap_allocation.cc
+  ${TENSORFLOW_LITE_DIR}/mmap_allocation_disabled.cc
+  ${TENSORFLOW_LITE_DIR}/model.cc
+  ${TENSORFLOW_LITE_DIR}/mutable_op_resolver.cc
+  ${TENSORFLOW_LITE_DIR}/optional_debug_tools.cc
+  ${TENSORFLOW_LITE_DIR}/simple_memory_arena.cc
+  ${TENSORFLOW_LITE_DIR}/stderr_reporter.cc
+  ${TENSORFLOW_LITE_DIR}/string_util.cc
+  ${TENSORFLOW_LITE_DIR}/util.cc
+  ${TENSORFLOW_LITE_DIR}/c/c_api_internal.c
+  ${TENSORFLOW_LITE_DIR}/experimental/c/c_api_experimental.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/c/c_api.cc
+  ${TENSORFLOW_LITE_DIR}/core/subgraph.cc
+  ${TENSORFLOW_LITE_DIR}/core/api/error_reporter.cc
+  ${TENSORFLOW_LITE_DIR}/core/api/flatbuffer_conversions.cc
+  ${TENSORFLOW_LITE_DIR}/core/api/op_resolver.cc
+  ${TENSORFLOW_LITE_DIR}/core/api/tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/resource_variable/resource_variable.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/allocator.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/block_map.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/blocking_counter.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/context.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/have_built_path_for_avx2.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/have_built_path_for_avx512.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/kernel_arm32.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/kernel_arm64.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/kernel_avx2.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/kernel_avx512.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/pack_arm.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/pack_avx2.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/pack_avx512.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/pmu.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/thread_pool.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/trace.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/trmul.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/tune.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/wait.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/activations.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/add.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/add_n.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/arg_min_max.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/assign_variable.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/audio_spectrogram.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/basic_rnn.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/batch_to_space_nd.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/bidirectional_sequence_lstm.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/bidirectional_sequence_rnn.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/cast.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/ceil.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/comparisons.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/concatenation.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/conv.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/cpu_backend_context.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/cpu_backend_gemm_eigen.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/depthwise_conv.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/depth_to_space.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/dequantize.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/detection_postprocess.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/div.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/eigen_support.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/elementwise.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/embedding_lookup.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/embedding_lookup_sparse.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/exp.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/expand_dims.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/fake_quant.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/fill.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/floor.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/floor_div.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/floor_mod.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/fully_connected.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/gather.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/gather_nd.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/hashtable_lookup.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/if.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/kernel_util.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/l2norm.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/local_response_norm.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/logical.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/lsh_projection.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/lstm.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/lstm_eval.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/matrix_diag.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/matrix_set_diag.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/maximum_minimum.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/mfcc.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/mirror_pad.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/mul.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/neg.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/non_max_suppression.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/one_hot.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/pack.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/pad.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/pooling.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/pow.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/quantize.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/range.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/rank.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/read_variable.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/reduce.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/register.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/register_ref.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/reshape.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/resize_bilinear.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/resize_nearest_neighbor.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/reverse.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/reverse_sequence.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/rfft2d.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/round.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/select.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/shape.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/skip_gram.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/slice.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/space_to_batch_nd.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/space_to_depth.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/sparse_to_dense.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/split.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/split_v.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/squared_difference.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/squeeze.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/strided_slice.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/sub.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/svdf.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/tile.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/topk_v2.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/transpose.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/transpose_conv.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/unidirectional_sequence_lstm.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/unidirectional_sequence_rnn.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/unique.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/unpack.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/where.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/while.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/zeros_like.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/spectrogram.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/mfcc.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/mfcc_dct.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/neon_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/sse_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/mfcc_mel_filterbank.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/reference/portable_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/kernel_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/quantization_util.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/neon_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/sse_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/reference/portable_tensor_utils.cc
+  ${TENSORFLOW_LITE_DIR}/profiling/time.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/farmhash/src/farmhash.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fft2d/fftsg.c
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers/src/util.cpp
+  ${TENSORFLOW_LITE_DIR}/delegates/nnapi/nnapi_delegate_disabled.cc
+  ${TENSORFLOW_LITE_DIR}/nnapi/nnapi_implementation_disabled.cc
+)
+
+target_include_directories(tensorflow-lite PUBLIC
+  ${TENSORFLOW_LITE_DIR}/../..
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers/include
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
+)
+target_include_directories(tensorflow-lite PRIVATE
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/eigen
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/gemmlowp
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/neon_2_sse
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/farmhash/src
+)
+target_link_libraries(tensorflow-lite PUBLIC
+  stdc++ pthread m z
+)
+
+## minimal example
+add_executable(tflite-minimal
+  ${TENSORFLOW_LITE_DIR}/examples/minimal/minimal.cc
+)
+target_link_libraries(tflite-minimal tensorflow-lite gl_delegate EGL GLESv2)
+target_link_directories(tflite-minimal PUBLIC /usr/local/lib)
+
+## GPU delegate
+set(FLATBUFFERS_BUILD_FLATC ON)
+add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers)
+
+add_custom_command(
+  OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
+  OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model_generated.h
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups_generated.h
+  DEPENDS ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
+  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/make/downloads/flatbuffers/flatc
+          --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
+          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
+)
+
+add_library(gl_delegate
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/lstm.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/max_unpooling.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/conv.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/depthwise_conv.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/softmax.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/prelu.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/transpose_conv.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/fully_connected.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pad.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/mul.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/relu.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/reshape.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/registry.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/elementwise.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pooling.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/slice.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/concat.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/upsampling_bilinear.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/add.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_texture.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_context.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/command_queue.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/serialization.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_shader.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/phwc4_to_bhwc.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/bhwc_to_phwc4.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_surface.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/default_calculator.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/best_effort_calculator.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/ideal_workgroup_picker.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator_from_metadata.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/object_manager.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/runtime.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_errors.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_environment.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/float16_conversions.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_buffer.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_sync.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/compiled_node.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inline.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inplace.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_auto_input.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/variable_accessor.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/shader_codegen.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/preprocessor.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/rename.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/object_accessor.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/data_type.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/gpu_info.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_builder.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_transformer.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/operations.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/shape.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/remove_noop.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_mul_to_conv.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/add_bias.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/match_dilated_convolution.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_fully_connected.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/merge_padding_with.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_padding.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_add_to_conv.cc
+  # headers
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
+  # abseil
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/base/internal/raw_logging.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/base/internal/throw_delegate.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/numeric/int128.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/types/bad_variant_access.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/types/bad_any_cast.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/ascii.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/charconv.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/escaping.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/match.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/numbers.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/substitute.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_cat.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_replace.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_split.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/string_view.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/charconv_bigint.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/charconv_parse.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/memutil.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/ostringstream.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/pow10_helper.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/utf8.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/arg.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/bind.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/extension.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/float_conversion.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/output.cc
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/parser.cc
+)
+target_include_directories(gl_delegate PUBLIC
+  /usr/local/include/
+)
+target_include_directories(gl_delegate PRIVATE
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fp16/include
+)
+target_link_libraries(gl_delegate tensorflow-lite)
+
+## global compile option
+target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_GPU_DELEGATE_ENABLED)
+
+## benchmark
+add_executable(tflite-benchmark
+  ${TENSORFLOW_LITE_DIR}/tools/benchmark/benchmark_main.cc
+  ${TENSORFLOW_LITE_DIR}/tools/benchmark/benchmark_model.cc
+  ${TENSORFLOW_LITE_DIR}/tools/benchmark/benchmark_params.cc
+  ${TENSORFLOW_LITE_DIR}/tools/benchmark/benchmark_tflite_model.cc
+  ${TENSORFLOW_LITE_DIR}/tools/benchmark/benchmark_utils.cc
+  ${TENSORFLOW_LITE_DIR}/tools/evaluation/utils.cc
+  ${TENSORFLOW_LITE_DIR}/tools/command_line_flags.cc
+  ${TENSORFLOW_LITE_DIR}/profiling/profile_summarizer.cc
+  ${TENSORFLOW_LITE_DIR}/profiling/time.cc
+  ${TENSORFLOW_LITE_DIR}/../core/util/stats_calculator.cc
+)
+target_link_libraries(tflite-benchmark tensorflow-lite gl_delegate EGL GLESv2)
+target_link_directories(tflite-benchmark PUBLIC /usr/local/lib)
