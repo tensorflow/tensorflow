@@ -4515,7 +4515,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "nn_fused_batchnorm_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     additional_deps = [
         ":array_ops",
@@ -4527,10 +4527,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     shard_count = 16,
-    tags = [
-        "no_rocm",
-        "notap",  # TODO(b/143097607)
-    ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
