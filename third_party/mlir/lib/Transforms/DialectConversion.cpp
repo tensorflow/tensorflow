@@ -1022,6 +1022,7 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
       rewriterImpl.deadOps.insert(replacedOp);
   }
   assert(replacedRoot && "expected pattern to replace the root operation");
+  (void)replacedRoot;
 
   // Recursively legalize each of the new operations.
   for (unsigned i = curState.numCreatedOperations,
