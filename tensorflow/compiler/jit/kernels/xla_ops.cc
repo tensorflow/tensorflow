@@ -533,7 +533,6 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     compilation_successful.scalar<bool>()() = false;
     ctx->set_output(0, Tensor(cpu_allocator, DT_STRING, TensorShape({})));
     ctx->set_output(1, compilation_successful);
-    LOG(INFO) << "Compilation bailout!";
     return;
   }
 
