@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
+#include <cstdint>
 #include <list>
 #include <memory>
+
 #include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
@@ -69,8 +71,8 @@ class SimpleMemoryArena {
 
   TfLiteStatus Clear();
 
-  int64_t BasePointer() const {
-    return reinterpret_cast<int64_t>(underlying_buffer_aligned_ptr_);
+  std::intptr_t BasePointer() const {
+    return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
   }
 
  private:

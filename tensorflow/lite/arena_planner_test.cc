@@ -15,11 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/arena_planner.h"
 
 #include <cstdarg>
+#include <cstdint>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -183,16 +184,16 @@ class ArenaPlannerTest : public ::testing::Test {
 
   // Returns the actual offset of a given tensor, relative to the start of its
   // arena.
-  int64_t GetOffset(int tensor_index) {
+  std::ptrdiff_t GetOffset(int tensor_index) {
     const TfLiteTensor& tensor = (*graph_->tensors())[tensor_index];
-    return reinterpret_cast<int64_t>(tensor.data.raw) -
+    return reinterpret_cast<std::intptr_t>(tensor.data.raw) -
            planner_->BasePointer(tensor.allocation_type);
   }
 
   // Returns the first aligned offset after a given tensor.
-  int64_t GetOffsetAfter(int tensor_index) {
+  std::ptrdiff_t GetOffsetAfter(int tensor_index) {
     const TfLiteTensor& tensor = (*graph_->tensors())[tensor_index];
-    int64_t offset = GetOffset(tensor_index) + tensor.bytes;
+    std::ptrdiff_t offset = GetOffset(tensor_index) + tensor.bytes;
     // We must make sure the offset is aligned to kDefaultArenaAlignment.
     if (offset % kTensorAlignment != 0) {
       offset += kTensorAlignment - offset % kTensorAlignment;
