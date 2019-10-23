@@ -4827,6 +4827,8 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Broadcastable, NoSideEffect]>,

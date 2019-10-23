@@ -1440,6 +1440,25 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value *x,
                             perm);
 }
 
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  auto const_perm = dyn_cast_or_null<TF::ConstOp>(perm()->getDefiningOp());
+
+  if (!const_perm) {
+    return {};
+  }
+
+  auto const_value = const_perm.value();
+
+  const auto &elements = const_value.getValues<APInt>();
+  for (auto it : llvm::enumerate(elements)) {
+    if (it.index() != it.value()) {
+      return {};
+    }
+  }
+
+  return x();
+}
+
 //===----------------------------------------------------------------------===//
 // TruncateDivOp
 //===----------------------------------------------------------------------===//
