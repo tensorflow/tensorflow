@@ -301,7 +301,7 @@ class Variant {
   };
 
   template <typename T>
-  struct Value : ValueInterface {
+  struct Value final : ValueInterface {
     template <class... Args>
     explicit Value(in_place_t /*tag*/, Args&&... args)
         : value(std::forward<Args>(args)...) {}
@@ -310,17 +310,17 @@ class Variant {
     // build `alignof(Variant<void*>)`.
     ~Value() final = default;
 
-    TypeIndex TypeId() const override {
+    TypeIndex TypeId() const final {
       const TypeIndex value_type_index =
           MakeTypeIndex<typename std::decay<T>::type>();
       return value_type_index;
     }
 
-    void* RawPtr() override { return &value; }
+    void* RawPtr() final { return &value; }
 
-    const void* RawPtr() const override { return &value; }
+    const void* RawPtr() const final { return &value; }
 
-    ValueInterface* Clone() const override {
+    ValueInterface* Clone() const final {
       // NOTE: Use placement new here because we override `operator delete`,
       // and need to match the call to `port::Free()` with a call to
       // `port::Malloc()`.
@@ -329,41 +329,41 @@ class Variant {
       return clone;
     }
 
-    void MoveAssign(ValueInterface* memory) override {
+    void MoveAssign(ValueInterface* memory) final {
       CHECK(TypeId() == memory->TypeId())
           << TypeId().name() << " vs. " << memory->TypeId().name();
       static_cast<Value*>(memory)->value = std::move(value);
     }
 
-    void CloneInto(ValueInterface* memory) const override {
+    void CloneInto(ValueInterface* memory) const final {
       new (memory) Value(kInPlace, value);
     }
 
-    void MoveInto(ValueInterface* memory) override {
+    void MoveInto(ValueInterface* memory) final {
       new (memory) Value(kInPlace, std::move(value));
     }
 
-    void Swap(ValueInterface* memory) override {
+    void Swap(ValueInterface* memory) final {
       CHECK(TypeId() == memory->TypeId())
           << TypeId().name() << " vs. " << memory->TypeId().name();
       std::swap(value, static_cast<Value*>(memory)->value);
     }
 
-    string TypeName() const override { return TypeNameVariant(value); }
+    string TypeName() const final { return TypeNameVariant(value); }
 
-    string DebugString() const override { return DebugStringVariant(value); }
+    string DebugString() const final { return DebugStringVariant(value); }
 
-    void Encode(VariantTensorData* data) const override {
+    void Encode(VariantTensorData* data) const final {
       EncodeVariant(value, data);
     }
 
-    bool Decode(VariantTensorData data) override {
+    bool Decode(VariantTensorData data) final {
       return DecodeVariant(&data, &value);
     }
 
-    void Encode(string* buf) const override { EncodeVariant(value, buf); }
+    void Encode(string* buf) const final { EncodeVariant(value, buf); }
 
-    bool Decode(string buf) override { return DecodeVariant(&buf, &value); }
+    bool Decode(string buf) final { return DecodeVariant(&buf, &value); }
 
     // We override operator delete in order to selectively free memory
     // depending on if Value<VT> is stored inline or on the heap:
