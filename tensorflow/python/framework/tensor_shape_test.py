@@ -140,7 +140,6 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(None) == tensor_shape.Dimension(12))
     self.assertIsNone(
         tensor_shape.Dimension(None) == tensor_shape.Dimension(None))
-    self.assertEqual(tensor_shape.Dimension(12), 24.0 / 2)
 
     # None indicates ambiguous comparison, but comparison vs the wrong type
     # is unambigously False.
