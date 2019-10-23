@@ -20,12 +20,13 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -34,13 +35,12 @@ namespace mlir {
 namespace lite {
 
 // TODO(fengliuai): check the result for `allow_float` flag.
-TfLiteStatus QuantizeModel(const tflite::ModelT& input_model,
-                           const tflite::TensorType& input_type,
-                           const tflite::TensorType& output_type,
-                           const std::unordered_set<string>& operator_names,
-                           bool allow_float,
-                           flatbuffers::FlatBufferBuilder* builder,
-                           tflite::ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeModel(
+    const tflite::ModelT& input_model, const tflite::TensorType& input_type,
+    const tflite::TensorType& output_type,
+    const std::unordered_set<std::string>& operator_names, bool allow_float,
+    flatbuffers::FlatBufferBuilder* builder,
+    tflite::ErrorReporter* error_reporter) {
   // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`
   // flag
   if (input_type != output_type) {
@@ -85,7 +85,9 @@ TfLiteStatus QuantizeModel(const tflite::ModelT& input_model,
     pass_config.inference_type = tensorflow::DT_QUINT8;
   }
 
-  tensorflow::AddQuantizationPasses(pass_config, emit_adaptor, &pm);
+  pm.addPass(TFL::CreatePrepareQuantizePass(pass_config));
+  pm.addPass(TFL::CreateQuantizePass());
+  pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();

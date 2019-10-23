@@ -20,11 +20,12 @@ cc_library(
     ],
     hdrs = [
         "quantize_model.h",
+        "//tensorflow/compiler/mlir/lite:transforms/passes.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
-        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:protos_all_proto_cc",
