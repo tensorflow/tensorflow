@@ -1,0 +1,468 @@
+// -*- C++ -*-
+//===--------------------------- thread -----------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_THREAD
+#define _LIBCPP_THREAD
+
+#ifdef __xcore__
+#warning The 'thread' library is not supported by the xcore tools
+#endif
+
+/*
+
+    thread synopsis
+
+#define __STDCPP_THREADS__ __cplusplus
+
+namespace std
+{
+
+class thread
+{
+public:
+    class id;
+    typedef pthread_t native_handle_type;
+
+    thread() noexcept;
+    template <class F, class ...Args> explicit thread(F&& f, Args&&... args);
+    ~thread();
+
+    thread(const thread&) = delete;
+    thread(thread&& t) noexcept;
+
+    thread& operator=(const thread&) = delete;
+    thread& operator=(thread&& t) noexcept;
+
+    void swap(thread& t) noexcept;
+
+    bool joinable() const noexcept;
+    void join();
+    void detach();
+    id get_id() const noexcept;
+    native_handle_type native_handle();
+
+    static unsigned hardware_concurrency() noexcept;
+};
+
+void swap(thread& x, thread& y) noexcept;
+
+class thread::id
+{
+public:
+    id() noexcept;
+};
+
+bool operator==(thread::id x, thread::id y) noexcept;
+bool operator!=(thread::id x, thread::id y) noexcept;
+bool operator< (thread::id x, thread::id y) noexcept;
+bool operator<=(thread::id x, thread::id y) noexcept;
+bool operator> (thread::id x, thread::id y) noexcept;
+bool operator>=(thread::id x, thread::id y) noexcept;
+
+template<class charT, class traits>
+basic_ostream<charT, traits>&
+operator<<(basic_ostream<charT, traits>& out, thread::id id);
+
+namespace this_thread
+{
+
+thread::id get_id() noexcept;
+
+void yield() noexcept;
+
+template <class Clock, class Duration>
+void sleep_until(const chrono::time_point<Clock, Duration>& abs_time);
+
+template <class Rep, class Period>
+void sleep_for(const chrono::duration<Rep, Period>& rel_time);
+
+}  // this_thread
+
+}  // std
+
+*/
+
+#if defined(_LIBCPP_HAS_NO_THREADS) || defined(__xcore__)
+#error <thread> is not supported on this single threaded system
+#else // !_LIBCPP_HAS_NO_THREADS
+
+#include <__config>
+#include <iosfwd>
+#include <__functional_base>
+#include <type_traits>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <system_error>
+#include <chrono>
+#include <__mutex_base>
+#ifndef _LIBCPP_HAS_NO_VARIADICS
+#include <tuple>
+#endif
+#include <pthread.h>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+#define __STDCPP_THREADS__ __cplusplus
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+template <class _Tp>
+class __thread_specific_ptr
+{
+    pthread_key_t __key_;
+
+    __thread_specific_ptr(const __thread_specific_ptr&);
+    __thread_specific_ptr& operator=(const __thread_specific_ptr&);
+
+    static void __at_thread_exit(void*);
+public:
+    typedef _Tp* pointer;
+
+    __thread_specific_ptr();
+    ~__thread_specific_ptr();
+
+    _LIBCPP_INLINE_VISIBILITY
+    pointer get() const {return static_cast<_Tp*>(pthread_getspecific(__key_));}
+    _LIBCPP_INLINE_VISIBILITY
+    pointer operator*() const {return *get();}
+    _LIBCPP_INLINE_VISIBILITY
+    pointer operator->() const {return get();}
+    pointer release();
+    void reset(pointer __p = nullptr);
+};
+
+template <class _Tp>
+void
+__thread_specific_ptr<_Tp>::__at_thread_exit(void* __p)
+{
+    delete static_cast<pointer>(__p);
+}
+
+template <class _Tp>
+__thread_specific_ptr<_Tp>::__thread_specific_ptr()
+{
+    int __ec = pthread_key_create(&__key_, &__thread_specific_ptr::__at_thread_exit);
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    if (__ec)
+        throw system_error(error_code(__ec, system_category()),
+                           "__thread_specific_ptr construction failed");
+#endif
+}
+
+template <class _Tp>
+__thread_specific_ptr<_Tp>::~__thread_specific_ptr()
+{
+    pthread_key_delete(__key_);
+}
+
+template <class _Tp>
+typename __thread_specific_ptr<_Tp>::pointer
+__thread_specific_ptr<_Tp>::release()
+{
+    pointer __p = get();
+    pthread_setspecific(__key_, 0);
+    return __p;
+}
+
+template <class _Tp>
+void
+__thread_specific_ptr<_Tp>::reset(pointer __p)
+{
+    pointer __p_old = get();
+    pthread_setspecific(__key_, __p);
+    delete __p_old;
+}
+
+class _LIBCPP_TYPE_VIS thread;
+class _LIBCPP_TYPE_VIS __thread_id;
+
+namespace this_thread
+{
+
+_LIBCPP_INLINE_VISIBILITY __thread_id get_id() _NOEXCEPT;
+
+}  // this_thread
+
+template<> struct _LIBCPP_TYPE_VIS_ONLY hash<__thread_id>;
+
+class _LIBCPP_TYPE_VIS_ONLY __thread_id
+{
+    // FIXME: pthread_t is a pointer on Darwin but a long on Linux.
+    // NULL is the no-thread value on Darwin.  Someone needs to check
+    // on other platforms.  We assume 0 works everywhere for now.
+    pthread_t __id_;
+
+public:
+    _LIBCPP_INLINE_VISIBILITY
+    __thread_id() _NOEXCEPT : __id_(0) {}
+
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator==(__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return __x.__id_ == __y.__id_;}
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator!=(__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return !(__x == __y);}
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator< (__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return __x.__id_ < __y.__id_;}
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator<=(__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return !(__y < __x);}
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator> (__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return   __y < __x ;}
+    friend _LIBCPP_INLINE_VISIBILITY
+        bool operator>=(__thread_id __x, __thread_id __y) _NOEXCEPT
+        {return !(__x < __y);}
+
+    template<class _CharT, class _Traits>
+    friend
+    _LIBCPP_INLINE_VISIBILITY
+    basic_ostream<_CharT, _Traits>&
+    operator<<(basic_ostream<_CharT, _Traits>& __os, __thread_id __id)
+        {return __os << __id.__id_;}
+
+private:
+    _LIBCPP_INLINE_VISIBILITY
+    __thread_id(pthread_t __id) : __id_(__id) {}
+
+    friend __thread_id this_thread::get_id() _NOEXCEPT;
+    friend class _LIBCPP_TYPE_VIS thread;
+    friend struct _LIBCPP_TYPE_VIS_ONLY hash<__thread_id>;
+};
+
+template<>
+struct _LIBCPP_TYPE_VIS_ONLY hash<__thread_id>
+    : public unary_function<__thread_id, size_t>
+{
+    _LIBCPP_INLINE_VISIBILITY
+    size_t operator()(__thread_id __v) const
+    {
+        return hash<pthread_t>()(__v.__id_);
+    }
+};
+
+namespace this_thread
+{
+
+inline _LIBCPP_INLINE_VISIBILITY
+__thread_id
+get_id() _NOEXCEPT
+{
+    return pthread_self();
+}
+
+}  // this_thread
+
+class _LIBCPP_TYPE_VIS thread
+{
+    pthread_t __t_;
+
+    thread(const thread&);
+    thread& operator=(const thread&);
+public:
+    typedef __thread_id id;
+    typedef pthread_t native_handle_type;
+
+    _LIBCPP_INLINE_VISIBILITY
+    thread() _NOEXCEPT : __t_(0) {}
+#ifndef _LIBCPP_HAS_NO_VARIADICS
+    template <class _Fp, class ..._Args,
+              class = typename enable_if
+              <
+                   !is_same<typename decay<_Fp>::type, thread>::value
+              >::type
+             >
+        explicit thread(_Fp&& __f, _Args&&... __args);
+#else  // _LIBCPP_HAS_NO_VARIADICS
+    template <class _Fp> explicit thread(_Fp __f);
+#endif
+    ~thread();
+
+#ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
+    _LIBCPP_INLINE_VISIBILITY
+    thread(thread&& __t) _NOEXCEPT : __t_(__t.__t_) {__t.__t_ = 0;}
+    thread& operator=(thread&& __t) _NOEXCEPT;
+#endif  // _LIBCPP_HAS_NO_RVALUE_REFERENCES
+
+    _LIBCPP_INLINE_VISIBILITY
+    void swap(thread& __t) _NOEXCEPT {_VSTD::swap(__t_, __t.__t_);}
+
+    _LIBCPP_INLINE_VISIBILITY
+    bool joinable() const _NOEXCEPT {return __t_ != 0;}
+    void join();
+    void detach();
+    _LIBCPP_INLINE_VISIBILITY
+    id get_id() const _NOEXCEPT {return __t_;}
+    _LIBCPP_INLINE_VISIBILITY
+    native_handle_type native_handle() _NOEXCEPT {return __t_;}
+
+    static unsigned hardware_concurrency() _NOEXCEPT;
+};
+
+class __assoc_sub_state;
+
+class _LIBCPP_HIDDEN __thread_struct_imp;
+
+class _LIBCPP_TYPE_VIS __thread_struct
+{
+    __thread_struct_imp* __p_;
+
+    __thread_struct(const __thread_struct&);
+    __thread_struct& operator=(const __thread_struct&);
+public:
+    __thread_struct();
+    ~__thread_struct();
+
+    void notify_all_at_thread_exit(condition_variable*, mutex*);
+    void __make_ready_at_thread_exit(__assoc_sub_state*);
+};
+
+_LIBCPP_FUNC_VIS __thread_specific_ptr<__thread_struct>& __thread_local_data();
+
+#ifndef _LIBCPP_HAS_NO_VARIADICS
+
+template <class _Fp, class ..._Args, size_t ..._Indices>
+inline _LIBCPP_INLINE_VISIBILITY
+void
+__thread_execute(tuple<_Fp, _Args...>& __t, __tuple_indices<_Indices...>)
+{
+    __invoke(_VSTD::move(_VSTD::get<0>(__t)), _VSTD::move(_VSTD::get<_Indices>(__t))...);
+}
+
+template <class _Fp>
+void*
+__thread_proxy(void* __vp)
+{
+    __thread_local_data().reset(new __thread_struct);
+    std::unique_ptr<_Fp> __p(static_cast<_Fp*>(__vp));
+    typedef typename __make_tuple_indices<tuple_size<_Fp>::value, 1>::type _Index;
+    __thread_execute(*__p, _Index());
+    return nullptr;
+}
+
+template <class _Fp, class ..._Args,
+          class
+         >
+thread::thread(_Fp&& __f, _Args&&... __args)
+{
+    typedef tuple<typename decay<_Fp>::type, typename decay<_Args>::type...> _Gp;
+    _VSTD::unique_ptr<_Gp> __p(new _Gp(__decay_copy(_VSTD::forward<_Fp>(__f)),
+                                __decay_copy(_VSTD::forward<_Args>(__args))...));
+    int __ec = pthread_create(&__t_, 0, &__thread_proxy<_Gp>, __p.get());
+    if (__ec == 0)
+        __p.release();
+    else
+        __throw_system_error(__ec, "thread constructor failed");
+}
+
+#else  // _LIBCPP_HAS_NO_VARIADICS
+
+template <class _Fp>
+void*
+__thread_proxy(void* __vp)
+{
+    __thread_local_data().reset(new __thread_struct);
+    std::unique_ptr<_Fp> __p(static_cast<_Fp*>(__vp));
+    (*__p)();
+    return nullptr;
+}
+
+template <class _Fp>
+thread::thread(_Fp __f)
+{
+    std::unique_ptr<_Fp> __p(new _Fp(__f));
+    int __ec = pthread_create(&__t_, 0, &__thread_proxy<_Fp>, __p.get());
+    if (__ec == 0)
+        __p.release();
+    else
+        __throw_system_error(__ec, "thread constructor failed");
+}
+
+#endif  // _LIBCPP_HAS_NO_VARIADICS
+
+#ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
+
+inline _LIBCPP_INLINE_VISIBILITY
+thread&
+thread::operator=(thread&& __t) _NOEXCEPT
+{
+    if (__t_ != 0)
+        terminate();
+    __t_ = __t.__t_;
+    __t.__t_ = 0;
+    return *this;
+}
+
+#endif  // _LIBCPP_HAS_NO_RVALUE_REFERENCES
+
+inline _LIBCPP_INLINE_VISIBILITY
+void swap(thread& __x, thread& __y) _NOEXCEPT {__x.swap(__y);}
+
+namespace this_thread
+{
+
+_LIBCPP_FUNC_VIS void sleep_for(const chrono::nanoseconds& ns);
+
+template <class _Rep, class _Period>
+void
+sleep_for(const chrono::duration<_Rep, _Period>& __d)
+{
+    using namespace chrono;
+    if (__d > duration<_Rep, _Period>::zero())
+    {
+        _LIBCPP_CONSTEXPR duration<long double> _Max = nanoseconds::max();
+        nanoseconds __ns;
+        if (__d < _Max)
+        {
+            __ns = duration_cast<nanoseconds>(__d);
+            if (__ns < __d)
+                ++__ns;
+        }
+        else
+            __ns = nanoseconds::max();
+        sleep_for(__ns);
+    }
+}
+
+template <class _Clock, class _Duration>
+void
+sleep_until(const chrono::time_point<_Clock, _Duration>& __t)
+{
+    using namespace chrono;
+    mutex __mut;
+    condition_variable __cv;
+    unique_lock<mutex> __lk(__mut);
+    while (_Clock::now() < __t)
+        __cv.wait_until(__lk, __t);
+}
+
+template <class _Duration>
+inline _LIBCPP_INLINE_VISIBILITY
+void
+sleep_until(const chrono::time_point<chrono::steady_clock, _Duration>& __t)
+{
+    using namespace chrono;
+    sleep_for(__t - steady_clock::now());
+}
+
+inline _LIBCPP_INLINE_VISIBILITY
+void yield() _NOEXCEPT {sched_yield();}
+
+}  // this_thread
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif // !_LIBCPP_HAS_NO_THREADS
+
+#endif  // _LIBCPP_THREAD

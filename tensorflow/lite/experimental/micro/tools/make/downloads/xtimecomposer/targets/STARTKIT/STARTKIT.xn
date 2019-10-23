@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xmos.com http://www.xmos.com" ManuallySpecifiedRouting="true">
+  <Type>Board</Type>
+  <Name>XMOS startKIT</Name>
+  <BoardId>00083C0X</BoardId>
+  <Declarations>
+    <Declaration>tileref tile[1]</Declaration>
+    <Declaration>tileref xscope_tile</Declaration>
+    <Declaration>tileref adc_tile</Declaration>
+  </Declarations>
+  <Packages>
+    <Package id="0" Type="XS1-L1A-TQ128">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS1-L8A-64" Oscillator="24MHz" SystemFrequency="500MHz" RoutingId="32769">
+          <Boot>
+            <Source Location="SPI:bootFlash"/>
+          </Boot>
+          <Tile Number="0" Reference="tile[0]">
+            <Port Location="XS1_PORT_1A" Name="PORT_SPI_MISO"/>
+            <Port Location="XS1_PORT_1B" Name="PORT_SPI_SS"/>
+            <Port Location="XS1_PORT_1C" Name="PORT_SPI_CLK"/>
+            <Port Location="XS1_PORT_1D" Name="PORT_SPI_MOSI"/>
+          </Tile>
+          <RoutingTable>
+            <Bits>
+              <Bit number="0" direction="0"/>
+              <Bit number="15" direction="0"/>
+            </Bits>
+            <Links>
+              <Link name="XLF" direction="0"/>
+            </Links>
+          </RoutingTable>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+  <ExternalDevices>
+    <Device NodeId="0" Tile="0" Class="SPIFlash" Name="bootFlash" Type="S25FL204K">
+      <Attribute Name="PORT_SPI_MISO" Value="PORT_SPI_MISO"/>
+      <Attribute Name="PORT_SPI_SS" Value="PORT_SPI_SS"/>
+      <Attribute Name="PORT_SPI_CLK" Value="PORT_SPI_CLK"/>
+      <Attribute Name="PORT_SPI_MOSI" Value="PORT_SPI_MOSI"/>
+    </Device>
+  </ExternalDevices>
+  <Nodes>
+    <Node Id="1" Type="device:" routingId="0x8000" RoutingId="32768" Reference="xscope_tile">
+      <Service Id="0" Proto="xscope_host_data(chanend c);">
+        <Chanend Identifier="c" end="3"/>
+      </Service>
+    </Node>
+    <Node Id="2" Type="device:" routingId="0x0" RoutingId="0" Reference="adc_tile">
+      <Service Id="0" Proto="startkit_adc(chanend c);">
+        <Chanend Identifier="c" end="0xff"/>
+      </Service>
+    </Node>
+  </Nodes>
+  <Links>
+    <Link Encoding="2wire" Delays="5clk" Flags="XSCOPE">
+      <LinkEndpoint NodeId="0" Link="XLF"/>
+      <LinkEndpoint NodeId="1" Chanend="1"/>
+    </Link>
+    <Link>
+      <LinkEndpoint NodeId="1"/>
+      <LinkEndpoint NodeId="2"/>
+    </Link>
+  </Links>
+  <JTAGChain>
+    <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+</Network>

@@ -1,0 +1,59 @@
+export BUILDING_LIBRARY=1
+
+SHELL := $(if $(findstring Windows, $(OS))$(findstring WINDOWS,$(OS)),$(windir)\system32\cmd.exe,$(SHELL))
+
+MAKEFILE_LIST1 := $(foreach x, $(MAKEFILE_LIST), $(if $(wildcard $x),$x,"""$x"""))
+MAKEFILE_LIST2 := $(subst """,,$(subst """  """,&&&,$(MAKEFILE_LIST1)))
+
+XCOMMON_MAKEFILE := $(subst &&&,\ ,$(filter %Makefile.library1,$(MAKEFILE_LIST2)))
+
+MODULE_XCOMMON_DIR := $(patsubst %/Makefile.library1,%,$(XCOMMON_MAKEFILE))/..
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.file_handling
+
+
+GEN_DIR := .build/generated
+CURRENT_MODULE_DIR:=.
+
+include module_build_info
+
+XCC_FLAGS :=$(LIB_XCC_FLAGS_$(CURRENT_LIB))
+XCC_C_FLAGS := $(LIB_XCC_C_FLAGS_$(CURRENT_LIB))
+XCC_XC_FLAGS := $(LIB_XCC_XC_FLAGS_$(CURRENT_LIB))
+XCC_CPP_FLAGS := $(LIB_XCC_CPP_FLAGS_$(CURRENT_LIB))
+XCC_ASM_FLAGS := $(LIB_XCC_ASM_FLAGS_$(CURRENT_LIB))
+
+OVERRIDE_ALL_TARGET = 1
+OVERRIDE_CLEAN_TARGET = 1
+OVERRIDE_EXPORT_TARGET = 1
+
+ifeq ($(LIB_ARCH_$(CURRENT_LIB)),)
+ifeq ($(LIB_ARCH),)
+LIB_ARCH := xs1b
+endif
+else
+LIB_ARCH := $(LIB_ARCH_$(CURRENT_LIB))
+endif
+
+export CURRENT_LIB
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.common
+
+%.all:
+	@$(MAKE) ARCH=$* EXTRA_INCLUDE=module_build_info -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory lib
+
+all: $(foreach arch, $(LIB_ARCH), $(arch).all)
+	@echo Built all architectures
+
+.PHONY: clean
+
+%.clean:
+	@$(MAKE) ARCH=$* EXTRA_INCLUDE=module_build_info -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory clean_lib
+
+clean: $(foreach arch, $(LIB_ARCH), $(arch).clean)
+	@echo Cleaned all architectures
+
+.PHONY: export
+
+export: all
+	@$(MAKE) EXTRA_INCLUDE=module_build_info -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory do_export

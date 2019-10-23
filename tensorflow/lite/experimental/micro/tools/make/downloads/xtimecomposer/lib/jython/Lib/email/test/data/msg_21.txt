@@ -1,0 +1,20 @@
+From: aperson@dom.ain
+To: bperson@dom.ain
+Subject: Test
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+MIME message
+--BOUNDARY
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+One
+--BOUNDARY
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+Two
+--BOUNDARY--
+End of MIME message

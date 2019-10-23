@@ -1,0 +1,10 @@
+# You can set flags specifically for your module by using the MODULE_XCC_FLAGS
+# variable. So the following
+#
+#   MODULE_XCC_FLAGS = $(XCC_FLAGS) -O3
+#
+# specifies that everything in the modules should have the application
+# build flags with -O3 appended (so the files will build at
+# optimization level -O3).
+#
+# You can also set MODULE_XCC_C_FLAGS, MODULE_XCC_XC_FLAGS etc..

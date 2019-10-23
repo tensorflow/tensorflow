@@ -1,0 +1,49 @@
+# User must use xmake and not make
+ifneq ($(basename $(notdir $(lastword $(MAKE)))),xmake)
+  $(error You must use `xmake' to build the project and not `$(MAKE)')
+endif
+
+TLWARN = $$(warning Source file $1 in top level will not be built)
+$(foreach x,$(wildcard *.xc) $(wildcard *.c) $(wildcard *.cpp) $(wildcard *.h) $(wildcard *.S),$(eval $(call TLWARN,$x)))
+
+# Overide windows shell in case cygwin is present
+SHELL := $(if $(findstring Windows, $(OS))$(findstring WINDOWS,$(OS)),$(windir)\system32\cmd.exe,$(SHELL))
+
+MAKEFILE_LIST1 = $(foreach x, $(MAKEFILE_LIST), $(if $(wildcard $x),$x,"""$x"""))
+MAKEFILE_LIST2 = $(subst """,,$(subst """  """,&&&,$(MAKEFILE_LIST1)))
+
+XCOMMON_MAKEFILE = $(subst &&&,\ ,$(filter %Makefile.toplevel,$(MAKEFILE_LIST2)))
+
+MODULE_XCOMMON_DIR := $(patsubst %/Makefile.toplevel,%,$(XCOMMON_MAKEFILE))/..
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.file_handling
+
+
+BUILD_SUBDIRS := $(if $(filter all,$(BUILD_SUBDIRS)),$(wildcard app_*),$(BUILD_SUBDIRS))
+
+BUILD_SUBDIRS := $(call HANDLE_QUOTES, $(BUILD_SUBDIRS))
+
+ifeq ($(IGNORE_ERRORS),1)
+IGNORE_ERR=-
+else
+IGNORE_ERR=
+endif
+
+%.all:
+	$(IGNORE_ERR)cd $(call UNMANGLE,$*) && $(MAKE) all
+
+%.clean:
+	$(IGNORE_ERR)cd $(call UNMANGLE,$*) && $(MAKE) clean
+
+%.test:
+	$(IGNORE_ERR)cd $(call UNMANGLE,$*) && $(MAKE) test
+
+all: $(foreach x, $(BUILD_SUBDIRS), $x.all) 
+plugins: $(foreach x, $(PLUGIN_SUBDIRS), $x.all) 
+clean: $(foreach x, $(BUILD_SUBDIRS), $x.clean)
+clean_plugins: $(foreach x, $(PLUGIN_SUBDIRS), $x.clean) 
+test: $(foreach x, $(TEST_SUBDIRS), $x.test)
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.eclipse_projects
+
+

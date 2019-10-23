@@ -1,0 +1,123 @@
+Return-Path: <>
+Delivered-To: scr-admin@socal-raves.org
+Received: from cougar.noc.ucla.edu (cougar.noc.ucla.edu [169.232.10.18])
+	by babylon.socal-raves.org (Postfix) with ESMTP id CCC2C51B84
+	for <scr-admin@socal-raves.org>; Sun, 23 Sep 2001 20:13:54 -0700 (PDT)
+Received: from sims-ms-daemon by cougar.noc.ucla.edu
+ (Sun Internet Mail Server sims.3.5.2000.03.23.18.03.p10)
+ id <0GK500B01D0B8Y@cougar.noc.ucla.edu> for scr-admin@socal-raves.org; Sun,
+ 23 Sep 2001 20:14:35 -0700 (PDT)
+Received: from cougar.noc.ucla.edu
+ (Sun Internet Mail Server sims.3.5.2000.03.23.18.03.p10)
+ id <0GK500B01D0B8X@cougar.noc.ucla.edu>; Sun, 23 Sep 2001 20:14:35 -0700 (PDT)
+Date: Sun, 23 Sep 2001 20:14:35 -0700 (PDT)
+From: Internet Mail Delivery <postmaster@ucla.edu>
+Subject: Delivery Notification: Delivery has failed
+To: scr-admin@socal-raves.org
+Message-id: <0GK500B04D0B8X@cougar.noc.ucla.edu>
+MIME-version: 1.0
+Sender: scr-owner@socal-raves.org
+Errors-To: scr-owner@socal-raves.org
+X-BeenThere: scr@socal-raves.org
+X-Mailman-Version: 2.1a3
+Precedence: bulk
+List-Help: <mailto:scr-request@socal-raves.org?subject=help>
+List-Post: <mailto:scr@socal-raves.org>
+List-Subscribe: <http://socal-raves.org/mailman/listinfo/scr>,
+	<mailto:scr-request@socal-raves.org?subject=subscribe>
+List-Id: SoCal-Raves <scr.socal-raves.org>
+List-Unsubscribe: <http://socal-raves.org/mailman/listinfo/scr>,
+	<mailto:scr-request@socal-raves.org?subject=unsubscribe>
+List-Archive: <http://socal-raves.org/mailman/private/scr/>
+Content-Type: multipart/report; boundary="Boundary_(ID_PGS2F2a+z+/jL7hupKgRhA)"
+
+
+--Boundary_(ID_PGS2F2a+z+/jL7hupKgRhA)
+Content-type: text/plain; charset=ISO-8859-1
+
+This report relates to a message you sent with the following header fields:
+
+  Message-id: <002001c144a6$8752e060$56104586@oxy.edu>
+  Date: Sun, 23 Sep 2001 20:10:55 -0700
+  From: "Ian T. Henry" <henryi@oxy.edu>
+  To: SoCal Raves <scr@socal-raves.org>
+  Subject: [scr] yeah for Ians!!
+
+Your message cannot be delivered to the following recipients:
+
+  Recipient address: jangel1@cougar.noc.ucla.edu
+  Reason: recipient reached disk quota
+
+
+--Boundary_(ID_PGS2F2a+z+/jL7hupKgRhA)
+Content-type: message/DELIVERY-STATUS
+
+Original-envelope-id: 0GK500B4HD0888@cougar.noc.ucla.edu
+Reporting-MTA: dns; cougar.noc.ucla.edu
+
+Action: failed
+Status: 5.0.0 (recipient reached disk quota)
+Original-recipient: rfc822;jangel1@cougar.noc.ucla.edu
+Final-recipient: rfc822;jangel1@cougar.noc.ucla.edu
+
+--Boundary_(ID_PGS2F2a+z+/jL7hupKgRhA)
+Content-type: MESSAGE/RFC822
+
+Return-path: scr-admin@socal-raves.org
+Received: from sims-ms-daemon by cougar.noc.ucla.edu
+ (Sun Internet Mail Server sims.3.5.2000.03.23.18.03.p10)
+ id <0GK500B01D0B8X@cougar.noc.ucla.edu>; Sun, 23 Sep 2001 20:14:35 -0700 (PDT)
+Received: from panther.noc.ucla.edu by cougar.noc.ucla.edu
+ (Sun Internet Mail Server sims.3.5.2000.03.23.18.03.p10)
+ with ESMTP id <0GK500B4GD0888@cougar.noc.ucla.edu> for jangel1@sims-ms-daemon;
+ Sun, 23 Sep 2001 20:14:33 -0700 (PDT)
+Received: from babylon.socal-raves.org
+ (ip-209-85-222-117.dreamhost.com [209.85.222.117])
+ by panther.noc.ucla.edu (8.9.1a/8.9.1) with ESMTP id UAA09793 for
+ <jangel1@ucla.edu>; Sun, 23 Sep 2001 20:14:32 -0700 (PDT)
+Received: from babylon (localhost [127.0.0.1]) by babylon.socal-raves.org
+ (Postfix) with ESMTP id D3B2951B70; Sun, 23 Sep 2001 20:13:47 -0700 (PDT)
+Received: by babylon.socal-raves.org (Postfix, from userid 60001)
+ id A611F51B82; Sun, 23 Sep 2001 20:13:46 -0700 (PDT)
+Received: from tiger.cc.oxy.edu (tiger.cc.oxy.edu [134.69.3.112])
+ by babylon.socal-raves.org (Postfix) with ESMTP id ADA7351B70 for
+ <scr@socal-raves.org>; Sun, 23 Sep 2001 20:13:44 -0700 (PDT)
+Received: from ent (n16h86.dhcp.oxy.edu [134.69.16.86])
+ by tiger.cc.oxy.edu (8.8.8/8.8.8) with SMTP id UAA08100 for
+ <scr@socal-raves.org>; Sun, 23 Sep 2001 20:14:24 -0700 (PDT)
+Date: Sun, 23 Sep 2001 20:10:55 -0700
+From: "Ian T. Henry" <henryi@oxy.edu>
+Subject: [scr] yeah for Ians!!
+Sender: scr-admin@socal-raves.org
+To: SoCal Raves <scr@socal-raves.org>
+Errors-to: scr-admin@socal-raves.org
+Message-id: <002001c144a6$8752e060$56104586@oxy.edu>
+MIME-version: 1.0
+X-Mailer: Microsoft Outlook Express 5.50.4522.1200
+Content-type: text/plain; charset=us-ascii
+Precedence: bulk
+Delivered-to: scr-post@babylon.socal-raves.org
+Delivered-to: scr@socal-raves.org
+X-Converted-To-Plain-Text: from multipart/alternative by demime 0.98e
+X-Converted-To-Plain-Text: Alternative section used was text/plain
+X-BeenThere: scr@socal-raves.org
+X-Mailman-Version: 2.1a3
+List-Help: <mailto:scr-request@socal-raves.org?subject=help>
+List-Post: <mailto:scr@socal-raves.org>
+List-Subscribe: <http://socal-raves.org/mailman/listinfo/scr>,
+ <mailto:scr-request@socal-raves.org?subject=subscribe>
+List-Id: SoCal-Raves <scr.socal-raves.org>
+List-Unsubscribe: <http://socal-raves.org/mailman/listinfo/scr>,
+ <mailto:scr-request@socal-raves.org?subject=unsubscribe>
+List-Archive: <http://socal-raves.org/mailman/private/scr/>
+
+I always love to find more Ian's that are over 3 years old!!
+
+Ian
+_______________________________________________
+For event info, list questions, or to unsubscribe, see http://www.socal-raves.org/
+
+
+
+--Boundary_(ID_PGS2F2a+z+/jL7hupKgRhA)--
+

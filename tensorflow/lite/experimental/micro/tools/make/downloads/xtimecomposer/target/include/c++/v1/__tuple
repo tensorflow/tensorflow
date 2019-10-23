@@ -1,0 +1,331 @@
+// -*- C++ -*-
+//===----------------------------------------------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP___TUPLE
+#define _LIBCPP___TUPLE
+
+#include <__config>
+#include <cstddef>
+#include <type_traits>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+#ifdef _LIBCPP_HAS_NO_VARIADICS
+
+#include <__tuple_03>
+
+#else  // _LIBCPP_HAS_NO_VARIADICS
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+// __lazy_and
+
+template <bool _Last, class ..._Preds>
+struct __lazy_and_impl;
+
+template <class ..._Preds>
+struct __lazy_and_impl<false, _Preds...> : false_type {};
+
+template <>
+struct __lazy_and_impl<true> : true_type {};
+
+template <class _Pred>
+struct __lazy_and_impl<true, _Pred> : integral_constant<bool, _Pred::type::value> {};
+
+template <class _Hp, class ..._Tp>
+struct __lazy_and_impl<true, _Hp, _Tp...> : __lazy_and_impl<_Hp::type::value, _Tp...> {};
+
+template <class _P1, class ..._Pr>
+struct __lazy_and : __lazy_and_impl<_P1::type::value, _Pr...> {};
+
+// __lazy_not
+
+template <class _Pred>
+struct __lazy_not : integral_constant<bool, !_Pred::type::value> {};
+
+
+template <class _Tp> class _LIBCPP_TYPE_VIS_ONLY tuple_size;
+
+template <class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_size<const _Tp>
+    : public tuple_size<_Tp> {};
+
+template <class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_size<volatile _Tp>
+    : public tuple_size<_Tp> {};
+
+template <class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_size<const volatile _Tp>
+    : public tuple_size<_Tp> {};
+
+template <size_t _Ip, class _Tp> class _LIBCPP_TYPE_VIS_ONLY tuple_element;
+
+template <size_t _Ip, class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<_Ip, const _Tp>
+{
+public:
+    typedef typename add_const<typename tuple_element<_Ip, _Tp>::type>::type type;
+};
+
+template <size_t _Ip, class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<_Ip, volatile _Tp>
+{
+public:
+    typedef typename add_volatile<typename tuple_element<_Ip, _Tp>::type>::type type;
+};
+
+template <size_t _Ip, class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<_Ip, const volatile _Tp>
+{
+public:
+    typedef typename add_cv<typename tuple_element<_Ip, _Tp>::type>::type type;
+};
+
+template <class ..._Tp> class _LIBCPP_TYPE_VIS_ONLY tuple;
+template <class _T1, class _T2> struct _LIBCPP_TYPE_VIS_ONLY pair;
+template <class _Tp, size_t _Size> struct _LIBCPP_TYPE_VIS_ONLY array;
+
+template <class _Tp> struct __tuple_like : false_type {};
+
+template <class _Tp> struct __tuple_like<const _Tp> : public __tuple_like<_Tp> {};
+template <class _Tp> struct __tuple_like<volatile _Tp> : public __tuple_like<_Tp> {};
+template <class _Tp> struct __tuple_like<const volatile _Tp> : public __tuple_like<_Tp> {};
+
+template <class... _Tp> struct __tuple_like<tuple<_Tp...> > : true_type {};
+template <class _T1, class _T2> struct __tuple_like<pair<_T1, _T2> > : true_type {};
+template <class _Tp, size_t _Size> struct __tuple_like<array<_Tp, _Size> > : true_type {};
+
+template <size_t _Ip, class ..._Tp>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+typename tuple_element<_Ip, tuple<_Tp...> >::type&
+get(tuple<_Tp...>&) _NOEXCEPT;
+
+template <size_t _Ip, class ..._Tp>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+const typename tuple_element<_Ip, tuple<_Tp...> >::type&
+get(const tuple<_Tp...>&) _NOEXCEPT;
+
+template <size_t _Ip, class ..._Tp>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+typename tuple_element<_Ip, tuple<_Tp...> >::type&&
+get(tuple<_Tp...>&&) _NOEXCEPT;
+
+template <size_t _Ip, class _T1, class _T2>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+typename tuple_element<_Ip, pair<_T1, _T2> >::type&
+get(pair<_T1, _T2>&) _NOEXCEPT;
+
+template <size_t _Ip, class _T1, class _T2>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+const typename tuple_element<_Ip, pair<_T1, _T2> >::type&
+get(const pair<_T1, _T2>&) _NOEXCEPT;
+
+template <size_t _Ip, class _T1, class _T2>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+typename tuple_element<_Ip, pair<_T1, _T2> >::type&&
+get(pair<_T1, _T2>&&) _NOEXCEPT;
+
+template <size_t _Ip, class _Tp, size_t _Size>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+_Tp&
+get(array<_Tp, _Size>&) _NOEXCEPT;
+
+template <size_t _Ip, class _Tp, size_t _Size>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+const _Tp&
+get(const array<_Tp, _Size>&) _NOEXCEPT;
+
+template <size_t _Ip, class _Tp, size_t _Size>
+_LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+_Tp&&
+get(array<_Tp, _Size>&&) _NOEXCEPT;
+
+// __make_tuple_indices
+
+template <size_t...> struct __tuple_indices {};
+
+template <size_t _Sp, class _IntTuple, size_t _Ep>
+struct __make_indices_imp;
+
+template <size_t _Sp, size_t ..._Indices, size_t _Ep>
+struct __make_indices_imp<_Sp, __tuple_indices<_Indices...>, _Ep>
+{
+    typedef typename __make_indices_imp<_Sp+1, __tuple_indices<_Indices..., _Sp>, _Ep>::type type;
+};
+
+template <size_t _Ep, size_t ..._Indices>
+struct __make_indices_imp<_Ep, __tuple_indices<_Indices...>, _Ep>
+{
+    typedef __tuple_indices<_Indices...> type;
+};
+
+template <size_t _Ep, size_t _Sp = 0>
+struct __make_tuple_indices
+{
+    static_assert(_Sp <= _Ep, "__make_tuple_indices input error");
+    typedef typename __make_indices_imp<_Sp, __tuple_indices<>, _Ep>::type type;
+};
+
+// __tuple_types
+
+template <class ..._Tp> struct __tuple_types {};
+
+template <size_t _Ip>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<_Ip, __tuple_types<> >
+{
+public:
+    static_assert(_Ip == 0, "tuple_element index out of range");
+    static_assert(_Ip != 0, "tuple_element index out of range");
+};
+
+template <class _Hp, class ..._Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<0, __tuple_types<_Hp, _Tp...> >
+{
+public:
+    typedef _Hp type;
+};
+
+template <size_t _Ip, class _Hp, class ..._Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_element<_Ip, __tuple_types<_Hp, _Tp...> >
+{
+public:
+    typedef typename tuple_element<_Ip-1, __tuple_types<_Tp...> >::type type;
+};
+
+template <class ..._Tp>
+class _LIBCPP_TYPE_VIS_ONLY tuple_size<__tuple_types<_Tp...> >
+    : public integral_constant<size_t, sizeof...(_Tp)>
+{
+};
+
+template <class... _Tp> struct __tuple_like<__tuple_types<_Tp...> > : true_type {};
+
+// __make_tuple_types
+
+// __make_tuple_types<_Tuple<_Types...>, _Ep, _Sp>::type is a
+// __tuple_types<_Types...> using only those _Types in the range [_Sp, _Ep).
+// _Sp defaults to 0 and _Ep defaults to tuple_size<_Tuple>.  If _Tuple is a
+// lvalue_reference type, then __tuple_types<_Types&...> is the result.
+
+template <class _TupleTypes, class _Tp, size_t _Sp, size_t _Ep>
+struct __make_tuple_types_imp;
+
+template <class ..._Types, class _Tp, size_t _Sp, size_t _Ep>
+struct __make_tuple_types_imp<__tuple_types<_Types...>, _Tp, _Sp, _Ep>
+{
+    typedef typename remove_reference<_Tp>::type _Tpr;
+    typedef typename __make_tuple_types_imp<__tuple_types<_Types...,
+                                            typename conditional<is_lvalue_reference<_Tp>::value,
+                                                typename tuple_element<_Sp, _Tpr>::type&,
+                                                typename tuple_element<_Sp, _Tpr>::type>::type>,
+                                            _Tp, _Sp+1, _Ep>::type type;
+};
+
+template <class ..._Types, class _Tp, size_t _Ep>
+struct __make_tuple_types_imp<__tuple_types<_Types...>, _Tp, _Ep, _Ep>
+{
+    typedef __tuple_types<_Types...> type;
+};
+
+template <class _Tp, size_t _Ep = tuple_size<typename remove_reference<_Tp>::type>::value, size_t _Sp = 0>
+struct __make_tuple_types
+{
+    static_assert(_Sp <= _Ep, "__make_tuple_types input error");
+    typedef typename __make_tuple_types_imp<__tuple_types<>, _Tp, _Sp, _Ep>::type type;
+};
+
+// __tuple_convertible
+
+template <bool, class _Tp, class _Up>
+struct __tuple_convertible_imp : public false_type {};
+
+template <class _Tp0, class ..._Tp, class _Up0, class ..._Up>
+struct __tuple_convertible_imp<true, __tuple_types<_Tp0, _Tp...>, __tuple_types<_Up0, _Up...> >
+    : public integral_constant<bool,
+                               is_convertible<_Tp0, _Up0>::value &&
+                               __tuple_convertible_imp<true, __tuple_types<_Tp...>, __tuple_types<_Up...> >::value> {};
+
+template <>
+struct __tuple_convertible_imp<true, __tuple_types<>, __tuple_types<> >
+    : public true_type {};
+
+template <class _Tp, class _Up, bool = __tuple_like<typename remove_reference<_Tp>::type>::value,
+                                bool = __tuple_like<_Up>::value>
+struct __tuple_convertible
+    : public false_type {};
+
+template <class _Tp, class _Up>
+struct __tuple_convertible<_Tp, _Up, true, true>
+    : public __tuple_convertible_imp<tuple_size<typename remove_reference<_Tp>::type>::value ==
+                                     tuple_size<_Up>::value,
+             typename __make_tuple_types<_Tp>::type, typename __make_tuple_types<_Up>::type>
+{};
+
+// __tuple_constructible
+
+template <bool, class _Tp, class _Up>
+struct __tuple_constructible_imp : public false_type {};
+
+template <class _Tp0, class ..._Tp, class _Up0, class ..._Up>
+struct __tuple_constructible_imp<true, __tuple_types<_Tp0, _Tp...>, __tuple_types<_Up0, _Up...> >
+    : public integral_constant<bool,
+                               is_constructible<_Up0, _Tp0>::value &&
+                               __tuple_constructible_imp<true, __tuple_types<_Tp...>, __tuple_types<_Up...> >::value> {};
+
+template <>
+struct __tuple_constructible_imp<true, __tuple_types<>, __tuple_types<> >
+    : public true_type {};
+
+template <class _Tp, class _Up, bool = __tuple_like<typename remove_reference<_Tp>::type>::value,
+                                bool = __tuple_like<_Up>::value>
+struct __tuple_constructible
+    : public false_type {};
+
+template <class _Tp, class _Up>
+struct __tuple_constructible<_Tp, _Up, true, true>
+    : public __tuple_constructible_imp<tuple_size<typename remove_reference<_Tp>::type>::value ==
+                                     tuple_size<_Up>::value,
+             typename __make_tuple_types<_Tp>::type, typename __make_tuple_types<_Up>::type>
+{};
+
+// __tuple_assignable
+
+template <bool, class _Tp, class _Up>
+struct __tuple_assignable_imp : public false_type {};
+
+template <class _Tp0, class ..._Tp, class _Up0, class ..._Up>
+struct __tuple_assignable_imp<true, __tuple_types<_Tp0, _Tp...>, __tuple_types<_Up0, _Up...> >
+    : public integral_constant<bool,
+                               is_assignable<_Up0&, _Tp0>::value &&
+                               __tuple_assignable_imp<true, __tuple_types<_Tp...>, __tuple_types<_Up...> >::value> {};
+
+template <>
+struct __tuple_assignable_imp<true, __tuple_types<>, __tuple_types<> >
+    : public true_type {};
+
+template <class _Tp, class _Up, bool = __tuple_like<typename remove_reference<_Tp>::type>::value,
+                                bool = __tuple_like<_Up>::value>
+struct __tuple_assignable
+    : public false_type {};
+
+template <class _Tp, class _Up>
+struct __tuple_assignable<_Tp, _Up, true, true>
+    : public __tuple_assignable_imp<tuple_size<typename remove_reference<_Tp>::type>::value ==
+                                    tuple_size<_Up>::value,
+             typename __make_tuple_types<_Tp>::type, typename __make_tuple_types<_Up>::type>
+{};
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif  // _LIBCPP_HAS_NO_VARIADICS
+
+#endif  // _LIBCPP___TUPLE

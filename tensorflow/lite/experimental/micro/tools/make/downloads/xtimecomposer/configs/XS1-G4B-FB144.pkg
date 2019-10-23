@@ -1,0 +1,452 @@
+<XPins xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="XPins.xsd">
+  <Pins>
+    <Pin name="X0D28" number="0">
+      <Port name="XS1_PORT_4F" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="2"/>
+    </Pin>
+    <Pin name="X0D27" number="1">
+      <Port name="XS1_PORT_4E" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="1"/>
+    </Pin>
+    <Pin name="X0D26" number="2">
+      <Port name="XS1_PORT_4E" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D25" number="3">
+      <Port name="XS1_PORT_1J" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D24" number="4">
+      <Port name="XS1_PORT_1I" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D23" number="5">
+      <Port name="XS1_PORT_1H" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D22" number="6">
+      <XLink node="0" number="11" bitNum="4" dir="out"/>
+      <Port name="XS1_PORT_1G" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D21" number="7">
+      <XLink node="0" number="11" bitNum="3" dir="out"/>
+      <Port name="XS1_PORT_4C" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="15"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="31"/>
+    </Pin>
+    <Pin name="X2D20" number="8">
+      <XLink node="0" number="11" bitNum="2" dir="out"/>
+      <Port name="XS1_PORT_4C" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="14"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="30"/>
+    </Pin>
+    <Pin name="X2D19" number="9">
+      <XLink node="0" number="11" bitNum="1" dir="out"/>
+      <Port name="XS1_PORT_4D" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="13"/>
+    </Pin>
+    <Pin name="X2D18" number="10">
+      <XLink node="0" number="11" bitNum="0" dir="out"/>
+      <Port name="XS1_PORT_4D" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="12"/>
+    </Pin>
+    <Pin name="X2D17" number="11">
+      <XLink node="0" number="11" bitNum="0" dir="in"/>
+      <Port name="XS1_PORT_4D" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="11"/>
+    </Pin>
+    <Pin name="X2D16" number="12">
+      <XLink node="0" number="11" bitNum="1" dir="in"/>
+      <Port name="XS1_PORT_4D" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="10"/>
+    </Pin>
+    <Pin name="X2D15" number="13">
+      <XLink node="0" number="11" bitNum="2" dir="in"/>
+      <Port name="XS1_PORT_4C" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="9"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="29"/>
+    </Pin>
+    <Pin name="X2D14" number="14">
+      <XLink node="0" number="11" bitNum="3" dir="in"/>
+      <Port name="XS1_PORT_4C" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8B" node="0" core="2" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="8"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="28"/>
+    </Pin>
+    <Pin name="X2D13" number="15">
+      <XLink node="0" number="11" bitNum="4" dir="in"/>
+      <Port name="XS1_PORT_1F" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D12" number="16">
+      <Port name="XS1_PORT_1E" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D11" number="17">
+      <Port name="XS1_PORT_1D" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D10" number="18">
+      <XLink node="0" number="10" bitNum="4" dir="out"/>
+      <Port name="XS1_PORT_1C" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D09" number="19">
+      <XLink node="0" number="10" bitNum="3" dir="out"/>
+      <Port name="XS1_PORT_4A" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="7"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="27"/>
+    </Pin>
+    <Pin name="X2D08" number="20">
+      <XLink node="0" number="10" bitNum="2" dir="out"/>
+      <Port name="XS1_PORT_4A" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="6"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="26"/>
+    </Pin>
+    <Pin name="X2D07" number="21">
+      <XLink node="0" number="10" bitNum="1" dir="out"/>
+      <Port name="XS1_PORT_4B" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="5"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="25"/>
+    </Pin>
+    <Pin name="X2D06" number="22">
+      <XLink node="0" number="10" bitNum="0" dir="out"/>
+      <Port name="XS1_PORT_4B" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="4"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="24"/>
+    </Pin>
+    <Pin name="X2D05" number="23">
+      <XLink node="0" number="10" bitNum="0" dir="in"/>
+      <Port name="XS1_PORT_4B" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="3"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="23"/>
+    </Pin>
+    <Pin name="X2D04" number="24">
+      <XLink node="0" number="10" bitNum="1" dir="in"/>
+      <Port name="XS1_PORT_4B" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="2"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="22"/>
+    </Pin>
+    <Pin name="X2D03" number="25">
+      <XLink node="0" number="10" bitNum="2" dir="in"/>
+      <Port name="XS1_PORT_4A" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="1"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="21"/>
+    </Pin>
+    <Pin name="X2D02" number="26">
+      <XLink node="0" number="10" bitNum="3" dir="in"/>
+      <Port name="XS1_PORT_4A" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8A" node="0" core="2" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16A" node="0" core="2" priority="2" bitNum="0"/>
+      <Port name="XS1_PORT_32A" node="0" core="2" priority="3" bitNum="20"/>
+    </Pin>
+    <Pin name="X2D01" number="27">
+      <XLink node="0" number="10" bitNum="4" dir="in"/>
+      <Port name="XS1_PORT_1B" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D00" number="28">
+      <Port name="XS1_PORT_1A" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D43" number="29">
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="0" bitNum="7"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="1" bitNum="15"/>
+    </Pin>
+    <Pin name="X2D42" number="30">
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="0" bitNum="6"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="1" bitNum="14"/>
+    </Pin>
+    <Pin name="X2D41" number="31">
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="0" bitNum="5"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="1" bitNum="13"/>
+    </Pin>
+    <Pin name="X2D40" number="32">
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="0" bitNum="4"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="1" bitNum="12"/>
+    </Pin>
+    <Pin name="X2D39" number="33">
+      <Port name="XS1_PORT_1P" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="11"/>
+    </Pin>
+    <Pin name="X2D38" number="34">
+      <Port name="XS1_PORT_1O" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="10"/>
+    </Pin>
+    <Pin name="X2D37" number="35">
+      <Port name="XS1_PORT_1N" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="9"/>
+    </Pin>
+    <Pin name="X2D36" number="36">
+      <Port name="XS1_PORT_1M" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="2" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="8"/>
+    </Pin>
+    <Pin name="X2D35" number="37">
+      <Port name="XS1_PORT_1L" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D34" number="38">
+      <Port name="XS1_PORT_1K" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D33" number="39">
+      <Port name="XS1_PORT_4E" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="7"/>
+    </Pin>
+    <Pin name="X2D32" number="40">
+      <Port name="XS1_PORT_4E" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="6"/>
+    </Pin>
+    <Pin name="X2D31" number="41">
+      <Port name="XS1_PORT_4F" node="0" core="2" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="5"/>
+    </Pin>
+    <Pin name="X2D30" number="42">
+      <Port name="XS1_PORT_4F" node="0" core="2" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="4"/>
+    </Pin>
+    <Pin name="X2D29" number="43">
+      <Port name="XS1_PORT_4F" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="3"/>
+    </Pin>
+    <Pin name="X2D28" number="44">
+      <Port name="XS1_PORT_4F" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="2"/>
+    </Pin>
+    <Pin name="X2D27" number="45">
+      <Port name="XS1_PORT_4E" node="0" core="2" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="1"/>
+    </Pin>
+    <Pin name="X2D26" number="46">
+      <Port name="XS1_PORT_4E" node="0" core="2" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8C" node="0" core="2" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16B" node="0" core="2" priority="2" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D25" number="47">
+      <Port name="XS1_PORT_1J" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X2D24" number="48">
+      <Port name="XS1_PORT_1I" node="0" core="2" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D23" number="49">
+      <Port name="XS1_PORT_1H" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D22" number="50">
+      <XLink node="0" number="3" bitNum="4" dir="out"/>
+      <Port name="XS1_PORT_1G" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D21" number="51">
+      <XLink node="0" number="3" bitNum="3" dir="out"/>
+      <Port name="XS1_PORT_4C" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="15"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="31"/>
+    </Pin>
+    <Pin name="X0D20" number="52">
+      <XLink node="0" number="3" bitNum="2" dir="out"/>
+      <Port name="XS1_PORT_4C" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="14"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="30"/>
+    </Pin>
+    <Pin name="X0D19" number="53">
+      <XLink node="0" number="3" bitNum="1" dir="out"/>
+      <Port name="XS1_PORT_4D" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="13"/>
+    </Pin>
+    <Pin name="X0D18" number="54">
+      <XLink node="0" number="3" bitNum="0" dir="out"/>
+      <Port name="XS1_PORT_4D" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="12"/>
+    </Pin>
+    <Pin name="X0D17" number="55">
+      <XLink node="0" number="3" bitNum="0" dir="in"/>
+      <Port name="XS1_PORT_4D" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="11"/>
+    </Pin>
+    <Pin name="X0D16" number="56">
+      <XLink node="0" number="3" bitNum="1" dir="in"/>
+      <Port name="XS1_PORT_4D" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="10"/>
+    </Pin>
+    <Pin name="X0D15" number="57">
+      <XLink node="0" number="3" bitNum="2" dir="in"/>
+      <Port name="XS1_PORT_4C" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="9"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="29"/>
+    </Pin>
+    <Pin name="X0D14" number="58">
+      <XLink node="0" number="3" bitNum="3" dir="in"/>
+      <Port name="XS1_PORT_4C" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8B" node="0" core="0" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="8"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="28"/>
+    </Pin>
+    <Pin name="X0D13" number="59">
+      <XLink node="0" number="3" bitNum="4" dir="in"/>
+      <Port name="XS1_PORT_1F" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D12" number="60">
+      <Port name="XS1_PORT_1E" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D11" number="61">
+      <Port name="XS1_PORT_1D" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D10" number="62">
+      <XLink node="0" number="2" bitNum="4" dir="out"/>
+      <Port name="XS1_PORT_1C" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D09" number="63">
+      <XLink node="0" number="2" bitNum="3" dir="out"/>
+      <Port name="XS1_PORT_4A" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="7"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="27"/>
+    </Pin>
+    <Pin name="X0D08" number="64">
+      <XLink node="0" number="2" bitNum="2" dir="out"/>
+      <Port name="XS1_PORT_4A" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="6"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="26"/>
+    </Pin>
+    <Pin name="X0D07" number="65">
+      <XLink node="0" number="2" bitNum="1" dir="out"/>
+      <Port name="XS1_PORT_4B" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="5"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="25"/>
+    </Pin>
+    <Pin name="X0D06" number="66">
+      <XLink node="0" number="2" bitNum="0" dir="out"/>
+      <Port name="XS1_PORT_4B" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="4"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="24"/>
+    </Pin>
+    <Pin name="X0D05" number="67">
+      <XLink node="0" number="2" bitNum="0" dir="in"/>
+      <Port name="XS1_PORT_4B" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="3"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="23"/>
+    </Pin>
+    <Pin name="X0D04" number="68">
+      <XLink node="0" number="2" bitNum="1" dir="in"/>
+      <Port name="XS1_PORT_4B" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="2"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="22"/>
+    </Pin>
+    <Pin name="X0D03" number="69">
+      <XLink node="0" number="2" bitNum="2" dir="in"/>
+      <Port name="XS1_PORT_4A" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="1"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="21"/>
+    </Pin>
+    <Pin name="X0D02" number="70">
+      <XLink node="0" number="2" bitNum="3" dir="in"/>
+      <Port name="XS1_PORT_4A" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8A" node="0" core="0" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16A" node="0" core="0" priority="2" bitNum="0"/>
+      <Port name="XS1_PORT_32A" node="0" core="0" priority="3" bitNum="20"/>
+    </Pin>
+    <Pin name="X0D01" number="71">
+      <XLink node="0" number="2" bitNum="4" dir="in"/>
+      <Port name="XS1_PORT_1B" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D00" number="72">
+      <Port name="XS1_PORT_1A" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D43" number="73">
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="0" bitNum="7"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="1" bitNum="15"/>
+    </Pin>
+    <Pin name="X0D42" number="74">
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="0" bitNum="6"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="1" bitNum="14"/>
+    </Pin>
+    <Pin name="X0D41" number="75">
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="0" bitNum="5"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="1" bitNum="13"/>
+    </Pin>
+    <Pin name="X0D40" number="76">
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="0" bitNum="4"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="1" bitNum="12"/>
+    </Pin>
+    <Pin name="X0D39" number="77">
+      <Port name="XS1_PORT_1P" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="11"/>
+    </Pin>
+    <Pin name="X0D38" number="78">
+      <Port name="XS1_PORT_1O" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="1" bitNum="2"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="10"/>
+    </Pin>
+    <Pin name="X0D37" number="79">
+      <Port name="XS1_PORT_1N" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="1" bitNum="1"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="9"/>
+    </Pin>
+    <Pin name="X0D36" number="80">
+      <Port name="XS1_PORT_1M" node="0" core="0" priority="0" bitNum="0"/>
+      <Port name="XS1_PORT_8D" node="0" core="0" priority="1" bitNum="0"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="8"/>
+    </Pin>
+    <Pin name="X0D35" number="81">
+      <Port name="XS1_PORT_1L" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D34" number="82">
+      <Port name="XS1_PORT_1K" node="0" core="0" priority="0" bitNum="0"/>
+    </Pin>
+    <Pin name="X0D33" number="83">
+      <Port name="XS1_PORT_4E" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="7"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="7"/>
+    </Pin>
+    <Pin name="X0D32" number="84">
+      <Port name="XS1_PORT_4E" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="6"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="6"/>
+    </Pin>
+    <Pin name="X0D31" number="85">
+      <Port name="XS1_PORT_4F" node="0" core="0" priority="0" bitNum="3"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="5"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="5"/>
+    </Pin>
+    <Pin name="X0D30" number="86">
+      <Port name="XS1_PORT_4F" node="0" core="0" priority="0" bitNum="2"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="4"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="4"/>
+    </Pin>
+    <Pin name="X0D29" number="87">
+      <Port name="XS1_PORT_4F" node="0" core="0" priority="0" bitNum="1"/>
+      <Port name="XS1_PORT_8C" node="0" core="0" priority="1" bitNum="3"/>
+      <Port name="XS1_PORT_16B" node="0" core="0" priority="2" bitNum="3"/>
+    </Pin>
+  </Pins>
+</XPins>

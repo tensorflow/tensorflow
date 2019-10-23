@@ -1,0 +1,7 @@
+This is a test of the example testbench.
+
+To build:
+  xmake
+
+To run:
+  xmake run

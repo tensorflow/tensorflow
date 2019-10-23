@@ -1,0 +1,19 @@
+From: aperson@dom.ain
+To: bperson@dom.ain
+Content-Type: multipart/digest; boundary=XYZ
+
+--XYZ
+Content-Type: text/plain
+
+
+This is a text plain part that is counter to recommended practice in
+RFC 2046, $5.1.5, but is not illegal
+
+--XYZ
+
+From: cperson@dom.ain
+To: dperson@dom.ain
+
+A submessage
+
+--XYZ--

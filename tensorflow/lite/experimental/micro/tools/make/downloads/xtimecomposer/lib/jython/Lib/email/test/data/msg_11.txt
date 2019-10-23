@@ -1,0 +1,7 @@
+Content-Type: message/rfc822
+MIME-Version: 1.0
+Subject: The enclosing message
+
+Subject: An enclosed message
+
+Here is the body of the message.

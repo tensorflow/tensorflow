@@ -1,0 +1,36 @@
+SP0 =
+SP = $(SP0) $(SP0)
+
+ESCAPED_SPACE_IN_MIDDLE = A\ B
+ESCAPED_SPACE = $(subst A,,$(subst B,,$(ESCAPED_SPACE_IN_MIDDLE)))
+
+# Spaces in filenames are a pain, here are some mangling/unmangling functions
+# so we can pass them around make
+CHAR3=@@@@
+CHAR2=!!!!
+CHAR1=""""
+MANGLE_DRIVES = $(foreach x,$1,$(if $(findstring :,$x),/$(CHAR3)$(subst :,$(CHAR3),$x),$x))
+UNMANGLE_DRIVES = $(subst $(CHAR3),:,$(subst /$(CHAR3),,$1))
+MANGLE=$(call MANGLE_DRIVES,$(call MANGLE_NO_DRIVES,$1))
+MANGLE_NO_DRIVES = $(subst $(SP),$(CHAR2),$1)
+UNMANGLE=$(strip $(call UNMANGLE_DRIVES,$(subst $(CHAR2),$(ESCAPED_SPACE),$1)))
+REMANGLE=$(subst \ ,$(CHAR2),$1)
+UNMANGLE_NO_ESCAPE=$(strip $(call UNMANGLE_DRIVES,$(subst $(CHAR2), ,$1)))
+QUOTE_AROUND = $(foreach x,$2,$(if $(filter $(1)%,$x),$(if $(wildcard $x),$x,$x$(CHAR1)),$(if $(wildcard $x),$x,$(CHAR1)$x$(CHAR1))))
+JOIN_QUOTED = $(call MANGLE_DRIVES,$(subst $(CHAR1),,$(subst $(CHAR1) $(CHAR1),$(CHAR2),$1)))
+
+ESCAPE_SPACES = $(subst $(CHAR3),\ ,$(subst $(SP),\ ,$(subst \ ,$(CHAR3),$(strip $1))))
+
+UNESCAPE_SPACES = $(subst \ , ,$1)
+
+WILDCARD = $(call JOIN_QUOTED,$(call QUOTE_AROUND,$(dir $(firstword $(call UNMANGLE_NO_ESCAPE,$1))),$(wildcard $(call UNMANGLE,$1))))
+
+# Adds ../ to a relative path
+IS_RELATIVE = $(if $(filter ./.build%,$1),1,$(if $(filter /%,$1),,$(if $(filter :%,$(subst $(CHAR3), :,$(subst :, :,$1))),,1)))
+DOTDOT = $(if $(call IS_RELATIVE,$1),../$1,$1)
+
+
+SPLIT_UNQUOTED = $(strip $(subst $(QUOTE),,$(if $(filter $(QUOTE)%,$1),$1,$(subst $(CHAR2), ,$1))))
+HANDLE_QUOTES = $(strip $(foreach x,$(subst $(CHAR2)$(QUOTE),$(CHAR2) $(QUOTE),$(subst $(QUOTE)$(CHAR2), $(CHAR2),$(call MANGLE,$(1)))),$(call SPLIT_UNQUOTED,$x)))
+
+QUOTE = "

@@ -1,0 +1,35 @@
+export LIBRARIES
+
+# Overide windows shell in case cygwin is present
+SHELL := $(if $(findstring Windows, $(OS))$(findstring WINDOWS,$(OS)),$(windir)\system32\cmd.exe,$(SHELL))
+
+MODULE_XCOMMON_DIR = $(XMOS_MAKE_PATH)/xcommon/module_xcommon
+
+include module_build_info
+
+ifeq ($(LIBRARIES),)
+LIBRARIES := $(LIBRARY)
+endif
+
+%.all: 
+	@echo Building $*
+	@$(MAKE) CURRENT_LIB=$* --no-print-directory -f $(MODULE_XCOMMON_DIR)/build/Makefile.library1 all
+
+%.clean: 
+	@echo Cleaning $*
+	@$(MAKE) CURRENT_LIB=$* --no-print-directory  -f $(MODULE_XCOMMON_DIR)/build/Makefile.library1 clean
+
+%.export: 
+	@echo Exporting $*
+
+all: $(foreach lib, $(LIBRARIES), $(lib).all)
+	@echo Built all libraries
+
+clean: $(foreach lib, $(LIBRARIES), $(lib).clean)
+	@echo Done
+
+ifeq ($(filter export, $(MAKECMDGOALS)),export)
+export: $(foreach lib, $(LIBRARIES), $(lib).all)
+	@$(MAKE) CURRENT_LIB=$(firstword $(LIBRARIES)) --no-print-directory -f $(MODULE_XCOMMON_DIR)/build/Makefile.library1 export
+	@echo Done
+endif

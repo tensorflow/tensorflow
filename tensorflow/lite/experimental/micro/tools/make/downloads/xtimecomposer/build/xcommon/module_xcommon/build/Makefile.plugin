@@ -1,0 +1,489 @@
+###########################################
+# XMOS PLUGIN MAKEFILE
+#
+# Include this makefile *after* defining the following variables
+#
+# BASE_DIR = home directory of project (i.e. where the bin/ and src/ directories are)
+#
+# SOURCE_DIRS = directories under the src/ directory containing source to compiler 
+# INCLUDE_DIRS = directories under the src/ direcotry containing header files
+#
+# LIB_DIRS = directories under the src directory containing libraries
+#
+# SOURCE_FILES_[binary] = source files specific to a particular binary
+#
+# EXCLUDE_FILES = list of files to exclude from the build (just the file names - no path needed)
+#
+# CC_FLAGS = flags for cc
+#
+# CC_FLAGS_[source_file] = flags for a specific source file (will
+#                           overide CC_FLAGS)
+#
+# BUILD_NAME = The name of the build. This affects where binaries and libraries
+#               are put under bin/ and lib/ and the 
+#               directory under current directory that the intermediate build 
+#               files are kept in. . Defaults to $(TARGET).
+#
+##########################################
+
+BASE_DIR ?= .
+VERBOSE ?= 0
+AUTO_ECLIPSE ?= 0
+
+# Define some generic OS functions
+ifeq ($(OS),WINDOWS)
+WINFLAG=1
+else
+ifeq ($(findstring Windows, $(OS)),Windows)
+WINFLAG=1
+else
+WINFLAG=0
+endif
+endif
+
+MODULE_XMOS_COMMON_DIR ?= $(BASE_DIR)/../module_xmos_common
+
+ifeq ($(WINFLAG),1)
+TARGET=win
+XCC=xcc
+CC=cl.exe
+LINK=link.exe
+CP=copy $(subst /,\,$(1))
+RM=cmd /c if exist "$(subst /,\,$(1))" del /Q /F "$(subst /,\,$(1))"
+RMRF=cmd /c if exist "$(subst /,\,$(1))" RMDIR /S /Q "$(subst /,\,$(1))"
+MKDIR=cmd /c if not exist $(subst /,\,$(1)) mkdir $(subst /,\,$(1))
+NULL=nul
+CAT=type
+OS=WINDOWS
+SHELL=C:\Windows\system32\cmd.exe
+TO_OS=$(subst /,\,$(1))
+OPT_TO_OS=$(foreach x,$(subst -L,/LIBPATH:,$(subst -L  ,/LIBPATH:,$(subst -I,/I,$(subst -I ,/I,$(call TO_OS,$1))))),$(patsubst -%,/%,$x))
+USE_XDEP=1
+XDEP ?= $(call TO_OS, $(MODULE_XMOS_COMMON_DIR)/build/xdep.exe)
+AUTO_PROJ ?= $(call TO_OS, $(MODULE_XMOS_COMMON_DIR)/build/auto_proj.exe)
+
+LINK32_LIBS = kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib \
+            advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib \
+            odbccp32.lib comctl32.lib wsock32.lib rpcrt4.lib
+
+
+CC_C_FLAGS += -nologo -Wall -wd4514 -wd4996 -wd4820 -wd4710 -wd4711 -EHac -D "WIN32" -D "_MBCS" -Fo".-" -Fd".-" -FD -c
+
+CC_CPP_FLAGS += -nologo -Wall -wd4514 -wd4996 -wd4820 -wd4710 -wd4711 -EHac -D "WIN32" -D "_MBCS" -Fo".-" -Fd".-" -FD -c
+
+CC_MAP_FLAGS := $(CC_MAP_FLAGS)
+
+OUT = /Fo
+
+FOUND_TOOLCHAIN = $(filter Visual Studio, $(INCLUDE))
+
+else
+KERNEL=$(shell uname -s)
+TARGET=
+ifeq ($(KERNEL),Linux)
+TARGET:=linux
+endif
+ifeq ($(KERNEL),linux)
+TARGET:=linux
+endif
+ifeq ($(KERNEL),Darwin)
+TARGET:=darwin
+endif
+ifeq ($(KERNEL),)
+$(error Cannot determine OS type)
+endif
+XCC=xcc
+CC=g++
+LINK=g++
+CP=cp $(1)
+RM=rm -f $(1)
+RMRF=rm -rf $(1)
+MKDIR=mkdir -p $(1)
+NULL=/dev/null
+CAT=cat
+OS=UNIX
+TO_OS=$(1)
+OPT_TO_OS=$(1)
+USE_XDEP=0
+XDEP ?= wine $(call TO_OS, $(MODULE_XMOS_COMMON_DIR)/build/xdep.exe)
+AUTO_PROJ ?= wine $(call TO_OS, $(MODULE_XMOS_COMMON_DIR)/build/auto_proj.exe)
+IS_64=$(filter %_64,$(shell uname -a))
+
+ifeq ($(TARGET),linux)
+ifneq ($(IS_64),)
+CC_MAP_FLAGS :=  $(CC_MAP_FLAGS) -m32 -L/usr/lib32 -lstdc++
+CC_FLAGS := -fPIC -m32 $(CC_FLAGS) 
+endif
+endif
+
+ifeq ($(TARGET),linux)
+CC_MAP_FLAGS := $(CC_MAP_FLAGS) -shared
+else
+CC_MAP_FLAGS := $(CC_MAP_FLAGS) -dynamiclib
+endif
+
+OUT = -o 
+
+FOUND_TOOLCHAIN = $(shell which g++)
+endif
+
+
+CC_C_FLAGS ?= $(CC_FLAGS)
+CC_CPP_FLAGS ?= $(CC_FLAGS)
+CC_XC_FLAGS ?= $(CC_FLAGS)
+CC_ASM_FLAGS ?= $(CC_FLAGS)
+CC_MAP_FLAGS ?=  $(CC_FLAGS) 
+
+
+.SUFFIXES:
+
+# General utility function
+
+IS_DIR = $(wildcard $1/*)
+
+KEEP_IF_DIR = $(if $(call IS_DIR,$1),$1,)
+
+SEARCH_DIR := $(BASE_DIR)/../..
+
+MAKEFILE_COMMON = $(filter %module_xmos_common/build/Makefile.common,$(MAKEFILE_LIST))
+
+MAKEFILE_COMMON_DIR = $(patsubst %/build/Makefile.common,%,$(MAKEFILE_COMMON))
+
+
+
+GET_ALL_SUBDIRS = $1 $(foreach x,$(filter-out %archive, $(wildcard $1/*)),$(if $(call IS_DIR, $x), $(call GET_ALL_SUBDIRS, $x),))
+
+EXPAND_DIR = $(if $(filter %*,$1), $(call GET_ALL_SUBDIRS,$(subst *,.,$(patsubst %/*,%,$1))),$1)
+
+GET_C_FILES = $(foreach x, $(foreach y,$(1), $(call EXPAND_DIR,$(BASE_DIR)/../$(CURRENT_MODULE)/$y)), $(wildcard $x/*.c))
+GET_CPP_FILES = $(foreach x, $(foreach y, $(1), $(call EXPAND_DIR,$(BASE_DIR)/../$(CURRENT_MODULE)/$y)), $(wildcard $x/*.cpp))
+GET_ASM_FILES = $(foreach x, $(foreach y, $(1), $(call EXPAND_DIR,$(BASE_DIR)/../$(CURRENT_MODULE)/$y)), $(wildcard $x/*.s)) $(foreach x, $(foreach y, $(1), $(call EXPAND_DIR,$(BASE_DIR)/../$(CURRENT_MODULE)/$y)), $(wildcard $x/*.S))
+GET_ALL_FILES = $(call GET_C_FILES, $1) $(call GET_XC_FILES, $1) $(call GET_ASM_FILES, $1)
+
+
+SET_CC_FLAGS = $(foreach z, $(call GET_ALL_FILES, $1), $(if $(CC_FLAGS_$(notdir $z)),,$(eval CC_FLAGS_$(notdir $z) = $2)))
+SET_CC_C_FLAGS = $(foreach z, $(call GET_C_FILES, $1), $(if $(CC_FLAGS_$(notdir $z)),,$(eval CC_FLAGS_$(notdir $z) = $2)))
+SET_CC_CPP_FLAGS = $(foreach z, $(call GET_CPP_FILES, $1), $(if $(CC_FLAGS_$(notdir $z)),,$(eval CC_FLAGS_$(notdir $z) = $2)))
+SET_CC_ASM_FLAGS = $(foreach z, $(call GET_ASM_FILES, $1), $(if $(CC_FLAGS_$(notdir $z)),,$(eval CC_FLAGS_$(notdir $z) = $2)))
+
+
+TO_OBJ = $(patsubst %.cpp,%.o,$(patsubst %.S,%.o,$(patsubst %.xc,%.o, $(patsubst %.c,%.o, $(patsubst %.s,%.o, $(1))))))
+
+ifeq ($(SRC_PREFIX),1)
+MY_SRCDIR = $(BASE_DIR)/src
+else
+MY_SRCDIR = $(BASE_DIR)
+endif
+
+
+SRCDIR = $(if $(call IS_MODULE_DIR,$1),$(call GET_MODULE_DIR,$1),$(MY_SRCDIR)/$1) 
+
+
+# Work out the directories and file lists
+PLUGIN_NAME ?= $(subst .,_,$(notdir $(abspath .)))
+ifeq ($(strip $(PLUGIN_NAME)),) 
+PLUGIN_NAME := $(subst .,_,$(notdir $(abspath .)))
+endif
+BUILD_NAME ?= $(TARGET)
+WORKING_DIR ?= .build
+TARGET_DIR = ./$(WORKING_DIR)
+FAKE_INC_DIR = $(TARGET_DIR)/fake_inc
+
+BIN_DIR=$(BASE_DIR)/bin/
+
+INCLUDE_DIRS ?= *
+SOURCE_DIRS ?= *
+LIB_DIRS ?= *
+
+
+FULL_INCLUDE_DIRS := $(foreach x, $(INCLUDE_DIRS), $(call EXPAND_DIR,$(call SRCDIR,$x)))
+FULL_SOURCE_DIRS := $(foreach x, $(SOURCE_DIRS), $(call EXPAND_DIR,$(call SRCDIR,$x)))
+FULL_LIB_DIRS := $(foreach x, $(LIB_DIRS), $(call EXPAND_DIR,$(call SRCDIR,$x)))
+
+
+QUOTED_INCLUDE_DIRS = $(foreach x, $(FULL_INCLUDE_DIRS),"../$x")
+
+
+ALL_BIN_SOURCE_FILES = $(foreach x, $(BINARIES), $(SOURCE_FILES_$x))
+
+C_SOURCE_FILES = $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.c))
+C_OBJ_FILES = $(patsubst %.c, %.o, $(C_SOURCE_FILES))
+C_DEP_FILES = $(patsubst %.c, $(TARGET_DIR)/%.d, $(notdir $(C_SOURCE_FILES)))
+
+CPP_SOURCE_FILES = $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.cpp))
+CPP_OBJ_FILES = $(patsubst %.cpp, %.o, $(CPP_SOURCE_FILES))
+CPP_DEP_FILES = $(patsubst %.cpp, $(TARGET_DIR)/%.d, $(notdir $(CPP_SOURCE_FILES)))
+
+ASM_SOURCE_FILES = $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.s)) $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.S))
+ASM_OBJ_FILES = $(patsubst %.S, %.o, $(patsubst %.s, %.o, $(ASM_SOURCE_FILES)))
+ASM_DEP_FILES = $(patsubst %.S, $(TARGET_DIR)/%.d, $(notdir $(filter %.S,$(ASM_SOURCE_FILES))))
+
+XTA_SOURCE_FILES = $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.xta)) 
+
+OBJ_SOURCE_FILES = $(foreach x, $(FULL_SOURCE_DIRS), $(wildcard $x/*.o))
+
+
+
+SOURCE_FILES = $(C_SOURCE_FILES) $(CPP_SOURCE_FILES) $(XC_SOURCE_FILES) $(ASM_SOURCE_FILES)
+
+EXCLUDE_FILES_1 = $(EXCLUDE_FILES) $(ALL_BIN_SOURCE_FILES)
+
+EXCLUDE_DEP_FILES = $(patsubst %.S,%(TARGET_DIR)/%.d, $(patsubst %.cpp,$(TARGET_DIR)/%.d,$(patsubst %.xc,$(TARGET_DIR)/%.d, $(patsubst %.c,$(TARGET_DIR)/%.d, $(EXCLUDE_FILES_1)))))
+
+EXCLUDE_OBJ_FILES = $(call TO_OBJ, $(EXCLUDE_FILES_1))
+
+OBJ_FILES0 = $(filter-out $(EXCLUDE_OBJ_FILES), $(notdir $(C_OBJ_FILES) $(XC_OBJ_FILES) $(ASM_OBJ_FILES) $(CPP_OBJ_FILES) $(OBJ_SOURCE_FILES)))
+OBJ_FILES = $(foreach x, $(OBJ_FILES0), $(TARGET_DIR)/$x)
+
+DEP_FILES_0 = $(filter-out $(EXCLUDE_DEP_FILES),$(CPP_DEP_FILES) $(C_DEP_FILES) $(XC_DEP_FILES) $(ASM_DEP_FILES))
+DEP_FILES = $(patsubst %.d, %.0.d, $(DEP_FILES_0))
+
+HEADER_FILES = $(filter-out $(EXCLUDE_FILES),$(foreach x, $(FULL_INCLUDE_DIRS), $(wildcard $x/*.h)))
+
+NOTDIR_HEADER_FILES = $(foreach x,$(HEADER_FILES),$(notdir $x))
+
+HEADER_DEP_FILES = $(patsubst %.h, %.dh, $(foreach x, $(HEADER_FILES), $(TARGET_DIR)/$(notdir $x)))
+
+HEADER_STATUS_FILES = $(HEADER_DEP_FILES:%.dh=%.hstat)
+
+XMOS_PATH = $(XCC_EXEC_PREFIX)..
+
+INCLUDE_FLAGS = $(foreach x,$(QUOTED_INCLUDE_DIRS),-I$x) -I"$(XMOS_PATH)/include"
+
+
+
+VPATH = $(FULL_SOURCE_DIRS) 
+VPATH += $(FULL_INCLUDE_DIRS)
+VPATH += $(FAKE_INC_DIR)
+
+ifeq ($(USE_XDEP),1)
+ifeq ($(WINFLAG),1)
+SYS_INCLUDE = $(subst \,/,$(subst ;, ,$(subst Program Files,PROGRA~2,$(subst Program Files (x86),PROGRA~2,$(1))))) $(subst \,/,$(subst ;, ,$(subst Program Files,PROGRA~1,$(subst Program Files (x86),PROGRA~1,$(1)))))
+VPATH += $(call SYS_INCLUDE, $(CC_C_INCLUDE_PATH))
+VPATH += $(call SYS_INCLUDE, $(CC_XC_INCLUDE_PATH))
+VPATH += $(call SYS_INCLUDE, $(CC_ASM_INCLUDE_PATH))
+else
+SYS_INCLUDE = $(subst :, ,$1)
+VPATH += $(call SYS_INCLUDE, $(CC_C_INCLUDE_PATH))
+VPATH += $(call SYS_INCLUDE, $(CC_XC_INCLUDE_PATH))
+VPATH += $(call SYS_INCLUDE, $(CC_ASM_INCLUDE_PATH))
+endif
+endif
+
+LIB_FILES = $(foreach x, $(FULL_LIB_DIRS), $(wildcard $x/xs1b/*.a))
+
+LIB_FLAGS = $(foreach x,$(FULL_LIB_DIRS), -L $(call TO_OS, ../$x)) $(foreach x,$(LIB_FILES),-l$(patsubst lib%.a,%,$(notdir $x)))
+
+# Make rules for directories
+
+$(FAKE_INC_DIR)/ : | $(TARGET_DIR)
+	@-$(call MKDIR, $(FAKE_INC_DIR)) > $(NULL)
+
+$(TARGET_DIR)/ :
+	@-$(call MKDIR, $(TARGET_DIR)) > $(NULL)
+
+$(BIN_DIR)/:
+	@-$(call MKDIR,$(BIN_DIR)) > $(NULL)
+
+$(LIB_DIR)/:
+	@-$(call MKDIR,$(LIB_DIR)) > $(NULL)
+
+
+# Make rules for source
+
+
+# Make rules for objects
+XAR = xmosar
+XOBJDUMP = xobjdump
+
+define LANG
+$(strip $(if $(filter %.c, $1), C, 
+  $(if $(filter %.xc, $1), XC,
+     $(if $(filter %.cpp, $1), CPP,
+	$(if $(filter %.S, $1), ASM,
+	   $(if $(filter %.s, $1), ASM, ))))))
+endef
+
+define lang_flags
+$(if $(CC_$(call LANG,$1)_FLAGS), $(CC_$(call LANG,$1)_FLAGS), $(CC_FLAGS))
+endef
+
+define make_flags
+$(if $(CC_FLAGS_$(notdir $1)), $(CC_FLAGS_$(notdir $1))  , $(call lang_flags, $1) ) 
+endef
+
+ifeq ($(WINFLAG),1)
+$(HEADER_FILES):
+	@rem
+else
+$(HEADER_FILES):
+	@echo -n
+endif
+
+ifneq ($(VERBOSE),1)
+.SILENT: $(OBJ_FILES) $(BIN_DIR) $(TARGET_DIR) $(FAKE_INC_DIR)
+endif
+
+%.h: | $(FAKE_INC_DIR)
+	@echo WARNING: Include file $@ missing
+	@echo "Missing include file" > $(FAKE_INC_DIR)/$(notdir $@)
+
+
+$(TARGET_DIR)/%.o :  %.c  | $(TARGET_DIR)
+	@echo Compiling $(notdir $<)
+	cd $(TARGET_DIR) && $(CC) -c $(call OPT_TO_OS, $(INCLUDE_FLAGS)) $(call OPT_TO_OS, $(call make_flags,$<)) ../$< $(addprefix ../, ) $(OUT)../$@
+
+$(TARGET_DIR)/%.o :  %.cpp  | $(TARGET_DIR)
+	@echo Compiling $(notdir $<)
+	cd $(TARGET_DIR) && $(CC) -c $(call OPT_TO_OS, $(INCLUDE_FLAGS)) $(call OPT_TO_OS, $(call make_flags,$<)) ../$< $(addprefix ../, ) $(OUT)../$@
+
+$(TARGET_DIR)/%.o :  %.S  | $(TARGET_DIR)
+	@echo Compiling $(notdir $<)
+	cd $(TARGET_DIR) && $(CC) -c $(INCLUDE_FLAGS) $(call make_flags,$<) ../$< $(addprefix ../, ) $(OUT)../$@
+
+$(TARGET_DIR)/%.o : %.s  | $(TARGET_DIR)
+	@echo Compiling $(notdir $<)
+	cd $(TARGET_DIR) && $(CC) -c $(INCLUDE_FLAGS) $(call make_flags,$<) ../$< $(addprefix ../, ) $(OUT)../$@
+
+.PHONY: eclipse_config
+
+
+ifeq ($(WINFLAG),0)
+ECLIPSE_PROJECTS = $(foreach m,$(USED_MODULES), <project>$(call REMOVE_MODULE_VERSION,$m)<\/project>)
+eclipse_config:
+	@echo "Updating eclipse config"
+	@sed -e 's/<project>.*<\/project>//g' < .project > .tmpproject
+	@sed -i -e 's/<projects>/<projects>$(ECLIPSE_PROJECTS)/g' .tmpproject
+	@$(call CP,.tmpproject .project)
+	@$(call RM,.tmpproject)
+else
+ECLIPSE_PROJECTS = $(foreach m,$(USED_MODULES), <project>$(call REMOVE_MODULE_VERSION,$m)</project>)
+eclipse_config:
+	@echo "Updating eclipse config"
+	@$(AUTO_PROJ) "$(ECLIPSE_PROJECTS)" < .project > .tmpproject
+	@cmd /c more .tmpproject > .project
+endif
+
+ifeq ($(AUTO_ECLIPSE),1)
+ECLIPSE_CONFIG=eclipse_config
+else
+ECLIPSE_CONFIG=
+endif
+
+ifeq ($(VERBOSE),1)
+$(BIN_DIR)/%.so :  $(OBJ_FILES)  $(XTA_SOURCE_FILES) $(LIB_FILES) | $(ECLIPSE_CONFIG) $(BIN_DIR)/ 
+	cd $(TARGET_DIR) && $(LINK)  $(CC_MAP_FLAGS) $(LIB_FLAGS) $(addprefix ../, $(OBJ_FILES)) $(addprefix ../, ) $(addprefix ../, $(XTA_SOURCE_FILES)) $(OUT)../$@
+
+$(BIN_DIR)/%.dll :  $(OBJ_FILES)  $(XTA_SOURCE_FILES) $(LIB_FILES) | $(ECLIPSE_CONFIG) $(BIN_DIR)/ 
+	cd $(TARGET_DIR) && $(LINK)  $(LINK32_LIBS) /DLL /nologo $(CC_MAP_FLAGS) $(call OPT_TO_OS,$(LIB_FLAGS)) $(addprefix ../, $(OBJ_FILES)) $(addprefix ../, ) $(addprefix ../, $(XTA_SOURCE_FILES)) /out:../$@
+
+else
+$(BIN_DIR)/%.so :  $(OBJ_FILES)   $(XTA_SOURCE_FILES) $(LIB_FILES) | $(ECLIPSE_CONFIG) $(BIN_DIR)/ 
+	@echo Creating $(notdir $@)
+	@cd $(TARGET_DIR) && $(LINK)  $(CC_MAP_FLAGS) $(LIB_FLAGS) $(addprefix ../, $(OBJ_FILES)) $(addprefix ../, ) $(addprefix ../, $(XTA_SOURCE_FILES))  $(OUT)../$@
+
+$(BIN_DIR)/%.dll :  $(OBJ_FILES)  $(XTA_SOURCE_FILES) $(LIB_FILES) | $(ECLIPSE_CONFIG) $(BIN_DIR)/ 
+	@echo Creating $(notdir $@)
+	@cd $(TARGET_DIR) && $(LINK)  $(LINK32_LIBS) /DLL /nologo $(CC_MAP_FLAGS) $(call OPT_TO_OS,$(LIB_FLAGS)) $(addprefix ../, $(OBJ_FILES)) $(addprefix ../, ) $(addprefix ../, $(XTA_SOURCE_FILES)) /out:../$@
+
+endif
+
+
+ifeq ($(VERBOSE),1)
+$(LIB_DIR)/%.a :  $(OBJ_FILES)   |$(LIB_DIR)/ 
+	cd $(TARGET_DIR) && $(XAR) crvu ../$@ $(addprefix ../, $(OBJ_FILES)) 
+else
+$(LIB_DIR)/%.a :  $(OBJ_FILES)   |$(LIB_DIR)/ 
+	@echo Creating $(notdir $@)
+	@cd $(TARGET_DIR) && $(XAR) crvu ../$@ $(addprefix ../, $(OBJ_FILES)) 
+endif
+
+
+# Dependency generation
+
+ifeq ($(USE_XDEP),1)
+
+$(TARGET_DIR)/%.hstat: %.h
+	@echo hstat > $@
+
+
+$(TARGET_DIR)/%.dh : %.h | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@$(XDEP) $(notdir $<) $(patsubst %.dh, %.hstat, $@) < $(call TO_OS,$<) > $(call TO_OS,$@)
+
+$(TARGET_DIR)/%.d : %.c | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@$(XDEP) $(notdir $<) $(TARGET_DIR)/$(call TO_OBJ,$(notdir $<)) < $(call TO_OS,$<) > $(call TO_OS,$@)
+
+$(TARGET_DIR)/%.d : %.cpp | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@$(XDEP) $(notdir $<) $(TARGET_DIR)/$(call TO_OBJ,$(notdir $<)) < $(call TO_OS,$<) > $(call TO_OS,$@)
+
+$(TARGET_DIR)/%.d : %.S | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@$(XDEP) $(notdir $<) $(TARGET_DIR)/$(call TO_OBJ,$(notdir $<)) < $(call TO_OS,$<) > $(call TO_OS,$@)
+
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(FOUND_TOOLCHAIN),)
+-include $(DEP_FILES_0)
+-include $(HEADER_DEP_FILES)
+endif
+endif
+
+else
+
+$(TARGET_DIR)/%.d : %.c | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@cd $(TARGET_DIR) && $(CC)  -MMD -E $(CC_FLAGS) $(INCLUDE_FLAGS) "$(realpath $<)" > $(NULL)
+
+$(TARGET_DIR)/%.d : %.cpp | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@cd $(TARGET_DIR) && $(CC)  -MMD -E $(CC_FLAGS) $(INCLUDE_FLAGS) "$(realpath $<)" > $(NULL)
+
+$(TARGET_DIR)/%.d : %.S | $(TARGET_DIR)/
+	@echo Creating dependencies for $(notdir $<)
+	@cd $(TARGET_DIR) && $(CC)  -MMD -E $(CC_FLAGS) $(INCLUDE_FLAGS) "$(realpath $<)" > $(NULL)
+
+ifneq ($(MAKECMDGOALS),clean)
+ -include $(DEP_FILES_0)
+endif
+
+ $(foreach obj,$(OBJ_FILES),$(eval DEP_FILE_$(obj) = $(subst \,,$(shell $(CAT) $(patsubst %.o,%.d,$(obj)) 2> $(NULL) ))))
+
+$(foreach obj,$(OBJ_FILES),$(eval $(patsubst ../$(BASE_DIR)/%,$(BASE_DIR)/%,$(patsubst %.o:,$(TARGET_DIR)/%.o $(obj:.o=.d):,$(DEP_FILE_$(obj))))))
+
+endif
+
+.PRECIOUS: $(OBJ_FILES)
+.SECONDARY: $(OBJ_FILES)
+
+
+
+# Top level rules
+
+clean_common:
+	-$(call RMRF,$(BIN_DIR))
+	-$(call RMRF,$(TARGET_DIR))
+
+partial_clean:
+	-$(call RMRF,$(TARGET_DIR))
+
+clean_fake_includes : | $(FAKE_INC_DIR)/
+	@-$(call RMRF,$(FAKE_INC_DIR))
+
+all: clean_fake_includes 
+
+ifneq ($(FOUND_TOOLCHAIN),)
+ifeq ($(WINFLAG),1)
+all: $(BIN_DIR)/$(PLUGIN_NAME).dll
+	@echo Build Complete
+else
+all: $(BIN_DIR)/$(PLUGIN_NAME).so
+	@echo Build Complete
+endif
+else
+all:
+	@echo "*************************************************"
+	@echo "* Cannot build plugin [no host toolchain found] *"
+	@echo "*************************************************"
+endif

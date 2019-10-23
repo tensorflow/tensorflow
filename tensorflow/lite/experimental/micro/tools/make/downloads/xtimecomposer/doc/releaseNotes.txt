@@ -1,0 +1,195 @@
+Release Notes for Development Tools: Community_15.0.0_eng (build: 220-2b648e1)
+============================================================
+
+Previous release: 14.1.3
+
+NEW FEATURE ENHANCEMENTS
+------------------------
+
+* Support for development using xCORE-200 family of products
+
+  - XC, C, C++ compiler support for new architecture
+  - Dual issue optimizing compiler
+  - Simulator support for new architectural features
+  - XTA support for dual issue code timing
+  - Assembler support for writing dual issue code
+  - Debugger support for new architecture
+  - XTAG firmware support for JTAG interface 
+  - Support for Explorer board product
+
+* User exception handling
+  
+  - Improved error reporting for runtime exceptions within application code
+
+* Whole program optimization
+
+  - Improved memory usage based on optimization of code across the entire application rather than just in a single compilation unit
+
+* Command line arguments
+
+  - Support for passing argc / argv to target application code
+
+* xTIMEcomposer
+
+  - Update from eclipse base version 3.6 --> 4.3
+  - Navigation bar to support easy access to new development perspectivces
+  - Development perspectives for common functionality (Edit, Analyze, Debug, Trace, Examples, Help)
+  - Task viewer displaying distribution of tasks from source code
+  - Binary viewer displaying information of compiled binary including resource usage
+  - Library browser to access xCORE library products
+  - Examples browser to access application notes
+  - Integration with xcore.com for community support browser
+  - Integration with xmos.com and RT for enterprise support browser
+  - Integration with eclipse marketplace for installing 3rd party software
+
+* xFLASH
+
+  - QUAD SPI programming support
+  - Fast QUAD SPI boot support
+
+* Compiler
+
+  - Update to LLVM version 3.6
+  - Support for C++ 11
+  - Improved error reporting from user code
+  - Improved debug information for reporting exceptions
+  - Support for C function pointers
+
+* flash programming
+
+	* FastSQI device class added for fast boot from QSPI
+	* --s2l-record timings option added
+
+COMPATIBILITY CHANGES TO PREVIOUS RELEASE
+-----------------------------------------
+
+Tools version 14.2.0 is a minor release and is only compatible with previous major
+versions < 14.x.x at the source code level. 
+
+There is no binary compatibility with previous major tools versions.
+
+In addition :
+
+* Support is no longer provided for the XMOS G series of devices and development boards
+
+* Support is no longer provided for OSX versions prior to 10.8 (Mountain Lion)
+
+* Support is no longer provided for Centos versions prior to 6.6
+
+* Support is no longer provided for Windows XP
+
+* Support is no longer provided for 32 bit Linux distributions
+
+
+RESOLVED ISSUES
+---------------
+
+* xSCOPE
+
+	* xscope_bytes() does not handle small packet sizes correctly
+
+* xTIMEcomposer Studio
+
+	* QSPI drivers modified so that the clk is not running when the CS is toggled.
+
+* flash programming
+
+	* Options --image-search-page, --image-search-sector and --image-search-address added
+	* XS2 boot mode 5, 6 and 7 use the correct TX link speed when PLL is not yet programmed.
+	* Fixed boot mode 4 5wire link issue when PLL is not reset
+
+* xC libraries
+
+	* Fixed crt1.S to prevent unneccessary padding bytes
+
+* flash library
+
+	* libflash now accounts for the size of an image as specified by the user as an option to xflash
+
+* runner
+
+	* xrun will display error information from ARM without the need for --verbose
+
+* board support
+
+	* The JTAG speed divider can now be set in the XN file
+
+KNOWN ISSUES
+------------
+
+* xmapper/linker
+
+	* xmap sometimes doesn't respond to ctrl-c.
+	* An erroneous reference to a static port from a different core is not reported at compile time (traps at run time).
+
+* simulation
+
+	* xsim's handling of xlinks without credit doesn't match the hardware.
+
+* xC compilation
+
+	* In DWARF line number information the directory of an included file is set to the same directory as the compilation directory even if it was included from a subdirectory.
+	* Internal compiler error when boolean guard is used with select function.
+	* Compiler sometimes incorrectly warnings about structure padding with -Wpadded enabled
+	* Reinterpret case of deferenced pointer causes compiler exception
+
+* xTIMEcomposer Studio
+
+	* simulator trace viewer opens when running on hardware
+	* Unable to disable a watchpoint once set.
+	* Switching workspace in OSX can cause a second xTIMEcomposer dock icon to appear
+	* If there are multiple files with the same name, it possible that a breakpoint set on one can be reported as hit in another.
+	* Auto-completion not enabled for interface calls
+	* Cannot open a new xTIMEcomposer studio from a previously running instance
+	* refactor->rename functionality not working in xC code
+	* Unable to run with an external (xsim) plugin with no arguments paased.
+	* Run does not build if there are no existing binaries.
+	* When creating new source file, if a file of the same name already exists, it is overwritten.
+
+* XCC frontend
+
+	* Use of -save-temps causes a compilation failure when two identically named files in different directories are compiled.
+	* Compilation fails if the path contains non ASCII characters.
+
+* XMOS build system
+
+	* Build system does not build projects consisting of a single .s file.
+	* Makefiles without XCC_FLAGS defined do not work.
+	* Using LIBRARY instead of LIBRARIES in library build makefiles does not work in some cases
+
+* other
+
+	* When using XMOS common Makefiles the '-f' or '--makefile' option does not work
+
+* xC libraries
+
+	* The clock type defined in xs1.h clashes with the clock() function in clock.h if both headers are included.
+
+* flash library
+
+	* Flash library data functions do not work unless program image is stored on flash.
+	* Flash writing to device AMIC_A25L40PUM fails.
+
+* runner
+
+	* Cannot ctrl-c from 'ERROR : Cannot collect xSCOPE data from device'
+	* stdout is printed to stderr.
+
+* c/c++ compilation
+
+	* Error initialising wchar_t array with wide string (c++)
+
+* timing analysis
+
+	* Script editor doesn't update syntax highlighting after edit.
+	* XTA doesn't support timing across select functions.
+
+* xas assembler
+
+	* xas sometimes doesn't respond correctly to ctrl-c.
+
+* debugger
+
+	* Attaching to a running system which has taken an exception does not allow automatic backtrace
+	* Step-through to logical core 0 not working
+

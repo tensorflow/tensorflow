@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XL212-256-TQ128-I20 Device</Name>
+
+  <Declarations>
+    <Declaration>tileref tile[2]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS2-LnA-512-TQ128">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS2-L12A-256" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[0]"/>
+          <Tile Number="1" Reference="tile[1]"/>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+
+  <JTAGChain>
+    <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+
+</Network>

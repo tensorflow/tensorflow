@@ -1,0 +1,24 @@
+// -*- C++ -*-
+//===--------------------------- __config ---------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_EXPERIMENTAL_CONFIG
+#define _LIBCPP_EXPERIMENTAL_CONFIG
+
+#include <__config>
+
+#define _LIBCPP_BEGIN_NAMESPACE_EXPERIMENTAL namespace std { namespace experimental {
+#define _LIBCPP_END_NAMESPACE_EXPERIMENTAL  } }
+#define _VSTD_EXPERIMENTAL std::experimental
+
+#define _LIBCPP_BEGIN_NAMESPACE_LFTS _LIBCPP_BEGIN_NAMESPACE_EXPERIMENTAL inline namespace fundamentals_v1 {
+#define _LIBCPP_END_NAMESPACE_LFTS  } } }
+#define _VSTD_LFTS _VSTD_EXPERIMENTAL::fundamentals_v1
+
+#endif

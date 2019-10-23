@@ -1,0 +1,42 @@
+-include module_build_info
+TARGET = DUMMY
+USED_MODULES = $(DEPENDENT_MODULES)
+
+# User must use xmake and not make
+ifneq ($(basename $(notdir $(lastword $(MAKE)))),xmake)
+  $(error You must use `xmake' to build the project and not `$(MAKE)')
+endif
+
+ifeq ($(_COMMON1),1)
+
+else
+
+export
+
+# Overide windows shell in case cygwin is present
+SHELL := $(if $(findstring Windows, $(OS))$(findstring WINDOWS,$(OS)),$(windir)\system32\cmd.exe,$(SHELL))
+
+MAKEFILE_LIST1 := $(foreach x, $(MAKEFILE_LIST), $(if $(wildcard $x),$x,"""$x"""))
+MAKEFILE_LIST2 := $(subst """,,$(subst """  """,&&&,$(MAKEFILE_LIST1)))
+
+XCOMMON_MAKEFILE := $(subst &&&,\ ,$(filter %Makefile.module_info,$(MAKEFILE_LIST2)))
+
+CURRENT_MAKEFILE := $(filter-out $(XCOMMON_MAKEFILE),$(MAKEFILE_LIST2))
+
+MODULE_XCOMMON_DIR := $(patsubst %/Makefile.module_info,%,$(XCOMMON_MAKEFILE))/..
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.file_handling
+
+
+list_includes_xcore:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory list_includes
+
+show_xcore_dirs:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory show_xcore_dirs
+
+report_modules:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory list_modules
+
+project_info: report_modules list_includes_xcore show_xcore_dirs
+
+endif

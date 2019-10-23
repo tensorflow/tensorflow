@@ -1,0 +1,20 @@
+Content-Type: multipart/mixed; boundary="AAA"
+From: Mail Delivery Subsystem <xxx@example.com>
+To: yyy@example.com
+
+This is a MIME-encapsulated message
+
+--AAA
+
+Stuff
+
+--AAA
+Content-Type: message/rfc822
+
+From: webmaster@python.org
+To: zzz@example.com
+Content-Type: multipart/mixed; boundary="BBB"
+
+--BBB--
+
+--AAA--

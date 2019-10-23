@@ -1,0 +1,104 @@
+
+#body {
+  max-width:644px;
+  float:none;
+  margin:0 auto;
+  display:block;
+}
+.indented-content #content .content {
+  padding-left:110px;
+  max-width:550px;
+  float:none;
+  margin:0 auto;
+}
+#content .node-item_news .content {
+  padding-left:0px;
+  max-width:660px;
+}
+.indented-content #content .content > h2 {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: bold;
+  margin-left:-110px !important;
+  padding-right:150px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 7px;
+  color:#666;
+}
+#content .node-item_news .content h2 {
+  margin-left:0px !important;
+  padding-right:0px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: bold;
+}
+.booktoc {
+  margin-left:-110px;
+}
+#content .figure {
+  display:block;
+  position:relative;
+}
+#content .caption {
+  display: table-cell;
+  vertical-align: bottom;
+  padding-right: 15px;
+  padding-left: 10px;
+  padding-bottom:6px;
+  width: 85px;
+  text-align: right;
+  position:absolute;
+  bottom:0;
+  margin-left:-110px;
+}
+#content .caption > span {
+  border-top: 2px solid #888;
+  border-bottom: 2px solid #888;
+  width: 100%;
+  float: left;
+  padding:3px 0;
+  margin-bottom:4px;
+  font-weight:normal;
+  color:#333;
+}
+#content .caption b {
+  display:block;
+}
+
+#content .block .content {
+  padding-left:0px;
+  max-width:100%;
+}
+#content .block .content > h2 {
+  margin-left:0 !important;
+  padding-right:0;
+}
+#content .content table.ebnf{
+  margin:2px 0 2px 50px;
+}
+.note:before, .info:before, .warning:before, .danger:before, .newinxc:before,
+.note-before, .info-before, .warning-before, .danger-before, .newinxc-before {
+  margin-top:2px;
+  position:absolute;
+  left:70px;
+}
+span.icon {
+  position:absolute;
+  left:70px;
+  margin-top:2px;
+}
+span.icon .inline-only {
+  display:none;
+}
+ul.topics li, ul.mansections li {
+  margin: 0 0 0 -15px !important;
+}
+ul.lib > li, ul.cmd > li {
+  border-top:none;
+}
+ul.lib li p, ul.cmd li pre {
+  margin-left:50px;
+}
+.accountmenu {
+  right:8px;
+}

@@ -1,0 +1,29 @@
+SUBSYSTEM!="usb|usb_device", GOTO="xmos_rules_end"
+ACTION!="add", GOTO="xmos_rules_end"
+
+# 0403:6010 - XMOS XTAG-1
+ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE="0666",
+SYMLINK+="xtag1-%n"
+
+# 20b1:f7d1 - XMOS XTAG-2
+ATTRS{idVendor}=="20b1", ATTRS{idProduct}=="f7d1", MODE="0666",
+SYMLINK+="xtag2-%n"
+
+# 20b1:f7d4 - XMOS XTAG-3
+ATTRS{idVendor}=="20b1", ATTRS{idProduct}=="f7d4", MODE="0666",
+SYMLINK+="xtag3-%n"
+
+# 20b1:f7d2 - XMOS XTAG-PRO
+ATTRS{idVendor}=="20b1", ATTRS{idProduct}=="f7d2", MODE="0666",
+SYMLINK+="xtagpro-%n"
+
+# 20b1:f7d3 - XMOS startKIT
+ATTRS{idVendor}=="20b1", ATTRS{idProduct}=="f7d3", MODE="0666",
+SYMLINK+="startkit-%n"
+
+# 1366:0101 - Segger JLINK
+ATTRS{idVendor}=="1366", ATTRS{idProduct}=="0101", MODE="0666",
+SYMLINK+="jlink-%n"
+
+LABEL="xmos_rules_end"
+

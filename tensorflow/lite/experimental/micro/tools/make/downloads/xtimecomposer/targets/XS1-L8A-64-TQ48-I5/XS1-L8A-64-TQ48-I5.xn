@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XS1-L8A-64-TQ48-I5 Device</Name>
+  
+  <Declarations>
+    <Declaration>tileref tile[1]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS1-LnA-64-TQ48">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS1-L8A-64" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[0]"/>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+
+  <JTAGChain>
+     <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+
+</Network>
+
