@@ -628,8 +628,6 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
   with ops.name_scope(name, "StringSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         input, dtype=dtypes.string, name="input")
-    if result_type == "SparseTensor" and input.shape.rank == 1:
-      return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
 
     if result_type == "SparseTensor" and input.shape.rank==0:
       input = gen_array_ops.expand_dims(input, 0)
