@@ -15,16 +15,16 @@ func @store_may_execute_before_load() {
   affine.if #set0(%c0) {
     affine.for %i0 = 0 to 10 {
       affine.store %cf7, %m[%i0] : memref<10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = true}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
     }
   }
   affine.for %i1 = 0 to 10 {
     %v0 = affine.load %m[%i1] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 1 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
   }
   return
 }
@@ -39,15 +39,15 @@ func @dependent_loops() {
   // because the first loop with the store dominates the second loop.
   affine.for %i0 = 0 to 10 {
     affine.store %cst, %0[%i0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = true}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   }
   affine.for %i1 = 0 to 10 {
     %1 = affine.load %0[%i1] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 1 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
   }
   return
 }
@@ -60,11 +60,11 @@ func @different_memrefs() {
   %c0 = constant 0 : index
   %c1 = constant 1.0 : f32
   affine.store %c1, %m.a[%c0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   %v0 = affine.load %m.b[%c0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -76,11 +76,11 @@ func @store_load_different_elements() {
   %c1 = constant 1 : index
   %c7 = constant 7.0 : f32
   affine.store %c7, %m[%c0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   %v0 = affine.load %m[%c1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -92,11 +92,11 @@ func @load_store_different_elements() {
   %c1 = constant 1 : index
   %c7 = constant 7.0 : f32
   %v0 = affine.load %m[%c1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   affine.store %c7, %m[%c0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -107,11 +107,11 @@ func @store_load_same_element() {
   %c11 = constant 11 : index
   %c7 = constant 7.0 : f32
   affine.store %c7, %m[%c11] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = true}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   %v0 = affine.load %m[%c11] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -122,11 +122,11 @@ func @load_load_same_element() {
   %c11 = constant 11 : index
   %c7 = constant 7.0 : f32
   %v0 = affine.load %m[%c11] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   %v1 = affine.load %m[%c11] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -136,11 +136,11 @@ func @store_load_same_symbol(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   affine.store %c7, %m[%arg0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = true}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   %v0 = affine.load %m[%arg0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -150,11 +150,11 @@ func @store_load_different_symbols(%arg0: index, %arg1: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   affine.store %c7, %m[%arg0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = true}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   %v0 = affine.load %m[%arg1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -166,12 +166,12 @@ func @store_load_diff_element_affine_apply_const() {
   %c8 = constant 8.0 : f32
   %a0 = affine.apply (d0) -> (d0) (%c1)
   affine.store %c8, %m[%a0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   %a1 = affine.apply (d0) -> (d0 + 1) (%c1)
   %v0 = affine.load %m[%a1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -184,12 +184,12 @@ func @store_load_same_element_affine_apply_const() {
   %c11 = constant 11 : index
   %a0 = affine.apply (d0) -> (d0 + 1) (%c9)
   affine.store %c7, %m[%a0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = true}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   %a1 = affine.apply (d0) -> (d0 - 1) (%c11)
   %v0 = affine.load %m[%a1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -200,12 +200,12 @@ func @store_load_affine_apply_symbol(%arg0: index) {
   %c7 = constant 7.0 : f32
   %a0 = affine.apply (d0) -> (d0) (%arg0)
   affine.store %c7, %m[%a0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = true}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
   %a1 = affine.apply (d0) -> (d0) (%arg0)
   %v0 = affine.load %m[%a1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -216,12 +216,12 @@ func @store_load_affine_apply_symbol_offset(%arg0: index) {
   %c7 = constant 7.0 : f32
   %a0 = affine.apply (d0) -> (d0) (%arg0)
   affine.store %c7, %m[%a0] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 0 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
   %a1 = affine.apply (d0) -> (d0 + 1) (%arg0)
   %v0 = affine.load %m[%a1] : memref<100xf32>
-  // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-  // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+  // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
   return
 }
 
@@ -234,16 +234,16 @@ func @store_range_load_after_range() {
   affine.for %i0 = 0 to 10 {
     %a0 = affine.apply (d0) -> (d0) (%i0)
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %a1 = affine.apply (d0) -> (d0) (%c10)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -257,16 +257,16 @@ func @store_load_func_symbol(%arg0: index, %arg1: index) {
   affine.for %i0 = 0 to %arg1 {
     %a0 = affine.apply (d0) -> (d0) (%arg0)
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = [1, +inf]}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [1, +inf]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = true}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = [1, +inf]}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [1, +inf]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = true}}
     %a1 = affine.apply (d0) -> (d0) (%arg0)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, +inf]}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, +inf]}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -283,18 +283,18 @@ func @store_range_load_last_in_range() {
     // because only the final write in the loop accesses the same element as the
     // load, so this dependence appears only at depth 2 (loop independent).
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = true}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = true}}
     %a1 = affine.apply (d0) -> (d0 - 1) (%c10)
     // For dependence from 1 to 0, we have write-after-read (WAR) dependences
     // for all loads in the loop to the store on the last iteration.
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 9]}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, 9]}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -308,16 +308,16 @@ func @store_range_load_before_range() {
   affine.for %i0 = 1 to 11 {
     %a0 = affine.apply (d0) -> (d0) (%i0)
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %a1 = affine.apply (d0) -> (d0) (%c0)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -334,16 +334,16 @@ func @store_range_load_first_in_range() {
     // constant index zero are reads after first store at index zero during
     // first iteration of the loop.
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [1, 9]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = true}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [1, 9]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = true}}
     %a1 = affine.apply (d0) -> (d0 + 1) (%c0)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -356,16 +356,16 @@ func @store_plus_3() {
   affine.for %i0 = 1 to 11 {
     %a0 = affine.apply (d0) -> (d0 + 3) (%i0)
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [3, 3]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [3, 3]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %a1 = affine.apply (d0) -> (d0) (%i0)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -378,16 +378,16 @@ func @load_minus_2() {
   affine.for %i0 = 2 to 11 {
     %a0 = affine.apply (d0) -> (d0) (%i0)
     affine.store %c7, %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [2, 2]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [2, 2]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %a1 = affine.apply (d0) -> (d0 - 2) (%i0)
     %v0 = affine.load %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -403,21 +403,21 @@ func @perfectly_nested_loops_loop_independent() {
       %a00 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a01 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       affine.store %c7, %m[%a00, %a01] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 0 to 1 at depth 3 = true}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 3 = true}}
       %a10 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a11 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       %v0 = affine.load %m[%a10, %a11] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -434,21 +434,21 @@ func @perfectly_nested_loops_loop_carried_at_depth1() {
       %a00 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a01 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       affine.store %c7, %m[%a00, %a01] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = [2, 2][0, 0]}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 0 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = [2, 2][0, 0]}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 3 = false}}
       %a10 = affine.apply (d0, d1) -> (d0 - 2) (%i0, %i1)
       %a11 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       %v0 = affine.load %m[%a10, %a11] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -465,21 +465,21 @@ func @perfectly_nested_loops_loop_carried_at_depth2() {
       %a00 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a01 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       affine.store %c7, %m[%a00, %a01] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = [0, 0][3, 3]}}
-      // expected-remark@-6 {{dependence from 0 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = [0, 0][3, 3]}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 3 = false}}
       %a10 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a11 = affine.apply (d0, d1) -> (d1 - 3) (%i0, %i1)
       %v0 = affine.load %m[%a10, %a11] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -496,21 +496,21 @@ func @one_common_loop() {
       %a00 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a01 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       affine.store %c7, %m[%a00, %a01] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = true}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = true}}
     }
     affine.for %i2 = 0 to 9 {
       %a10 = affine.apply (d0, d1) -> (d0) (%i0, %i2)
       %a11 = affine.apply (d0, d1) -> (d1) (%i0, %i2)
       %v0 = affine.load %m[%a10, %a11] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -528,44 +528,44 @@ func @dependence_cycle() {
   affine.for %i0 = 0 to 9 {
     %a0 = affine.apply (d0) -> (d0) (%i0)
     %v0 = affine.load %m.a[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
-    // expected-remark@-5 {{dependence from 0 to 2 at depth 1 = false}}
-    // expected-remark@-6 {{dependence from 0 to 2 at depth 2 = false}}
-    // expected-remark@-7 {{dependence from 0 to 3 at depth 1 = false}}
-    // expected-remark@-8 {{dependence from 0 to 3 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 2 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 2 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 3 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 3 at depth 2 = false}}
     %a1 = affine.apply (d0) -> (d0) (%i0)
     affine.store %v0, %m.b[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
-    // expected-remark@-5 {{dependence from 1 to 2 at depth 1 = false}}
-    // expected-remark@-6 {{dependence from 1 to 2 at depth 2 = true}}
-    // expected-remark@-7 {{dependence from 1 to 3 at depth 1 = false}}
-    // expected-remark@-8 {{dependence from 1 to 3 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 2 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 2 at depth 2 = true}}
+    // expected-remark@above {{dependence from 1 to 3 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 3 at depth 2 = false}}
     %a2 = affine.apply (d0) -> (d0) (%i0)
     %v1 = affine.load %m.b[%a2] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 2 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 2 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 2 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 2 to 1 at depth 2 = false}}
-    // expected-remark@-5 {{dependence from 2 to 2 at depth 1 = false}}
-    // expected-remark@-6 {{dependence from 2 to 2 at depth 2 = false}}
-    // expected-remark@-7 {{dependence from 2 to 3 at depth 1 = false}}
-    // expected-remark@-8 {{dependence from 2 to 3 at depth 2 = false}}
+    // expected-remark@above {{dependence from 2 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 2 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 2 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 2 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 2 to 2 at depth 1 = false}}
+    // expected-remark@above {{dependence from 2 to 2 at depth 2 = false}}
+    // expected-remark@above {{dependence from 2 to 3 at depth 1 = false}}
+    // expected-remark@above {{dependence from 2 to 3 at depth 2 = false}}
     %a3 = affine.apply (d0) -> (d0 + 1) (%i0)
     affine.store %v1, %m.a[%a3] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 3 to 0 at depth 1 = [1, 1]}}
-    // expected-remark@-2 {{dependence from 3 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 3 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 3 to 1 at depth 2 = false}}
-    // expected-remark@-5 {{dependence from 3 to 2 at depth 1 = false}}
-    // expected-remark@-6 {{dependence from 3 to 2 at depth 2 = false}}
-    // expected-remark@-7 {{dependence from 3 to 3 at depth 1 = false}}
-    // expected-remark@-8 {{dependence from 3 to 3 at depth 2 = false}}
+    // expected-remark@above {{dependence from 3 to 0 at depth 1 = [1, 1]}}
+    // expected-remark@above {{dependence from 3 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 3 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 3 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 3 to 2 at depth 1 = false}}
+    // expected-remark@above {{dependence from 3 to 2 at depth 2 = false}}
+    // expected-remark@above {{dependence from 3 to 3 at depth 1 = false}}
+    // expected-remark@above {{dependence from 3 to 3 at depth 2 = false}}
   }
   return
 }
@@ -580,21 +580,21 @@ func @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
       %a00 = affine.apply (d0, d1) -> (d0 - 1) (%i0, %i1)
       %a01 = affine.apply (d0, d1) -> (d1 + 1) (%i0, %i1)
       %v0 = affine.load %m[%a00, %a01] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 0 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 3 = false}}
       %a10 = affine.apply (d0, d1) -> (d0) (%i0, %i1)
       %a11 = affine.apply (d0, d1) -> (d1) (%i0, %i1)
       affine.store %c7, %m[%a10, %a11] : memref<10x10xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 1][-1, -1]}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, 1][-1, -1]}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -609,20 +609,20 @@ func @war_raw_waw_deps() {
     affine.for %i1 = 0 to 10 {
       %a0 = affine.apply (d0) -> (d0 + 1) (%i1)
       %v0 = affine.load %m[%a0] : memref<100xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = [1, 9][1, 1]}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = [0, 0][1, 1]}}
-      // expected-remark@-6 {{dependence from 0 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = [1, 9][1, 1]}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = [0, 0][1, 1]}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 3 = false}}
       %a1 = affine.apply (d0) -> (d0) (%i1)
       affine.store %c7, %m[%a1] : memref<100xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 9][-1, -1]}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 1 = [1, 9][0, 0]}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-6 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, 9][-1, -1]}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = [1, 9][0, 0]}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -638,16 +638,16 @@ func @mod_deps() {
     // Results are conservative here since we currently don't have a way to
     // represent strided sets in FlatAffineConstraints.
     %v0 = affine.load %m[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [1, 9]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [1, 9]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %a1 = affine.apply (d0) -> ( (d0 + 1) mod 2) (%i0)
     affine.store %c7, %m[%a1] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 9]}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = [2, 9]}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, 9]}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = [2, 9]}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -661,10 +661,10 @@ func @loop_nest_depth() {
   affine.for %i0 = 0 to 128 {
     affine.for %i1 = 0 to 8 {
       affine.store %c7, %0[%i0, %i1] : memref<100x100xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = true}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
     }
   }
   affine.for %i2 = 0 to 8 {
@@ -673,12 +673,12 @@ func @loop_nest_depth() {
         affine.for %i5 = 0 to 16 {
           %8 = affine.apply (d0, d1) -> (d0 * 16 + d1)(%i4, %i5)
           %9 = affine.load %0[%8, %i3] : memref<100x100xf32>
-          // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-          // expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
-          // expected-remark@-3 {{dependence from 1 to 1 at depth 2 = false}}
-          // expected-remark@-4 {{dependence from 1 to 1 at depth 3 = false}}
-          // expected-remark@-5 {{dependence from 1 to 1 at depth 4 = false}}
-          // expected-remark@-6 {{dependence from 1 to 1 at depth 5 = false}}
+          // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+          // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+          // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+          // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
+          // expected-remark@above {{dependence from 1 to 1 at depth 4 = false}}
+          // expected-remark@above {{dependence from 1 to 1 at depth 5 = false}}
         }
       }
     }
@@ -700,10 +700,10 @@ func @mod_div_3d() {
         %idx1 = affine.apply (d0, d1, d2) -> (d1 mod 2) (%i0, %i1, %i2)
         %idx2 = affine.apply (d0, d1, d2) -> (d2 floordiv 4) (%i0, %i1, %i2)
         affine.store %c0, %M[%idx0, %idx1, %idx2] : memref<2 x 2 x 2 x i32>
-        // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = [1, 3][-7, 7][-3, 3]}}
-        // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = [0, 0][2, 7][-3, 3]}}
-        // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = [0, 0][0, 0][1, 3]}}
-        // expected-remark@-4 {{dependence from 0 to 0 at depth 4 = false}}
+        // expected-remark@above {{dependence from 0 to 0 at depth 1 = [1, 3][-7, 7][-3, 3]}}
+        // expected-remark@above {{dependence from 0 to 0 at depth 2 = [0, 0][2, 7][-3, 3]}}
+        // expected-remark@above {{dependence from 0 to 0 at depth 3 = [0, 0][0, 0][1, 3]}}
+        // expected-remark@above {{dependence from 0 to 0 at depth 4 = false}}
       }
     }
   }
@@ -726,15 +726,15 @@ func @delinearize_mod_floordiv() {
           affine.for %i4 = 0 to 16 {
             affine.for %i5 = 0 to 1 {
               affine.store %val, %in[%i0, %i1, %i2, %i3, %i4, %i5] : memref<2x2x3x3x16x1xi32>
-// expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-// expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-// expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-// expected-remark@-4 {{dependence from 0 to 0 at depth 4 = false}}
-// expected-remark@-5 {{dependence from 0 to 0 at depth 5 = false}}
-// expected-remark@-6 {{dependence from 0 to 0 at depth 6 = false}}
-// expected-remark@-7 {{dependence from 0 to 0 at depth 7 = false}}
-// expected-remark@-8 {{dependence from 0 to 1 at depth 1 = true}}
-// expected-remark@-9 {{dependence from 0 to 2 at depth 1 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 4 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 5 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 6 = false}}
+// expected-remark@above {{dependence from 0 to 0 at depth 7 = false}}
+// expected-remark@above {{dependence from 0 to 1 at depth 1 = true}}
+// expected-remark@above {{dependence from 0 to 2 at depth 1 = false}}
             }
           }
         }
@@ -759,23 +759,23 @@ func @delinearize_mod_floordiv() {
         ((((((d0 mod 294912) mod 147456) mod 1152) mod 384) mod 128)
           floordiv 128) (%a0)
       %v0 = affine.load %in[%a10, %a11, %a13, %a14, %a12, %a15] : memref<2x2x3x3x16x1xi32>
-// expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-// expected-remark@-2 {{dependence from 1 to 1 at depth 1 = false}}
-// expected-remark@-3 {{dependence from 1 to 1 at depth 2 = false}}
-// expected-remark@-4 {{dependence from 1 to 1 at depth 3 = false}}
-// expected-remark@-5 {{dependence from 1 to 2 at depth 1 = false}}
-// expected-remark@-6 {{dependence from 1 to 2 at depth 2 = false}}
-// expected-remark@-7 {{dependence from 1 to 2 at depth 3 = false}}
+// expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+// expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+// expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+// expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
+// expected-remark@above {{dependence from 1 to 2 at depth 1 = false}}
+// expected-remark@above {{dependence from 1 to 2 at depth 2 = false}}
+// expected-remark@above {{dependence from 1 to 2 at depth 3 = false}}
 // TODO(andydavis): the dep tester shouldn't be printing out these messages
 // below; they are redundant.
       affine.store %v0, %out[%ii, %jj] : memref<64x9xi32>
-// expected-remark@-1 {{dependence from 2 to 0 at depth 1 = false}}
-// expected-remark@-2 {{dependence from 2 to 1 at depth 1 = false}}
-// expected-remark@-3 {{dependence from 2 to 1 at depth 2 = false}}
-// expected-remark@-4 {{dependence from 2 to 1 at depth 3 = false}}
-// expected-remark@-5 {{dependence from 2 to 2 at depth 1 = false}}
-// expected-remark@-6 {{dependence from 2 to 2 at depth 2 = false}}
-// expected-remark@-7 {{dependence from 2 to 2 at depth 3 = false}}
+// expected-remark@above {{dependence from 2 to 0 at depth 1 = false}}
+// expected-remark@above {{dependence from 2 to 1 at depth 1 = false}}
+// expected-remark@above {{dependence from 2 to 1 at depth 2 = false}}
+// expected-remark@above {{dependence from 2 to 1 at depth 3 = false}}
+// expected-remark@above {{dependence from 2 to 2 at depth 1 = false}}
+// expected-remark@above {{dependence from 2 to 2 at depth 2 = false}}
+// expected-remark@above {{dependence from 2 to 2 at depth 3 = false}}
     }
   }
   return
@@ -792,15 +792,15 @@ func @strided_loop_with_dependence_at_depth2() {
   %cf0 = constant 0.0 : f32
   affine.for %i0 = 0 to 8 step 2 {
     affine.store %cf0, %0[%i0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = true}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = true}}
     %v0 = affine.load %0[%i0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -815,15 +815,15 @@ func @strided_loop_with_no_dependence() {
   affine.for %i0 = 0 to 8 step 2 {
     %a0 = affine.apply (d0) -> (d0 + 1)(%i0)
     affine.store %cf0, %0[%a0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %v0 = affine.load %0[%i0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -838,15 +838,15 @@ func @strided_loop_with_loop_carried_dependence_at_depth1() {
   affine.for %i0 = 0 to 8 step 2 {
     %a0 = affine.apply (d0) -> (d0 + 4)(%i0)
     affine.store %cf0, %0[%a0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = [4, 4]}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = [4, 4]}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     %v0 = affine.load %0[%i0] : memref<10xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
@@ -862,17 +862,17 @@ func @test_dep_store_depth1_load_depth2() {
   affine.for %i0 = 0 to 10 {
     %a0 = affine.apply (d0) -> (d0 - 1)(%i0)
     affine.store %cst, %0[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     affine.for %i1 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 1)(%i0) {
       %1 = affine.load %0[%i1] : memref<100xf32>
-      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 1]}}
-      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-      // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
-      // expected-remark@-5 {{dependence from 1 to 1 at depth 3 = false}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 1 = [1, 1]}}
+      // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 1 to 1 at depth 3 = false}}
     }
   }
   return
@@ -889,18 +889,18 @@ func @test_dep_store_depth2_load_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 1)(%i0) {
       affine.store %cst, %0[%i1] : memref<100xf32>
-      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
-      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
-      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
-      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = [2, 2]}}
-      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@above {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 1 = [2, 2]}}
+      // expected-remark@above {{dependence from 0 to 1 at depth 2 = false}}
     }
     %a0 = affine.apply (d0) -> (d0 - 2)(%i0)
     %1 = affine.load %0[%a0] : memref<100xf32>
-    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
-    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
-    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
-    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@above {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }

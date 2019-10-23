@@ -6,9 +6,9 @@ module attributes {sym.outside_use = @symbol_foo } {
   // expected-remark@+1 {{function has 2 uses}}
   func @symbol_foo()
 
-  // expected-remark@+3 {{function has no uses}}
-  // expected-remark@+2 {{found use of function : @symbol_foo}}
-  // expected-remark@+1 {{function contains 2 nested references}}
+  // expected-remark@below {{function has no uses}}
+  // expected-remark@below {{found use of function : @symbol_foo}}
+  // expected-remark@below {{function contains 2 nested references}}
   func @symbol_bar() attributes {sym.use = @symbol_foo} {
     // expected-remark@+1 {{found use of function : @symbol_foo}}
     "foo.op"() {

@@ -274,6 +274,17 @@ func @foo(%a : f32) {
   %result = cmpf "foo", %a, %a : f32
   return
 }
+
+// Expect an error on the next line that does not contain a designator.
+// expected-remark@below {{remark on function below}}
+// expected-remark@below {{another remark on function below}}
+func @bar(%a : f32)
+
+// Expect an error on the previous line that does not contain a designator.
+func @baz(%a : f32)
+// expected-remark@above {{remark on function above}}
+// expected-remark@above {{another remark on function above}}
+
 ```
 
 The handler will report an error if any unexpected diagnostics were seen, or if

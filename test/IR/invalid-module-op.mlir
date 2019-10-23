@@ -27,8 +27,8 @@ func @module_op() {
 // -----
 
 func @module_op() {
-  // expected-error@+2 {{expects regions to end with 'module_terminator'}}
-  // expected-note@+1 {{the absence of terminator implies 'module_terminator'}}
+  // expected-error@below {{expects regions to end with 'module_terminator'}}
+  // expected-note@below {{the absence of terminator implies 'module_terminator'}}
   module {
     return
   }
