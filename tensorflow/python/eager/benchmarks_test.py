@@ -777,17 +777,24 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
 
-  def _benchmark_tf_reduce_logsumexp(self, device=CPU):
+  def _benchmark_tf_reduce_logsumexp(self, device=CPU, execution_mode=None):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       func = lambda: math_ops.reduce_logsumexp(x)
-      self._run(func, 3000)
+      self._run(func, 3000, execution_mode=execution_mode)
 
   def benchmark_tf_reduce_logsumexp_CPU(self):
     self._benchmark_tf_reduce_logsumexp()
 
+  def benchmark_tf_reduce_logsumexp_CPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(execution_mode=context.ASYNC)
+
   def benchmark_tf_reduce_logsumexp_GPU(self):
     self._benchmark_tf_reduce_logsumexp(device=GPU)
+
+  def benchmark_tf_reduce_logsumexp_GPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU,
+                                        execution_mode=context.ASYNC)
 
   def _benchmark_tf_zeros_like(self, m, device=CPU):
     with context.device(device):
