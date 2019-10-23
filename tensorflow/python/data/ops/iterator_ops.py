@@ -603,6 +603,13 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
     dataset = dataset._apply_options()
+
+    # Store dataset reference to ensure that dataset is alive when this iterator
+    # is being used. For example, `tf.data.Dataset.from_generator` registers
+    # a few py_funcs that are needed in `self._next_internal`.  If the dataset
+    # is deleted, this iterator crashes on `self.__next__(...)` call.
+    self._dataset = dataset
+
     ds_variant = dataset._variant_tensor
     self._element_spec = dataset.element_spec
     self._flat_output_types = structure.get_flat_tensor_types(

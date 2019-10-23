@@ -2788,7 +2788,7 @@ class StructuredFunctionWrapper(object):
       input_structure: (Optional.) A `Structure` object. If given, this argument
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
-        default graph.
+        default graph, if it exists.
       use_legacy_function: (Optional.) A boolean that determines whether the
         function be created using `tensorflow.python.eager.function.defun`
         (default behavior) or `tensorflow.python.framework.function.Defun`
@@ -2824,6 +2824,12 @@ class StructuredFunctionWrapper(object):
       self._input_structure = input_structure
 
     self._func = func
+
+    # There is no graph to add in eager mode.
+    add_to_graph &= not context.executing_eagerly()
+    # There are some lifetime issues when a legacy function is not added to a
+    # out-living graph. It's already deprecated so de-priotizing the fix.
+    add_to_graph |= use_legacy_function
 
     if defun_kwargs is None:
       defun_kwargs = {}
