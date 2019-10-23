@@ -670,19 +670,41 @@ class _WithSpaceToBatch(object):
 
   def _direct_call(self, inp, filter):  # pylint: disable=redefined-builtin
     """Call functionality for directed dilated convolution."""
-    # We need to make sure the signatures of _direct_call same with
-    # _with_space_to_batch_call for the implementation selector. Therefore, we
-    # conduct a dummy call of required_space_to_batch_paddings to ensure the two
-    # input tensor input_shape and base_paddings are still there.
+    # For the implementation selector, we need to make sure the signatures of
+    # _direct_call same with _with_space_to_batch_call. So, we copy all the ops
+    # until the actual convolution call from _with_space_to_batch_call to
+    # _direct_call
+
+    # Handle input whose shape is unknown during graph creation.
+    input_spatial_shape = None
+    input_shape = self.input_shape
     spatial_dims = self.spatial_dims
-    input_shape_tensor = array_ops.shape(inp)
-    input_spatial_shape = array_ops.stack(
-        [input_shape_tensor[i] for i in spatial_dims])
+    if input_shape.ndims is not None:
+      input_shape_list = input_shape.as_list()
+      input_spatial_shape = [input_shape_list[i] for i in spatial_dims]
+    if input_spatial_shape is None or None in input_spatial_shape:
+      input_shape_tensor = array_ops.shape(inp)
+      input_spatial_shape = array_ops.stack(
+          [input_shape_tensor[i] for i in spatial_dims])
+
     base_paddings = self.base_paddings
+    if base_paddings is None:
+      # base_paddings could not be computed at build time since static filter
+      # shape was not fully defined.
+      filter_shape = array_ops.shape(filter)
+      base_paddings = _with_space_to_batch_base_paddings(
+          filter_shape, self.num_spatial_dims, self.rate_or_const_rate)
     paddings, crops = array_ops.required_space_to_batch_paddings(
         input_shape=input_spatial_shape,
         base_paddings=base_paddings,
         block_shape=self.dilation_rate)
+
+    dilation_rate = _with_space_to_batch_adjust(self.dilation_rate, 1,
+                                                spatial_dims)
+    paddings = _with_space_to_batch_adjust(paddings, 0, spatial_dims)
+    crops = _with_space_to_batch_adjust(crops, 0, spatial_dims)
+    input_converted = array_ops.space_to_batch_nd(
+        input=inp, block_shape=dilation_rate, paddings=paddings)
 
     result = self.op(inp, filter)
 
@@ -1090,7 +1112,6 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
-  print("PPP register", func, "to", unique_api_name)
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes,
                                         autograph=False)
