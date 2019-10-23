@@ -89,7 +89,7 @@ def make_reduce_tests(reduce_op,
       dtype = parameters["input_dtype"]
       if boolean_tensor_only:
         dtype = tf.bool
-      input_tensor = tf.placeholder(
+      input_tensor = tf.compat.v1.placeholder(
           dtype=dtype, name="input", shape=parameters["input_shape"])
 
       # Get axis as either a placeholder or constants.
@@ -101,7 +101,8 @@ def make_reduce_tests(reduce_op,
           shape = [len(parameters["axis"])]
         else:
           shape = []  # shape for None or integers.
-        axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
+        axis = tf.compat.v1.placeholder(
+            dtype=tf.int32, name="axis", shape=shape)
         input_tensors = [input_tensor, axis]
 
       out = reduce_op(input_tensor, axis=axis, keepdims=parameters["keepdims"])

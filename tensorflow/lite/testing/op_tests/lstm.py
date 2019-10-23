@@ -49,7 +49,7 @@ def make_lstm_tests(options):
     num_cells = parameters["num_cells"]
     inputs_after_split = []
     for i in xrange(time_step_size):
-      one_timestamp_input = tf.placeholder(
+      one_timestamp_input = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name="split_{}".format(i),
           shape=[num_batchs, input_vec_size])
