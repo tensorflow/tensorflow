@@ -140,7 +140,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
       return this->matchFailure();
     }
     rewriter.create<StoreOp>(loc, result, op.out(), induction_vars);
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return this->matchSuccess();
   }
 };

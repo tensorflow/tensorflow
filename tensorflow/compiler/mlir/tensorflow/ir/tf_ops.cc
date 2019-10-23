@@ -235,7 +235,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
       if (cst.getValue<BoolAttr>({}).getValue()) {
-        rewriter.replaceOp(op, llvm::None);
+        rewriter.eraseOp(op);
         return matchSuccess();
       }
     }

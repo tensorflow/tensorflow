@@ -141,7 +141,7 @@ class HloToLhloTensorStoreConverter : public ConversionPattern {
   PatternMatchResult matchAndRewrite(
       Operation* op, ArrayRef<Value*> operands,
       ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };

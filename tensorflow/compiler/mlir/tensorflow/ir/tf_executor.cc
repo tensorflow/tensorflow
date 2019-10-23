@@ -1131,7 +1131,7 @@ struct DropEmptyIslandNoOperandNoDataResult
     for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
-    rewriter.replaceOp(op, {nullptr});
+    rewriter.eraseOp(op);
 
     return matchSuccess();
   }
@@ -1186,7 +1186,7 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
     for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
-    rewriter.replaceOp(op, {nullptr});
+    rewriter.eraseOp(op);
 
     return matchSuccess();
   }
