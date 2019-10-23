@@ -2495,6 +2495,7 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  int64 step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
 
@@ -2541,7 +2542,14 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([=]() { done_cb(status); });
+    runner([=]() {
+      profiler::TraceMe traceme(
+          [&] {
+            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+          },
+          2);
+      done_cb(status);
+    });
     return;
   }
 
@@ -2553,11 +2561,25 @@ void ExecutorState::Finish() {
     device->Sync([=](Status new_status) mutable {
       status.Update(new_status);
       delete this;
-      runner([=]() { done_cb(status); });
+      runner([=]() {
+        profiler::TraceMe traceme(
+            [&] {
+              return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+            },
+            2);
+        done_cb(status);
+      });
     });
   } else {
     delete this;
-    runner([=]() { done_cb(status); });
+    runner([=]() {
+      profiler::TraceMe traceme(
+          [&] {
+            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+          },
+          2);
+      done_cb(status);
+    });
   }
 }
 
