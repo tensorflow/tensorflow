@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -317,8 +318,14 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         "built with the same version. Please make sure the operation or "
         "function is registered in the binary running in this process.");
   }
-  op.reset(new tensorflow::EagerOperation(
-      eager_context, name, is_function, types, eager_executor, operation.id()));
+  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
+      absl::nullopt;
+  if (operation.is_component_function()) {
+    remote_func_params = {operation.id(), operation.func_step_id()};
+  }
+  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
+                                          types, eager_executor,
+                                          remote_func_params));
 
   TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
@@ -390,8 +397,10 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       s = context->Context()->Executor().AddOrExecute(std::move(node));
     } else if (item.has_send_tensor()) {
       s = SendTensor(item.send_tensor(), context->Context());
-    } else {
+    } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
+    } else {
+      s = CleanupFunction(item.cleanup_function());
     }
 
     if (!s.ok()) {
@@ -461,6 +470,12 @@ Status EagerServiceImpl::RegisterFunction(
   return eager_context->AddFunctionDef(
       register_function.function_def(),
       register_function.is_component_function());
+}
+
+Status EagerServiceImpl::CleanupFunction(
+    const CleanupFunctionOp& cleanup_function) {
+  env_->rendezvous_mgr->Cleanup(cleanup_function.step_id());
+  return Status::OK();
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,

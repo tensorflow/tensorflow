@@ -92,8 +92,10 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":eager_executor",
+        ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
