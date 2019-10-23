@@ -805,9 +805,7 @@ class FunctionLibraryRuntime {
 // address spaces.
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options);
-inline string Canonicalize(const string& funcname, AttrSlice attrs) {
-  return Canonicalize(funcname, attrs, {});
-}
+string Canonicalize(const string& funcname, AttrSlice attrs);
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;

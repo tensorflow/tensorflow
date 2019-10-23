@@ -494,6 +494,16 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
   }
 }
 
+absl::InlinedVector<int64, 4>
+XlaCompiler::Argument::DimensionSizesAsInlinedVector() const {
+  if (absl::holds_alternative<TensorShape>(shape)) {
+    return absl::get<TensorShape>(shape).dim_sizes();
+  } else {
+    auto v = absl::get<xla::Shape>(shape).dimensions();
+    return absl::InlinedVector<int64, 4>(v.begin(), v.end());
+  }
+}
+
 string XlaCompiler::Argument::ShapeHumanString() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return absl::get<TensorShape>(shape).DebugString();
