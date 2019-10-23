@@ -126,13 +126,7 @@ private:
     llvm::SmallVector<mlir::Type, 4> arg_types(proto.getArgs().size(),
                                                getType(VarType{}));
     auto func_type = builder.getFunctionType(arg_types, llvm::None);
-    auto function = mlir::FuncOp::create(location, proto.getName(), func_type);
-
-    // Mark the function as generic: it'll require type specialization for every
-    // call site.
-    if (function.getNumArguments())
-      function.setAttr("toy.generic", builder.getUnitAttr());
-    return function;
+    return mlir::FuncOp::create(location, proto.getName(), func_type);
   }
 
   /// Emit a new function and add it to the MLIR module.

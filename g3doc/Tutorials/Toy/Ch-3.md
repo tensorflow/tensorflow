@@ -35,8 +35,7 @@ def transpose_transpose(x) {
 Which corresponds to the following IR:
 
 ```MLIR(.mlir)
-func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64>
-attributes  {toy.generic} {
+func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   %1 = "toy.transpose"(%0) : (tensor<*xf64>) -> tensor<*xf64>
   "toy.return"(%1) : (tensor<*xf64>) -> ()
@@ -131,8 +130,7 @@ Finally, we can try to run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -op
 and observe our pattern in action:
 
 ```MLIR(.mlir)
-func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64>
-attributes  {toy.generic} {
+func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
@@ -153,8 +151,7 @@ def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {...}
 Let's retry now `toyc test/transpose_transpose.toy -emit=mlir -opt`:
 
 ```MLIR(.mlir)
-func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64>
-attributes  {toy.generic} {
+func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
 ```
