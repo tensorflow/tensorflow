@@ -146,18 +146,61 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[CST0:.*]] = llvm.mlir.constant(0 : i64)
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[ARG0]][%[[CST0]]]
-;CHECK: %[[BC0:.*]] = llvm.bitcast %[[GEP0]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[CST1:.*]] = llvm.mlir.constant(0 : i64)
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[ARG1]][%[[CST1]]]
-;CHECK: %[[BC1:.*]] = llvm.bitcast %[[GEP1]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[CST2:.*]] = llvm.mlir.constant(0 : i64)
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[ARG2]][%[[CST2]]]
-;CHECK: %[[BC2:.*]] = llvm.bitcast %[[GEP2]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[VL0:.*]] = llvm.load %[[BC0]]
-;CHECK: %[[VL1:.*]] = llvm.load %[[BC1]]
-;CHECK: %[[VL2:.*]] = llvm.load %[[BC2]]
+
+;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
+;CHECK: %[[GEP0O:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0O]]
+;CHECK: %[[GEP0S0:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: %[[CST0S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST0S0]], %[[GEP0S0]]
+;CHECK: %[[GEP0S1:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: %[[CST0S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST0S1]], %[[GEP0S1]]
+;CHECK: %[[GEP0ST0:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0ST0]]
+;CHECK: %[[GEP0ST1:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0ST1]]
+
+;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
+;CHECK: %[[GEP1O:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1O]]
+;CHECK: %[[GEP1S0:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: %[[CST1S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST1S0]], %[[GEP1S0]]
+;CHECK: %[[GEP1S1:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: %[[CST1S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST1S1]], %[[GEP1S1]]
+;CHECK: %[[GEP1ST0:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1ST0]]
+;CHECK: %[[GEP1ST1:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1ST1]]
+
+;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
+;CHECK: %[[GEP2O:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2O]]
+;CHECK: %[[GEP2S0:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: %[[CST2S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST2S0]], %[[GEP2S0]]
+;CHECK: %[[GEP2S1:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: %[[CST2S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST2S1]], %[[GEP2S1]]
+;CHECK: %[[GEP2ST0:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2ST0]]
+;CHECK: %[[GEP2ST1:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2ST1]]
+
+;CHECK: %[[VL0:.*]] = llvm.load %[[DESC0]]
+;CHECK: %[[VL1:.*]] = llvm.load %[[DESC1]]
+;CHECK: %[[VL2:.*]] = llvm.load %[[DESC2]]
 ;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][0 : index]
 ;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
