@@ -102,6 +102,7 @@ py_library(
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
+        ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -223,6 +224,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":_pywrap_scoped_annotation",
         ":_pywrap_util_port",
         ":lib",
         ":util",
@@ -554,6 +556,23 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_scoped_annotation",
+    srcs = ["util/scoped_annotation_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/core/platform:annotation_hdrs",
+        "//tensorflow/core/profiler/internal:python_scoped_annotation_hdrs",
+    ],
+    module_name = "_pywrap_scoped_annotation",
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -930,6 +949,7 @@ py_library(
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_quantize_training",
+        ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -5195,7 +5215,6 @@ tf_py_wrap_cc(
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "util/py_checkpoint_reader.i",
-        "util/scoped_annotation.i",
         "util/traceme.i",
         "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
@@ -5294,6 +5313,7 @@ genrule(
         ":cpp_python_util",  # util
         ":py_func_lib",  # py_func
         "//tensorflow/core:util_port",  # util_port
+        "//tensorflow/core/profiler/internal:python_scoped_annotation",  # scoped_annotation
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof

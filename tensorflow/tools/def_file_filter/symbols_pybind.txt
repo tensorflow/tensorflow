@@ -80,6 +80,12 @@ tensorflow::DeviceAttributes::SerializeToString
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
 
+[python_scoped_annotation] # scoped_annotation
+tensorflow::profiler::PythonScopedAnnotation::Init
+tensorflow::profiler::PythonScopedAnnotation::Enter
+tensorflow::profiler::PythonScopedAnnotation::Exit
+tensorflow::profiler::PythonScopedAnnotation::IsEnabled
+
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 

@@ -83,6 +83,17 @@ cc_library(
     deps = [":types"],
 )
 
+filegroup(
+    name = "annotation_hdrs",
+    srcs = [
+        "annotation.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "annotation",
     srcs = ["annotation.cc"],
