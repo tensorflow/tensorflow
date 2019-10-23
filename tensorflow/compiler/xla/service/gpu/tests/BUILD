@@ -40,12 +40,11 @@ cc_library(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
-        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/stream_executor/lib",
@@ -104,7 +103,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:test_main",
     ],
 )
@@ -271,6 +269,7 @@ xla_test(
         "notap",
     ],
     deps = [
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
