@@ -258,7 +258,6 @@ cc_library(
         ":protobuf",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -663,7 +662,6 @@ filegroup(
             "**/stream_executor.h",
             "**/env.cc",
             "**/env_time.cc",
-            "**/logger.cc",
             "**/load_library.cc",
             "**/mutex.cc",
             "**/net.cc",
@@ -713,7 +711,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "**/cuda_libdevice_path.*",
-            "**/logger.cc",
             # Exclude env_time and logging to avoid collisions with
             # :platform_base, a common dependency for downstream targets.
             "**/env_time.cc",
@@ -728,6 +725,7 @@ filegroup(
             "gif.h",
             "jpeg.h",
             "png.h",
+            "logger.cc",
             "stream_executor.*",
             "windows/**/*",
         ],
@@ -775,7 +773,6 @@ filegroup(
             "**/env_time.cc",
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
-            "**/logger.cc",
             "**/load_library.cc",
             "**/mutex.cc",
             "**/logging.cc",
@@ -791,6 +788,7 @@ filegroup(
             "error.cc",
             "file_system.cc",
             "file_system_helper.cc",
+            "logger.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",

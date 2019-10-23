@@ -405,20 +405,6 @@ alias(
     actual = "//tensorflow/core/platform:human_readable_json",
 )
 
-cc_library(
-    name = "logger",
-    srcs = ["//tensorflow/core/platform:logger.cc"],
-    hdrs = ["//tensorflow/core/platform:logger.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_proto_parsing",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
 filegroup(
     name = "platform_env_hdrs",
     srcs = [
@@ -446,6 +432,7 @@ filegroup(
         "//tensorflow/core/platform:cpu_feature_guard.h",
         "//tensorflow/core/platform:error.h",
         "//tensorflow/core/platform:fingerprint.h",
+        "//tensorflow/core/platform:logger.h",
         "//tensorflow/core/platform:monitoring.h",
         "//tensorflow/core/platform:net.h",
         "//tensorflow/core/platform:notification.h",
@@ -2311,6 +2298,7 @@ cc_library(
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
+        "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
