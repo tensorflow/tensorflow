@@ -358,7 +358,9 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
                                           DoneCallback done) {
-  {
+  // Test whether the rendezvous is initialized using a shared lock, to avoid
+  // the need for exclusive access in the common case.
+  if (TF_PREDICT_FALSE(!is_initialized())) {
     mutex_lock l(init_mu_);
     if (!is_initialized_locked()) {
       // RecvLocalAsync can be called (due to an incoming RecvTensor RPC from a
