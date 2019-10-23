@@ -2500,6 +2500,9 @@ class TensorFlowOpLayer(Layer):
   def _make_node_def(self, graph):
     node_def = node_def_pb2.NodeDef()
     node_def.CopyFrom(self.node_def)
+    # Used in TPUReplicateContext to indicate whether this node has been cloned
+    # and to not add TPU attributes.
+    node_def.attr['_cloned'].b = True
     node_def.name = graph.unique_name(node_def.name)
     return node_def
 
