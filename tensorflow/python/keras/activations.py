@@ -187,7 +187,7 @@ def softsign(x):
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified Linear Unit.
-
+  
   With default values, it returns element-wise `max(x, 0)`.
 
   Otherwise, it follows:
@@ -195,14 +195,21 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   `f(x) = x` for `threshold <= x < max_value`,
   `f(x) = alpha * (x - threshold)` otherwise.
 
+  For example:
+
+  >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
+  >>> foo2 = tf.keras.activations.relu(foo)
+  >>> foo2.numpy() # -> array([ 0., 0., 0., 5., 10.], dtype=float32)
+
   Arguments:
-      x: A tensor or variable.
+      x: Input tensor.
       alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
-      threshold: float. Threshold value for thresholded activation.
+      max_value: A float. Saturation threshold.
+      threshold: A float. Threshold value for thresholded activation.
 
   Returns:
-      A tensor.
+      Tensor with the relu activation.
+      Tensor will be of the same shape and dtype of the input `x`.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
