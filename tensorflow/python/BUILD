@@ -105,6 +105,7 @@ py_library(
         ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":array_ops",
@@ -577,6 +578,21 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_transform_graph",
+    srcs = ["util/transform_graph_wrapper.cc"],
+    hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
+    module_name = "_pywrap_transform_graph",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 filegroup(
     name = "py_exception_registry_hdr",
     srcs = [
@@ -952,6 +968,7 @@ py_library(
         ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
@@ -5217,7 +5234,6 @@ tf_py_wrap_cc(
         "pywrap_tfe.i",
         "util/py_checkpoint_reader.i",
         "util/traceme.i",
-        "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5324,6 +5340,7 @@ genrule(
         ":py_exception_registry",  # py_exception_registry
         ":kernel_registry",
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({

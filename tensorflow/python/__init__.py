@@ -56,6 +56,7 @@ from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python import _pywrap_kernel_registry
 from tensorflow.python import _pywrap_quantize_training
 from tensorflow.python import _pywrap_scoped_annotation
+from tensorflow.python import _pywrap_transform_graph
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *

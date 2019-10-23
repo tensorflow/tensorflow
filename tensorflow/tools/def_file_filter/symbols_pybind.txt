@@ -93,3 +93,6 @@ tensorflow::swig::TryFindKernelClass
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
 
+[transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
