@@ -37,6 +37,7 @@ from __future__ import print_function
 import collections as _collections
 
 import six as _six
+import wrapt as _wrapt
 
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
@@ -146,7 +147,11 @@ def _sequence_like(instance, args):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
-    return type(instance)(*args)
+    if isinstance(instance, _wrapt.ObjectProxy):
+      instance_type = type(instance.__wrapped__)
+    else:
+      instance_type = type(instance)
+    return instance_type(*args)
   elif _is_composite_tensor(instance):
     assert len(args) == 1
     spec = instance._type_spec  # pylint: disable=protected-access
@@ -157,6 +162,10 @@ def _sequence_like(instance, args):
     return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
+  elif isinstance(instance, _wrapt.ObjectProxy):
+    # For object proxies, first create the underlying type and then re-wrap it
+    # in the proxy type.
+    return type(instance)(_sequence_like(instance.__wrapped__, args))
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -699,7 +708,12 @@ def assert_shallow_structure(shallow_tree,
           "If shallow structure is a sequence, input must also be a sequence. "
           "Input has type: %s." % type(input_tree))
 
-    if check_types and not isinstance(input_tree, type(shallow_tree)):
+    if isinstance(shallow_tree, _wrapt.ObjectProxy):
+      shallow_type = type(shallow_tree.__wrapped__)
+    else:
+      shallow_type = type(shallow_tree)
+
+    if check_types and not isinstance(input_tree, shallow_type):
       # Duck-typing means that nest should be fine with two different
       # namedtuples with identical name and fields.
       shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
@@ -1294,3 +1308,4 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
 _pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
 _pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
 _pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
+_pywrap_utils.RegisterType("ObjectProxy", _wrapt.ObjectProxy)

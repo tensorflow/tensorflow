@@ -4880,6 +4880,7 @@ py_library(
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
         "@six_archive//:six",
+        "@wrapt",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
@@ -5417,6 +5418,7 @@ py_library(
         ":util",
         "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
+        "@wrapt",
     ],
 )
 
