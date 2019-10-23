@@ -35,7 +35,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '10'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_TENSORRT_VERSION = '5'
+_DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _TF_OPENCL_VERSION = '1.2'
@@ -945,7 +945,7 @@ def set_tf_tensorrt_version(environ_cp):
 
   ask_tensorrt_version = (
       'Please specify the TensorRT version you want to use. '
-      '[Leave empty to  default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
+      '[Leave empty to default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
   tf_tensorrt_version = get_from_env_or_user_or_default(
       environ_cp, 'TF_TENSORRT_VERSION', ask_tensorrt_version,
       _DEFAULT_TENSORRT_VERSION)
