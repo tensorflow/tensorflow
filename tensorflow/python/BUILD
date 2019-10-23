@@ -99,7 +99,9 @@ py_library(
     ],
     deps = [
         ":_pywrap_events_writer",
+        ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
+        ":_pywrap_quantize_training",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -201,7 +203,10 @@ py_library(
     ],
 )
 
-tf_py_build_info_genrule()
+tf_py_build_info_genrule(
+    name = "py_build_info_gen",
+    out = "platform/build_info.py",
+)
 
 py_library(
     name = "platform",
@@ -459,6 +464,42 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_kernel_registry",
+    srcs = ["util/kernel_registry_wrapper.cc"],
+    hdrs = ["util/kernel_registry.h"],
+    module_name = "_pywrap_kernel_registry",
+    deps = [
+        ":pybind11_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_quantize_training",
+    srcs = [
+        "training/quantize_training_wrapper.cc",
+    ],
+    hdrs = ["//tensorflow/core:quantize_training_hdrs"],
+    module_name = "_pywrap_quantize_training",
+    deps = [
+        ":pybind11_lib",
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_stat_summarizer",
     srcs = ["util/stat_summarizer_wrapper.cc"],
     module_name = "_pywrap_stat_summarizer",
@@ -537,6 +578,20 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_toco_api",
+    srcs = [
+        "lite/toco_python_api_wrapper.cc",
+    ],
+    hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
+    module_name = "_pywrap_toco_api",
+    deps = [
+        "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -871,8 +926,10 @@ py_library(
     deps = [
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
+        ":_pywrap_quantize_training",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -4458,7 +4515,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "nn_fused_batchnorm_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     additional_deps = [
         ":array_ops",
@@ -5137,14 +5194,11 @@ tf_py_wrap_cc(
         "platform/base.i",
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
-        "training/quantize_training.i",
-        "util/kernel_registry.i",
         "util/py_checkpoint_reader.i",
         "util/scoped_annotation.i",
         "util/traceme.i",
         "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
-        "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
@@ -5247,6 +5301,8 @@ genrule(
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
         ":py_exception_registry",  # py_exception_registry
+        ":kernel_registry",
+        "//tensorflow/lite/toco/python:toco_python_api",  # toco
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({

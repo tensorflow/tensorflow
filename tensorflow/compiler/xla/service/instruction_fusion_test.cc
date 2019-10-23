@@ -47,7 +47,7 @@ class InstructionFusionForTesting : public InstructionFusion {
 };
 
 TEST_F(InstructionFusionTest, FuseInstructions) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -67,7 +67,7 @@ TEST_F(InstructionFusionTest, FuseInstructions) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   fused_computation {
     p1 = f32[4,3] parameter(0)
@@ -90,7 +90,7 @@ TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
 }
 
 TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -196,7 +196,7 @@ static int Count(const HloModule& module, HloOpcode op) {
 }
 
 TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -433,7 +433,7 @@ TEST_F(InstructionFusionTest, AllowBinarySameValueOperandsDuplication) {
 }
 
 TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f32[100] parameter(0)
@@ -458,7 +458,7 @@ TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
 }
 
 TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f32[100] parameter(0)
@@ -484,7 +484,7 @@ TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
 
 TEST_F(InstructionFusionTest,
        WideningConvertsAreAlwaysDuplicableIntoConsumers) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f16[100] parameter(0)

@@ -1279,6 +1279,8 @@ def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
+// Op is a symbol.
+def Symbol : NativeOpTrait<"Symbol">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

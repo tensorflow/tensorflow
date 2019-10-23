@@ -35,7 +35,7 @@ def make_abs_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.abs(input_tensor)
     return [input_tensor], [out]

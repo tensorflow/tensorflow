@@ -125,11 +125,10 @@ public:
   static Optional<UseRange> getSymbolUses(Operation *from);
 
   /// Get all of the uses of the given symbol that are nested within the given
-  /// operation 'from', invoking the provided callback for each. This does not
-  /// traverse into any nested symbol tables, and will also only return uses on
-  /// 'from' if it does not also define a symbol table. This function returns
-  /// None if there are any unknown operations that may potentially be symbol
-  /// tables.
+  /// operation 'from'. This does not traverse into any nested symbol tables,
+  /// and will also only return uses on 'from' if it does not also define a
+  /// symbol table. This function returns None if there are any unknown
+  /// operations that may potentially be symbol tables.
   static Optional<UseRange> getSymbolUses(StringRef symbol, Operation *from);
 
   /// Return if the given symbol is known to have no uses that are nested within
@@ -158,13 +157,16 @@ private:
 namespace OpTrait {
 namespace impl {
 LogicalResult verifySymbolTable(Operation *op);
+LogicalResult verifySymbol(Operation *op);
 } // namespace impl
 
 /// A trait used to provide symbol table functionalities to a region operation.
 /// This operation must hold exactly 1 region. Once attached, all operations
 /// that are directly within the region, i.e not including those within child
 /// regions, that contain a 'SymbolTable::getSymbolAttrName()' StringAttr will
-/// be verified to ensure that the names are uniqued.
+/// be verified to ensure that the names are uniqued. These operations must also
+/// adhere to the constraints defined by the `Symbol` trait, even if they do not
+/// inherit from it.
 template <typename ConcreteType>
 class SymbolTable : public TraitBase<ConcreteType, SymbolTable> {
 public:
@@ -182,6 +184,47 @@ public:
     return dyn_cast_or_null<T>(lookupSymbol(name));
   }
 };
+
+/// A trait used to define a symbol that can be used on operations within a
+/// symbol table. Operations using this trait must adhere to the following:
+///   * Have a StringAttr attribute named 'SymbolTable::getSymbolAttrName()'.
+template <typename ConcreteType>
+class Symbol : public TraitBase<ConcreteType, Symbol> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySymbol(op);
+  }
+
+  /// Returns the name of this symbol.
+  StringRef getName() {
+    return this->getOperation()
+        ->template getAttrOfType<StringAttr>(
+            mlir::SymbolTable::getSymbolAttrName())
+        .getValue();
+  }
+
+  /// Set the name of this symbol.
+  void setName(StringRef name) {
+    this->getOperation()->setAttr(
+        mlir::SymbolTable::getSymbolAttrName(),
+        StringAttr::get(name, this->getOperation()->getContext()));
+  }
+
+  /// Get all of the uses of the current symbol that are nested within the given
+  /// operation 'from'.
+  /// Note: See mlir::SymbolTable::getSymbolUses for more details.
+  Optional<::mlir::SymbolTable::UseRange> getSymbolUses(Operation *from) {
+    return ::mlir::SymbolTable::getSymbolUses(getName(), from);
+  }
+
+  /// Return if the current symbol is known to have no uses that are nested
+  /// within the given operation 'from'.
+  /// Note: See mlir::SymbolTable::symbolKnownUseEmpty for more details.
+  bool symbolKnownUseEmpty(Operation *from) {
+    return ::mlir::SymbolTable::symbolKnownUseEmpty(getName(), from);
+  }
+};
+
 } // end namespace OpTrait
 } // end namespace mlir
 

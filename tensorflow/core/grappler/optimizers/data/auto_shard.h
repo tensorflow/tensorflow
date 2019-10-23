@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-enum class AutoShardPolicy { AUTO = 0, FILE = 1, DATA = 2 };
+enum class AutoShardPolicy { OFF = -1, AUTO = 0, FILE = 1, DATA = 2 };
 
 // AutoShard takes a Dataset graph and tries to insert a shard node
 // automatically before a ReaderDataset (e.g. a CSVDataset or a TFRecordDataset)

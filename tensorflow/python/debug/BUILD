@@ -707,6 +707,7 @@ cuda_py_test(
     shard_count = 6,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+        "notap",  # TODO(b/142879897)
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
@@ -1362,6 +1363,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )

@@ -386,7 +386,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
 
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
                      AutoShardPolicy policy, GraphDef* output) {
-  if (num_workers == 1 && index == 0) {
+  if (policy == AutoShardPolicy::OFF || (num_workers == 1 && index == 0)) {
     return Status::OK();
   }
 
@@ -407,6 +407,9 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   // occurences from randomness from before that point in the graph (e.g. things
   // like ShuffleDataset) to ensure that `shard` returns a sensible result.
   switch (policy) {
+    case AutoShardPolicy::OFF:
+      return Status::OK();
+
     case AutoShardPolicy::FILE:
       TF_RETURN_IF_ERROR(RecursivelyHandleOp(*sink_node, num_workers, index,
                                              &flib, &graph, &nodes_to_delete));
@@ -458,7 +461,8 @@ Status AutoShard::Init(
   auto_shard_policy_ =
       AutoShardPolicy(config->parameter_map().at(kAutoShardPolicyAttrName).i());
 
-  if (auto_shard_policy_ != AutoShardPolicy::AUTO &&
+  if (auto_shard_policy_ != AutoShardPolicy::OFF &&
+      auto_shard_policy_ != AutoShardPolicy::AUTO &&
       auto_shard_policy_ != AutoShardPolicy::DATA &&
       auto_shard_policy_ != AutoShardPolicy::FILE) {
     return errors::InvalidArgument(kAutoShardPolicyAttrName, " is invalid.");

@@ -69,6 +69,7 @@ tensorflow::Status::ok()
 tensorflow::Device::attributes
 tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
 [protos_all]  # device_lib
 tensorflow::ConfigProto::ConfigProto
@@ -78,3 +79,11 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+

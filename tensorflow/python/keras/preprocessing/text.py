@@ -27,12 +27,17 @@ text_to_word_sequence = text.text_to_word_sequence
 one_hot = text.one_hot
 hashing_trick = text.hashing_trick
 Tokenizer = text.Tokenizer
-tokenizer_from_json = text.tokenizer_from_json
 
 keras_export(
     'keras.preprocessing.text.text_to_word_sequence')(text_to_word_sequence)
 keras_export('keras.preprocessing.text.one_hot')(one_hot)
 keras_export('keras.preprocessing.text.hashing_trick')(hashing_trick)
 keras_export('keras.preprocessing.text.Tokenizer')(Tokenizer)
-keras_export('keras.preprocessing.text.tokenizer_from_json')(
-    tokenizer_from_json)
+
+# text.tokenizer_from_json is only available if keras_preprocessing >= 1.1.0
+try:
+  tokenizer_from_json = text.tokenizer_from_json
+  keras_export('keras.preprocessing.text.tokenizer_from_json')(
+      tokenizer_from_json)
+except AttributeError:
+  pass

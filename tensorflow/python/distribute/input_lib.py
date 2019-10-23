@@ -314,9 +314,12 @@ class DistributedIterator(object):
             # pylint: disable=cell-var-from-loop
             # It is fine for the lambda to capture variables from the loop as
             # the lambda is executed in the loop as well.
-            result = control_flow_ops.cond(global_has_value,
-                                           lambda: replicas[i][j],
-                                           lambda: out_of_range_fn(i, device))
+            result = control_flow_ops.cond(
+                global_has_value,
+                lambda: replicas[i][j],
+                lambda: out_of_range_fn(i, device),
+                strict=True,
+            )
             # pylint: enable=cell-var-from-loop
             # pylint: enable=undefined-loop-variable
             results.append(result)
@@ -872,6 +875,8 @@ class _SingleWorkerDatasetIterator(object):
     with ops.device(self._worker):
       return self._iterator.get_next(device)
 
+  # TODO(rxsang): Rename this, as deletion is not slated. This method is more
+  # performant in the cases where it can be used.
   def get_next_as_list_deprecated(self, name=None):
     """Get next element from the underlying iterator."""
     del name
@@ -910,8 +915,11 @@ class _SingleWorkerDatasetIterator(object):
           # pylint: disable=unnecessary-lambda
           # pylint: disable=cell-var-from-loop
           real_data = control_flow_ops.cond(
-              data.has_value(), lambda: data.get_value(),
-              lambda: _dummy_tensor_fn(data.value_structure))
+              data.has_value(),
+              lambda: data.get_value(),
+              lambda: _dummy_tensor_fn(data.value_structure),
+              strict=True,
+          )
           result.append(real_data)
           # pylint: enable=cell-var-from-loop
           # pylint: enable=unnecessary-lambda

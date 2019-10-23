@@ -316,13 +316,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 void Interpreter::SetProfiler(Profiler* profiler) {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    if (profiler != nullptr) {
-      subgraphs_[subgraph_index]->SetProfiler(std::unique_ptr<Profiler>(
-          new SubgraphAwareProfiler(profiler, subgraph_index)));
-    } else {
-      subgraphs_[subgraph_index]->SetProfiler(
-          std::unique_ptr<Profiler>(nullptr));
-    }
+    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
   }
 }
 

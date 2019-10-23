@@ -82,12 +82,12 @@ _TENSOR_TRACER_STORAGE = 'tensor_tracer_storage'
 _TT_SNAPSHOT = 'tensor_tracer_snapshot'
 _REPLICA_ID_TAG = '#replica-id: '
 
-_TT_SUMMARY_NORM = 'tensor_tracer_norm'
-_TT_SUMMARY_MAX = 'tensor_tracer_max'
-_TT_SUMMARY_MIN = 'tensor_tracer_min'
-_TT_SUMMARY_MEAN = 'tensor_tracer_mean'
-_TT_SUMMARY_VAR = 'tensor_tracer_var'
-_TT_SUMMARY_SIZE = 'tensor_tracer_size'
+_TT_SUMMARY_NORM = tensor_tracer_flags.TT_SUMMARY_NORM
+_TT_SUMMARY_MAX = tensor_tracer_flags.TT_SUMMARY_MAX
+_TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
+_TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
+_TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
+_TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
 _TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
@@ -382,15 +382,14 @@ class TensorTracer(object):
     return self._cache_variables
 
   def _create_or_get_tensor_values_cache(self, cache_name, graph=None,
-                                         shape=None, dtype=dtypes.float32,
-                                         num_signatures=None):
+                                         shape=None, dtype=dtypes.float32):
     """Creates a variable as the cache to store intermediate tensor values.
 
     Args:
       cache_name: Name to be given to the cache (an instance of tf.variable).
       graph: Tensorflow graph.
       shape: A list of dimensions.
-      dtype: Data type of created cache
+      dtype: Data type of created cache.
     Returns:
       A ref to newly created or existing cache with the given dimensions.
     Raises:
@@ -508,8 +507,7 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return {self._parameters.trace_mode: 0}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
-      return {_TT_SUMMARY_NORM: 0, _TT_SUMMARY_MAX: 1, _TT_SUMMARY_MIN: 2,
-              _TT_SUMMARY_MEAN: 3, _TT_SUMMARY_VAR: 4, _TT_SUMMARY_SIZE: 5}
+      return self._parameters.summary_signatures
     return {}
 
   def _num_signature_dimensions(self):
@@ -548,14 +546,19 @@ class TensorTracer(object):
     # Make a compact array by concantating different signatures, and update
     # them all together.
     sorted_update = []
-    signature_indices = self._signature_types()
-    for _, val in sorted(updates.items(),
-                         key=lambda item: signature_indices[item[0]]):
-      sorted_update.append(val)
-    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
+    if self._num_signature_dimensions() > 1:
+      signature_indices = self._signature_types()
+      for _, val in sorted(updates.items(),
+                           key=lambda item: signature_indices[item[0]]):
+        sorted_update.append(val)
+      updates = array_ops.stack(sorted_update, axis=0)
+      updates = array_ops.reshape(updates, [1,
+                                            self._num_signature_dimensions()])
+    else:
+      (_, val), = updates.items()
+      updates = array_ops.reshape(val, [1, self._num_signature_dimensions()])
     indices = constant_op.constant([cache_idx])
-    updates = array_ops.concat(sorted_update, axis=0)
-    updates = array_ops.reshape(updates, [1, self._num_signature_dimensions()])
+    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
     return state_ops.scatter_update(cache, indices, updates).op
 
   def _snapshot_tensor(self, tensor):
@@ -590,21 +593,22 @@ class TensorTracer(object):
         mask = math_ops.reduce_any(
             gen_math_ops.logical_or(
                 gen_math_ops.is_nan(tensor), gen_math_ops.is_inf(tensor)))
-        output_tensor = control_flow_ops.cond(mask,
-                                              lambda: constant_op.constant(1.0),
-                                              lambda: constant_op.constant(0.0))
+        output_tensor = control_flow_ops.cond(
+            mask,
+            lambda: constant_op.constant([1.0]),
+            lambda: constant_op.constant([0.0]))
       else:
-        output_tensor = constant_op.constant(0.0)
-      # The shape has to be 1. Set it if it does not have the information.
-      output_tensor = array_ops.reshape(output_tensor, [1])
+        output_tensor = constant_op.constant([0.0])
       return output_tensor
 
     def _compute_signature(tensor, tf_op, cast_to_f32=True):
       if cast_to_f32:
         tensor = math_ops.cast(tensor, dtypes.float32)
       output_tensor = tf_op(tensor)
-      # The shape has to be 1. Set it if it does not have the information.
-      output_tensor = array_ops.reshape(output_tensor, [1])
+      # Return type should be scalar. Set it if it does not have the
+      # information.
+      if not output_tensor.get_shape().is_fully_defined():
+        output_tensor = array_ops.reshape(output_tensor, [])
       return output_tensor
 
     def _show_size(tensor):
@@ -630,13 +634,16 @@ class TensorTracer(object):
       return _compute_signature(tensor, linalg_ops.norm, cast_to_f32)
 
     def _show_mean_and_variance(tensor, cast_to_f32=True):
+      """Returns the mean and variance of the given tensor."""
       if cast_to_f32:
         tensor = math_ops.cast(tensor, dtypes.float32)
       # returns nan for empty tensor
       mean, var = nn_impl.moments(array_ops.reshape(tensor, [-1]), axes=[0])
       # The shape has to be 1. Set it if it does not have the information.
-      mean = array_ops.reshape(mean, [1])
-      var = array_ops.reshape(var, [1])
+      if not mean.get_shape().is_fully_defined():
+        mean = array_ops.reshape(mean, [])
+      if not var.get_shape().is_fully_defined():
+        var = array_ops.reshape(var, [])
       return mean, var
 
     def _show_max_abs(tensor):
@@ -678,19 +685,39 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)):
       return {self._parameters.trace_mode: tensor}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NORM:
-      return {self._parameters.trace_mode: _show_norm(tensor)}
+      return {self._parameters.trace_mode: array_ops.reshape(
+          _show_norm(tensor), [1])}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return {self._parameters.trace_mode: _show_max_abs(tensor)}
+
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
       tensor = math_ops.cast(tensor, dtypes.float32)
-      tsize = _show_size(tensor)
-      tnorm = _show_norm(tensor, cast_to_f32=False)
-      tmax = _show_max(tensor, cast_to_f32=False)
-      tmin = _show_min(tensor, cast_to_f32=False)
-      tmean, tvar = _show_mean_and_variance(tensor, cast_to_f32=False)
-      return {_TT_SUMMARY_NORM: tnorm, _TT_SUMMARY_MAX: tmax,
-              _TT_SUMMARY_MIN: tmin, _TT_SUMMARY_MEAN: tmean,
-              _TT_SUMMARY_VAR: tvar, _TT_SUMMARY_SIZE: tsize}
+      result_dict = {}
+      # Call mean and variance computation here to avoid adding the same nodes
+      # twice.
+      if (_TT_SUMMARY_MEAN in self._signature_types() or
+          _TT_SUMMARY_VAR in self._signature_types()):
+        mean, variance = _show_mean_and_variance(tensor, cast_to_f32=False)
+
+      for signature_name, _ in sorted(self._signature_types().items(),
+                                      key=lambda x: x[1]):
+        if signature_name == _TT_SUMMARY_NORM:
+          signature_result_tensor = _show_norm(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MAX:
+          signature_result_tensor = _show_max(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MIN:
+          signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SIZE:
+          signature_result_tensor = _show_size(tensor)
+        elif signature_name == _TT_SUMMARY_MEAN:
+          signature_result_tensor = mean
+        elif signature_name == _TT_SUMMARY_VAR:
+          signature_result_tensor = variance
+        else:
+          raise ValueError('Unknown signature type :%s.' % signature_name)
+
+        result_dict[signature_name] = signature_result_tensor
+      return result_dict
 
     raise RuntimeError(
         'Tensor trace fun for %s is not yet implemented'

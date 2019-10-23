@@ -746,7 +746,13 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
     os << '{';
     interleaveComma(attr.cast<DictionaryAttr>().getValue(),
                     [&](NamedAttribute attr) {
-                      os << attr.first << " = ";
+                      os << attr.first;
+
+                      // The value of a UnitAttr is elided within a dictionary.
+                      if (attr.second.isa<UnitAttr>())
+                        return;
+
+                      os << " = ";
                       printAttribute(attr.second);
                     });
     os << '}';

@@ -43,13 +43,13 @@ struct SymbolUsesPass : public ModulePass<SymbolUsesPass> {
                           << " nested references";
 
       // Test the functionality of symbolKnownUseEmpty.
-      if (SymbolTable::symbolKnownUseEmpty(func.getName(), module)) {
+      if (func.symbolKnownUseEmpty(module)) {
         func.emitRemark() << "function has no uses";
         continue;
       }
 
       // Test the functionality of getSymbolUses.
-      symbolUses = SymbolTable::getSymbolUses(func.getName(), module);
+      symbolUses = func.getSymbolUses(module);
       assert(symbolUses.hasValue() && "expected no unknown operations");
       for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
         symbolUse.getUser()->emitRemark()

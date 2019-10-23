@@ -862,6 +862,14 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
         "Note the changes in constructors. " + distribute_strategy_api_changes)
 
+    keras_experimental_export_comment = (
+        ast_edits.WARNING,
+        "tf.keras.experimental.export_saved_model and "
+        "tf.keras.experimental.load_from_saved_model have been deprecated."
+        "Please use model.save(path, save_format='tf') "
+        "(or alternatively tf.keras.models.save_model), and "
+        "tf.keras.models.load_model(path) instead.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -921,6 +929,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             contrib_estimator_head_comment,
         "tf.contrib.estimator.regression_head":
             contrib_estimator_head_comment,
+        "tf.contrib.saved_model.load_keras_model":
+            keras_experimental_export_comment,
+        "tf.contrib.saved_model.save_keras_model":
+            keras_experimental_export_comment,
         "tf.contrib.summary.all_summary_ops":
             contrib_summary_comment,
         "tf.contrib.summary.audio":
@@ -1009,6 +1021,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
              "checkpoints (format used by `keras_model.save_weights` and "
              "`keras_model.load_weights`) by default in 2.0. To continue "
              "saving name-based checkpoints, set `checkpoint_format='saver'`."),
+        "tf.keras.experimental.export_saved_model":
+            keras_experimental_export_comment,
+        "tf.keras.experimental.load_from_saved_model":
+            keras_experimental_export_comment,
         "tf.keras.initializers.Zeros":
             initializers_no_dtype_comment,
         "tf.keras.initializers.zeros":

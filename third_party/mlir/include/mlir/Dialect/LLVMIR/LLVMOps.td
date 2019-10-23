@@ -323,9 +323,7 @@ def LLVM_FPTruncOp : LLVM_CastOp<"fptrunc", "CreateFPTrunc">;
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<SymbolRefAttr>:$callee,
-                             // TODO(b/133216756): fix test failure and
-                             // change to LLVM_Type
-                             Variadic<AnyType>)>,
+                             Variadic<LLVM_Type>)>,
                   Results<(outs Variadic<LLVM_Type>)>,
                   LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
                                    LLVM_ZeroResultOpBuilder> {
@@ -488,7 +486,7 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"mlir.global">,
+    : LLVM_ZeroResultOp<"mlir.global", [Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
@@ -516,7 +514,8 @@ def LLVM_GlobalOp
 }
 
 def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
+      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">,
+       Symbol]> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);

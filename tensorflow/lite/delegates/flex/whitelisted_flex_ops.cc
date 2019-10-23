@@ -205,6 +205,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "MirrorPad",
           "MirrorPadGrad",
           "Mul",
+          "MulNoNan",
           "Multinomial",
           "Neg",
           "NextIteration",

@@ -305,6 +305,9 @@ def deserialize_keras_object(identifier,
     if tf_inspect.isclass(obj):
       return obj()
     return obj
+  elif tf_inspect.isfunction(identifier):
+    # If a function has already been deserialized, return as is.
+    return identifier
   else:
     raise ValueError('Could not interpret serialized %s: %s' %
                      (printable_module_name, identifier))

@@ -4534,7 +4534,8 @@ def quantize_v2(
     name=None,
     round_mode="HALF_AWAY_FROM_ZERO",
     narrow_range=False,
-    axis=None):
+    axis=None,
+    ensure_minimum_range=0.01):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4542,7 +4543,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0 or narrow_range:
+  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4552,7 +4553,8 @@ def quantize_v2(
         name=name,
         round_mode=round_mode,
         narrow_range=narrow_range,
-        axis=axis)
+        axis=axis,
+        ensure_minimum_range=ensure_minimum_range)
   return gen_array_ops.quantize_v2(
       input,
       min_range,
@@ -4560,7 +4562,9 @@ def quantize_v2(
       T=T,
       mode=mode,
       name=name,
-      round_mode=round_mode)
+      round_mode=round_mode,
+      narrow_range=narrow_range,
+      axis=axis)
 
 
 quantize_v2.__doc__ = """Please use `tf.quantization.quantize` instead."""
@@ -4580,10 +4584,10 @@ def quantize(
     round_mode="HALF_AWAY_FROM_ZERO",
     name=None,
     narrow_range=False,
-    axis=None):
+    axis=None,
+    ensure_minimum_range=0.01):
   """Quantize the input tensor."""
-  if (compat.forward_compatible(2019, 9, 25) or narrow_range or
-      axis is not None):
+  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
     return quantize_v2(
         input,
         min_range,
@@ -4593,7 +4597,8 @@ def quantize(
         round_mode=round_mode,
         name=name,
         narrow_range=narrow_range,
-        axis=axis)
+        axis=axis,
+        ensure_minimum_range=ensure_minimum_range)
   return quantize_v2(
       input,
       min_range,
@@ -4601,7 +4606,9 @@ def quantize(
       T,
       mode=mode,
       round_mode=round_mode,
-      name=name)
+      name=name,
+      narrow_range=narrow_range,
+      axis=axis)
 
 
 @tf_export("quantization.dequantize", v1=["quantization.dequantize",

@@ -56,6 +56,10 @@ Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
 void RingReducer::Run(StatusCallback done) {
   CHECK(col_ctx_);
   CHECK(col_params_);
+  // Since `RingReducer` doesn't require non-overlapping collectives, unblock
+  // any collective that is blocked on this instance.
+  col_ctx_->col_exec->UnblockDependencies(*col_params_);
+
   done_ = std::move(done);
   group_size_ = col_params_->group.group_size;
   num_subdivs_ = static_cast<int>(

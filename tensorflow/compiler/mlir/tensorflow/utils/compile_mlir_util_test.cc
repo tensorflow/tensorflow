@@ -138,19 +138,11 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
   ASSERT_TRUE(status_or_hlo_module.ok());
-  string expected_hlo_module_string = R"(HloModule main.6
 
-ENTRY %main.6 (arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]) {
-  %arg_tuple.1 = (f32[10,17]{1,0}, f32[17,19]{1,0}) parameter(0)
-  %get-tuple-element.2 = f32[10,17]{1,0} get-tuple-element((f32[10,17]{1,0}, f32[17,19]{1,0}) %arg_tuple.1), index=0
-  %get-tuple-element.3 = f32[17,19]{1,0} get-tuple-element((f32[10,17]{1,0}, f32[17,19]{1,0}) %arg_tuple.1), index=1
-  %dot.4 = f32[10,19]{1,0} dot(f32[10,17]{1,0} %get-tuple-element.2, f32[17,19]{1,0} %get-tuple-element.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %tuple.5 = (f32[10,19]{1,0}) tuple(f32[10,19]{1,0} %dot.4)
-}
-
-)";
-  EXPECT_EQ(status_or_hlo_module.ValueOrDie()->ToString(),
-            expected_hlo_module_string);
+  string expected_signature =
+      R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]))";
+  EXPECT_THAT(status_or_hlo_module.ValueOrDie()->ToString(),
+              ::testing::HasSubstr(expected_signature));
 }
 
 }  // namespace

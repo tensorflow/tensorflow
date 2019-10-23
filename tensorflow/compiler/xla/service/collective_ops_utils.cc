@@ -17,6 +17,32 @@ limitations under the License.
 
 namespace xla {
 
+absl::optional<ReductionKind> MatchReductionComputation(
+    const HloComputation* computation) {
+  namespace m = match;
+  const HloInstruction* root = computation->root_instruction();
+
+  auto match_opcode = [&](HloOpcode opcode) {
+    return Match(
+        root, m::Op()
+                  .WithOpcode(opcode)
+                  .WithBinaryOperandsAnyOrder(m::Parameter(0), m::Parameter(1))
+                  .WithShape(m::Shape().IsEffectiveScalar()));
+  };
+
+  if (match_opcode(HloOpcode::kAdd)) {
+    return ReductionKind::SUM;
+  } else if (match_opcode(HloOpcode::kMultiply)) {
+    return ReductionKind::PRODUCT;
+  } else if (match_opcode(HloOpcode::kMinimum)) {
+    return ReductionKind::MIN;
+  } else if (match_opcode(HloOpcode::kMaximum)) {
+    return ReductionKind::MAX;
+  } else {
+    return absl::nullopt;
+  }
+}
+
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
     int64 device_ordinal, const HloInstruction* instr,
     int64 total_replica_count, const DeviceAssignment& device_assn) {

@@ -407,23 +407,18 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
 
   // Get the nodes that would run to output fetch_nodes.
   bool ill_formed = false;
+  std::unordered_map<string, const NodeDef*> name_to_node;
   const std::vector<const NodeDef*> fetch_fanin_nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes, &ill_formed);
+      ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node, &ill_formed);
   if (ill_formed) {
     return errors::InvalidArgument(
         "Ill formed graph or invalid set of fetch nodes specified");
   }
 
-  // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
-  // ComputeTransitiveFanin().
   // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
   // from the fetch nodes are scheduled. So the scheduled nodes should be
   // exactly the same as those executed for real. One possible discrepancy could
   // be the control flow nodes, where tf only executes one path.
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : fetch_fanin_nodes) {
-    name_to_node[node->name()] = node;
-  }
 
   // Traverses the graph to record _Send nodes.
   // TODO(dyoon): Instead of identifying _Send node here manually, add _Send

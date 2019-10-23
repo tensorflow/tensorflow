@@ -30,7 +30,7 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
 
   def build_graph(parameters):
     """Build graph for stride_slice test."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -40,17 +40,17 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
       strides = parameters["strides"]
       tensors = [input_tensor]
     else:
-      begin = tf.placeholder(
+      begin = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="begin",
           shape=[len(parameters["input_shape"])])
-      end = tf.placeholder(
+      end = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="end",
           shape=[len(parameters["input_shape"])])
       strides = None
       if parameters["strides"] is not None:
-        strides = tf.placeholder(
+        strides = tf.compat.v1.placeholder(
             dtype=parameters["index_type"],
             name="strides",
             shape=[len(parameters["input_shape"])])

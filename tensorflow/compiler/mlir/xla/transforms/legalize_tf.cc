@@ -220,6 +220,17 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// MatMul op utilities.
+//===----------------------------------------------------------------------===//
+
+// If the 'transpose' attribute is true returns ElementsAttr to transpose 2D
+// matrix. Otherwise, returns ElementsAttr for identity transpose.
+static DenseIntElementsAttr Get2DTransposePerm(BoolAttr transpose, Builder *b) {
+  if (transpose.getValue()) return GetI64ElementsAttr({1, 0}, b);
+  return GetI64ElementsAttr({0, 1}, b);
+}
+
+//===----------------------------------------------------------------------===//
 // Pad op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -790,30 +801,22 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //
 // Sample result with 2-d f16 inputs with B batches of with N elements each.
 //
+//    %reduce_dim = tf.Const dense<[1]> : tensor<1xi64>
+//
 //    // Subtract each element by their batches' max to improve numerical
 //    // stability.
-//    %neg_infinity = constant dense<0xFF800000> : tensor<f16>
-//    %max = "xla_hlo.reduce"(%input, %neg_infinity) ["xla_hlo.max"]
-//             {dimensions = 1}
-//           : (tensor<BxNxf16>, tensor<1xf16>) -> tensor<Bxf16>
+//    %max = "tf.Max"(%input, %reduce_dim)
+//           : (tensor<BxNxf16>, tensor<1xi64>) -> tensor<Bxf16>
 //    %sub = "xla_hlo.sub"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
 //    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
-//
-//    // Cast to f32 to avoid precision loss in summation.
-//    %exp_f32 = "xla_hlo.convert"(%exp) : (tensor<BxNxbf16>) -> tensor<BxNxf32>
-//    %zero = constant dense<0.000000e+00> : tensor<f32>
-//    %sum = "xla_hlo.reduce"(%exp, %zero) ["xla_hlo.add"] {dimensions = 1}
-//            : (tensor<BxNxf32>, tensor<1xf32>) -> tensor<Bxf32>
-//
-//    %sum_f16 = "xla_hlo.convert"(%sum) : (tensor<BxNxbf32>) -> tensor<BxNxf16>
+//    %sum = "tf.Sum"(%exp, %reduce_dim)
+//            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
 //    // Softmax computation:
 //    %softmax = "xla_hlo.div"(%exp, %sum_f16) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
-//
-// TODO(hinsu): Use tf.Max and tf.Sum instead of lowering directly to xla.
 template <typename OpTy, bool use_log = true>
 class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
  public:
@@ -829,14 +832,14 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     if (!type) return Pattern::matchFailure();
 
     auto loc = op.getLoc();
-
     int rank = type.getRank();
 
     // Note that the TensorFlow Softmax op verifies that the input rank is
     // greater than or equal to one so both of the following sequences are
     // valid.
     auto batch_dims = GetI64ElementsAttrForSeq(0, rank - 1, &rewriter);
-    auto reduce_dim = GetI64ElementsAttrForSeq(rank - 1, rank, &rewriter);
+    auto reduce_dim = rewriter.create<TF::ConstOp>(
+        loc, GetI64ElementsAttr({rank - 1}, &rewriter));
 
     // Exponential of input values and then their sum can be very large here.
     // Division with large denominator is numerically unstable. To improve
@@ -848,37 +851,20 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     ArrayRef<int64_t> reduce_shape = type.getShape().drop_back();
     RankedTensorType reduce_out_type =
         RankedTensorType::get(reduce_shape, element_type);
-    auto init = GetMinValueForType(element_type, loc, &rewriter);
-    auto max_logits = rewriter.create<xla_hlo::ReduceOp>(
-        loc, reduce_out_type, logits, init.getResult(), reduce_dim);
-    BuildReduceBody<xla_hlo::MaxOp>(element_type, &max_logits.body(),
-                                    &rewriter);
+    auto max_logits =
+        rewriter.create<TF::MaxOp>(loc, reduce_out_type, logits, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(false));
     auto shifted_logits = rewriter.create<xla_hlo::SubOp>(
-        loc, type, logits, max_logits.getResult(0), batch_dims);
+        loc, type, logits, max_logits, batch_dims);
 
     // Exponentiate the inputs.
     Value *exp = rewriter.create<xla_hlo::ExpOp>(loc, type, shifted_logits);
 
-    // Cast the exponentials to the appropriate accumulation type to avoid
-    // precision loss during summation.
-    Type sum_element_type = GetAccumulationType(element_type);
-    Type sum_type = RankedTensorType::get(type.getShape(), sum_element_type);
-    auto casted_exp = rewriter.create<xla_hlo::ConvertOp>(loc, sum_type, exp);
-
     // Compute summation of the exponentials.
-    init = rewriter.create<xla_hlo::ConstOp>(
-        loc, DenseElementsAttr::get(RankedTensorType::get({}, element_type),
-                                    rewriter.getZeroAttr(element_type)));
-    Type sum_out_type = RankedTensorType::get(reduce_shape, sum_element_type);
-    auto exp_sum = rewriter.create<xla_hlo::ReduceOp>(
-        loc, sum_out_type, casted_exp.getResult(), init.getResult(),
-        reduce_dim);
-    BuildReduceBody<xla_hlo::AddOp>(element_type, &exp_sum.body(), &rewriter);
-    Value *sum = exp_sum.getResult(0);
-
-    // Convert the summation result back to the original element type and divide
-    // exponentials by the summations.
-    sum = rewriter.create<xla_hlo::ConvertOp>(loc, reduce_out_type, sum);
+    auto exp_sum =
+        rewriter.create<TF::SumOp>(loc, reduce_out_type, exp, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(false));
+    Value *sum = exp_sum.getResult();
 
     if (use_log) {
       Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
@@ -888,7 +874,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
       rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
                                                   batch_dims);
     }
-
     return Pattern::matchSuccess();
   }
 };
@@ -1472,6 +1457,15 @@ class ConvertConv2DBackpropInputOp
 
     Value *filter = op.filter();
 
+    if (feature_group_count != 1) {
+      /*
+      // TODO(parkers): Convert this code to mlir.
+    filter = TransposeFilterForGroupConvolutionBackpropInput(
+        filter, filter_shape, feature_group_count, attrs.num_spatial_dims);
+        */
+      return matchFailure();
+    }
+
     // Mirror the filter in the spatial dimensions.
     filter = rewriter.create<xla_hlo::ReverseOp>(
         loc, filter, GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
@@ -1506,6 +1500,210 @@ class ConvertConv2DBackpropInputOp
         /*precision_config=*/ArrayAttr());
 
     rewriter.replaceOp(op, {result}, {op.input_sizes()});
+
+    return matchSuccess();
+  }
+};
+
+// Converts tf.Conv2DBackpropFilterOp into:
+//   %result = "xla_hlo.conv"(%input, %out_backprop)
+class ConvertConv2DBackpropFilterOp
+    : public OpRewritePattern<TF::Conv2DBackpropFilterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::Conv2DBackpropFilterOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Unpack all of the attributes.
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format)) {
+      return matchFailure();
+    }
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return Pattern::matchFailure();
+
+    auto out_backprop_ty =
+        op.out_backprop()->getType().dyn_cast<RankedTensorType>();
+    if (!out_backprop_ty || !out_backprop_ty.hasStaticShape())
+      return matchFailure();
+    ArrayRef<int64_t> out_backprop_shape = out_backprop_ty.getShape();
+    auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+
+    DenseIntElementsAttr filter_shape_attr;
+    if (!matchPattern(op.filter_sizes(), m_Constant(&filter_shape_attr)) ||
+        filter_shape_attr.getType().getRank() != 1) {
+      return matchFailure();
+    }
+
+    auto strides_attr = GetI64ElementsAttr(op.strides());
+    std::vector<tensorflow::int32> strides{
+        strides_attr.getValues<int64_t>().begin(),
+        strides_attr.getValues<int64_t>().end()};
+    auto dilations_attr = GetI64ElementsAttr(op.dilations());
+    SmallVector<int, 4> dilations{dilations_attr.getValues<int64_t>().begin(),
+                                  dilations_attr.getValues<int64_t>().end()};
+    auto explicit_paddings_attr = GetI64ElementsAttr(op.explicit_paddings());
+    SmallVector<tensorflow::int64, 4> explicit_paddings{
+        explicit_paddings_attr.getValues<int64_t>().begin(),
+        explicit_paddings_attr.getValues<int64_t>().end()};
+
+    int num_spatial_dims = 2;
+    int num_dims = num_spatial_dims + 2;
+    int batch_dim = tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
+    int feature_dim =
+        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+
+    auto filter_shape =
+        llvm::to_vector<4>(filter_shape_attr.getValues<int32_t>());
+    if (filter_shape.size() != num_dims) return matchFailure();
+
+    // Reuse dimension computation logic from conv_grad_ops.cc.
+    tensorflow::ConvBackpropDimensions dims;
+    if (!tensorflow::ConvBackpropComputeDimensionsV2(
+             "", num_spatial_dims, ToTensorShape<int64_t>(input_shape),
+             ToTensorShape<int>(filter_shape),
+             ToTensorShape<int64_t>(out_backprop_shape), dilations, strides,
+             padding, explicit_paddings, data_format, &dims)
+             .ok()) {
+      return matchFailure();
+    }
+
+    // The activations (inputs) form the LHS of the convolution.
+    // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
+    // For the gradient computation, we need to:
+    // 1. In the case of group convolution, move the num_groups dimension before
+    // the batch dimension
+    // 2. Swap the roles of the batch and feature dimensions.
+    int64_t in_depth = input_shape[feature_dim];
+    int64_t filter_in_depth = filter_shape[num_spatial_dims];
+    int64_t feature_group_count = in_depth / filter_in_depth;
+    if (feature_group_count != 1) {
+      /*
+          // TODO(parkers): translate this code to mlir.
+          activations = TransposeInputForGroupConvolutionBackpropFilter(
+              activations, input_shape, feature_group_count, batch_dim,
+         feature_dim);
+      */
+      return matchFailure();
+    }
+
+    // Compute xla_hlo::ConvDimensionNumbers, dilation, and padding.
+    SmallVector<int64_t, 8> conv_padding(num_spatial_dims * 2);
+    SmallVector<int64_t, 4> rhs_dilation(num_spatial_dims);
+    SmallVector<int64_t, 4> window_strides(num_spatial_dims);
+    SmallVector<int64_t, 4> lhs_dilation(num_spatial_dims, 1);
+    SmallVector<int64_t, 4> spatial_dims(num_spatial_dims);
+    SmallVector<int64_t, 4> kernel_spatial_dims(num_spatial_dims);
+
+    // The filter gradients are computed by a convolution of the input
+    // activations and the output gradients, with some appropriate padding.
+    // See the comment at the top of conv_grad_ops.h for details.
+
+    for (int64_t i = 0; i < num_spatial_dims; ++i) {
+      int64_t dim =
+          tensorflow::GetTensorSpatialDimIndex(num_dims, data_format, i);
+      kernel_spatial_dims[i] = dim;
+      // Besides padding the input, we will also expand output_rows to
+      //    expanded_out_rows = (output_rows - 1) * stride + 1
+      // with zeros in between:
+      //
+      //      a . . . b . . . c . . . d . . . e
+      //
+      // This is done by specifying the window dilation factors in the
+      // convolution HLO below.
+      rhs_dilation[i] = dims.spatial_dims[i].stride;
+      window_strides[i] = dilations[dim];
+
+      // We will also need to pad the input with zeros such that after the
+      // convolution, we get the right size for the filter.
+      // The padded_in_rows should be such that when we convolve this with the
+      // expanded_out_rows as a filter, we should get filter_rows back.
+
+      const int64_t padded_in_size =
+          dims.spatial_dims[i].expanded_output_size +
+          (dims.spatial_dims[i].filter_size - 1) * dilations[dim];
+
+      // However it can be smaller than input_rows: in this
+      // case it means some of the inputs are not used.
+      //
+      // An example is to have input_cols = 3, filter_cols = 2 and stride = 2:
+      //
+      // INPUT =  [ A  B  C ]
+      //
+      // FILTER = [ x y ]
+      //
+      // and the output will only have one column: a = A * x + B * y
+      //
+      // and input "C" is not used at all.
+      //
+      // We apply negative padding in this case.
+      const int64_t pad_total =
+          padded_in_size - dims.spatial_dims[i].input_size;
+
+      // + For the EXPLICIT padding, we pad the top/left side with the explicit
+      //   padding and pad the bottom/right side with the remaining space.
+      // + For the VALID padding, we don't pad anything on the top/left side
+      //   and pad the bottom/right side with the remaining space.
+      // + For the SAME padding, we pad top/left side the same as bottom/right
+      //   side.
+      //
+      // In addition, if the padded input size is smaller than the input size,
+      // we need to ignore some training elements of the input. We do this by
+      // applying negative padding on the right/bottom.
+      const int64_t pad_before = padding == tensorflow::Padding::EXPLICIT
+                                     ? explicit_paddings[2 * dim]
+                                     : padding == tensorflow::Padding::SAME
+                                           ? std::max<int64_t>(pad_total / 2, 0)
+                                           : 0;
+      conv_padding[i * 2] = pad_before;
+      conv_padding[i * 2 + 1] = pad_total - pad_before;
+    }
+
+    RankedTensorType paddings_ty = mlir::RankedTensorType::get(
+        {num_spatial_dims, 2}, rewriter.getIntegerType(64));
+    auto paddings_attr =
+        DenseIntElementsAttr::get<int64_t>(paddings_ty, conv_padding);
+    auto out_spatial_dims_attr =
+        GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter);
+    auto kernel_spatial_dims_attr =
+        GetI64ElementsAttr(kernel_spatial_dims, &rewriter);
+
+    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
+    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
+
+    Location loc = op.getLoc();
+    Value *result = rewriter.create<xla_hlo::ConvOp>(
+        loc, op.getType(), op.input(), op.out_backprop(),
+        /*window_strides=*/GetI64ElementsAttr(window_strides, &rewriter),
+        /*padding=*/paddings_attr.cast<DenseIntElementsAttr>(),
+        GetI64ElementsAttr(lhs_dilation, &rewriter),
+        GetI64ElementsAttr(rhs_dilation, &rewriter),
+        xla_hlo::ConvDimensionNumbers::get(
+            // Swap batch_dim and feature_dim in the activations.
+            /*input_batch_dimension=*/feature_dim_attr,
+            /*input_feature_dimension=*/batch_dim_attr,
+            /*input_spatial_dimensions=*/kernel_spatial_dims_attr,
+            // The gradients become the RHS of the convolution.
+            // The gradients have shape [batch, out_rows, out_cols, ...,
+            // out_depth] where the batch becomes the input feature for the
+            // convolution.
+            /*kernel_input_feature_dimension=*/batch_dim_attr,
+            /*kernel_output_feature_dimension=*/feature_dim_attr,
+            /*kernel_spatial_dimensions=*/kernel_spatial_dims_attr,
+            /*output_batch_dimension=*/
+            rewriter.getI64IntegerAttr(num_spatial_dims),
+            /*output_feature_dimension=*/
+            rewriter.getI64IntegerAttr(num_spatial_dims + 1),
+            /*output_spatial_dimensions=*/out_spatial_dims_attr,
+            rewriter.getContext()),
+        rewriter.getI64IntegerAttr(feature_group_count),
+        /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
+        /*precision_config=*/ArrayAttr());
+
+    rewriter.replaceOp(op, {result}, {op.filter_sizes()});
 
     return matchSuccess();
   }
@@ -1593,7 +1791,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
                   mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
                   mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp,
                   mlir::xla::ConvertOneHotOp,
-                  mlir::xla::ConvertConv2DBackpropInputOp>(op->getContext());
+                  mlir::xla::ConvertConv2DBackpropInputOp,
+                  mlir::xla::ConvertConv2DBackpropFilterOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

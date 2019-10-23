@@ -2086,18 +2086,48 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
       leaf_index_paths_.push_back(builder_.getArrayAttr(current_index_path_));
       return;
     }
+    case StructuredValue::kNoneValue: {
+      // Base case: do nothing.
+      // This arises, for example, as the top-level object of an output
+      // signature when there are no return values.
+      return;
+    }
     default: {
       llvm_unreachable("Unhandled StructuredValue kind!");
     }
   }
 }
 
-// Move all exported functions to the end of the module, sorted by (first)
-// exported name.
+// Reorder the ops in the module to make testing easier and less dependent
+// on implementation details such as the order of functions in the
+// FunctionDefLibrary.
 //
-// This makes testing easier and less dependent on implementation
-// details such as the order of functions in the FunctionDefLibrary.
-void SortFuncsByExportedNames(mlir::ModuleOp module) {
+// The order this ensures is:
+// 1. GlobalTensorOp's
+// 2. FuncOps's.
+//
+// Within each of 1. and 2., ops are sorted by exported name (if
+// available, and only the first exported name is considered), followed by
+// non-exported ops.
+void SortSavedModelModule(mlir::ModuleOp module) {
+  struct NamedGlobalTensor {
+    llvm::StringRef name;
+    mlir::tf_saved_model::GlobalTensorOp global_tensor;
+  };
+  llvm::SmallVector<NamedGlobalTensor, 8> named_global_tensors;
+  for (auto global_tensor :
+       module.getOps<mlir::tf_saved_model::GlobalTensorOp>()) {
+    auto exported_names = mlir::tf_saved_model::GetExportedNames(global_tensor);
+    // We use stable_sort, so duplicate empty names are fine here.
+    named_global_tensors.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), global_tensor});
+  }
+  llvm::stable_sort(named_global_tensors,
+                    [](const NamedGlobalTensor& a, const NamedGlobalTensor& b) {
+                      return std::make_tuple(a.name.empty(), a.name) <
+                             std::make_tuple(b.name.empty(), b.name);
+                    });
+
   struct NamedFunc {
     llvm::StringRef name;
     mlir::FuncOp func;
@@ -2105,17 +2135,21 @@ void SortFuncsByExportedNames(mlir::ModuleOp module) {
   llvm::SmallVector<NamedFunc, 8> named_funcs;
   for (auto func : module.getOps<mlir::FuncOp>()) {
     auto exported_names = mlir::tf_saved_model::GetExportedNames(func);
-    if (exported_names.empty()) {
-      continue;
-    }
-    named_funcs.push_back({exported_names.front(), func});
+    named_funcs.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), func});
   }
-  llvm::sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
-    return a.name < b.name;
+  llvm::stable_sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
+    return std::make_tuple(a.name.empty(), a.name) <
+           std::make_tuple(b.name.empty(), b.name);
   });
-  auto terminator = module.getBody()->getTerminator();
-  for (auto named_func : named_funcs) {
-    named_func.func.getOperation()->moveBefore(terminator);
+
+  // Move onto the front of the module in reverse of the final desired order.
+  for (auto named_func : llvm::reverse(named_funcs)) {
+    named_func.func.getOperation()->moveBefore(&module.getBody()->front());
+  }
+  for (auto named_global_tensor : llvm::reverse(named_global_tensors)) {
+    named_global_tensor.global_tensor.getOperation()->moveBefore(
+        &module.getBody()->front());
   }
 }
 
@@ -2159,7 +2193,6 @@ Status CreateSavedModelIR(
           concrete_function.canonicalized_input_signature()
               .tuple_value()
               .values(0);
-      // TODO(b/142500921): Add index_path attributes on return values too.
       StructuredValueLinearizer input_linearizer(positional_arg_structure,
                                                  builder.getContext());
 
@@ -2184,6 +2217,21 @@ Status CreateSavedModelIR(
         auto symbol_ref = builder.getSymbolRefAttr(
             object_names.GetSymbolTableName(bound_input.value()));
         func.setArgAttr(arg_index, "tf_saved_model.bound_input", symbol_ref);
+      }
+
+      StructuredValueLinearizer output_linearizer(
+          concrete_function.output_signature(), builder.getContext());
+      auto output_index_paths = output_linearizer.GetLeafIndexPaths();
+      if (func.getNumResults() != output_index_paths.size()) {
+        return errors::InvalidArgument(
+            "Result mismatch between concrete function output signature "
+            "vs underlying FunctionDef for concrete function '",
+            function.concrete_functions(0), "' (", output_index_paths.size(),
+            " vs ", func.getNumResults(), ")");
+      }
+      for (auto index_path : llvm::enumerate(output_index_paths)) {
+        func.setResultAttr(index_path.index(), "tf_saved_model.index_path",
+                           index_path.value());
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
       const SavedVariable& variable = object.variable();
@@ -2216,7 +2264,7 @@ Status CreateSavedModelIR(
     }
   }
   module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
-  SortFuncsByExportedNames(module);
+  SortSavedModelModule(module);
   return Status::OK();
 }
 
