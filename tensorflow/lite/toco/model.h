@@ -950,6 +950,10 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
   return m1.min == m2.min && m1.max == m2.max;
 }
 
+inline bool operator!=(const MinMax& m1, const MinMax& m2) {
+  return m1.min != m2.min || m1.max != m2.max;
+}
+
 // Fake-quantization operator. This does two things:
 //   - Annotate its input and output arrays with MinMax information,
 //   - Arithmetic-wise, this operator rounds incoming activation values
