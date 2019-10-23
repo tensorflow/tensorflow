@@ -39,7 +39,7 @@ def make_arg_min_max_tests(options):
 
   def build_graph(parameters):
     """Build the topk op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])

@@ -36,8 +36,8 @@ def make_unfused_gru_tests(options):
   def build_graph(parameters):
     """Build the graph for unfused_gru."""
     inputs = [
-        tf.placeholder(tf.float32,
-                       [parameters["batch_size"], parameters["units"]])
+        tf.compat.v1.placeholder(
+            tf.float32, [parameters["batch_size"], parameters["units"]])
         for _ in range(parameters["time"])
     ]
     cell_fw = tf.nn.rnn_cell.GRUCell(parameters["units"])
