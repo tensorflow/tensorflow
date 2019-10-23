@@ -543,7 +543,7 @@ class Variant {
   // this method.
   template <typename T, typename VT>
   void InsertValueMove(T&& value) {
-    if (is_inline_) {
+    if (IsInlineValue()) {
       Value<VT>* inline_value_data =
           reinterpret_cast<Value<VT>*>(value_.inline_value.value_data);
       new (inline_value_data) Value<VT>(kInPlace, std::forward<T>(value));
@@ -559,7 +559,7 @@ class Variant {
   // this method.
   template <typename T, typename VT>
   void InsertValueCopy(const T& value) {
-    if (is_inline_) {
+    if (IsInlineValue()) {
       Value<VT>* inline_value_data =
           reinterpret_cast<Value<VT>*>(value_.inline_value.value_data);
       new (inline_value_data) Value<VT>(kInPlace, value);
@@ -577,7 +577,8 @@ class Variant {
 static_assert(sizeof(Variant) <= 64,
               "Expected internal representation to be 64 bytes.");
 
-inline Variant::Variant(const Variant& other) : is_inline_(other.is_inline_) {
+inline Variant::Variant(const Variant& other)
+    : is_inline_(other.IsInlineValue()) {
   if (!other.is_empty()) {
     if (other.IsInlineValue()) {
       value_.inline_value = InlineValue();
@@ -585,13 +586,12 @@ inline Variant::Variant(const Variant& other) : is_inline_(other.is_inline_) {
       value_.inline_value.has_value = true;
     } else {
       value_.heap_value = HeapValue(other.GetValue()->Clone());
-      is_inline_ = false;
     }
   }
 }
 
 inline Variant::Variant(Variant&& other) noexcept
-    : is_inline_(other.is_inline_) {
+    : is_inline_(other.IsInlineValue()) {
   if (!other.is_empty()) {
     if (other.IsInlineValue()) {
       value_.inline_value = InlineValue();
@@ -599,7 +599,6 @@ inline Variant::Variant(Variant&& other) noexcept
       value_.inline_value.has_value = true;
     } else {
       value_.heap_value = std::move(other.value_.heap_value);
-      is_inline_ = false;
     }
   }
 }
