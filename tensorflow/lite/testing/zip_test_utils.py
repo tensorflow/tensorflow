@@ -351,11 +351,15 @@ def make_zip_of_tests(options,
           "fully_quantize", False):
         continue
 
-      def build_tflite_inputs(tflite_model_binary):
-        """Build input values and output values of the given tflite model.
+      def generate_inputs_outputs(tflite_model_binary,
+                                  min_value=0,
+                                  max_value=255):
+        """Generate input values and output values of the given tflite model.
 
         Args:
           tflite_model_binary: A serialized flatbuffer as a string.
+          min_value: min value for the input tensor.
+          max_value: max value for the input tensor.
 
         Returns:
           (input_values, output_values): input values and output values built.
@@ -366,12 +370,11 @@ def make_zip_of_tests(options,
         input_details = interpreter.get_input_details()
         input_values = []
         for input_detail in input_details:
-          # TODO(yunluli): Set proper min max value according to dtype.
           input_value = create_tensor_data(
               input_detail["dtype"],
               input_detail["shape"],
-              min_value=0,
-              max_value=255)
+              min_value=min_value,
+              max_value=max_value)
           interpreter.set_tensor(input_detail["index"], input_value)
           input_values.append(input_value)
 
@@ -458,8 +461,9 @@ def make_zip_of_tests(options,
 
         if tflite_model_binary:
           if options.make_edgetpu_tests:
-            baseline_inputs, baseline_outputs = build_tflite_inputs(
-                tflite_model_binary)
+            # Set proper min max values according to input dtype.
+            baseline_inputs, baseline_outputs = generate_inputs_outputs(
+                tflite_model_binary, min_value=0, max_value=255)
           archive.writestr(label + ".bin", tflite_model_binary,
                            zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}

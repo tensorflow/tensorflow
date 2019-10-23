@@ -34,11 +34,19 @@ def make_reshape_tests(options):
       "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
       "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
       "constant_shape": [True, False],
+      "fully_quantize": [False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1]],
       "output_shape": [[]],
       "constant_shape": [True, False],
+      "fully_quantize": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
+      "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
+      "constant_shape": [True],
+      "fully_quantize": [True],
   }]
 
   def build_graph(parameters):
@@ -62,8 +70,14 @@ def make_reshape_tests(options):
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    """Build inputs for reshape op."""
+
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(
+            parameters["dtype"],
+            parameters["input_shape"],
+            min_value=-1,
+            max_value=1)
     ]
     if not parameters["constant_shape"]:
       values.append(np.array(parameters["output_shape"]))

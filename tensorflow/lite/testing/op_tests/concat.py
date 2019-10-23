@@ -32,6 +32,13 @@ def make_concat_tests(options):
       "num_tensors": [1, 2, 3, 4, 5, 6],
       "axis": [0, 1, 2, 3, -3, -2, -1],
       "type": [tf.float32, tf.uint8, tf.int32, tf.int64],
+      "fully_quantize": [False]
+  }, {
+      "base_shape": [[1, 3, 4, 3], [3, 4], [2, 3, 4, 3]],
+      "num_tensors": [1, 2, 3, 4, 5, 6],
+      "axis": [1, 2, 3, -3, -2, -1],
+      "type": [tf.float32],
+      "fully_quantize": [True]
   }]
 
   def get_shape(parameters, delta):
@@ -58,8 +65,11 @@ def make_concat_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     all_values = []
     for n in range(0, parameters["num_tensors"]):
-      input_values = create_tensor_data(parameters["type"],
-                                        get_shape(parameters, n))
+      input_values = create_tensor_data(
+          parameters["type"],
+          get_shape(parameters, n),
+          min_value=-1,
+          max_value=1)
       all_values.append(input_values)
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
@@ -69,4 +79,4 @@ def make_concat_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=60)
+      expected_tf_failures=75)

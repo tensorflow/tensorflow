@@ -37,6 +37,7 @@ def make_pad_tests(options):
           "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]],
                        [[0, 1], [0, 0], [0, 0], [2, 3]]],
           "constant_paddings": [True, False],
+          "fully_quantize": [False]
       },
       # 2D:
       {
@@ -44,6 +45,7 @@ def make_pad_tests(options):
           "input_shape": [[1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
+          "fully_quantize": [False]
       },
       # 1D:
       {
@@ -51,6 +53,33 @@ def make_pad_tests(options):
           "input_shape": [[1]],
           "paddings": [[[1, 2]]],
           "constant_paddings": [False],
+          "fully_quantize": [False]
+      },
+      # 4D:
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
+          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]],
+                       [[0, 1], [0, 0], [0, 0], [2, 3]],
+                       [[0, 0], [0, 0], [0, 0], [0, 0]]],
+          "constant_paddings": [True],
+          "fully_quantize": [True]
+      },
+      # 2D:
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 2]],
+          "paddings": [[[0, 1], [2, 3]]],
+          "constant_paddings": [True],
+          "fully_quantize": [True]
+      },
+      # 1D:
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1]],
+          "paddings": [[[1, 2]]],
+          "constant_paddings": [True],
+          "fully_quantize": [True]
       },
   ]
 
@@ -75,8 +104,14 @@ def make_pad_tests(options):
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    """Build inputs for pad op."""
+
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(
+            parameters["dtype"],
+            parameters["input_shape"],
+            min_value=-1,
+            max_value=1)
     ]
     if not parameters["constant_paddings"]:
       values.append(np.array(parameters["paddings"]))
