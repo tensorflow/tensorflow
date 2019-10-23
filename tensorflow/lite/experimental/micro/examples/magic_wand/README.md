@@ -63,7 +63,7 @@ The sample has been tested with the following devices:
 To use this sample application with Arduino, we've created an Arduino library
 that includes it as an example that you can open in the Arduino Desktop IDE.
 
-Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
+Download the current nightly build of the library: [magic_wand.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
 
 Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
 Include Library -> Add .ZIP Library...`.
@@ -346,6 +346,7 @@ SLOPE:
   *
  * * * * * * * *
 ```
+> Yes, the link for `person_detection` is fixed. Also the`magic-wand` documentation needs this same fix as #33582 suggests. You can include the changes from #33582 here in #33579.
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
