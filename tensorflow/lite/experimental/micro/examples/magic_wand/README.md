@@ -346,7 +346,6 @@ SLOPE:
   *
  * * * * * * * *
 ```
-> Yes, the link for `person_detection` is fixed. Also the`magic-wand` documentation needs this same fix as #33582 suggests. You can include the changes from #33582 here in #33579.
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
