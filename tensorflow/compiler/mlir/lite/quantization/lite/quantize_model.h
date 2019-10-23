@@ -31,7 +31,7 @@ namespace lite {
 TfLiteStatus QuantizeModel(const tflite::ModelT& input_model,
                            const tflite::TensorType& input_type,
                            const tflite::TensorType& output_type,
-                           const std::unordered_set<string>& operator_names,
+                           const std::unordered_set<std::string>& operator_names,
                            bool allow_float,
                            flatbuffers::FlatBufferBuilder* builder,
                            tflite::ErrorReporter* error_reporter);
