@@ -928,6 +928,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def list_files(file_pattern, shuffle=None, seed=None):
     """A dataset of all files matching one or more glob patterns.
 
+    The `file_pattern` argument should be a small number of glob patterns.
+    If your filenames have already been globbed, use
+    `Dataset.from_tensor_slices(filenames)` instead, as re-globbing every
+    filename with `list_files` may result in poor performance with remote
+    storage systems.
+
     NOTE: The default behavior of this method is to return filenames in
     a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
     to get results in a deterministic order.
