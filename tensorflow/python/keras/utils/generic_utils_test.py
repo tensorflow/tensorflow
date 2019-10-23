@@ -224,6 +224,7 @@ class SerializeKerasObjectTest(test.TestCase):
     nested_int = SerializableInt(4)
     layer = keras.layers.Dense(
         SerializableNestedInt(3, nested_int),
+        name='SerializableNestedInt',
         activation='relu',
         kernel_initializer='ones',
         bias_regularizer='l2')
@@ -234,6 +235,9 @@ class SerializeKerasObjectTest(test.TestCase):
             'SerializableInt': SerializableInt,
             'SerializableNestedInt': SerializableNestedInt
         })
+    # Make sure the string field doesn't get convert to custom object, even
+    # they have same value.
+    self.assertEqual(new_layer.name, 'SerializableNestedInt')
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
                      keras.regularizers.L1L2)
