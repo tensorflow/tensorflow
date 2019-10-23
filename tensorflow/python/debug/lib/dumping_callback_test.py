@@ -49,12 +49,12 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-def _create_simple_recurrent_keras_model():
+def _create_simple_recurrent_keras_model(input_shape):
   """Create a simple tf.keras model containing a recurrent layer for testing."""
   model = models.Sequential()
   model.add(recurrent_v2.LSTM(
       10,
-      input_shape=[8, 4],
+      input_shape=input_shape,
       kernel_initializer="zeros",
       recurrent_initializer="zeros"))
   model.add(core.Dense(1, kernel_initializer="zeros"))
@@ -691,9 +691,9 @@ class TracingCallbackTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testSimpleKerasRecurrentModelPredict(self, tensor_debug_mode):
     writer = dumping_callback.enable_dumping(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    model = _create_simple_recurrent_keras_model()
+    model = _create_simple_recurrent_keras_model([3, 4])
     batch_size = 5
-    xs = np.ones([batch_size, 8, 4])
+    xs = np.ones([batch_size, 3, 4])
     self.assertAllClose(model.predict(xs), np.zeros([batch_size, 1]))
 
     writer.FlushNonExecutionFiles()
@@ -755,8 +755,8 @@ class TracingCallbackTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testSimpleKerasRecurrentModelFit(self, tensor_debug_mode):
     writer = dumping_callback.enable_dumping(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    model = _create_simple_recurrent_keras_model()
-    xs = np.ones([5, 8, 4])
+    model = _create_simple_recurrent_keras_model([3, 4])
+    xs = np.ones([5, 3, 4])
     ys = np.ones([5, 1])
 
     history = model.fit(xs, ys, epochs=3, verbose=0)
