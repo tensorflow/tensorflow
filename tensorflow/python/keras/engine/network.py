@@ -966,8 +966,7 @@ class Network(base_layer.Layer):
         include_optimizer: If True, save optimizer's state together.
         save_format: Either 'tf' or 'h5', indicating whether to save the model
             to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-            will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
-            disabled (use `tf.keras.experimental.export_saved_model` instead).
+            will switch to 'tf' in TensorFlow 2.0.
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.
