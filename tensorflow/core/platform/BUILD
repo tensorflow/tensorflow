@@ -7,7 +7,7 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
@@ -17,7 +17,6 @@ load(
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_platform_srcs",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
 )
@@ -385,8 +384,7 @@ cc_library(
         ":protobuf",
         ":types",
         "//tensorflow/core/lib/core:errors",
-        "@com_google_protobuf//:protobuf",
-    ],
+    ] + if_static(["@com_google_protobuf//:protobuf"]),
 )
 
 cc_library(
