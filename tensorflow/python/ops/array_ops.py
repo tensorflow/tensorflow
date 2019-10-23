@@ -1934,28 +1934,23 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
     A transposed `Tensor`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
-    transpose_fn = (
-        gen_array_ops.conjugate_transpose if
-        (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
-    if perm is None:
-      if not tensor_util.is_tensor(a):
-        a = ops.convert_to_tensor(a, name="a")
-      if a.shape.ndims is None:
-        rank = gen_array_ops.rank(a)
-        perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
-      else:
-        rank = a.shape.ndims
-        perm = (rank - 1) - np.arange(rank)
-      ret = transpose_fn(a, perm, name=name)
-      # NOTE(mrry): Setting the shape explicitly because
-      #   reverse is not handled by the shape function.
-      if not context.executing_eagerly():
-        input_shape = ret.op.inputs[0].get_shape().dims
-        if input_shape is not None:
-          ret.set_shape(input_shape[::-1])
+    if not tensor_util.is_tensor(a):
+      a = ops.convert_to_tensor(a, name="a")
+
+    if conjugate and a.dtype.is_complex:
+      transpose_fn = gen_array_ops.conjugate_transpose
     else:
-      ret = transpose_fn(a, perm, name=name)
-    return ret
+      transpose_fn = gen_array_ops.transpose
+
+    if perm is not None:
+      return transpose_fn(a, perm, name=name)
+
+    rank = a.shape.rank
+    if rank is None:
+      perm = gen_math_ops._range(gen_array_ops.rank(a) - 1, -1, -1)
+    else:
+      perm = np.arange(rank - 1, -1, -1, dtype=np.int32)
+    return transpose_fn(a, perm, name=name)
 
 
 # pylint: disable=invalid-name
