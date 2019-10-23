@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

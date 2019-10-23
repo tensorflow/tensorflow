@@ -537,6 +537,8 @@ class BFCAllocator : public Allocator {
   AllocatorStats stats_ GUARDED_BY(lock_);
 #ifdef TENSORFLOW_MEM_DEBUG
   int64 action_counter_ GUARDED_BY(lock_);
+#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
+  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;

@@ -1791,7 +1791,7 @@ class SliceOperationParser : public TFLiteOperationParser {
     }
     if (ends.data.size() == 4) {
       attr.ends = BHWC(ends.data[0], ends.data[1], ends.data[2], ends.data[3]);
-    } else if (starts.data.size() == 3) {
+    } else if (ends.data.size() == 3) {
       attr.ends =
           BHWC(input->tensor.shape.b, ends.data[0], ends.data[1], ends.data[2]);
     } else {

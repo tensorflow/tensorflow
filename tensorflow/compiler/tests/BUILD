@@ -1427,7 +1427,6 @@ tf_xla_py_test(
         "gpu",
     ],
     tags = [
-        "notap",  # TODO(b/143079758)
         "optonly",
     ],
     deps = [

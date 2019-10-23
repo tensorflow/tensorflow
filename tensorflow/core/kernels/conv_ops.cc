@@ -176,7 +176,7 @@ struct LaunchConv2DOp<CPUDevice, T> {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 struct LaunchConv2DOp<GPUDevice, int32> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -213,7 +213,7 @@ struct LaunchConv2DOp<GPUDevice, int32> {
         padding, explicit_paddings, output, data_format);
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class LaunchDeepConvOp {

@@ -281,7 +281,7 @@ class LhloToLinalgOpConverter : public ConversionPattern {
         loc, llvm::cast<LhloOp>(lhlo_op), body_arg_types[0], body_result_types,
         body_args, rewriter);
     rewriter.create<linalg::YieldOp>(loc, llvm::to_vector<1>(op->getResults()));
-    rewriter.replaceOp(lhlo_op, {});
+    rewriter.eraseOp(lhlo_op);
     return matchSuccess();
   }
 };

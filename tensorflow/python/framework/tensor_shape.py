@@ -17,11 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import dtypes
-from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -181,19 +181,24 @@ def dimension_at_index(shape, index):
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
+  __slots__ = ["_value"]
+
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
     if value is None:
       self._value = None
     elif isinstance(value, Dimension):
-      self._value = value.value
-    elif isinstance(value, dtypes.DType):
-      raise TypeError("Cannot convert %s to Dimension" % value)
+      self._value = value
     else:
-      self._value = int(value)
-      if (not isinstance(value, compat.bytes_or_text_types) and
-          self._value != value):
-        raise ValueError("Ambiguous dimension: %s" % value)
+      try:
+        # int(...) compensates for the int/long dichotomy on Python 2.X.
+        # TODO(b/143206389): Remove once we fully migrate to 3.X.
+        self._value = int(value.__index__())
+      except AttributeError:
+        six.raise_from(
+            TypeError("Dimension value must be integer or None or have "
+                      "an __index__ method, got {!r}".format(value)),
+            None)
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -752,9 +757,6 @@ class TensorShape(object):
     """
     if dims is None:
       self._dims = None
-    elif isinstance(dims, compat.bytes_or_text_types):
-      raise TypeError("A string has ambiguous TensorShape, please wrap in a "
-                      "list or convert to an int: %s" % dims)
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
         self._dims = None
@@ -773,7 +775,6 @@ class TensorShape(object):
         # Treat as a singleton dimension
         self._dims = [as_dimension(dims)]
       else:
-        # Got a list of dimensions
         self._dims = [as_dimension(d) for d in dims_iter]
 
   @property

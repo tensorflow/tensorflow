@@ -54,7 +54,7 @@ def make_fused_batch_norm_tests(options):
         data_format="NHWC",
         is_training=False)
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])

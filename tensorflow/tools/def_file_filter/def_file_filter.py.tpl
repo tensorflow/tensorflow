@@ -70,6 +70,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"nsync::|"
                         r"tensorflow::|"
+                        r"toco::|"
                         r"functor::|"
                         r"perftools::gputools")
 

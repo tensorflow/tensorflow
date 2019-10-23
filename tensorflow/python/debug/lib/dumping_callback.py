@@ -54,11 +54,11 @@ def _debug_identity_v2_grad(op, dy):
 def _get_writer():
   """Get the debug events writer for the currently configured dump root."""
   # TODO(cais): Explore caching the object for possible performance gain.
-  # TODO(cais): Rename cyclic_buffer_size to circular_buffer_size in C++ and
+  # TODO(cais): Rename circular_buffer_size to circular_buffer_size in C++ and
   #   Python-bindng code.
   return debug_events_writer.DebugEventsWriter(
       _state.config.dump_root,
-      cyclic_buffer_size=_state.config.circular_buffer_size)
+      circular_buffer_size=_state.config.circular_buffer_size)
 
 
 def _get_id():
@@ -165,40 +165,38 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
   instrumented_tensors = [] if is_v1_graph_mode else None
   if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
     for output_slot, tensor in enumerate(tensors):
-      with ops.colocate_with(None, ignore_existing=True):
-        # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
-        # control dependency because it's a stateful op.
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
-            # as a low-overhead placeholder, since no actual tensor value is
-            # traced.
-            constant_op.constant([], dtype=dtypes.float32),
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=output_slot,
-            tensor_debug_mode=_state.config.tensor_debug_mode,
-            debug_urls=debug_urls)
-        if is_v1_graph_mode:
-          # TODO(cais): Evaluate performance optimization options. For the
-          # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
-          # control dependency of `tensor.op` without an additional identity op.
-          identity = array_ops.identity(tensor)
-          identity.op._add_control_input(  # pylint: disable=protected-access
-              debug_tensor.op)
-          instrumented_tensors.append(identity)
+      # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
+      # control dependency because it's a stateful op.
+      debug_tensor = gen_debug_ops.debug_identity_v2(
+          # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
+          # as a low-overhead placeholder, since no actual tensor value is
+          # traced.
+          constant_op.constant([], dtype=dtypes.float32),
+          tfdbg_context_id=tfdbg_context_id,
+          op_name=op_name,
+          output_slot=output_slot,
+          tensor_debug_mode=_state.config.tensor_debug_mode,
+          debug_urls=debug_urls)
+      if is_v1_graph_mode:
+        # TODO(cais): Evaluate performance optimization options. For the
+        # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
+        # control dependency of `tensor.op` without an additional identity op.
+        identity = array_ops.identity(tensor)
+        identity.op._add_control_input(  # pylint: disable=protected-access
+            debug_tensor.op)
+        instrumented_tensors.append(identity)
     return instrumented_tensors
   elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
     for output_slot, tensor in enumerate(tensors):
-      with ops.colocate_with(None, ignore_existing=True):
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            tensor,
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=output_slot,
-            tensor_debug_mode=_state.config.tensor_debug_mode,
-            debug_urls=debug_urls)
-        if is_v1_graph_mode:
-          instrumented_tensors.append(debug_tensor)
+      debug_tensor = gen_debug_ops.debug_identity_v2(
+          tensor,
+          tfdbg_context_id=tfdbg_context_id,
+          op_name=op_name,
+          output_slot=output_slot,
+          tensor_debug_mode=_state.config.tensor_debug_mode,
+          debug_urls=debug_urls)
+      if is_v1_graph_mode:
+        instrumented_tensors.append(debug_tensor)
     return instrumented_tensors
   else:
     raise NotImplementedError(

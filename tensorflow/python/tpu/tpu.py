@@ -486,8 +486,13 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    if _TPU_REPLICATE_ATTR in op.node_def.attr:
-      raise ValueError("TPU computations cannot be nested")
+
+    # TensorFlowOpLayer may clone nodes that are in tpu.rewrite()s. It'll add
+    # the "_cloned" attribute and we should continue in that case.
+    if (_TPU_REPLICATE_ATTR in op.node_def.attr and
+        "_cloned" not in op.node_def.attr):
+      raise ValueError("TPU computations cannot be nested on op (%s)" %
+                       op)
     op._set_attr_with_buf(
         _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
     if self._outside_compilation_cluster:

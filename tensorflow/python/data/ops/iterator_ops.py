@@ -541,8 +541,14 @@ class IteratorResourceDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
-class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
-  """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
+class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
+  """An iterator producing tf.Tensor objects from a tf.data.Dataset.
+
+  The iterator resource  created through `OwnedIterator` is owned by the Python
+  object and the life time of the underlying resource is tied to the life time
+  of the `OwnedIterator` object. This makes `OwnedIterator` appropriate for use
+  in eager mode and inside of tf.functions.
+  """
 
   def __init__(self, dataset=None, components=None, element_spec=None):
     """Creates a new iterator from the given dataset.
@@ -746,7 +752,7 @@ class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
 
 # TODO(jsimsa): Export this as "tf.data.IteratorSpec".
 class IteratorSpec(type_spec.TypeSpec):
-  """Type specification for `tf.data.Iterator`."""
+  """Type specification for `OwnedIterator`."""
 
   __slots__ = ["_element_spec"]
 
@@ -755,7 +761,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def value_type(self):
-    return IteratorV2
+    return OwnedIterator
 
   def _serialize(self):
     return (self._element_spec,)
@@ -771,7 +777,7 @@ class IteratorSpec(type_spec.TypeSpec):
     return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
 
   def _from_components(self, components):
-    return IteratorV2(
+    return OwnedIterator(
         dataset=None,
         components=components,
         element_spec=self._element_spec)

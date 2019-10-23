@@ -83,3 +83,7 @@ tensorflow::PyExceptionRegistry::Lookup
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+

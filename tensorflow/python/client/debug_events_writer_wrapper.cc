@@ -29,9 +29,9 @@ PYBIND11_MODULE(_pywrap_debug_events_writer, m) {
   using namespace tensorflow::tfdbg;  // NOLINT(build/namespaces)
 
   m.def("Init",
-        [](const std::string dump_root, const int64 cyclic_buffer_size) {
+        [](const std::string dump_root, const int64 circular_buffer_size) {
           DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
-              dump_root, cyclic_buffer_size);
+              dump_root, circular_buffer_size);
           if (!writer->Init().ok()) {
             throw py::value_error(tensorflow::strings::Printf(
                 "Failed to initialize debug events writer at: %s",

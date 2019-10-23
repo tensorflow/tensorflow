@@ -267,6 +267,7 @@ Status InsertBufferLoadPreduleIntoKernel(
   auto offsetType = LLVMType::getInt64Ty(llvm_dialect);
   auto ptrType = LLVMType::getInt8PtrTy(llvm_dialect);
   auto voidType = LLVMType::getVoidTy(llvm_dialect);
+  auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();
   std::vector<LLVMType> new_arg_types(buffers.size(), ptrType);
@@ -279,6 +280,18 @@ Status InsertBufferLoadPreduleIntoKernel(
   auto new_args = kernel.front().addArguments(as_mlir_types);
   std::vector<Value*> buffer_args(new_args.begin(), new_args.end());
 
+  auto zero = builder.create<mlir::LLVM::ConstantOp>(
+      loc, offsetType, builder.getI64IntegerAttr(0));
+  auto one = builder.create<mlir::LLVM::ConstantOp>(
+      loc, offsetType, builder.getI64IntegerAttr(1));
+  auto baseIndex = builder.create<mlir::LLVM::ConstantOp>(
+      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(0));
+  auto offsetIndex = builder.create<mlir::LLVM::ConstantOp>(
+      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(1));
+  auto shapeIndex = builder.create<mlir::LLVM::ConstantOp>(
+      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(2));
+  auto strideIndex = builder.create<mlir::LLVM::ConstantOp>(
+      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(3));
   // Inject code to map from buffers to input/result values.
   for (auto operand : ordered_operands) {
     TF_ASSIGN_OR_RETURN(auto slice,
@@ -286,16 +299,57 @@ Status InsertBufferLoadPreduleIntoKernel(
     auto buffer = std::find(buffers.begin(), buffers.end(), slice.allocation());
     auto index = buffer - buffers.begin();
     auto offset = builder.create<mlir::LLVM::ConstantOp>(
-        kernel.getLoc(), offsetType, builder.getI64IntegerAttr(slice.offset()));
-    auto ptr = builder.create<mlir::LLVM::GEPOp>(
-        kernel.getLoc(), ptrType, buffer_args[index],
-        llvm::ArrayRef<Value*>{offset});
+        loc, offsetType, builder.getI64IntegerAttr(slice.offset()));
+    auto ptr = buffer_args[index];
     // TODO(b/137624192) Add support for indices into tuples.
     for (auto value : operand_to_value_map.at(operand)) {
-      // Cast the pointer from void* to what the argument expects.
+      // Allocate space for a descriptor. We use the type of the value here,
+      // which is expected to be a pointer to a struct of the form
+      // { baseptr, offset, shape_vect, stride_vect }
+      // where shape_vect and stride_vect are integer vectors with length
+      // matching the rank of the tensor.
+      auto targetType = value->getType().cast<LLVMType>();
+      auto structType = targetType.getPointerElementTy();
+      auto descPtr =
+          builder.create<mlir::LLVM::AllocaOp>(loc, targetType, one, 0);
+      // Fill the base pointer.
       auto casted = builder.create<mlir::LLVM::BitcastOp>(
-          kernel.getLoc(), value->getType(), llvm::ArrayRef<Value*>{ptr});
-      value->replaceAllUsesWith(casted);
+          loc, structType.getStructElementType(0), llvm::ArrayRef<Value*>{ptr});
+      auto structPtrAddr = builder.create<mlir::LLVM::GEPOp>(
+          loc, structType.getStructElementType(0), descPtr,
+          llvm::ArrayRef<Value*>{zero, baseIndex});
+      builder.create<mlir::LLVM::StoreOp>(loc, casted, structPtrAddr);
+      // Fill the offset value.
+      auto structOffsetAddr = builder.create<mlir::LLVM::GEPOp>(
+          loc, structType.getStructElementType(1), descPtr,
+          llvm::ArrayRef<Value*>{zero, offsetIndex});
+      builder.create<mlir::LLVM::StoreOp>(loc, offset, structOffsetAddr);
+      // Fill the shape.
+      auto shape = operand->shape();
+      auto entryType = structType.getStructElementType(2).getArrayElementType();
+      // TODO(b/137624192) Pass in the descriptor to allow for dynamic shapes.
+      assert(shape.IsArray() && shape.is_static());
+      for (auto extent : llvm::enumerate(shape.dimensions())) {
+        auto index = builder.create<mlir::LLVM::ConstantOp>(
+            loc, offsetType, builder.getI64IntegerAttr(extent.index()));
+        auto shapeEntryPtr = builder.create<mlir::LLVM::GEPOp>(
+            loc, entryType, descPtr,
+            llvm::ArrayRef<Value*>{zero, shapeIndex, index});
+        auto extentValue = builder.create<mlir::LLVM::ConstantOp>(
+            loc, entryType, builder.getI64IntegerAttr(extent.value()));
+        builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
+      }
+      // Finally, fill the strides with all zero.
+      for (int64 idx = 0; idx < shape.rank(); ++idx) {
+        auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
+            loc, offsetType, builder.getI64IntegerAttr(idx));
+        auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
+            loc, entryType, descPtr,
+            llvm::ArrayRef<Value*>{zero, strideIndex, indexValue});
+        builder.create<mlir::LLVM::StoreOp>(loc, zero, strideEntryPtr);
+      }
+      // Now we can use the descriptor instead of the original argument.
+      value->replaceAllUsesWith(descPtr);
     }
   }
 

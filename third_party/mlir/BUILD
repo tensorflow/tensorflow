@@ -1520,11 +1520,9 @@ cc_library(
     name = "ExecutionEngine",
     srcs = [
         "lib/ExecutionEngine/ExecutionEngine.cpp",
-        "lib/ExecutionEngine/MemRefUtils.cpp",
     ],
     hdrs = [
         "include/mlir/ExecutionEngine/ExecutionEngine.h",
-        "include/mlir/ExecutionEngine/MemRefUtils.h",
     ],
     includes = ["include"],
     deps = [

@@ -39,9 +39,9 @@ def make_eye_tests(options):
   def build_graph(parameters):
     """Make a set of tests to do eye."""
 
-    input_tensor0 = tf.placeholder(
+    input_tensor0 = tf.compat.v1.placeholder(
         dtype=tf.int32, name="num_rows", shape=parameters["num_rows_shape"])
-    input_tensor1 = tf.placeholder(
+    input_tensor1 = tf.compat.v1.placeholder(
         dtype=tf.int32, name="num_columns", shape=parameters["num_cols_shape"])
     if parameters["use_num_cols"]:
       outs = tf.eye(

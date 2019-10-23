@@ -627,6 +627,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                                  check_success,
                                  error_msg,
                                  suppress_default_error=False,
+                                 resolve_symlinks=False,
                                  n_ask_attempts=_DEFAULT_PROMPT_ASK_ATTEMPTS):
   """Loop over user prompts for an ENV param until receiving a valid response.
 
@@ -647,6 +648,7 @@ def prompt_loop_or_load_from_env(environ_cp,
       invalid response upon check_success(input) failure.
     suppress_default_error: (Bool) Suppress the above error message in favor of
       one from the check_success function.
+    resolve_symlinks: (Bool) Translate symbolic links into the real filepath.
     n_ask_attempts: (Integer) Number of times to query for valid input before
       raising an error and quitting.
 
@@ -678,6 +680,8 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
+  if resolve_symlinks and os.path.islink(val):
+    val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
 
@@ -837,6 +841,7 @@ def set_gcc_host_compiler_path(environ_cp):
       var_default=default_gcc_host_compiler_path,
       ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
       check_success=os.path.exists,
+      resolve_symlinks=True,
       error_msg='Invalid gcc path. %s cannot be found.',
   )
 

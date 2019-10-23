@@ -68,11 +68,11 @@ def make_binary_op_tests(options, binary_operator, expected_tf_failures=0):
 
   def build_graph(parameters):
     """Builds the graph given the current parameters."""
-    input1 = tf.placeholder(
+    input1 = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input1",
         shape=parameters["input_shape_1"])
-    input2 = tf.placeholder(
+    input2 = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input2",
         shape=parameters["input_shape_2"])

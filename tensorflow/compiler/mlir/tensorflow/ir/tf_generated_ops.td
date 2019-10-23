@@ -766,8 +766,40 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 
   let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the filter.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
     TF_FpTensor:$input,
-    TF_FpTensor:$filter,
+    I32Tensor:$filter_sizes,
+    TF_FpTensor:$out_backprop,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -782,10 +814,6 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
@@ -798,8 +826,8 @@ Computes the gradients of convolution with respect to the input.
 
   let arguments = (ins
     I32Tensor:$input_sizes,
-    TF_FpTensor:$filter,
-    TF_FpTensor:$out_backprop,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$out_backprop,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -810,7 +838,7 @@ Computes the gradients of convolution with respect to the input.
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
@@ -2849,12 +2877,12 @@ output =
     TF_Tensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
+
   let verifier = [{
     return Verify(*this);
   }];
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
@@ -3242,13 +3270,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F32, F64, I32, I64]>:$start,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$limit,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$delta
+    TF_FpOrI32OrI64Tensor:$start,
+    TF_FpOrI32OrI64Tensor:$limit,
+    TF_FpOrI32OrI64Tensor:$delta
   );
 
   let results = (outs
-    TensorOf<[BF16, F32, F64, I32, I64]>:$output
+    TF_FpOrI32OrI64Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -4799,6 +4827,8 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Broadcastable, NoSideEffect]>,

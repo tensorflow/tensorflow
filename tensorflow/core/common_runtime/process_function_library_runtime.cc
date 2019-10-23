@@ -1086,6 +1086,22 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
   return status;
 }
 
+Status ProcessFunctionLibraryRuntime::IsCrossProcess(
+    FunctionLibraryRuntime::Handle handle, bool* is_cross_process) const {
+  tf_shared_lock l(mu_);
+  const auto& mdevice_it = mdevice_data_.find(handle);
+  if (mdevice_it != mdevice_data_.end()) {
+    *is_cross_process = mdevice_it->second->is_cross_process_;
+    return Status::OK();
+  }
+  const auto& it = function_data_.find(handle);
+  if (it != function_data_.end()) {
+    *is_cross_process = it->second->is_cross_process();
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Handle ", handle, " not found.");
+}
+
 void ProcessFunctionLibraryRuntime::InstantiateRemote(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,

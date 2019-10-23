@@ -32,13 +32,17 @@ EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
       computations_with_error.insert(err.first->parent());
     }
 
-    // TODO(tanyabelova): Log the most relevant lines of large computations
-    // only.
     LOG(ERROR) << module->ToString(
         HloPrintOptions()
+            .set_print_instruction(
+                [&instructions_with_error](const HloInstruction* instr) {
+                  return instructions_with_error.count(instr);
+                })
             .set_format_instruction(
                 // Returns the string representation of `instr` in the following
-                // format. ROOT? instr_name
+                // format.
+                //
+                // ROOT? instr_name
                 //   FAILED: err_0
                 //   FAILED: err_1
                 //   ...

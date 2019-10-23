@@ -208,7 +208,7 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
       NodeWith(Op("PartitionedCall"),
                CtrlDeps(NodeWith(Op("Identity"),
                                  Inputs(Out(0, predicated_compilation_key)))));
-  auto merge = NodeWith(Op("Merge"), Inputs(Out(tf_call), Out(xla_run)));
+  auto merge = NodeWith(Op("_XlaMerge"), Inputs(Out(tf_call), Out(xla_run)));
   auto assign_var = NodeWith(Op("AssignVariableOp"), Inputs(_, Out(merge)));
 
   std::unique_ptr<Graph> graph;
