@@ -68,15 +68,15 @@ def make_slice_tests(options):
 
   def build_graph(parameters):
     """Build graph for slice test."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    begin = tf.placeholder(
+    begin = tf.compat.v1.placeholder(
         dtype=parameters["index_type"],
         name="begin",
         shape=[len(parameters["input_shape"])])
-    size = tf.placeholder(
+    size = tf.compat.v1.placeholder(
         dtype=parameters["index_type"],
         name="size",
         shape=[len(parameters["input_shape"])])

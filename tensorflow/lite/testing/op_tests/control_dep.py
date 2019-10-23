@@ -35,7 +35,7 @@ def make_control_dep_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     filter_value = tf.zeros((3, 3, TEST_INPUT_DEPTH, 8), tf.float32)
     assert_op = tf.assert_greater_equal(input_tensor, input_tensor - 1)

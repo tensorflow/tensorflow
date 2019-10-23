@@ -62,7 +62,7 @@ def make_fully_connected_tests(options):
 
   def build_graph(parameters):
     """Build a matmul graph given `parameters`."""
-    input_tensor1 = tf.placeholder(
+    input_tensor1 = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input1", shape=parameters["shape1"])
 
     # Get input_tensor2 either as a placeholder or constants. Also get a list of
@@ -71,7 +71,7 @@ def make_fully_connected_tests(options):
       input_tensor2 = create_tensor_data(np.float32, parameters["shape2"])
       input_tensors = [input_tensor1]
     else:
-      input_tensor2 = tf.placeholder(
+      input_tensor2 = tf.compat.v1.placeholder(
           dtype=tf.float32, name="input2", shape=parameters["shape2"])
       input_tensors = [input_tensor1, input_tensor2]
 

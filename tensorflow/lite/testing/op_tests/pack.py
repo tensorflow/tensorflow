@@ -64,7 +64,7 @@ def make_pack_tests(options):
   def build_graph(parameters):
     all_tensors = []
     for n in range(0, parameters["num_tensors"]):
-      input_tensor = tf.placeholder(
+      input_tensor = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name=("input%d" % n),
           shape=get_shape(parameters))

@@ -45,7 +45,8 @@ def make_unidirectional_sequence_lstm_tests(options):
           parameters["seq_length"], parameters["batch_size"],
           parameters["units"]
       ]
-      input_value = tf.placeholder(dtype=tf.float32, name="input", shape=shape)
+      input_value = tf.compat.v1.placeholder(
+          dtype=tf.float32, name="input", shape=shape)
       input_values.append(input_value)
       lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(
           parameters["units"], use_peepholes=parameters["use_peepholes"])
@@ -55,7 +56,7 @@ def make_unidirectional_sequence_lstm_tests(options):
     else:
       shape = [parameters["batch_size"], parameters["units"]]
       for i in range(parameters["seq_length"]):
-        input_value = tf.placeholder(
+        input_value = tf.compat.v1.placeholder(
             dtype=tf.float32, name=("input_%d" % i), shape=shape)
         input_values.append(input_value)
       lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(

@@ -47,7 +47,7 @@ def make_concat_tests(options):
   def build_graph(parameters):
     all_tensors = []
     for n in range(0, parameters["num_tensors"]):
-      input_tensor = tf.placeholder(
+      input_tensor = tf.compat.v1.placeholder(
           dtype=parameters["type"],
           name=("input%d" % n),
           shape=get_shape(parameters, n))
