@@ -35,9 +35,9 @@ def make_relu6_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-    out = tf.nn.relu(input_tensor)
+    out = tf.nn.relu6(input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

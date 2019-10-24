@@ -7,7 +7,7 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
@@ -17,7 +17,6 @@ load(
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_platform_srcs",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
 )
@@ -81,6 +80,17 @@ cc_library(
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
     deps = [":types"],
+)
+
+filegroup(
+    name = "annotation_hdrs",
+    srcs = [
+        "annotation.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(
@@ -247,7 +257,6 @@ cc_library(
         ":protobuf",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -375,8 +384,7 @@ cc_library(
         ":protobuf",
         ":types",
         "//tensorflow/core/lib/core:errors",
-        "@com_google_protobuf//:protobuf",
-    ],
+    ] + if_static(["@com_google_protobuf//:protobuf"]),
 )
 
 cc_library(
@@ -509,10 +517,10 @@ cc_library(
         ":platform",
         ":protobuf",
         ":stringpiece",
+        ":strcat",
         ":types",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/strings:string_utils",
     ] + tf_additional_tensor_coding_deps(),
 )
 
@@ -650,16 +658,21 @@ filegroup(
             "**/rocm.h",
             "**/monitoring.cc",
             "**/stream_executor.h",
+            "**/env.cc",
             "**/env_time.cc",
-            "**/logger.cc",
+            "**/load_library.cc",
             "**/mutex.cc",
             "**/net.cc",
             "**/logging.cc",
             "**/port.cc",
+            "**/posix_file_system.cc",
             "**/human_readable_json.cc",
             "**/rocm.h",
             "**/rocm_rocdl_path.cc",
             "**/subprocess.cc",
+            "**/tracing.cc",
+            "**/unbounded_work_queue.cc",
+            "**/windows_file_system.cc",
             "abi.cc",
             "cpu_info.cc",
             "numbers.cc",
@@ -696,7 +709,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "**/cuda_libdevice_path.*",
-            "**/logger.cc",
             # Exclude env_time and logging to avoid collisions with
             # :platform_base, a common dependency for downstream targets.
             "**/env_time.cc",
@@ -711,6 +723,7 @@ filegroup(
             "gif.h",
             "jpeg.h",
             "png.h",
+            "logger.cc",
             "stream_executor.*",
             "windows/**/*",
         ],
@@ -758,7 +771,7 @@ filegroup(
             "**/env_time.cc",
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
-            "**/logger.cc",
+            "**/load_library.cc",
             "**/mutex.cc",
             "**/logging.cc",
             "**/port.cc",
@@ -769,7 +782,11 @@ filegroup(
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
+            "env.cc",
             "error.cc",
+            "file_system.cc",
+            "file_system_helper.cc",
+            "logger.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
@@ -779,6 +796,9 @@ filegroup(
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
+            "tensor_coding.cc",
+            "threadpool.cc",
+            "tracing.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -799,12 +819,6 @@ filegroup(
 filegroup(
     name = "legacy_monitoring_srcs",
     srcs = tf_additional_monitoring_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_human_readable_json_src",
-    srcs = tf_platform_srcs(["human_readable_json.cc"]),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

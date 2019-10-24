@@ -41,6 +41,7 @@ class _Merge(Layer):
   def __init__(self, **kwargs):
     super(_Merge, self).__init__(**kwargs)
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
   def _merge_function(self, inputs):
     raise NotImplementedError
@@ -478,6 +479,7 @@ class Dot(_Merge):
     self.normalize = normalize
     self.supports_masking = True
     self._reshape_required = False
+    self._supports_ragged_inputs = False
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

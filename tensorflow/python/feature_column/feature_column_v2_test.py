@@ -492,6 +492,12 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(price, new_col)
     self.assertEqual(new_col.shape, (1,))
 
+    # Also test round trip through feature column serialization utils.
+    new_col = serialization.deserialize_feature_column(
+        serialization.serialize_feature_column(price),
+        custom_objects={'_increment_two': _increment_two})
+    self.assertEqual(price, new_col)
+
 
 class BucketizedColumnTest(test.TestCase):
 

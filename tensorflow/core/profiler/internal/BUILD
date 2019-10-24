@@ -449,6 +449,17 @@ tf_cuda_library(
     ],
 )
 
+filegroup(
+    name = "python_scoped_annotation_hdrs",
+    srcs = [
+        "python_scoped_annotation.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "python_scoped_annotation",
     hdrs = ["python_scoped_annotation.h"],

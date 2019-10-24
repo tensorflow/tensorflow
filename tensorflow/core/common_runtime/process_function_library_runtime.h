@@ -158,6 +158,11 @@ class ProcessFunctionLibraryRuntime {
                      const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
 
+  // Returns whether the function represented by the given handle needs to
+  // execute cross process.
+  Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
+                        bool* is_cross_process) const;
+
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isnt' needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
@@ -282,16 +287,16 @@ class ProcessFunctionLibraryRuntime {
     FunctionLibraryRuntime::Handle local_handle;
   };
 
-  // If handle represents a multi-device function, returns the multi-device
-  // data associated with handle. Else, nullptr.
-  MultiDeviceFunctionData* IsMultiDevice(
-      FunctionLibraryRuntime::Handle handle) const;
-
   virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle local_handle,
                                const InternalArgsView& args,
                                std::vector<Tensor>* rets,
                                FunctionLibraryRuntime::DoneCallback done) const;
+
+  // If `handle` represents a multi-device function, returns the multi-device
+  // data associated with `handle`. Else, nullptr.
+  MultiDeviceFunctionData* IsMultiDevice(
+      FunctionLibraryRuntime::Handle handle) const;
 
   void RunMultiDevice(
       const FunctionLibraryRuntime::Options& opts,

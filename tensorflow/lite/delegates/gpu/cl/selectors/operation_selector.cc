@@ -36,7 +36,16 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
                             const std::vector<Value<TensorRef<BHWC>>*>& inputs,
                             const std::vector<Value<TensorRef<BHWC>>*>& outputs,
                             const Node& node,
-                            std::unique_ptr<GPUOperation>* gpu_op) {
+                            GPUOperationsSubgraph* gpu_subgraph) {
+  gpu_subgraph->operations.push_back({});
+  std::unique_ptr<GPUOperation>* gpu_op =
+      &gpu_subgraph->operations[0].operation;
+  for (int i = 0; i < inputs.size(); ++i) {
+    gpu_subgraph->operations[0].input_ids.push_back(i);
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    gpu_subgraph->operations[0].output_ids.push_back(i);
+  }
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ABS: {

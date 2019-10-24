@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -186,6 +185,11 @@ class ImporterBase {
   // nodes.
   llvm::ArrayRef<Node*> GetOrderedNodes() const { return ordered_nodes_; }
 
+  // Returns the inferred input type at index `idx` of the `node` in the
+  // context.
+  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
+                                            mlir::Builder builder);
+
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
   StatusOr<mlir::TensorType> InferOutputType(const Node& node, int idx,
@@ -198,11 +202,6 @@ class ImporterBase {
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
   Status AddNodesToShapeRefiner();
-
-  // Returns the inferred input type at index `idx` of the `node` in the
-  // context.
-  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
-                                            mlir::Builder builder);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -1545,6 +1544,15 @@ class GraphDefImporter : public ImporterBase {
       const GraphImportConfig& specs, mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
+
+  // Returns the function signature of the main function, alongside input and
+  // output nodes, for function graphs. Arguments and return values are
+  // determined by node op type. Type and shape information of the function are
+  // inferred by the shape refiner in ImporterBase.
+  StatusOr<mlir::FunctionType> GetArgsRetsAndTypesFromFunctionGraph(
+      mlir::MLIRContext* context,
+      absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+      absl::InlinedVector<OutputTensor, 4>* ret_nodes);
 };
 
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
@@ -1559,48 +1567,41 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
                             &tf_name_to_mlir_name, &function_name_uniquifier);
 
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
+
   mlir::FunctionType func_type;
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
   absl::InlinedVector<Node*, 4> control_ret_nodes;
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
-  std::unique_ptr<FunctionBody> graph_fbody;
   if (specs.graph_as_function) {
     if (specs.prune_unused_nodes || !specs.inputs.empty() ||
         !specs.output_arrays.empty() || !specs.output_arrays_order.empty())
       return errors::InvalidArgument(
           "Pruning of graph is currently unsupported when the main graph is "
           "converted to a function.");
-    // Converts graph into a FunctionDef.
-    FunctionDef graph_fdef;
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, "main", &graph_fdef));
 
-    // Converts FunctionDef into a FunctionBody.
-    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(graph_fdef, AttrSlice(),
-                                               &flib_def, &graph_fbody));
-
-    TF_RETURN_IF_ERROR(importer.PrepareConvert(*graph_fbody->graph));
-    TF_ASSIGN_OR_RETURN(func_type, importer.InferLibFunctionType(*graph_fbody));
-    importer.GetArgsAndRetsFromFunctionBody(*graph_fbody, &arg_nodes,
-                                            &ret_nodes, &control_ret_nodes);
+    TF_ASSIGN_OR_RETURN(func_type,
+                        importer.GetArgsRetsAndTypesFromFunctionGraph(
+                            context, &arg_nodes, &ret_nodes));
 
     if (!arg_nodes.empty() || !ret_nodes.empty()) {
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      auto node_name = [&](const Node* node) { ss << node->name(); };
-      mlir::interleave(graph_fbody->arg_nodes, ss, node_name, ",");
+      auto node_name = [&](const OutputTensor& tensor) {
+        ss << tensor.node->name();
+      };
+      mlir::interleave(arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(graph_fbody->ret_nodes, ss, node_name, ",");
+      mlir::interleave(ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
                                      b.getDictionaryAttr({inputs, outputs})));
     }
   } else {
-    TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
-
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.
     TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
@@ -1722,6 +1723,68 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     }
     TF_ASSIGN_OR_RETURN(auto type,
                         InferOutputType(*ret.node, ret.index, builder));
+    ret_types.push_back(type);
+  }
+
+  return builder.getFunctionType(arg_types, ret_types);
+}
+
+StatusOr<mlir::FunctionType>
+GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
+    mlir::MLIRContext* context, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+    absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
+  auto add_node = [](Node* node, absl::InlinedVector<OutputTensor, 4>* nodes) {
+    auto* attr = node->attrs().Find("index");
+    if (!attr)
+      return errors::InvalidArgument(node->type_string(), " node '",
+                                     node->name(),
+                                     "' is missing attribute 'index'");
+
+    auto index = attr->i();
+    if (nodes->size() < index + 1) nodes->resize(index + 1);
+
+    if ((*nodes)[index].node != nullptr)
+      return errors::InvalidArgument(node->type_string(), " node '",
+                                     node->name(), "' has attribute 'index' ",
+                                     index, " that conflicts with node '",
+                                     (*nodes)[index].node->name(), "'");
+    (*nodes)[index] = {node, 0};
+
+    return Status::OK();
+  };
+
+  // Collect arg and ret nodes from graph.
+  for (auto* node : GetOrderedNodes())
+    if (node->IsArg())
+      TF_RETURN_IF_ERROR(add_node(node, arg_nodes));
+    else if (node->IsRetval())
+      TF_RETURN_IF_ERROR(add_node(node, ret_nodes));
+
+  // Collect arg and ret types and create function type.
+  mlir::Builder builder(context);
+  llvm::SmallVector<mlir::Type, 4> arg_types;
+  arg_types.reserve(arg_nodes->size());
+  for (auto arg_node_and_idx : llvm::enumerate(*arg_nodes)) {
+    auto& arg_node = arg_node_and_idx.value();
+    if (arg_node.node == nullptr)
+      return errors::InvalidArgument("Graph missing _Arg at index ",
+                                     arg_node_and_idx.index());
+
+    TF_ASSIGN_OR_RETURN(auto type,
+                        InferOutputType(*arg_node.node, /*idx=*/0, builder));
+    arg_types.push_back(type);
+  }
+
+  llvm::SmallVector<mlir::Type, 4> ret_types;
+  ret_types.reserve(ret_nodes->size());
+  for (auto ret_node_and_idx : llvm::enumerate(*ret_nodes)) {
+    auto& ret_node = ret_node_and_idx.value();
+    if (ret_node.node == nullptr)
+      return errors::InvalidArgument("Graph missing _Retval at index ",
+                                     ret_node_and_idx.index());
+
+    TF_ASSIGN_OR_RETURN(auto type,
+                        InferInputType(*ret_node.node, /*idx=*/0, builder));
     ret_types.push_back(type);
   }
 
@@ -2086,18 +2149,48 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
       leaf_index_paths_.push_back(builder_.getArrayAttr(current_index_path_));
       return;
     }
+    case StructuredValue::kNoneValue: {
+      // Base case: do nothing.
+      // This arises, for example, as the top-level object of an output
+      // signature when there are no return values.
+      return;
+    }
     default: {
       llvm_unreachable("Unhandled StructuredValue kind!");
     }
   }
 }
 
-// Move all exported functions to the end of the module, sorted by (first)
-// exported name.
+// Reorder the ops in the module to make testing easier and less dependent
+// on implementation details such as the order of functions in the
+// FunctionDefLibrary.
 //
-// This makes testing easier and less dependent on implementation
-// details such as the order of functions in the FunctionDefLibrary.
-void SortFuncsByExportedNames(mlir::ModuleOp module) {
+// The order this ensures is:
+// 1. GlobalTensorOp's
+// 2. FuncOps's.
+//
+// Within each of 1. and 2., ops are sorted by exported name (if
+// available, and only the first exported name is considered), followed by
+// non-exported ops.
+void SortSavedModelModule(mlir::ModuleOp module) {
+  struct NamedGlobalTensor {
+    llvm::StringRef name;
+    mlir::tf_saved_model::GlobalTensorOp global_tensor;
+  };
+  llvm::SmallVector<NamedGlobalTensor, 8> named_global_tensors;
+  for (auto global_tensor :
+       module.getOps<mlir::tf_saved_model::GlobalTensorOp>()) {
+    auto exported_names = mlir::tf_saved_model::GetExportedNames(global_tensor);
+    // We use stable_sort, so duplicate empty names are fine here.
+    named_global_tensors.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), global_tensor});
+  }
+  llvm::stable_sort(named_global_tensors,
+                    [](const NamedGlobalTensor& a, const NamedGlobalTensor& b) {
+                      return std::make_tuple(a.name.empty(), a.name) <
+                             std::make_tuple(b.name.empty(), b.name);
+                    });
+
   struct NamedFunc {
     llvm::StringRef name;
     mlir::FuncOp func;
@@ -2105,17 +2198,21 @@ void SortFuncsByExportedNames(mlir::ModuleOp module) {
   llvm::SmallVector<NamedFunc, 8> named_funcs;
   for (auto func : module.getOps<mlir::FuncOp>()) {
     auto exported_names = mlir::tf_saved_model::GetExportedNames(func);
-    if (exported_names.empty()) {
-      continue;
-    }
-    named_funcs.push_back({exported_names.front(), func});
+    named_funcs.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), func});
   }
-  llvm::sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
-    return a.name < b.name;
+  llvm::stable_sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
+    return std::make_tuple(a.name.empty(), a.name) <
+           std::make_tuple(b.name.empty(), b.name);
   });
-  auto terminator = module.getBody()->getTerminator();
-  for (auto named_func : named_funcs) {
-    named_func.func.getOperation()->moveBefore(terminator);
+
+  // Move onto the front of the module in reverse of the final desired order.
+  for (auto named_func : llvm::reverse(named_funcs)) {
+    named_func.func.getOperation()->moveBefore(&module.getBody()->front());
+  }
+  for (auto named_global_tensor : llvm::reverse(named_global_tensors)) {
+    named_global_tensor.global_tensor.getOperation()->moveBefore(
+        &module.getBody()->front());
   }
 }
 
@@ -2159,7 +2256,6 @@ Status CreateSavedModelIR(
           concrete_function.canonicalized_input_signature()
               .tuple_value()
               .values(0);
-      // TODO(b/142500921): Add index_path attributes on return values too.
       StructuredValueLinearizer input_linearizer(positional_arg_structure,
                                                  builder.getContext());
 
@@ -2184,6 +2280,21 @@ Status CreateSavedModelIR(
         auto symbol_ref = builder.getSymbolRefAttr(
             object_names.GetSymbolTableName(bound_input.value()));
         func.setArgAttr(arg_index, "tf_saved_model.bound_input", symbol_ref);
+      }
+
+      StructuredValueLinearizer output_linearizer(
+          concrete_function.output_signature(), builder.getContext());
+      auto output_index_paths = output_linearizer.GetLeafIndexPaths();
+      if (func.getNumResults() != output_index_paths.size()) {
+        return errors::InvalidArgument(
+            "Result mismatch between concrete function output signature "
+            "vs underlying FunctionDef for concrete function '",
+            function.concrete_functions(0), "' (", output_index_paths.size(),
+            " vs ", func.getNumResults(), ")");
+      }
+      for (auto index_path : llvm::enumerate(output_index_paths)) {
+        func.setResultAttr(index_path.index(), "tf_saved_model.index_path",
+                           index_path.value());
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
       const SavedVariable& variable = object.variable();
@@ -2216,7 +2327,7 @@ Status CreateSavedModelIR(
     }
   }
   module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
-  SortFuncsByExportedNames(module);
+  SortSavedModelModule(module);
   return Status::OK();
 }
 

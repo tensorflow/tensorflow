@@ -353,6 +353,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -941,7 +942,7 @@ tf_py_test(
 
 tf_py_test(
     name = "merge_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/merge_test.py"],
     additional_deps = [
         ":keras",

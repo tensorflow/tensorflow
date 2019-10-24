@@ -102,7 +102,7 @@ struct Timer {
               .count());
     }
 
-    // Otheriwse, accumulate the timing from each of the children.
+    // Otherwise, accumulate the timing from each of the children.
     TimeRecord totalTime;
     for (auto &child : children)
       totalTime += child.second->getTotalTime();
@@ -120,7 +120,7 @@ struct Timer {
     mergeChildren(std::move(other.children));
   }
 
-  /// Merge the timer chilren in 'otherChildren' with the children of this
+  /// Merge the timer children in 'otherChildren' with the children of this
   /// timer.
   void mergeChildren(ChildrenMap &&otherChildren) {
     // Check for an empty children list.
@@ -130,7 +130,7 @@ struct Timer {
     }
 
     // Pipeline merges are handled separately as the children are merged
-    // lexographically.
+    // lexicographically.
     if (kind == TimerKind::Pipeline) {
       assert(children.size() == otherChildren.size() &&
              "pipeline merge requires the same number of children");

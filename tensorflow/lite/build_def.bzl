@@ -336,6 +336,7 @@ def generated_test_models():
         "strided_slice_1d_exhaustive",
         "strided_slice_np_style",
         "sub",
+        "tanh",
         "tile",
         "topk",
         "transpose",

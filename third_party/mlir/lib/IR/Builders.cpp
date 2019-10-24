@@ -233,7 +233,7 @@ Attribute Builder::getZeroAttr(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
-// Affine Expressions, Affine Maps, and Integet Sets.
+// Affine Expressions, Affine Maps, and Integer Sets.
 //===----------------------------------------------------------------------===//
 
 AffineExpr Builder::getAffineDimExpr(unsigned position) {

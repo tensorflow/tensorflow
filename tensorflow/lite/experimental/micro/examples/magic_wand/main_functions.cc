@@ -19,23 +19,12 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/gesture_predictor.h"
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/output_handler.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 #include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-namespace tflite {
-namespace ops {
-namespace micro {
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
-TfLiteRegistration* Register_MAX_POOL_2D();
-TfLiteRegistration* Register_CONV_2D();
-TfLiteRegistration* Register_FULLY_CONNECTED();
-TfLiteRegistration* Register_SOFTMAX();
-}  // namespace micro
-}  // namespace ops
-}  // namespace tflite
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace {

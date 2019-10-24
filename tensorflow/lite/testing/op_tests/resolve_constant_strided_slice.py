@@ -36,7 +36,7 @@ def make_resolve_constant_strided_slice_tests(options):
   def build_graph(parameters):
     """Build the strided_slice op testing graph."""
     del parameters
-    input_values = tf.placeholder(dtype=tf.float32, shape=[4, 2])
+    input_values = tf.compat.v1.placeholder(dtype=tf.float32, shape=[4, 2])
     data = tf.constant(
         [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]],
         tf.float32)

@@ -448,7 +448,7 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
+            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),

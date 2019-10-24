@@ -28,6 +28,10 @@ class TensorFlowSavedModelDialect : public Dialect {
   LogicalResult verifyRegionArgAttribute(Operation *op, unsigned region_index,
                                          unsigned arg_index,
                                          NamedAttribute named_attr) override;
+  LogicalResult verifyRegionResultAttribute(Operation *op,
+                                            unsigned region_index,
+                                            unsigned result_index,
+                                            NamedAttribute named_attr) override;
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute named_attr) override;
 };

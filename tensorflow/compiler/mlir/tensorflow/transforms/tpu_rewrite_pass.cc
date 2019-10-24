@@ -86,6 +86,7 @@ llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
   llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
 
   llvm::SmallVector<Attribute, 8> worklist;
+  worklist.reserve(op->getAttrs().size());
   for (auto named_attr : op->getAttrs()) {
     worklist.push_back(named_attr.second);
   }
@@ -440,26 +441,10 @@ void TPURewritePass::runOnModule() {
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
-  }
+  if (result.wasInterrupted()) return signalPassFailure();
 
-  // Eliminate TPUCompilationResultOp, TPUReplicatedInput and
-  // TPUReplicatedOutput now that the rewrite is complete.
-  getModule().walk([&](Operation* op) {
-    if (auto compile_result_op = dyn_cast<TF::TPUCompilationResultOp>(op)) {
-      compile_result_op.erase();
-      return;
-    }
-
-    auto op_name = op->getName().getStringRef();
-    if (op_name == "tf.TPUReplicatedInput" ||
-        op_name == "tf.TPUReplicatedOutput") {
-      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-      op->erase();
-    }
-  });
+  // Eliminate TPUCompilationResultOp now that the rewrite is complete.
+  getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }

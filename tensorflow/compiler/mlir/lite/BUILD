@@ -221,7 +221,7 @@ cc_library(
 )
 
 cc_library(
-    name = "statetul_ops_utils",
+    name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
     ],
@@ -275,7 +275,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -473,7 +473,7 @@ cc_library(
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir:op_name_mapper",

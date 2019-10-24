@@ -754,16 +754,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "def_function_xla_jit_non_eager_test",
-    srcs = ["def_function_xla_jit_non_eager_test.py"],
-    additional_deps = [
-        ":wrap_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-    ],
-)
-
 py_library(
     name = "remote",
     srcs = ["remote.py"],

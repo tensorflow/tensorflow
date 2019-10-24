@@ -36,9 +36,9 @@ def _make_logical_tests(op):
 
     def build_graph(parameters):
       """Build the logical testing graph."""
-      input_value1 = tf.placeholder(
+      input_value1 = tf.compat.v1.placeholder(
           dtype=tf.bool, name="input1", shape=parameters["input_shape_pair"][0])
-      input_value2 = tf.placeholder(
+      input_value2 = tf.compat.v1.placeholder(
           dtype=tf.bool, name="input2", shape=parameters["input_shape_pair"][1])
       out = op(input_value1, input_value2)
       return [input_value1, input_value2], [out]

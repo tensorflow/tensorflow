@@ -120,6 +120,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
+    CONVERT_FLAT(DT_DOUBLE, double)
     CONVERT_FLAT(DT_INT32, int32)
     CONVERT_FLAT(DT_INT64, int64)
     default:
@@ -173,6 +174,22 @@ Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
     return mangling_util::DemangleTensor(tensor_view, output_tensor);
   }
   return InvalidArgument("Unexpected elements attribute type from MLIR.");
+}
+
+// Converts an MLIR elements attribute to a TensorFlow tensor proto
+// with the double_val field updated.
+Status ConvertDoubleElementsAttr(const ElementsAttr attr,
+                                 TensorProto* output_tensor) {
+  if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
+    if (elts.isSplat()) {
+      output_tensor->add_double_val(elts.getSplatValue<double>());
+    } else {
+      for (auto value : elts.getValues<double>())
+        output_tensor->add_double_val(value);
+    }
+    return Status::OK();
+  }
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
@@ -266,6 +283,8 @@ Status ConvertToTensorProto(const ElementsAttr attr,
     case DT_HALF:
       // Handles both DenseFPElementsAttr and OpaqueElementsAttr.
       return ConvertHalfElementsAttr(attr, output_tensor);
+    case DT_DOUBLE:
+      return ConvertDoubleElementsAttr(attr, output_tensor);
     case DT_QUINT8:
     case DT_UINT8:
     case DT_INT8:

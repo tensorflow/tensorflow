@@ -207,6 +207,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "transform_graph_hdrs",
+    srcs = [
+        "transform_graph.h",
+        "transform_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
@@ -316,8 +328,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )

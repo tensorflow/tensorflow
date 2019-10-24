@@ -37,14 +37,18 @@ For each example, we provide a guide that explains how it works.
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">View
 Android example</a>
 
-Read the [Android example guide](android.md) to learn how the app works.
+Read the
+[Android example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### iOS
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios.md">View
 iOS example</a>
 
-Read the [iOS example guide](ios.md) to learn how the app works.
+Read the
+[iOS example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### Screenshot
 

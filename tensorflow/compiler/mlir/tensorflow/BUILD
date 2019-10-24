@@ -167,7 +167,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
-        ":mlir_passthrough_op",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -214,8 +213,10 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
+        "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
+        "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
         "transforms/bridge.h",

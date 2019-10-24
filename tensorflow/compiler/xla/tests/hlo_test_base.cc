@@ -136,8 +136,7 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
       TestName(), config, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
-  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
-  TF_RETURN_IF_ERROR(module->Verify());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   return std::move(module);
 }
 

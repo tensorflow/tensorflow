@@ -480,9 +480,26 @@ tf_py_wrap_cc(
 tflite_portable_test_suite()
 
 edgetpu_ops = [
-    "conv",
-    "maximum",
-    "minimum",
+    "conv",  # high error
+    "fully_connected",
+    "softmax",
+    "reshape",
+    "add",
+    "mul",
+    "sub",
+    "avg_pool",
+    "max_pool",
+    "concat",
+    "resize_bilinear",
+    "l2norm",  # high error
+    "sum",  # high error
+    "depthwiseconv",  # high error
+    "space_to_depth",
+    "split",
+    "squeeze",
+    "pad",  # high error
+    "slice",
+    "strided_slice",
 ]
 
 [gen_zipped_test_file(
@@ -491,3 +508,5 @@ edgetpu_ops = [
     flags = " --make_edgetpu_tests",
     toco = "//tensorflow/lite/toco:toco",  # Unused
 ) for op_name in edgetpu_ops]
+
+edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]

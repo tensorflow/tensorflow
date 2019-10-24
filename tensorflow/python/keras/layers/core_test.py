@@ -31,6 +31,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -271,6 +272,16 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertIsNotNone(out._keras_mask)
     self.assertAllClose(self.evaluate(out._keras_mask), expected_mask)
 
+  def test_lambda_with_ragged_input(self):
+
+    def add_one(inputs):
+      return inputs + 1.0
+    layer = keras.layers.Lambda(add_one)
+
+    ragged_input = ragged_factory_ops.constant([[1.0], [2.0, 3.0]])
+    out = layer(ragged_input)
+    expected_out = ragged_factory_ops.constant([[2.0], [3.0, 4.0]])
+    self.assertAllClose(out, expected_out)
 
 class TestStatefulLambda(keras_parameterized.TestCase):
 

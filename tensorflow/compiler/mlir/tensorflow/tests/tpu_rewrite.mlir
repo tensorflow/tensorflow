@@ -824,21 +824,3 @@ func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
   return %0 : tensor<?xi32>
 }
-
-
-// -----
-
-// Tests that TPUReplicatedInput and TPUReplicatedOutput operations are properly rewritten
-
-func @main(%arg0 : tensor<0xf32>, %arg1 : tensor<0xf32>) -> tensor<0xf32> {
-  // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%arg0, %arg1
-  %0 = "tf.TPUReplicatedInput"(%arg0) {N = 1 : i64} : (tensor<0xf32>) -> tensor<0xf32>
-  %1 = "tf.TPUReplicatedInput"(%arg1) {N = 1 : i64} : (tensor<0xf32>) -> tensor<0xf32>
-  %2 = "tf_device.launch_func"(%0, %1) {device = "", _tpu_replicate = "cluster", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>
-  %3 = "tf.TPUReplicatedOutput"(%2) {num_replicas = 1 : i64} : (tensor<0xf32>) -> tensor<0xf32>
-  return %3 : tensor<0xf32>
-}
-func @_func(%arg0: tensor<0xf32>, %arg1: tensor<0xf32>) -> tensor<0xf32> {
-  %0 = "tf.Const"() {value = dense<3.000000e+00> : tensor<0xf32>} : () -> tensor<0xf32>
-  return %0 : tensor<0xf32>
-}

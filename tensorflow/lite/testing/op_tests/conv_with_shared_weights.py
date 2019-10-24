@@ -49,7 +49,7 @@ def make_conv_with_shared_weights_tests(options):
   def build_graph(parameters):
     """Build a conv graph given `parameters`."""
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=input_shape)
     input_tensors = [input_tensor]
 

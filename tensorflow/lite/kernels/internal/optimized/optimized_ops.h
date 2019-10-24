@@ -863,11 +863,11 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   const bool ordinary_mean =
       (input_zero_point == output_zero_point && input_scale == output_scale);
@@ -1008,11 +1008,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   constexpr int kMinDepthPerThread = 8;
   int thread_count = output_depth / kMinDepthPerThread;
@@ -2035,6 +2035,20 @@ inline void BroadcastAddFivefold(const ArithmeticParams& params,
   }
 }
 
+template <typename T>
+inline void BroadcastAddDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return BroadcastAdd4DSlow(params, input1_shape, input1_data, input2_shape,
+                              input2_data, output_shape, output_data);
+  }
+
+  BroadcastAddFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
+}
+
 inline void MulElementwise(int size, const ArithmeticParams& params,
                            const float* input1_data, const float* input2_data,
                            float* output_data) {
@@ -2526,6 +2540,20 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
       input2_data_reset = input2_data_ptr;
     }
   }
+}
+
+template <typename T>
+inline void BroadcastMulDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return BroadcastMul4DSlow(params, input1_shape, input1_data, input2_shape,
+                              input2_data, output_shape, output_data);
+  }
+
+  BroadcastMulFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
 }
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
