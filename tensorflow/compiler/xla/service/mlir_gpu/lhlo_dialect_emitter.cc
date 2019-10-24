@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
@@ -96,59 +97,16 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
   return Status::OK();
 }
 
-StatusOr<MemRefType> ConvertTensorType(const Shape& shape, Builder builder) {
-  llvm::SmallVector<int64_t, 4> array;
-  array.reserve(shape.dimensions_size());
-  for (const auto dim : shape.dimensions()) {
-    array.push_back(dim);
-  }
-  switch (shape.element_type()) {
-    case PrimitiveType::PRED:
-      return MemRefType::get(array, builder.getI1Type());
-    case PrimitiveType::F16:
-      return MemRefType::get(array, builder.getF16Type());
-    case PrimitiveType::F32:
-      return MemRefType::get(array, builder.getF32Type());
-    case PrimitiveType::F64:
-      return MemRefType::get(array, builder.getF64Type());
-    case PrimitiveType::S8:
-      return MemRefType::get(array, builder.getIntegerType(8));
-    case PrimitiveType::S16:
-      return MemRefType::get(array, builder.getIntegerType(16));
-    case PrimitiveType::S32:
-      return MemRefType::get(array, builder.getIntegerType(32));
-    case PrimitiveType::S64:
-      return MemRefType::get(array, builder.getIntegerType(64));
-    default:
-      return tensorflow::errors::Internal(absl::StrCat(
-          "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
-  }
-}
-
-StatusOr<Type> ConvertType(const Shape& shape, Builder builder) {
-  if (shape.IsTuple()) {
-    Type mlir_type;
-    llvm::SmallVector<Type, 4> contents;
-    contents.reserve(shape.tuple_shapes_size());
-    for (const auto& subtype : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto mlir_subtype, ConvertType(subtype, builder));
-      contents.push_back(mlir_subtype);
-    }
-    return builder.getTupleType(contents);
-  }
-  return ConvertTensorType(shape, builder);
-}
-
 StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
     const HloInstruction& instruction, Builder builder) {
   llvm::SmallVector<Type, 4> arg_types;
   for (auto operand : instruction.operands()) {
-    TF_ASSIGN_OR_RETURN(auto operand_type,
-                        ConvertType(operand->shape(), builder));
+    TF_ASSIGN_OR_RETURN(auto operand_type, ConvertShapeToType<MemRefType>(
+                                               operand->shape(), builder));
     arg_types.push_back(operand_type);
   }
-  TF_ASSIGN_OR_RETURN(auto operand_type,
-                      ConvertType(instruction.shape(), builder));
+  TF_ASSIGN_OR_RETURN(auto operand_type, ConvertShapeToType<MemRefType>(
+                                             instruction.shape(), builder));
   arg_types.push_back(operand_type);
   return arg_types;
 }
