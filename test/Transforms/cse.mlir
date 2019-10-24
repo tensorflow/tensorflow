@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -cse | FileCheck %s
+// RUN: mlir-opt %s -pass-pipeline='func(cse)' | FileCheck %s
 
 // CHECK-DAG: #map0 = (d0) -> (d0 mod 2)
 #map0 = (d0) -> (d0 mod 2)

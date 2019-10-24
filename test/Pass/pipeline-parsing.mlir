@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -pass-pipeline='module(test-module-pass,func(test-function-pass)),func(test-function-pass)' -cse -pass-pipeline="func(canonicalize)" -verify-each=false -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck %s
+// RUN: mlir-opt %s -pass-pipeline='module(test-module-pass,func(test-function-pass)),func(test-function-pass)' -pass-pipeline="func(cse,canonicalize)" -verify-each=false -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck %s
 // RUN: mlir-opt %s -test-textual-pm-nested-pipeline -verify-each=false -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck %s --check-prefix=TEXTUAL_CHECK
 // RUN: not mlir-opt %s -pass-pipeline='module(test-module-pass' 2>&1 | FileCheck --check-prefix=CHECK_ERROR_1 %s
 // RUN: not mlir-opt %s -pass-pipeline='module(test-module-pass))' 2>&1 | FileCheck --check-prefix=CHECK_ERROR_2 %s

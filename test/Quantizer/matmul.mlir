@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -quantizer-infer-quantized-types -quant-convert-const -quantizer-remove-instrumentation -canonicalize -split-input-file | FileCheck %s
+// RUN: mlir-opt %s -quantizer-infer-quantized-types -quant-convert-const -quantizer-remove-instrumentation -pass-pipeline='func(canonicalize)' -split-input-file | FileCheck %s
 
 // ----
 // A matmul without fused clamp or bias.

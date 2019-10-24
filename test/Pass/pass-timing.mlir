@@ -1,7 +1,7 @@
-// RUN: mlir-opt %s -disable-pass-threading=true -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=list 2>&1 | FileCheck -check-prefix=LIST %s
-// RUN: mlir-opt %s -disable-pass-threading=true -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=PIPELINE %s
-// RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=list 2>&1 | FileCheck -check-prefix=MT_LIST %s
-// RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=MT_PIPELINE %s
+// RUN: mlir-opt %s -disable-pass-threading=true -verify-each=true -pass-pipeline='func(cse,canonicalize,cse)' -pass-timing -pass-timing-display=list 2>&1 | FileCheck -check-prefix=LIST %s
+// RUN: mlir-opt %s -disable-pass-threading=true -verify-each=true -pass-pipeline='func(cse,canonicalize,cse)' -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=PIPELINE %s
+// RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -pass-pipeline='func(cse,canonicalize,cse)' -pass-timing -pass-timing-display=list 2>&1 | FileCheck -check-prefix=MT_LIST %s
+// RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -pass-pipeline='func(cse,canonicalize,cse)' -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=MT_PIPELINE %s
 // RUN: mlir-opt %s -disable-pass-threading=false -verify-each=false -test-pm-nested-pipeline -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=NESTED_MT_PIPELINE %s
 
 // LIST: Pass execution timing report

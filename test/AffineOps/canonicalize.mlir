@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -canonicalize | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // Affine maps for test case: compose_affine_maps_1dto2d_no_symbols
 // CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0 - 1)

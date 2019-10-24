@@ -1,4 +1,4 @@
-// RUN: mlir-opt -canonicalize %s | FileCheck %s
+// RUN: mlir-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s
 
 // CHECK-LABEL: @propagate_constant
 // CHECK-SAME:  %[[arg1:.*]]: memref

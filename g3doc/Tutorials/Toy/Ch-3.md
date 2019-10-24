@@ -123,7 +123,7 @@ similar way to LLVM:
 
 ```c++
   mlir::PassManager pm(module.getContext());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 ```
 
 Finally, we can try to run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt`
