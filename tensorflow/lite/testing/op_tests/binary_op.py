@@ -177,7 +177,7 @@ def make_add_tests(options):
 
 @register_make_test_function()
 def make_div_tests(options):
-  make_binary_op_tests(options, tf.div)
+  make_binary_op_tests(options, tf.compat.v1.div)
 
 
 @register_make_test_function()
