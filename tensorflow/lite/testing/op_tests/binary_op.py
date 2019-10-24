@@ -202,7 +202,7 @@ def make_floor_div_tests(options):
 
 @register_make_test_function()
 def make_floor_mod_tests(options):
-  make_binary_op_tests(options, tf.floormod)
+  make_binary_op_tests(options, tf.math.floormod)
 
 
 @register_make_test_function()
