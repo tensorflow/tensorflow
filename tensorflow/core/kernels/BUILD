@@ -2905,7 +2905,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = [":non_max_suppression_op_gpu"] + if_cuda(["@cub_archive//:cub"]),
+    deps = if_cuda(["@cub_archive//:cub",":non_max_suppression_op_gpu"]),
 )
 
 tf_kernel_library(

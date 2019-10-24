@@ -661,10 +661,6 @@ tf_module {
     argspec: "args=[\'params\', \'indices\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
-    name: "generate_bounding_box_proposals"
-    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'nms_threshold\', \'pre_nms_topn\', \'min_size\', \'post_nms_topn\', \'name\'], varargs=None, keywords=None, defaults=[\'300\', \'None\'], "
-  }
-  member_method {
     name: "get_logger"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

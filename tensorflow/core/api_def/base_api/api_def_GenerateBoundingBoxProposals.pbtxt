@@ -1,5 +1,6 @@
 op {
   graph_op_name: "GenerateBoundingBoxProposals"
+  visibility: HIDDEN
   in_arg {
     name: "scores"
     description: <<END

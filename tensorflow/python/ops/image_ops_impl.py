@@ -4010,7 +4010,6 @@ def generate_bounding_box_proposals(scores,
                                     pre_nms_topn=6000,
                                     min_size=16,
                                     post_nms_topn=300,
-                                    correct_transform_coords=True,
                                     name=None):
   """ Generate bounding box proposals from encoded bounding boxes.
   Returns:
@@ -4018,5 +4017,12 @@ def generate_bounding_box_proposals(scores,
     roi_probabilities: scores of the roi boxes in the rois tensor.
   """
   return gen_image_ops.generate_bounding_box_proposals(
-      scores, bbox_deltas, image_info, anchors, nms_threshold, pre_nms_topn,
-      min_size, post_nms_topn, correct_transform_coords)
+      scores=scores,
+      bbox_deltas=bbox_deltas,
+      image_info=image_info,
+      anchors=anchors,
+      nms_threshold=nms_threshold,
+      pre_nms_topn=pre_nms_topn,
+      min_size=min_size,
+      post_nms_topn=post_nms_topn,
+      name=Name)

@@ -206,11 +206,11 @@ void ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
 
 Status AllocateGenerationTempTensors(
     OpKernelContext* context, Tensor* d_conv_layer_indexes,
-    Tensor* d_image_offset, Tensor* d_cub_sort_buffer,
-    Tensor* d_cub_select_buffer, Tensor* d_sorted_conv_layer_indexes,
+    Tensor* d_image_offset, Tensor* d_cub_temp_buffer,
+    Tensor* d_sorted_conv_layer_indexes,
     Tensor* d_sorted_scores, Tensor* dev_boxes, Tensor* dev_boxes_keep_flags,
-    int num_images, int conv_layer_nboxes, size_t cub_sort_temp_storage_bytes,
-    size_t cub_select_temp_storage_bytes, int num_boxes_to_generate,
+    int num_images, int conv_layer_nboxes, size_t cub_temp_storage_bytes,
+    int num_boxes_to_generate,
     int box_dim) {
   auto d = context->eigen_gpu_device();
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -221,13 +221,8 @@ Status AllocateGenerationTempTensors(
       DataType::DT_INT32, TensorShape({num_images + 1}), d_image_offset));
   ResetTensor<int>(d_image_offset, d);
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DataType::DT_INT8, TensorShape({(int64)cub_sort_temp_storage_bytes}),
-      d_cub_sort_buffer));
-  ResetTensor<int8>(d_cub_sort_buffer, d);
-  TF_RETURN_IF_ERROR(context->allocate_temp(
-      DataType::DT_INT8, TensorShape({(int64)cub_select_temp_storage_bytes}),
-      d_cub_select_buffer));
-  ResetTensor<int8>(d_cub_select_buffer, d);
+      DataType::DT_INT8, TensorShape({(int64)cub_temp_storage_bytes}),
+      d_cub_temp_buffer));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images, conv_layer_nboxes}),
       d_sorted_conv_layer_indexes));
@@ -335,6 +330,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
+    VLOG(1)<<"Starting Compute "<<name();
     const auto scores = context->input(0);
     const auto bbox_deltas = context->input(1);
     const auto image_info = context->input(2);
@@ -343,7 +339,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto num_anchors = scores.dim_size(3);
     const auto height = scores.dim_size(1);
     const auto width = scores.dim_size(2);
-    const auto box_dim = anchors.dim_size(0) / num_anchors;
+    const auto box_dim = anchors.dim_size(2) / num_anchors;
     OP_REQUIRES(context, box_dim == 4,
                 errors::OutOfRange("Box dimensions need to be 4"));
     // TODO(skama): make sure that inputs are ok.
@@ -369,7 +365,6 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
           "pre_nms_topn should be greater than 0", pre_nms_topn));
       return;
     }
-
     OP_REQUIRES_OK(context, GetScalarValue(context, 6, &min_size));
     auto cuda_stream = GetGpuStream(context);
     size_t cub_sort_temp_storage_bytes = 0;
@@ -391,8 +386,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
                      f4_ptr, int_ptr, image_stride * num_anchors, cuda_stream));
     Tensor d_conv_layer_indexes;  // box indices on device
     Tensor d_image_offset;        // starting offsets boxes for each image
-    Tensor d_cub_sort_buffer;     // buffer for cub sorting
-    Tensor d_cub_select_buffer;   // buffer for cub selection
+    Tensor d_cub_temp_buffer;     // buffer for cub sorting
     Tensor d_sorted_conv_layer_indexes;  // output of cub sorting, indices of
                                          // the sorted boxes
     Tensor dev_sorted_scores;            // sorted scores, cub output
@@ -400,14 +394,15 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     Tensor dev_boxes_keep_flags;  // bitmask for keeping the boxes or rejecting
                                   // from output
     const int nboxes_to_generate = std::min(conv_layer_nboxes, pre_nms_topn);
+    size_t cub_temp_storage_bytes=max(cub_sort_temp_storage_bytes,cub_select_temp_storage_bytes);
     OP_REQUIRES_OK(
         context,
         AllocateGenerationTempTensors(
-            context, &d_conv_layer_indexes, &d_image_offset, &d_cub_sort_buffer,
-            &d_cub_select_buffer, &d_sorted_conv_layer_indexes,
+            context, &d_conv_layer_indexes, &d_image_offset, &d_cub_temp_buffer,
+            &d_sorted_conv_layer_indexes,
             &dev_sorted_scores, &dev_boxes, &dev_boxes_keep_flags, num_images,
-            conv_layer_nboxes, cub_sort_temp_storage_bytes,
-            cub_select_temp_storage_bytes, nboxes_to_generate, box_dim));
+            conv_layer_nboxes, cub_temp_storage_bytes,
+            nboxes_to_generate, box_dim));
     const GPUDevice& d = context->eigen_device<GPUDevice>();
     Cuda2DLaunchConfig conf2d =
         GetCuda2DLaunchConfig(conv_layer_nboxes, num_images, d);
@@ -419,11 +414,10 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
 
     // sort boxes with their scores.
     // d_sorted_conv_layer_indexes will hold the pointers to old indices.
-
     TF_OP_REQUIRES_CUDA_SUCCESS(
         context,
         cub::DeviceSegmentedRadixSort::SortPairsDescending(
-            d_cub_sort_buffer.flat<int8>().data(), cub_sort_temp_storage_bytes,
+            d_cub_temp_buffer.flat<int8>().data(), cub_temp_storage_bytes,
             scores.flat<float>().data(), dev_sorted_scores.flat<float>().data(),
             d_conv_layer_indexes.flat<int>().data(),
             d_sorted_conv_layer_indexes.flat<int>().data(),
@@ -466,8 +460,8 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     // get the pointers for temp storages
     int* d_prenms_nboxes = dev_prenms_nboxes.flat<int>().data();
     int h_prenms_nboxes = 0;
-    char* d_cub_select_temp_storage =
-        (char*)d_cub_select_buffer.flat<int8>().data();
+    char* d_cub_temp_storage =
+        (char*)d_cub_temp_buffer.flat<int8>().data();
     float* d_image_prenms_boxes = dev_image_prenms_boxes.flat<float>().data();
     float* d_image_prenms_scores = dev_image_prenms_scores.flat<float>().data();
     int* d_image_boxes_keep_list = dev_image_boxes_keep_list.flat<int>().data();
@@ -518,15 +512,14 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       // to the output tensors
       TF_OP_REQUIRES_CUDA_SUCCESS(
           context, cub::DeviceSelect::Flagged(
-                       d_cub_select_temp_storage, cub_select_temp_storage_bytes,
+                       d_cub_temp_storage, cub_temp_storage_bytes,
                        reinterpret_cast<const float4*>(d_image_boxes),
                        d_image_boxes_keep_flags,
                        reinterpret_cast<float4*>(d_image_prenms_boxes),
                        d_prenms_nboxes, nboxes_generated, d.stream()));
-
       TF_OP_REQUIRES_CUDA_SUCCESS(
           context, cub::DeviceSelect::Flagged(
-                       d_cub_select_temp_storage, cub_select_temp_storage_bytes,
+                       d_cub_temp_storage, cub_temp_storage_bytes,
                        d_image_sorted_scores, d_image_boxes_keep_flags,
                        d_image_prenms_scores, d_prenms_nboxes, nboxes_generated,
                        d.stream()));
@@ -564,8 +557,11 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
   float bbox_xform_clip_default_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("GenerateBoundingBoxProposals").Device(tensorflow::DEVICE_GPU),
-    tensorflow::GenerateBoundingBoxProposals);
+REGISTER_KERNEL_BUILDER(Name("GenerateBoundingBoxProposals")
+                            .Device(tensorflow::DEVICE_GPU)
+                            .HostMemory("nms_threshold")
+                            .HostMemory("min_size")
+                            .HostMemory("pre_nms_topn"),
+                        tensorflow::GenerateBoundingBoxProposals);
 }  // namespace tensorflow
 #endif
