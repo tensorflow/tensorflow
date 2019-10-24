@@ -42,7 +42,7 @@ def make_unfused_gru_tests(options):
     ]
     cell_fw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
     cell_bw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
-    outputs, _, _ = tf.nn.static_bidirectional_rnn(
+    outputs, _, _ = tf.compat.v1.nn.static_bidirectional_rnn(
         cell_fw, cell_bw, inputs, dtype=tf.float32)
 
     return inputs, outputs
