@@ -47,10 +47,12 @@ inline void FullyConnected(
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       int32 acc = 0;
       for (int d = 0; d < accum_depth; ++d) {
+        printf("(%d) ", (b * accum_depth + d));
         int32 input_val = input_data[b * accum_depth + d];
         int32 filter_val = filter_data[out_c * accum_depth + d];
         acc += (filter_val + filter_offset) * (input_val + input_offset);
       }
+      printf("\n");
       if (bias_data) {
         acc += bias_data[out_c];
       }

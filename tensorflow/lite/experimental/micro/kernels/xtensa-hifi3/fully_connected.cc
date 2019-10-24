@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
+#include <xtensa/tie/xt_hifi3.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -27,12 +29,26 @@ namespace tflite {
 namespace xtensa {
 namespace hifi3 {
 
-void fully_connected(
-    const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const int32_t* bias_data, const RuntimeShape& output_shape,
-    int8_t* output_data) {
+// Helper XTENSA wrappers:
+#define XT_PACK_INT8_16X4_REG(v, reg)                     \
+  {                                                       \
+    ae_int32x2 r;                                         \
+    ae_int16x4 packed;                                    \
+    const ae_p16x2s* vec_8x2 = (const ae_p16x2s*)(v - 4); \
+    AE_L16X2M_IU(r, vec_8x2, 4);                          \
+    ((int16_t*)&packed)[0] = ((int16_t*)&r)[1];           \
+    ((int16_t*)&packed)[1] = ((int16_t*)&r)[0];           \
+    ((int16_t*)&packed)[2] = ((int16_t*)&r)[3];           \
+    ((int16_t*)&packed)[3] = ((int16_t*)&r)[2];           \
+    reg = AE_SRAI16(packed, 8);                           \
+    reg = AE_SEL16_7520(packed, reg);                     \
+  }
+
+void FullyConnected(const FullyConnectedParams& params,
+                    const RuntimeShape& input_shape, const int8_t* input_data,
+                    const RuntimeShape& filter_shape, const int8_t* filter_data,
+                    const RuntimeShape& bias_shape, const int32_t* bias_data,
+                    const RuntimeShape& output_shape, int8_t* output_data) {
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -51,22 +67,79 @@ void fully_connected(
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
+      // same...
+      int num_iters = (accum_depth + 3) / 4;
 
-      int32 acc = 0;
-      for (int d = 0; d < accum_depth; ++d) {
-        int32 input_val = input_data[b * accum_depth + d];
-        int32 filter_val = filter_data[out_c * accum_depth + d];
+      //int32 i1 = input_data[b * accum_depth];
+      //int32 i2 = *(input_data + (b * accum_depth));
+      //int32 f1 = filter_data[out_c * accum_depth];
+      //int32 f2 = *(filter_data + (out_c * accum_depth));
 
-        acc += (filter_val + filter_offset) * (input_val + input_offset);
+      const int8_t* in_ptr = input_data + (b * accum_depth);
+      for (int d = 0; d < num_iters; d++) {
+        for (int i = 0; i < 4; i++) {
+
+          printf("(%d) input: %d - %d\n",
+                 b * accum_depth * d + i,
+                 *in_ptr, input_data[b * accum_depth * d + i]);
+          in_ptr++;
+        }
       }
+      for (int d = 0; d < accum_depth; ++d) {
+        printf("(%d)  ", b * accum_depth + d);
+      }
+      printf("\n");
+
+      //int32 acc = 0;
+      //for (int d = 0; d < accum_depth; ++d) {
+      //  int32 input_val = input_data[b * accum_depth + d];
+      //  int32 filter_val = filter_data[out_c * accum_depth + d];
+      //  printf("input: %d - %d\n", input_val,
+      //         *(input_data + (b * accum_depth + d)));
+      //  printf("filter: %d - %d\n", filter_val,
+      //         *(filter_data + (out_c * accum_depth + d)));
+      //  acc += (filter_val + filter_offset) * (input_val + input_offset);
+      //}
+
+      /* printf("accum_depth: %d\n", accum_depth); */
+      /* printf("num_iters: %d\n", num_iters); */
+
+      /* const int8_t* input_ptr = input_data + b * accum_depth; */
+      /* const int8_t* filter_ptr = filter_data + out_c * accum_depth; */
+
+      /* printf("input_ptr: %d - %d\n", *input_ptr, input_data[b * accum_depth]); */
+      /* printf("filter_ptr: %d - %d\n", *filter_ptr, filter_ptr[out_c * accum_depth]); */
+
+      /* // TODO - account for offset! */
+      /* while (num_iters--) { */
+      /*   // */
+      /*   // TODO(kreeger): Left off right here. Need to do this properly. */
+      /*   // Intrinsics are working... */
+      /*   // */
+      /*   int8_t v1[] = {1, 2, 3, 4}; */
+      /*   ae_int16x4 reg1; */
+      /*   XT_PACK_INT8_16X4_REG(v1, reg1); */
+
+      /*   int8_t v2[] = {4, 3, 2, 1}; */
+      /*   ae_int16x4 reg2; */
+      /*   XT_PACK_INT8_16X4_REG(v2, reg2); */
+
+      /*   ae_int32x2 sum1 = AE_ZERO32(); */
+      /*   ae_int32x2 sum2 = AE_ZERO32(); */
+
+      /*   AE_MULA16X4(sum1, sum2, reg1, reg2); */
+
+      /*   ae_int32x2 sum12 = AE_ADD32(sum1, sum2); */
+      /*   printf("SUM: %d\n", AE_MOVAD32_L(sum12) + AE_MOVAD32_H(sum12)); */
+      /* } */
+
 
       // if (bias_data) {
       //   acc += bias_data[out_c];
       // }
-      // acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-      // acc += output_offset;
-      // acc = std::max(acc, output_activation_min);
-      // acc = std::min(acc, output_activation_max);
+      // acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+      // output_shift); acc += output_offset; acc = std::max(acc,
+      // output_activation_min); acc = std::min(acc, output_activation_max);
       // output_data[out_c + output_depth * b] = static_cast<int8_t>(acc);
     }
   }
@@ -173,7 +246,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  xtensa::hifi3::fully_connected(
+  xtensa::hifi3::FullyConnected(
       op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
       GetTensorShape(filter), GetTensorData<int8_t>(filter),
       GetTensorShape(bias), GetTensorData<int32_t>(bias),
