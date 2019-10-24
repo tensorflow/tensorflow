@@ -1323,6 +1323,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "multi_process_runner_no_init_test",
+    srcs = ["multi_process_runner_no_init_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_process_runner",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_library(
     name = "distributed_file_utils",
     srcs = [
