@@ -39,7 +39,7 @@ def make_matrix_diag_tests(options):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    outs = tf.matrix_diag(input_tensor)
+    outs = tf.linalg.diag(input_tensor)
     return [input_tensor], [outs]
 
   def build_inputs(parameters, sess, inputs, outputs):
