@@ -157,6 +157,7 @@ def _model_loss(model,
             weights = mask
           else:
             # Update dimensions of weights to match with mask if possible.
+            weights = math_ops.cast(weights, outs[i].dtype)
             mask, _, weights = (
                 tf_losses_utils.squeeze_or_expand_dimensions(
                     mask, sample_weight=weights))
