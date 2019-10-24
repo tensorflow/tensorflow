@@ -11,12 +11,12 @@ load(
 )
 
 cc_library(
-    name = "sine_model_data",
+    name = "mnist_model_data",
     srcs = [
-        "sine_model_data.cc",
+        "mnist_model_data.cc",
     ],
     hdrs = [
-        "sine_model_data.h",
+        "mnist_model_data.h",
     ],
 )
 
@@ -28,7 +28,7 @@ tflite_micro_cc_test(
     deps = [
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/hello_xmos:sine_model_data",
+        "//tensorflow/lite/experimental/micro/examples/hello_xmos:mnist_model_data",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -75,7 +75,7 @@ cc_binary(
         ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/hello_xmos:sine_model_data",
+        "//tensorflow/lite/experimental/micro/examples/hello_xmos:mnist_model_data",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],

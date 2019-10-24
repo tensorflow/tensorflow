@@ -23,7 +23,6 @@ limitations under the License.
 
 extern const unsigned char g_mnist_model_data[];
 extern const int g_mnist_model_data_len;
-// TODO remove 'mnist' naming and comments
 
 // Example input digits
 extern const float g_digits[10][28*28];
