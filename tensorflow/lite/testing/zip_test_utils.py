@@ -522,9 +522,10 @@ def make_zip_of_tests(options,
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.
-  tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d TOCO converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, toco_success, percent)
+  tf.compat.v1.logging.info(
+      ("Archive %s Considered %d graphs, %d TF evaluated graphs "
+       " and %d TOCO converted graphs (%.1f%%"), zip_path, total_conversions,
+      tf_success, toco_success, percent)
 
   tf_failures = parameter_count - tf_success
 
