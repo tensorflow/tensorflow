@@ -183,7 +183,7 @@ def : Pat<
   [(EqualOperands $x, $y)]>;
 
 // Constraint that the attribute value is less than 'n'
-class ConstDoubleValueNearZero<string n> : Constraint<
+class ConstDoubleValueLessThan<string n> : Constraint<
   CPred<"$0.isa<DenseElementsAttr>() && "
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
   "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
@@ -220,7 +220,7 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
-            (ConstDoubleValueNearZero<"1e-3"> $epsilon)]>;
+            (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
   def : Pat<(FirstOp $operand1,
                      (SecondOp
@@ -233,7 +233,7 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
-            (ConstDoubleValueNearZero<"1e-3"> $epsilon)]>;
+            (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
 }
 
