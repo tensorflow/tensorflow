@@ -56,8 +56,8 @@ class AutoMixedPrecisionLists {
         &to_remove));
 
     auto list = gtl::FlatSet<string> {
-          "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
-          "Conv2DBackpropInput",
+          "BlockLSTM", "BlockLSTMV2", "BlockLSTMGrad", "BlockLSTMGradV2",
+          "Conv2D", "Conv2DBackpropFilter", "Conv2DBackpropInput",
           "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
           "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
           "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",
