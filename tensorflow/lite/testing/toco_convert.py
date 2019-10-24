@@ -104,6 +104,9 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
   data_types = [zip_test_utils.TF_TYPE_INFO[x[2]][1] for x in input_tensors]
 
   if test_params.get("fully_quantize", False):
+    # Read the input range for the representative dataset from parameters.
+    min_value, max_value = test_params.get("input_range", (-1, 1))
+
     with tempfile.NamedTemporaryFile() as graphdef_file:
       graphdef_file.write(graph_def_str)
       graphdef_file.flush()
@@ -118,7 +121,8 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
           if shape:
             dims = [dim.value for dim in shape.dims]
             calibration_inputs.append(
-                np.random.uniform(-1, 1, tuple(dims)).astype(np.float32))
+                np.random.uniform(min_value, max_value,
+                                  tuple(dims)).astype(np.float32))
         return calibration_inputs
 
       def representative_dataset_gen():

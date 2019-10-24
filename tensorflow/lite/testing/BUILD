@@ -480,26 +480,30 @@ tf_py_wrap_cc(
 tflite_portable_test_suite()
 
 edgetpu_ops = [
-    "conv",  # high error
-    "fully_connected",
-    "softmax",
-    "reshape",
     "add",
-    "mul",
-    "sub",
     "avg_pool",
-    "max_pool",
     "concat",
-    "resize_bilinear",
-    "l2norm",  # high error
-    "sum",  # high error
+    "conv",  # high error
+    "conv_relu",
+    "conv_relu1",
+    "conv_relu6",
     "depthwiseconv",  # high error
+    "fully_connected",
+    "l2norm",  # high error
+    "max_pool",
+    "mul",
+    "pad",  # high error
+    "reshape",
+    "resize_bilinear",
+    "slice",
+    "softmax",
     "space_to_depth",
     "split",
     "squeeze",
-    "pad",  # high error
-    "slice",
     "strided_slice",
+    "sub",
+    "sum",  # high error
+    "tanh",
 ]
 
 [gen_zipped_test_file(
