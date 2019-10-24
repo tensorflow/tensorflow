@@ -1195,11 +1195,12 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        hdf5_format.load_weights_from_hdf5_group_by_name(f, self._get_all_layers(self), skip_mismatch=skip_mismatch)
+        hdf5_format.load_weights_from_hdf5_group_by_name(
+          f, self._get_all_layers(self), skip_mismatch=skip_mismatch)
       else:
         hdf5_format.load_weights_from_hdf5_group(f, self.layers)
 
-  def _get_all_layers (self, network):
+  def _get_all_layers(self, network):
     """Extract all layers included layers in sub models
 
     For example, a model included:
