@@ -2266,6 +2266,7 @@ cc_library(
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/lib/core:threadpool_interface",
         "//tensorflow/core/lib/core:threadpool_options",
         "//tensorflow/core/lib/gtl:array_slice",
