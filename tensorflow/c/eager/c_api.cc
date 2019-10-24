@@ -443,19 +443,23 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   std::vector<string> existing_workers;
   std::vector<string> replaced_workers;
 
-  std::unique_ptr<tensorflow::DynamicDeviceMgr> remote_device_mgr;
+  // New remote device manager created for new server_def. Unused if updating
+  // server_def.
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> new_remote_device_mgr;
+  tensorflow::DynamicDeviceMgr* remote_device_mgr = nullptr;
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
         remote_workers, grpc_server->master_env()->worker_cache,
-        &remote_device_mgr));
+        &new_remote_device_mgr));
+    remote_device_mgr = new_remote_device_mgr.get();
   } else {
     ctx->context->ClearCaches();
     grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
 
-    remote_device_mgr = ctx->context->ReleaseRemoteDeviceMgr();
+    remote_device_mgr = ctx->context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
-          "Updating context with invalid a valid set of remote devices."));
+          "Updating context with an invalid set of remote devices."));
     }
     std::sort(curr_remote_workers.begin(), curr_remote_workers.end());
     std::sort(remote_workers.begin(), remote_workers.end());
@@ -487,10 +491,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       }
     }
     LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
+        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
     LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
         added_workers, grpc_server->master_env()->worker_cache,
-        remote_device_mgr.get()));
+        remote_device_mgr));
   }
 
   std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
@@ -566,15 +570,15 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
         std::move(new_server), grpc_server->worker_env(), worker_session,
-        std::move(remote_eager_workers), std::move(remote_device_mgr),
+        std::move(remote_eager_workers), std::move(new_remote_device_mgr),
         remote_workers, context_id, r, device_mgr, keep_alive_secs,
         worker_session->cluster_flr(), std::move(remote_mgr)));
   } else {
     LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
         grpc_server->worker_env(), worker_session,
-        std::move(remote_eager_workers), std::move(remote_device_mgr),
-        added_workers, removed_workers, context_id, r, device_mgr,
-        keep_alive_secs, worker_session->cluster_flr()));
+        std::move(remote_eager_workers), added_workers, removed_workers,
+        context_id, r, device_mgr, keep_alive_secs,
+        worker_session->cluster_flr()));
   }
 
   // NOTE: We start the server after all other initialization, because the

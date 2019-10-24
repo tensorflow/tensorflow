@@ -1045,6 +1045,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(None, imported.variables[1])
     self.assertEqual(3, len(imported.variables))
 
+  def test_tuple(self, cycles):
+    root = tracking.AutoTrackable()
+    root.variables = (variables.Variable(1.), 1, variables.Variable(3.))
+    imported = cycle(root, cycles)
+    self.assertEqual(1., imported.variables[0].numpy())
+    self.assertEqual(3., imported.variables[2].numpy())
+    self.assertIs(None, imported.variables[1])
+    self.assertLen(imported.variables, 3)
+
   def test_functions_list(self, cycles):
     root = tracking.AutoTrackable()
     v1 = variables.Variable(1.)

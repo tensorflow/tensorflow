@@ -295,6 +295,19 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "hlo_utils",
+    srcs = ["hlo_utils.cc"],
+    hdrs = ["hlo_utils.h"],
+    includes = ["include"],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@local_config_mlir//:IR",
+    ],
+    alwayslink = 1,
+)
+
 # Library with XLA dialect static initialization.
 cc_library(
     name = "xla_dialect_registration",

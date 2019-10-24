@@ -261,6 +261,7 @@ void DebugEventsWriter::WriteGraphExecutionTrace(
 }
 
 void DebugEventsWriter::WriteGraphExecutionTrace(const string& tfdbg_context_id,
+                                                 const string& device_name,
                                                  const string& op_name,
                                                  int32 output_slot,
                                                  int32 tensor_debug_mode,
@@ -276,6 +277,7 @@ void DebugEventsWriter::WriteGraphExecutionTrace(const string& tfdbg_context_id,
   if (tensor_debug_mode > 0) {
     trace->set_tensor_debug_mode(TensorDebugMode(tensor_debug_mode));
   }
+  trace->set_device_name(device_name);
   tensor_value.AsProtoTensorContent(trace->mutable_tensor_proto());
   WriteGraphExecutionTrace(trace.release());
 }

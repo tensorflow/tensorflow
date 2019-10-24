@@ -35,8 +35,6 @@ limitations under the License.
 
 %include "tensorflow/python/platform/stacktrace_handler.i"
 
-%include "tensorflow/python/util/transform_graph.i"
-
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
@@ -44,6 +42,5 @@ limitations under the License.
 %include "tensorflow/python/grappler/model_analyzer.i"
 
 %include "tensorflow/python/util/traceme.i"
-%include "tensorflow/python/util/scoped_annotation.i"
 
 %include "tensorflow/compiler/mlir/python/mlir.i"

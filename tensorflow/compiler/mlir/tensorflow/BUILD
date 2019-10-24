@@ -167,7 +167,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
-        ":mlir_passthrough_op",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",

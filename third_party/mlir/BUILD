@@ -611,11 +611,16 @@ filegroup(
 
 cc_library(
     name = "GPUCommonTransforms",
-    hdrs = ["lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h"],
+    hdrs = [
+        "lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h",
+        "lib/Conversion/GPUCommon/OpToFuncCallLowering.h",
+    ],
     deps = [
         ":GPUDialect",
+        ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":StandardOps",
         "@llvm//:support",
     ],
 )

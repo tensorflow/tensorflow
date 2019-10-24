@@ -102,8 +102,10 @@ py_library(
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
+        ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":array_ops",
@@ -223,6 +225,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":_pywrap_scoped_annotation",
         ":_pywrap_util_port",
         ":lib",
         ":util",
@@ -558,6 +561,38 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_scoped_annotation",
+    srcs = ["util/scoped_annotation_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/core/platform:annotation_hdrs",
+        "//tensorflow/core/profiler/internal:python_scoped_annotation_hdrs",
+    ],
+    module_name = "_pywrap_scoped_annotation",
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_transform_graph",
+    srcs = ["util/transform_graph_wrapper.cc"],
+    hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
+    module_name = "_pywrap_transform_graph",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 filegroup(
     name = "py_exception_registry_hdr",
     srcs = [
@@ -631,6 +666,7 @@ cc_library(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
+    alwayslink = 1,
 )
 
 cc_header_only_library(
@@ -930,8 +966,10 @@ py_library(
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_quantize_training",
+        ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
@@ -4860,6 +4898,7 @@ py_library(
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
         "@six_archive//:six",
+        "@wrapt",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
@@ -5195,9 +5234,7 @@ tf_py_wrap_cc(
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "util/py_checkpoint_reader.i",
-        "util/scoped_annotation.i",
         "util/traceme.i",
-        "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5294,6 +5331,7 @@ genrule(
         ":cpp_python_util",  # util
         ":py_func_lib",  # py_func
         "//tensorflow/core:util_port",  # util_port
+        "//tensorflow/core/profiler/internal:python_scoped_annotation",  # scoped_annotation
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
@@ -5303,6 +5341,7 @@ genrule(
         ":py_exception_registry",  # py_exception_registry
         ":kernel_registry",
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
@@ -5397,6 +5436,7 @@ py_library(
         ":util",
         "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
+        "@wrapt",
     ],
 )
 

@@ -29,6 +29,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "../GPUCommon/IndexIntrinsicsOpLowering.h"
+#include "../GPUCommon/OpToFuncCallLowering.h"
 
 using namespace mlir;
 
@@ -59,9 +60,12 @@ public:
         GPUIndexIntrinsicOpLowering<gpu::GridDimOp, ROCDL::GridDimXOp,
                                     ROCDL::GridDimYOp, ROCDL::GridDimZOp>>(
         converter);
+    patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "_ocml_exp_f32",
+                                                 "_ocml_exp_f64");
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect, ROCDL::ROCDLDialect>();
+    target.addIllegalOp<LLVM::ExpOp>();
     target.addDynamicallyLegalOp<FuncOp>(
         [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
     if (failed(applyPartialConversion(m, target, patterns, &converter)))

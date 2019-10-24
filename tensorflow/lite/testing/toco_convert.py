@@ -93,7 +93,7 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
     or None, log_txt if it did not convert properly.
   """
   # Convert ophint ops if presented.
-  graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
+  graph_def = tf.compat.v1.lite.experimental.convert_op_hints_to_stubs(
       graph_def=graph_def)
   graph_def_str = graph_def.SerializeToString()
 

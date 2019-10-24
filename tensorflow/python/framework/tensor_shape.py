@@ -258,10 +258,7 @@ class Dimension(object):
     Returns:
       True if this Dimension and `other` are compatible.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -309,10 +306,7 @@ class Dimension(object):
       ValueError: If `self` and `other` are not compatible (see
         is_compatible_with).
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)

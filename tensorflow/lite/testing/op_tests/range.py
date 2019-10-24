@@ -35,7 +35,7 @@ def make_range_tests(options):
 
   def build_graph(parameters):
     """Build the range op testing graph."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"], name=("start"), shape=[])
     if parameters["delta"] < 0:
       offset = parameters["offset"] * -1

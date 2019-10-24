@@ -220,7 +220,7 @@ def register_dense_tensor_like_type(tensor_type):
   """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
 
   A "tensor-like type" can represent a single dense tensor, and implements
-  the `name` and `dtype` properties.
+  the `name`, `dtype` and `shape` properties.
 
   Args:
     tensor_type: A type implementing the tensor interface.
@@ -228,19 +228,17 @@ def register_dense_tensor_like_type(tensor_type):
   Raises:
     TypeError: If `tensor_type` does not implement the tensor interface.
   """
-  try:
-    if not isinstance(tensor_type.name, property):
-      raise TypeError("Type %s does not define a `name` property" %
-                      tensor_type.__name__)
-  except AttributeError:
+  if not (hasattr(tensor_type, "name") and
+          isinstance(tensor_type.name, property)):
     raise TypeError("Type %s does not define a `name` property" %
                     tensor_type.__name__)
-  try:
-    if not isinstance(tensor_type.dtype, property):
-      raise TypeError("Type %s does not define a `dtype` property" %
-                      tensor_type.__name__)
-  except AttributeError:
+  if not (hasattr(tensor_type, "dtype") and
+          isinstance(tensor_type.dtype, property)):
     raise TypeError("Type %s does not define a `dtype` property" %
+                    tensor_type.__name__)
+  if not (hasattr(tensor_type, "shape") and
+          isinstance(tensor_type.shape, property)):
+    raise TypeError("Type %s does not define a `shape` property" %
                     tensor_type.__name__)
   # We expect this list to be small, so choose quadratic complexity
   # for registration, so that we have a tuple that can be used for

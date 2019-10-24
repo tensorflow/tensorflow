@@ -390,9 +390,6 @@ class Loop(training_utils.TrainingLoop):
                       total_epochs=1)
                   cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TEST,
                                  prefix='val_')
-                if (validation_steps is None
-                    and eval_context.progbar.progbar.target is not None):
-                  validation_steps = eval_context.progbar.progbar.target
 
     return model.history
 

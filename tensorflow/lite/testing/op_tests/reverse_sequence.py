@@ -49,7 +49,7 @@ def make_reverse_sequence_tests(options):
 
   def build_graph(parameters):
     """Build the graph for reverse_sequence tests."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])

@@ -55,10 +55,10 @@ def make_sparse_to_dense_tests(options):
     # Special handle for value_is_scalar case.
     # value_count must be 1.
     if parameters["value_is_scalar"] and parameters["value_count"] == 1:
-      value = tf.placeholder(
+      value = tf.compat.v1.placeholder(
           name="value", dtype=parameters["value_dtype"], shape=())
     else:
-      value = tf.placeholder(
+      value = tf.compat.v1.placeholder(
           name="value",
           dtype=parameters["value_dtype"],
           shape=[parameters["value_count"]])

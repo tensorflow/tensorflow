@@ -155,6 +155,7 @@ class DebugEventsWriter {
   //     that this trace is concerned with. The sematics of this tensor value
   //     depends on the value of `tensor_debug_mode`.
   void WriteGraphExecutionTrace(const string& tfdbg_context_id,
+                                const string& device_name,
                                 const string& op_name, int32 output_slot,
                                 int32 tensor_debug_mode,
                                 const Tensor& tensor_value);

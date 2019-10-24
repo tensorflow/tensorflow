@@ -3930,7 +3930,7 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   } else if (PyList_Check(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kList, kListEnd, include_tensor_ranks_only, result));
-  } else if (PyTuple_Check(arg)) {
+  } else if (tensorflow::swig::IsTuple(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
   } else if (tensorflow::swig::IsMapping(arg)) {

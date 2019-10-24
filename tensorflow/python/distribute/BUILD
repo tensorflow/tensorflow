@@ -1322,3 +1322,14 @@ py_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+py_library(
+    name = "distributed_file_utils",
+    srcs = [
+        "distributed_file_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
+)

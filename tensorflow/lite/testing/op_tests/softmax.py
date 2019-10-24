@@ -31,10 +31,12 @@ def make_softmax_tests(options):
       "dtype": [tf.float32],
       "input_shape": [[1, 3, 4, 3], [2, 3]],
       "dim": [-1, 0],
+      "fully_quantize": [False, True],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[4, 7]],
       "dim": [-1, 1],
+      "fully_quantize": [False, True],
   }]
 
   def build_graph(parameters):
@@ -46,8 +48,11 @@ def make_softmax_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
+    input_values = create_tensor_data(
+        parameters["dtype"],
+        parameters["input_shape"],
+        min_value=-1,
+        max_value=1)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

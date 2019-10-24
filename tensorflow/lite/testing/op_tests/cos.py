@@ -35,7 +35,7 @@ def make_cos_tests(options):
 
   def build_graph(parameters):
     """Build the cos op testing graph."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])

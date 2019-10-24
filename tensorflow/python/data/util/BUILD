@@ -82,6 +82,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/ragged",
+        "@wrapt",
     ],
 )
 
@@ -112,6 +113,7 @@ py_test(
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "@wrapt",
     ],
 )
 

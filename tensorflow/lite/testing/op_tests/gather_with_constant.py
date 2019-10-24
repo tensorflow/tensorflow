@@ -38,7 +38,7 @@ def make_gather_with_constant_tests(options):
 
   def build_graph(parameters):
     """Build a graph where the inputs to Gather are constants."""
-    reference = tf.placeholder(
+    reference = tf.compat.v1.placeholder(
         dtype=tf.int32, shape=parameters["reference_shape"])
     gather_input = tf.constant(
         create_tensor_data(tf.int32, parameters["input_shape"]))

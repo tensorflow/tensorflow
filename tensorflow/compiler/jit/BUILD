@@ -960,7 +960,7 @@ cc_library(
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
-        "//tensorflow/core:logger",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
