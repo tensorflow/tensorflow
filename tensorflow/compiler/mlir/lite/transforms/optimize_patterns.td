@@ -182,14 +182,23 @@ def : Pat<
   (TFL_HardSwishOp $x),
   [(EqualOperands $x, $y)]>;
 
-// This pattern constructs L2NormalizationOp from
-// Mul->Rsqrt->Sum->Square
+// Constraint that the attribute value is less than 'n'
+class ConstDoubleValueNearZero<string n> : Constraint<
+  CPred<"$0.isa<DenseElementsAttr>() && "
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
+  "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
+  # n>>;
+
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
-def : Pat<(TFL_MulOp $operand1,
-                     (TFL_RsqrtOp
+multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
+  // This pattern constructs L2NormalizationOp from
+  // Mul->Rsqrt->Sum->Square Or
+  // Div->sqrt->Sum->Square
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
                         (TFL_SumOp
                            (TFL_SquareOp $square_operand),
                            (ConstantOp I32ElementsAttr:$constant),
@@ -198,18 +207,35 @@ def : Pat<(TFL_MulOp $operand1,
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand)]>;
 
-// This pattern constructs L2NormalizationOp from
-// Div->sqrt->Sum->Square
-// Currently L2Normalization doesn't support activation function
-// in TFLite.
-// TODO(karimnosseir): Add constraints that the kernel code assumes.
-// constraint on axis and depth.
-def : Pat<(TFL_DivOp $operand1,
-                     (TFL_SqrtOp
-                        (TFL_SumOp
-                           (TFL_SquareOp $square_operand),
-                           (ConstantOp I32ElementsAttr:$constant),
-                           $keep_dims)),
-                     TFL_AF_None),
+  // Below patterns for L2Normalize when there is an Add or Maximum
+  // adding or clamping to a small constant scalar.
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
+                      (TFL_AddOp
+                       (TFL_SumOp
+                        (TFL_SquareOp $square_operand),
+                        (ConstantOp I32ElementsAttr:$constant),
+                        $keep_dims),
+                       (ConstantOp $epsilon), TFL_AF_None)),
+           TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand)]>;
+           [(EqualOperands $operand1, $square_operand),
+            (ConstDoubleValueNearZero<"1e-3"> $epsilon)]>;
+
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
+                      (TFL_MaximumOp
+                       (TFL_SumOp
+                        (TFL_SquareOp $square_operand),
+                        (ConstantOp I32ElementsAttr:$constant),
+                        $keep_dims),
+                       (ConstantOp $epsilon))),
+           TFL_AF_None),
+           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
+           [(EqualOperands $operand1, $square_operand),
+            (ConstDoubleValueNearZero<"1e-3"> $epsilon)]>;
+
+}
+
+foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
+  in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
