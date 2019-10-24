@@ -2564,8 +2564,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             keepdims=keepdims,
             dims=reduce_dim))
     if not keepdims:
-      my_max = array_ops.reshape(my_max,
-                                 result._maybe_constant_shape(gen_array_ops))  # pylint: disable=protected-access
+      my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
     result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
