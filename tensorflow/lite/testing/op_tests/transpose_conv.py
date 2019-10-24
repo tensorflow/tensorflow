@@ -66,7 +66,7 @@ def make_transpose_conv_tests(options):
         strides=parameters["strides"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
-    out = tf.nn.conv2d_backprop_input(
+    out = tf.compat.v1.nn.conv2d_backprop_input(
         input_shape,
         filter_input,
         conv_outputs,
