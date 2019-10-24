@@ -23,7 +23,9 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
-void createTPUBridge(OpPassManager &bridge) {
+void createTPUBridge(OpPassManager &pm) {
+  OpPassManager &bridge = pm.nest<FuncOp>();
+
   bridge.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   bridge.addPass(createCanonicalizerPass());
   bridge.addPass(CreateTPUClusterFormationPass());
