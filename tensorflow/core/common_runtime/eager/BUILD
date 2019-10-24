@@ -360,6 +360,9 @@ cc_library(
 tf_cc_test_mkl(
     name = "mkl_eager_op_rewrite_test",
     srcs = ["mkl_eager_op_rewrite_test.cc"],
+    tags = [
+        "nomac",
+    ],
     deps = [
         ":execute",
         ":mkl_eager_op_rewrite",
