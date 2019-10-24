@@ -46,7 +46,7 @@ def make_resize_bilinear_tests(options):
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.image.resize_bilinear(
+    out = tf.compat.v1.image.resize_bilinear(
         input_tensor,
         size=parameters["size"],
         align_corners=parameters["align_corners"])
