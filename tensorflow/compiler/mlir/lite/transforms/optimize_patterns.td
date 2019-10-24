@@ -239,3 +239,23 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
 
 foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
   in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
+
+def AreBroadcastableTypes : Constraint<CPred<
+  "TFL::IsBroadcastableElementsAttrAndType($0->getType(), $1->getType())">>;
+
+// Pattern for skipping Tile if it is mainly for broadcasting and the
+// Op is already supporting broadcasting.
+multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
+  def : Pat<(BinaryOp (TFL_TileOp $input, (ConstantOp $tile)),
+             $operand, $act_func),
+  (BinaryOp $input, $operand, $act_func),
+  [(AreBroadcastableTypes $input, $operand)]>;
+
+  def : Pat<(BinaryOp $operand,
+             (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
+  (BinaryOp $operand, $input, $act_func),
+  [(AreBroadcastableTypes $operand, $input)]>;
+}
+
+foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
+  in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;
