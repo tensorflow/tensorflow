@@ -38,7 +38,7 @@ def make_ceil_tests(options):
         dtype=parameters["input_dtype"],
         name="input1",
         shape=parameters["input_shape"])
-    out = tf.ceil(input_value)
+    out = tf.math.ceil(input_value)
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
