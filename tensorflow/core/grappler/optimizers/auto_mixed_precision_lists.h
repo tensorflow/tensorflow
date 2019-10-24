@@ -260,6 +260,7 @@ class AutoMixedPrecisionLists {
         "ReverseV2",
         "Round",
         "Select",
+        "SelectV2",
         "Shape",
         "ShapeN",
         "Sign",
