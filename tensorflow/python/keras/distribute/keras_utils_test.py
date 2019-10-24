@@ -259,7 +259,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       dataset = keras_test_lib.get_dataset(distribution)
       exception_error_message = (
-          '`validation_split` argument is not supported when ')
+          '`validation_split` argument is not supported when input `x`'
+          ' is a dataset or a dataset iterator.+')
 
       # Test with validation split
       with self.assertRaisesRegexp(ValueError, exception_error_message):
