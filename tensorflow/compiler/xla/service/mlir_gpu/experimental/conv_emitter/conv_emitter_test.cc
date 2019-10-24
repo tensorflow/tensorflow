@@ -18,14 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -34,32 +29,6 @@ limitations under the License.
 namespace xla {
 namespace gpu_mlir {
 namespace {
-
-mlir::Type ShapeToMlirType(const xla::Shape& shape, mlir::Builder* builder) {
-  CHECK(shape.IsArray());
-  mlir::Type element_type = [&] {
-    switch (shape.element_type()) {
-      case xla::F16:
-        return builder->getF16Type();
-      case xla::F32:
-        return builder->getF32Type();
-      default:
-        break;
-    }
-    CHECK(false);
-  }();
-  std::vector<int64_t> physical_layout;
-  std::vector<mlir::AffineExpr> major_to_minor;
-  for (int i = shape.layout().minor_to_major_size() - 1; i >= 0; i--) {
-    major_to_minor.push_back(
-        builder->getAffineDimExpr(shape.layout().minor_to_major(i)));
-    physical_layout.push_back(
-        shape.dimensions(shape.layout().minor_to_major(i)));
-  }
-  return mlir::MemRefType::get(
-      physical_layout, element_type,
-      {mlir::AffineMap::get(major_to_minor.size(), 0, major_to_minor)});
-}
 
 std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   xla::HloModuleConfig hlo_config;
@@ -72,29 +41,14 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
-  mlir::Location location = mlir::UnknownLoc::get(&context);
-  mlir::OwningModuleRef mlir_module(mlir::ModuleOp::create(location));
-  mlir::OpBuilder builder(&context);
+  mlir::OwningModuleRef mlir_module(
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
-  xla::Shape input_shape = conv->operand(0)->shape();
-  xla::Shape filter_shape = conv->operand(1)->shape();
-  xla::Shape output_shape = conv->shape().tuple_shapes(0);
+  mlir::FuncOp function =
+      xla::mlir_gpu::EmitConvolutionForwardAsMlir(conv, "Conv", &context)
+          .ValueOrDie();
 
-  auto function = mlir::FuncOp::create(
-      location, "Conv",
-      builder.getFunctionType({ShapeToMlirType(output_shape, &builder),
-                               ShapeToMlirType(input_shape, &builder),
-                               ShapeToMlirType(filter_shape, &builder)},
-                              {builder.getNoneType()}));
   mlir_module->push_back(function);
-
-  auto* entry_block = function.addEntryBlock();
-  builder.setInsertionPointToStart(entry_block);
-
-  TF_CHECK_OK(xla::mlir_gpu::EmitConvolutionForwardAsMlir(
-      conv, entry_block->getArgument(1), entry_block->getArgument(2),
-      entry_block->getArgument(0), builder));
-
   mlir_module->verify();
 
   std::string mlir_text;
@@ -114,8 +68,7 @@ ENTRY %TestComputation {
 
   std::string expected_mlir_pattern =
       R"(
-CHECK: func @Conv(%arg0: memref<128x112x112x64xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>, %arg1: memref<128x224x224x4xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>, %arg2: memref<64x7x7x4xf16, (d0, d1, d2, d3) -> (d2, d0, d1, d3)>) -> none {
-CHECK-NEXT:   %0 = memref_cast %arg2 : memref<64x7x7x4xf16, (d0, d1, d2, d3) -> (d2, d0, d1, d3)> to memref<64x7x7x4xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+CHECK: func @Conv(%arg0: memref<128x112x112x64xf16>, %arg1: memref<128x224x224x4xf16>, %arg2: memref<64x7x7x4xf16>) {
 CHECK-NEXT:   "affine.for"() ( {
 CHECK-NEXT:   ^bb0(%arg3: index):
 CHECK-NEXT:     "affine.for"() ( {
@@ -124,13 +77,13 @@ CHECK-NEXT:       "affine.for"() ( {
 CHECK-NEXT:       ^bb0(%arg5: index):
 CHECK-NEXT:         "affine.for"() ( {
 CHECK-NEXT:         ^bb0(%arg6: index):
-CHECK-NEXT:           %1 = alloc() : memref<32x16xf32>
+CHECK-NEXT:           %0 = alloc() : memref<32x16xf32>
 CHECK-NEXT:           "affine.for"() ( {
 CHECK-NEXT:           ^bb0(%arg7: index):
 CHECK-NEXT:             "affine.for"() ( {
 CHECK-NEXT:             ^bb0(%arg8: index):
 CHECK-NEXT:               %cst = constant 0.000000e+00 : f32
-CHECK-NEXT:               "affine.store"(%cst, %1, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (f32, memref<32x16xf32>, index, index) -> ()
+CHECK-NEXT:               "affine.store"(%cst, %0, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (f32, memref<32x16xf32>, index, index) -> ()
 CHECK-NEXT:               "affine.terminator"() : () -> ()
 CHECK-NEXT:             }) {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (16)} : () -> ()
 CHECK-NEXT:             "affine.terminator"() : () -> ()
@@ -147,14 +100,14 @@ CHECK-NEXT:                   "affine.for"() ( {
 CHECK-NEXT:                   ^bb0(%arg11: index):
 CHECK-NEXT:                     "affine.for"() ( {
 CHECK-NEXT:                     ^bb0(%arg12: index):
-CHECK-NEXT:                       %2 = "affine.load"(%arg1, %arg3, %arg9, %arg5, %arg6, %arg10, %arg11, %arg12, %arg8) {map = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d1 * 4 + d6, d2 * 2 + d4 - 3, (d3 * 16 + d7) * 2 + d5 - 3)} : (memref<128x224x224x4xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>, index, index, index, index, index, index, index, index) -> f16
-CHECK-NEXT:                       %3 = fpext %2 : f16 to f32
-CHECK-NEXT:                       %4 = "affine.load"(%0, %arg4, %arg9, %arg10, %arg11, %arg12, %arg7) {map = (d0, d1, d2, d3, d4, d5) -> (d0 * 32 + d5, d1 * 4 + d4, d2, d3)} : (memref<64x7x7x4xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>, index, index, index, index, index, index) -> f16
-CHECK-NEXT:                       %5 = fpext %4 : f16 to f32
-CHECK-NEXT:                       %6 = "affine.load"(%1, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (memref<32x16xf32>, index, index) -> f32
-CHECK-NEXT:                       %7 = mulf %3, %5 : f32
-CHECK-NEXT:                       %8 = addf %6, %7 : f32
-CHECK-NEXT:                       "affine.store"(%8, %1, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (f32, memref<32x16xf32>, index, index) -> ()
+CHECK-NEXT:                       %1 = "affine.load"(%arg1, %arg3, %arg9, %arg5, %arg6, %arg10, %arg11, %arg12, %arg8) {map = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d2 * 2 + d4 - 3, (d3 * 16 + d7) * 2 + d5 - 3, d1 * 4 + d6)} : (memref<128x224x224x4xf16>, index, index, index, index, index, index, index, index) -> f16
+CHECK-NEXT:                       %2 = fpext %1 : f16 to f32
+CHECK-NEXT:                       %3 = "affine.load"(%arg2, %arg4, %arg9, %arg10, %arg11, %arg12, %arg7) {map = (d0, d1, d2, d3, d4, d5) -> (d0 * 32 + d5, d2, d3, d1 * 4 + d4)} : (memref<64x7x7x4xf16>, index, index, index, index, index, index) -> f16
+CHECK-NEXT:                       %4 = fpext %3 : f16 to f32
+CHECK-NEXT:                       %5 = "affine.load"(%0, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (memref<32x16xf32>, index, index) -> f32
+CHECK-NEXT:                       %6 = mulf %2, %4 : f32
+CHECK-NEXT:                       %7 = addf %5, %6 : f32
+CHECK-NEXT:                       "affine.store"(%7, %0, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (f32, memref<32x16xf32>, index, index) -> ()
 CHECK-NEXT:                       "affine.terminator"() : () -> ()
 CHECK-NEXT:                     }) {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (4)} : () -> ()
 CHECK-NEXT:                     "affine.terminator"() : () -> ()
@@ -171,9 +124,9 @@ CHECK-NEXT:           "affine.for"() ( {
 CHECK-NEXT:           ^bb0(%arg7: index):
 CHECK-NEXT:             "affine.for"() ( {
 CHECK-NEXT:             ^bb0(%arg8: index):
-CHECK-NEXT:               %2 = "affine.load"(%1, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (memref<32x16xf32>, index, index) -> f32
-CHECK-NEXT:               %3 = fptrunc %2 : f32 to f16
-CHECK-NEXT:               "affine.store"(%3, %arg0, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8) {map = (d0, d1, d2, d3, d4, d5) -> (d0, d1 * 32 + d4, d2, d3 * 16 + d5)} : (f16, memref<128x112x112x64xf16, (d0, d1, d2, d3) -> (d0, d2, d3, d1)>, index, index, index, index, index, index) -> ()
+CHECK-NEXT:               %1 = "affine.load"(%0, %arg7, %arg8) {map = (d0, d1) -> (d0, d1)} : (memref<32x16xf32>, index, index) -> f32
+CHECK-NEXT:               %2 = fptrunc %1 : f32 to f16
+CHECK-NEXT:               "affine.store"(%2, %arg0, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8) {map = (d0, d1, d2, d3, d4, d5) -> (d0, d2, d3 * 16 + d5, d1 * 32 + d4)} : (f16, memref<128x112x112x64xf16>, index, index, index, index, index, index) -> ()
 CHECK-NEXT:               "affine.terminator"() : () -> ()
 CHECK-NEXT:             }) {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (16)} : () -> ()
 CHECK-NEXT:             "affine.terminator"() : () -> ()
@@ -186,6 +139,7 @@ CHECK-NEXT:       "affine.terminator"() : () -> ()
 CHECK-NEXT:     }) {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (2)} : () -> ()
 CHECK-NEXT:     "affine.terminator"() : () -> ()
 CHECK-NEXT:   }) {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (128)} : () -> ()
+CHECK-NEXT:   return
 CHECK-NEXT: }
 )";
 

@@ -29,6 +29,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/types:span",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
@@ -48,6 +49,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
