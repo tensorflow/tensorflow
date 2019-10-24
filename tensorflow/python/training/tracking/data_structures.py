@@ -909,9 +909,19 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     else:
       is_namedtuple = True
     original_type = type(original_wrapped_tuple)
+    # Flag to poison saving if we can't re-construct a namedtupled because its
+    # __new__ takes different keyword arguments than its _fields.
+    self._self_tuple_is_constructable = True
     if is_namedtuple:
-      substituted_wrapped_tuple = original_wrapped_tuple._replace(
-          **dict(zip(fields, substituted_wrapped_tuple)))
+      try:
+        # NamedTuples take N arguments, unlike tuple which takes a sequence.
+        substituted_wrapped_tuple = original_type(
+            **dict(zip(fields, substituted_wrapped_tuple)))
+      except TypeError:
+        wrapt.ObjectProxy.__init__(self, original_wrapped_tuple)
+        TrackableDataStructure.__init__(self)
+        self._self_tuple_is_constructable = False
+        return
     else:
       substituted_wrapped_tuple = original_type(substituted_wrapped_tuple)
     wrapt.ObjectProxy.__init__(self, substituted_wrapped_tuple)
@@ -979,6 +989,17 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   def __iadd__(self, y):
     """Avoid running self.__wrapped__ += y, which mutates `self`."""
     return self.__wrapped__ + y
+
+  @property
+  def _checkpoint_dependencies(self):
+    if not self._self_tuple_is_constructable:
+      raise ValueError(
+          ("Unable to save because the namedtuple {} is not constructable from "
+           "its _fields (i.e. __new__ is overridden). Expected keyword "
+           "arguments {}. If you do not need to save this object, consider "
+           "wrapping it in a custom object that does not inherit from tuple.")
+          .format(self.__wrapped__, self.__wrapped__._fields))
+    return super(_TupleWrapper, self)._checkpoint_dependencies
 
 
 def _is_function(x):
