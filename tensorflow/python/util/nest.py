@@ -1222,7 +1222,7 @@ def yield_flat_paths(nest, expand_composites=False):
   integers or other types which are used as indices in a dict.
 
   The flat list will be in the corresponding order as if you called
-  `snt.nest.flatten` on the structure. This is handy for naming Tensors such
+  `nest.flatten` on the structure. This is handy for naming Tensors such
   the TF scope structure matches the tuple structure.
 
   E.g. if we have a tuple `value = Foo(a=3, b=Bar(c=23, d=42))`
