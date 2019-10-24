@@ -1,0 +1,4 @@
+From: aperson@dom.ain
+To: bperson@dom.ain
+Subject: here's something interesting
+counter to RFC 2822, there's no separating newline here

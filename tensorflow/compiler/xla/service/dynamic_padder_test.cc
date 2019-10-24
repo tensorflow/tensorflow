@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -220,10 +219,8 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
     std::unique_ptr<HloModule> module =
-        ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
@@ -459,6 +456,40 @@ ENTRY main {
       PadAndExecute(std::move(module_padded), {&operand_padded, &dynamic_size});
 
   EXPECT_EQ(padded, not_padded);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicDimensionClamp) {
+  const string hlo_text = R"(
+HloModule TensorFlowTenaryV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  clamp = s32[5] clamp(param_padded, param_padded, param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(clamp, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+)";
+
+  // Input has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // only first 3 elements will be reduced.
+  Literal expected = LiteralUtil::CreateR0<int32>(6);
+
+  EXPECT_EQ(result, expected);
 }
 
 XLA_TEST_F(ExecutionTest, DynamicDimensionReduce) {

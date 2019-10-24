@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -45,7 +44,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+                          ParseAndReturnVerifiedModule(text));
   HloModuleGroup group(std::move(module));
 
   EXPECT_EQ(group.modules().size(), 1);
@@ -84,9 +83,9 @@ ENTRY %entry (a: f32[]) -> f32[] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_0,
-                          ParseAndReturnUnverifiedModule(text_0));
+                          ParseAndReturnVerifiedModule(text_0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_1,
-                          ParseAndReturnUnverifiedModule(text_1));
+                          ParseAndReturnVerifiedModule(text_1));
   std::vector<std::unique_ptr<HloModule>> modules;
   modules.push_back(std::move(module_0));
   modules.push_back(std::move(module_1));
@@ -123,9 +122,9 @@ ENTRY %entry (a: f32[]) -> f32[] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_0,
-                          ParseAndReturnUnverifiedModule(text_0));
+                          ParseAndReturnVerifiedModule(text_0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_1,
-                          ParseAndReturnUnverifiedModule(text_1));
+                          ParseAndReturnVerifiedModule(text_1));
   HloModuleGroup group(TestName());
   group.push_back(std::move(module_0));
   group.push_back(std::move(module_1));
@@ -179,7 +178,7 @@ ENTRY entry {
       const int64 send_channel = i;
       const int64 recv_channel = i == 0 ? kDeviceCount - 1 : i - 1;
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                              ParseAndReturnUnverifiedModule(absl::StrFormat(
+                              ParseAndReturnVerifiedModule(absl::StrFormat(
                                   text, i, send_channel, send_channel,
                                   recv_channel, recv_channel)));
       group.push_back(std::move(module));

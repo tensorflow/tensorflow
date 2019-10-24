@@ -252,4 +252,7 @@ message GraphExecutionTrace {
   // This tensor may summarize the value of a single intermediate op of the
   // graph, or those of multiple intermediate tensors.
   TensorProto tensor_proto = 5;
+
+  // Name of the device that the op belongs to.
+  string device_name = 6;
 }

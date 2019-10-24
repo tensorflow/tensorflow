@@ -1,0 +1,172 @@
+module _Builtin_intrinsics [system] {
+  explicit module altivec {
+    requires altivec
+    header "altivec.h"
+  }
+
+  explicit module arm {
+    requires arm
+
+    explicit module acle {
+      header "arm_acle.h"
+      export *
+    }
+
+    explicit module neon {
+      requires neon
+      header "arm_neon.h"
+      export *
+    }
+  }
+
+  explicit module intel {
+    requires x86
+    export *
+
+    header "immintrin.h"
+    header "x86intrin.h"
+
+    explicit module mm_malloc {
+      header "mm_malloc.h"
+      export * // note: for <stdlib.h> dependency
+    }
+
+    explicit module cpuid {
+      requires x86
+      header "cpuid.h"
+    }
+
+    explicit module mmx {
+      requires mmx
+      header "mmintrin.h"
+    }
+
+    explicit module f16c {
+      requires f16c
+      header "f16cintrin.h"
+    }
+
+    explicit module sse {
+      requires sse
+      export mmx
+      export * // note: for hackish <emmintrin.h> dependency
+      header "xmmintrin.h"
+    }
+
+    explicit module sse2 {
+      requires sse2
+      export sse
+      header "emmintrin.h"
+    }
+
+    explicit module sse3 {
+      requires sse3
+      export sse2
+      header "pmmintrin.h"
+    }
+
+    explicit module ssse3 {
+      requires ssse3
+      export sse3
+      header "tmmintrin.h"
+    }
+
+    explicit module sse4_1 {
+      requires sse41
+      export ssse3
+      header "smmintrin.h"
+    }
+
+    explicit module sse4_2 {
+      requires sse42
+      export sse4_1
+      header "nmmintrin.h"
+    }
+
+    explicit module sse4a {
+      requires sse4a
+      export sse3
+      header "ammintrin.h"
+    }
+
+    explicit module avx {
+      requires avx
+      export sse4_2
+      header "avxintrin.h"
+    }
+
+    explicit module avx2 {
+      requires avx2
+      export avx
+      header "avx2intrin.h"
+    }
+
+    explicit module avx512f {
+      requires avx512f
+      export avx2
+      header "avx512fintrin.h"
+    }
+
+    explicit module avx512er {
+      requires avx512er
+      header "avx512erintrin.h"
+    }
+
+    explicit module bmi {
+      requires bmi
+      header "bmiintrin.h"
+    }
+
+    explicit module bmi2 {
+      requires bmi2
+      header "bmi2intrin.h"
+    }
+
+    explicit module fma {
+      requires fma
+      header "fmaintrin.h"
+    }
+
+    explicit module fma4 {
+      requires fma4
+      export sse3
+      header "fma4intrin.h"
+    }
+
+    explicit module lzcnt {
+      requires lzcnt
+      header "lzcntintrin.h"
+    }
+
+    explicit module popcnt {
+      requires popcnt
+      header "popcntintrin.h"
+    }
+
+    explicit module mm3dnow {
+      requires mm3dnow
+      header "mm3dnow.h"
+    }
+
+    explicit module xop {
+      requires xop
+      export fma4
+      header "xopintrin.h"
+    }
+
+    explicit module aes_pclmul {
+      requires aes, pclmul
+      header "wmmintrin.h"
+    }
+
+    explicit module aes {
+      requires aes
+      header "__wmmintrin_aes.h"
+    }
+
+    explicit module pclmul {
+      requires pclmul
+      header "__wmmintrin_pclmul.h"
+    }
+  }
+}

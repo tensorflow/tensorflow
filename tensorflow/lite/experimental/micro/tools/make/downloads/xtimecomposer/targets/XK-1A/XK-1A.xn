@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Board</Type>
+  <Name>XK-1A Development Board</Name>
+  <BoardId>0005021X</BoardId>
+
+  <Declarations>
+    <Declaration>tileref tile[1]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS1-L1A-TQ128">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS1-L1A" Oscillator="20MHz" SystemFrequency="400MHz">
+          <Boot>
+            <Source Location="SPI:bootFlash"/>
+          </Boot>
+          <Tile Number="0" Reference="tile[0]">
+            <Port Location="XS1_PORT_1I" Name="PORT_UART_RX"/>
+            <Port Location="XS1_PORT_1J" Name="PORT_UART_TX"/>
+    
+            <Port Location="XS1_PORT_1K" Name="PORT_BUT_1"/>
+            <Port Location="XS1_PORT_1L" Name="PORT_BUT_2"/>
+    
+            <Port Location="XS1_PORT_1M" Name="PORT_SPI_MISO"/>
+            <Port Location="XS1_PORT_1N" Name="PORT_SPI_SS"/>
+            <Port Location="XS1_PORT_1O" Name="PORT_SPI_CLK"/>
+            <Port Location="XS1_PORT_1P" Name="PORT_SPI_MOSI"/>
+
+            <Port Location="XS1_PORT_4F" Name="PORT_LED"/>
+          </Tile>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+
+  <Nodes>
+  <Node Id="1" Type="device:" routingId="0x8000">
+    <Service Id="0" Proto="xscope_host_data(chanend c);">
+      <Chanend Identifier="c" end="3"/>
+    </Service>
+  </Node>
+  </Nodes>
+
+  <Links>
+    <Link Encoding="2wire" Delays="5clk" Flags="XSCOPE">
+        <LinkEndpoint NodeId="0" Link="X0LC" />
+        <LinkEndpoint NodeId="1" Chanend="1" />
+    </Link>
+  </Links>
+
+  <ExternalDevices>
+    <Device NodeId="0" Tile="0" Class="SPIFlash" Name="bootFlash" Type="AT25FS010">
+      <Attribute Name="PORT_SPI_MISO" Value="PORT_SPI_MISO"/>
+      <Attribute Name="PORT_SPI_SS"   Value="PORT_SPI_SS"/>
+      <Attribute Name="PORT_SPI_CLK"  Value="PORT_SPI_CLK"/>
+      <Attribute Name="PORT_SPI_MOSI" Value="PORT_SPI_MOSI"/>
+    </Device>
+  </ExternalDevices>
+
+  <JTAGChain>
+     <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+
+</Network>
+
+

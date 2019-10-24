@@ -1,0 +1,117 @@
+From MAILER-DAEMON Fri Apr 06 16:46:09 2001
+Received: from [204.245.199.98] (helo=zinfandel.lacita.com)
+	by www.linux.org.uk with esmtp (Exim 3.13 #1)
+	id 14lYR6-0008Iv-00
+	for linuxuser-admin@www.linux.org.uk; Fri, 06 Apr 2001 16:46:09 +0100
+Received: from localhost (localhost) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with internal id JAB03225; Fri, 6 Apr 2001 09:23:06 -0800 (GMT-0800)
+Date: Fri, 6 Apr 2001 09:23:06 -0800 (GMT-0800)
+From: Mail Delivery Subsystem <MAILER-DAEMON@zinfandel.lacita.com>
+Subject: Returned mail: Too many hops 19 (17 max): from <linuxuser-admin@www.linux.org.uk> via [199.164.235.226], to <scoffman@wellpartner.com>
+Message-Id: <200104061723.JAB03225@zinfandel.lacita.com>
+To: <linuxuser-admin@www.linux.org.uk>
+To: postmaster@zinfandel.lacita.com
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=delivery-status;
+	bo
+Auto-Submitted: auto-generated (failure)
+
+This is a MIME-encapsulated message
+
+--JAB03225.986577786/zinfandel.lacita.com
+
+The original message was received at Fri, 6 Apr 2001 09:23:03 -0800 (GMT-0800)
+from [199.164.235.226]
+
+   ----- The following addresses have delivery notifications -----
+<scoffman@wellpartner.com>  (unrecoverable error)
+
+   ----- Transcript of session follows -----
+554 Too many hops 19 (17 max): from <linuxuser-admin@www.linux.org.uk> via [199.164.235.226], to <scoffman@wellpartner.com>
+
+--JAB03225.986577786/zinfandel.lacita.com
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns; zinfandel.lacita.com
+Received-From-MTA: dns; [199.164.235.226]
+Arrival-Date: Fri, 6 Apr 2001 09:23:03 -0800 (GMT-0800)
+
+Final-Recipient: rfc822; scoffman@wellpartner.com
+Action: failed
+Status: 5.4.6
+Last-Attempt-Date: Fri, 6 Apr 2001 09:23:06 -0800 (GMT-0800)
+
+--JAB03225.986577786/zinfandel.lacita.com
+Content-Type: text/rfc822-headers
+
+Return-Path: linuxuser-admin@www.linux.org.uk
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03225 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:23:03 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03221 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:22:18 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03217 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:21:37 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03213 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:20:56 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03209 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:20:15 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03205 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:19:33 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03201 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:18:52 -0800 (GMT-0800)
+Received: from zinfandel.lacita.com ([204.245.199.98])
+	by
+	fo
+Received: from ns1.wellpartner.net ([199.164.235.226]) by zinfandel.lacita.com (8.7.3/8.6.10-MT4.00) with ESMTP id JAA03197 for <scoffman@wellpartner.com>; Fri, 6 Apr 2001 09:17:54 -0800 (GMT-0800)
+Received: from www.linux.org.uk (parcelfarce.linux.theplanet.co.uk [195.92.249.252])
+	by
+	fo
+Received: from localhost.localdomain
+	([
+	by
+	id
+Received: from [212.1.130.11] (helo=s1.uklinux.net ident=root)
+	by
+	id
+	fo
+Received: from server (ppp-2-22.cvx4.telinco.net [212.1.149.22])
+	by
+	fo
+From: Daniel James <daniel@linuxuser.co.uk>
+Organization: LinuxUser
+To: linuxuser@www.linux.org.uk
+X-Mailer: KMail [version 1.1.99]
+Content-Type: text/plain;
+  c
+MIME-Version: 1.0
+Message-Id: <01040616033903.00962@server>
+Content-Transfer-Encoding: 8bit
+Subject: [LinuxUser] bulletin no. 45
+Sender: linuxuser-admin@www.linux.org.uk
+Errors-To: linuxuser-admin@www.linux.org.uk
+X-BeenThere: linuxuser@www.linux.org.uk
+X-Mailman-Version: 2.0.3
+Precedence: bulk
+List-Help: <mailto:linuxuser-request@www.linux.org.uk?subject=help>
+List-Post: <mailto:linuxuser@www.linux.org.uk>
+List-Subscribe: <http://www.linux.org.uk/mailman/listinfo/linuxuser>,
+	<m
+List-Id: bulletins from LinuxUser magazine <linuxuser.www.linux.org.uk>
+List-Unsubscribe: <http://www.linux.org.uk/mailman/listinfo/linuxuser>,
+	<m
+List-Archive: <http://www.linux.org.uk/pipermail/linuxuser/>
+Date: Fri, 6 Apr 2001 16:03:39 +0100
+
+--JAB03225.986577786/zinfandel.lacita.com--
+
+

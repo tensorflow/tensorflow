@@ -161,6 +161,7 @@ py_test(
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",

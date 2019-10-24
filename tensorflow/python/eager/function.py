@@ -1493,6 +1493,16 @@ class ConcreteFunction(object):
     # building gradients.
     self._inference_function = self._delayed_rewrite_functions.forward()
 
+  @property
+  def variables(self):
+    """Sequence of variables for this function."""
+    return tuple(self._func_graph.variables)
+
+  @property
+  def trainable_variables(self):
+    """Sequence of trainable variables for this function."""
+    return tuple(self._func_graph.trainable_variables)
+
   def __call__(self, *args, **kwargs):
     """Executes the wrapped function.
 

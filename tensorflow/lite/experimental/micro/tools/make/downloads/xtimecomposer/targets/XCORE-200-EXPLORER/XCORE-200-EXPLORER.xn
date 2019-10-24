@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Board</Type>
+  <Name>xCORE-200 Explorer Kit</Name>
+  <Declarations>
+    <Declaration>tileref tile[2]</Declaration>
+    <Declaration>tileref usb_tile</Declaration>
+  </Declarations>
+  <Packages>
+    <Package id="0" Type="XS2-UEnA-512-FB236">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS2-L16A-512" OscillatorSrc="1" SystemFrequency="500MHz">
+          <Boot>
+            <Source Location="bootFlash"/>
+          </Boot>
+          <Tile Number="0" Reference="tile[0]">
+            <Port Location="XS1_PORT_1B" Name="PORT_SQI_CS"/>
+            <Port Location="XS1_PORT_1C" Name="PORT_SQI_SCLK"/>
+            <Port Location="XS1_PORT_4B" Name="PORT_SQI_SIO"/>
+          </Tile>
+          <Tile Number="1" Reference="tile[1]"/>
+        </Node>
+        <Node Id="1" InPackageId="1" Type="periph:XS1-SU" Reference="usb_tile" Oscillator="24MHz">
+        </Node>
+      </Nodes>
+      <Links>
+        <Link Encoding="5wire">
+          <LinkEndpoint NodeId="0" Link="8" Delays="52clk,52clk"/>
+          <LinkEndpoint NodeId="1" Link="XL0" Delays="1clk,1clk"/>
+        </Link>
+      </Links>
+    </Package>
+  </Packages>
+  <Nodes>
+    <Node Id="2" Type="device:" RoutingId="0x8000">
+      <Service Id="0" Proto="xscope_host_data(chanend c);">
+        <Chanend Identifier="c" end="3"/>
+      </Service>
+    </Node>
+  </Nodes>
+  <Links>
+    <Link Encoding="2wire" Delays="5clk" Flags="XSCOPE">
+      <LinkEndpoint NodeId="0" Link="XL0"/>
+      <LinkEndpoint NodeId="2" Chanend="1"/>
+    </Link>
+  </Links>
+  <ExternalDevices>
+    <Device NodeId="0" Tile="0" Class="SQIFlash" Name="bootFlash" Type="S25LQ016B" PageSize="256" SectorSize="4096" NumPages="8192">
+      <Attribute Name="PORT_SQI_CS" Value="PORT_SQI_CS"/>
+      <Attribute Name="PORT_SQI_SCLK"   Value="PORT_SQI_SCLK"/>
+      <Attribute Name="PORT_SQI_SIO"  Value="PORT_SQI_SIO"/>
+      <Attribute Name="QE_REGISTER" Value="flash_qe_location_status_reg_0"/>
+      <Attribute Name="QE_BIT" Value="flash_qe_bit_6"/>
+    </Device>
+  </ExternalDevices>
+  <JTAGChain>
+    <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+</Network>

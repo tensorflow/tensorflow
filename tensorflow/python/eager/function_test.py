@@ -290,16 +290,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
-  def testCaptureNonTrainableVariable(self):
-
-    v = variables.Variable(1.0, trainable=False)
+  def testCapturesVariables(self):
+    a = variables.Variable(1.0, trainable=False)
+    b = variables.Variable(1.0)
+    cc = [None]
 
     @def_function.function
     def f():
-      return v + 1
+      c = cc[0]
+      if c is None:
+        c = cc[0] = variables.Variable(1.)
+      return a + b + c + 1
 
-    c = f.get_concrete_function()
-    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+    cf = f.get_concrete_function()
+    c = cc[0]
+
+    self.assertEqual(cf.variables, (a, b, c))
+    self.assertEqual(cf.trainable_variables, (b, c))
+    self.assertEqual(cf.graph.variables, (a, b, c))
+    self.assertEqual(cf.graph.trainable_variables, (b, c))
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]

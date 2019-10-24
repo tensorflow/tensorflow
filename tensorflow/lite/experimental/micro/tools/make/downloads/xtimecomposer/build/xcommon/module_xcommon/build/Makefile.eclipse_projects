@@ -1,0 +1,75 @@
+ECLIPSE_COMMANDS = $(filter eclipse_projects eclipse_templates list_eclipse_project_files list_eclipse_templates,$(MAKECMDGOALS))
+
+ifneq ($(ECLIPSE_COMMANDS),)
+
+ifeq ($(OS),WINDOWS)
+WINFLAG=1
+else
+ifeq ($(findstring Windows, $(OS)),Windows)
+WINFLAG=1
+else
+WINFLAG=0
+endif
+endif
+
+ifeq ($(WINFLAG),1)
+CP=copy $(subst /,\,$(1))
+TO_OS=$(subst /,\,$(1))
+else
+CP=cp $(1)
+TO_OS=$1
+endif
+
+IS_DIR = $(wildcard $(call UNMANGLE,$1)/*)
+GET_ALL_SUBDIRS = $1 $(foreach x,$(filter-out $(NON_EXPLORED_DIRS), $(call WILDCARD,$1/*)),$(if $(call IS_DIR, $x), $(call GET_ALL_SUBDIRS, $x),))
+
+SUBDIRS = $(call GET_ALL_SUBDIRS,.)
+
+FIND_ALL_DIRS_CONTAINING = $(foreach x,$(SUBDIRS),$(if $(call WILDCARD,$x/$1),$x,))
+
+EXISTING_CPROJECT_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.cproject)
+EXISTING_DOTPROJECT_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.project)
+EXISTING_XPROJECT_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.xproject)
+
+EXISTING_CPROJECT_TEMPLATE_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.cproject.template)
+EXISTING_DOTPROJECT_TEMPLATE_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.project.template)
+EXISTING_XPROJECT_TEMPLATE_DIRS = $(call FIND_ALL_DIRS_CONTAINING,.xproject.template)
+
+
+TEMPLATES = $(foreach x, $(EXISTING_CPROJECT_DIRS), $x/.cproject.template) $(foreach x, $(EXISTING_DOTPROJECT_DIRS), $x/.project.template) $(foreach x, $(EXISTING_XPROJECT_DIRS), $x/.xproject.template)
+
+EXISTING_TEMPLATES = $(foreach x, $(EXISTING_CPROJECT_TEMPLATE_DIRS), $x/.cproject.template) $(foreach x, $(EXISTING_DOTPROJECT_TEMPLATE_DIRS), $x/.project.template) $(foreach x, $(EXISTING_XPROJECT_TEMPLATE_DIRS), $x/.xproject.template)
+
+PROJECT_FILES = $(foreach x, $(EXISTING_CPROJECT_TEMPLATE_DIRS), $x/.cproject) $(foreach x, $(EXISTING_DOTPROJECT_TEMPLATE_DIRS), $x/.project) $(foreach x, $(EXISTING_XPROJECT_TEMPLATE_DIRS), $x/.xproject)
+
+EXISTING_PROJECT_FILES = $(foreach x, $(EXISTING_CPROJECT_DIRS), $x/.cproject) $(foreach x, $(EXISTING_DOTPROJECT_DIRS), $x/.project) $(foreach x, $(EXISTING_XPROJECT_DIRS), $x/.xproject)
+
+.PHONY: $(TEMPLATES)
+
+$(TEMPLATES):
+	@$(call CP,$(subst .template,,$@) $@)
+
+.PHONY: $(PROJECT_FILES)
+
+$(PROJECT_FILES):
+	@$(call CP,$@.template $@)
+
+eclipse_templates: $(TEMPLATES)
+	@echo  "Created template files"
+
+
+ifeq ($(strip $(PROJECT_FILES)),)
+eclipse_projects: $(PROJECT_FILES)
+	@echo  "Cannot find eclipse project templates"
+else
+eclipse_projects: $(PROJECT_FILES)
+	@echo  "Created eclipse project files"
+endif
+
+list_eclipse_project_files:
+	@echo $(EXISTING_PROJECT_FILES)
+
+list_eclipse_templates:
+	@echo $(EXISTING_TEMPLATES)
+
+endif

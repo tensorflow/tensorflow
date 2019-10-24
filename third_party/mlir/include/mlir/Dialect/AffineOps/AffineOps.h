@@ -28,6 +28,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Transforms/LoopLikeInterface.h"
 
 namespace mlir {
 class AffineBound;

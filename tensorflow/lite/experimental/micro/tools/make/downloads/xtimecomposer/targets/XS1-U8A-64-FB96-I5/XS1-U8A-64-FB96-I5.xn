@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XS1-U8A-64-FB96-I5 Device</Name>
+
+  <Declarations>
+    <Declaration>tileref tile[1]</Declaration>
+    <Declaration>tileref usb_tile</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS1-UnA-64-FB96">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS1-L8A-64" OscillatorSrc="1" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[0]"/>
+        </Node>
+        <Node Id="1" InPackageId="1" Type="periph:XS1-SU" Reference="usb_tile">
+          <Service Proto="xs1_su_adc_service(chanend c)">
+            <Chanend Identifier="c" end="2" remote="31"/>
+          </Service>
+        </Node>
+      </Nodes>
+      <Links>
+        <Link Encoding="5wire">
+          <LinkEndpoint NodeId="0" Link="XLH" Delays="52clk,52clk"/>
+          <LinkEndpoint NodeId="1" Link="XLC" Delays="1clk,1clk"/>
+        </Link>
+      </Links>
+    </Package>
+  </Packages>
+
+  <JTAGChain>
+     <JTAGDevice NodeId="1"/>
+     <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+
+</Network>

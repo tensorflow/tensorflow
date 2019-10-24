@@ -34,6 +34,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
+        srcs_version = "PY2AND3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -97,7 +98,7 @@ def pyx_library(
         name = name,
         srcs = py_srcs,
         deps = py_deps,
-        srcs_version = "PY2AND3",
+        srcs_version = srcs_version,
         data = shared_objects,
         testonly = testonly,
         **kwargs
@@ -536,9 +537,6 @@ def tf_additional_proto_hdrs():
         "default/logging.h",
     ]
 
-def tf_additional_human_readable_json_deps():
-    return []
-
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
@@ -557,12 +555,6 @@ def tf_protos_all():
 
 def tf_profiler_all_protos():
     return ["//tensorflow/core/profiler:protos_all"]
-
-def tf_grpc_service_all():
-    return [
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-    ]
 
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
@@ -658,11 +650,6 @@ def tf_lib_proto_parsing_deps():
         "//tensorflow/core/platform/default/build_config:proto_parsing",
     ]
 
-def tf_lib_proto_compiler_deps():
-    return [
-        "@com_google_protobuf//:protoc_lib",
-    ]
-
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -703,11 +690,17 @@ def tf_additional_tensor_coding_deps():
     return []
 
 def tf_protobuf_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )
 
 def tf_protobuf_compiler_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )

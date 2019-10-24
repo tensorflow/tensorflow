@@ -1,0 +1,115 @@
+/* CSS for print */
+
+body {
+  background: white;
+  font-size: 12pt;
+}
+
+#header {
+  margin-left:8px;
+  display:block;
+  background-color:#fff;
+  border-bottom:1px solid #FBB917;
+}
+#footer {
+  padding:8px;
+  margin-top:8px;
+  display:block;
+  font-size:11px;
+  background-color:#fff;
+  font-weight:bold;
+}
+#disclaimer {
+  font-size:11px;
+  margin:8px;
+  float:left;
+  background-color:#fff;
+  line-height:14px;
+  border-top:1px solid #aaa;
+  border-bottom:1px solid #aaa;
+  padding:8px 0 3px 0;
+}
+
+#menubar, .searchform {
+  display: none;
+}
+/*
+#masthead, #contents {
+  width: auto; 
+  margin: 0 5%;
+  padding: 0; 
+  border: 0;
+  float: none !important;
+  color: black; 
+  background: transparent;
+}*/
+
+#seealso {
+  width: auto;
+  margin: 0 5%;
+  margin-top: 20px;
+  padding: 0;
+  border: 0;
+}
+
+a:link, a:visited, ul.iconmenu li a {
+  color: #520;
+  background: transparent;
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+a:link:after, a:visited:after {
+  content: " (" attr(href) ") ";
+  font-size: 90%;
+}
+
+a[href^="/"]:after {
+  content: " (http://www.xmos.com" attr(href) ") ";
+}
+
+/* User content */
+
+ul li, ul.iconmenu li {
+  background-image:none !important;
+  background-repeat:no-repeat !important;
+  clear: left;
+  max-width:100% !important;
+  list-style-type:disc !important;
+  list-style-position:inside !important;
+  padding-left:0 !important;
+}
+.menuitem {
+  background-image:none !important;
+  background-repeat:no-repeat !important;
+  list-style-type:none !important;
+  list-style-position:inside !important;
+  padding-right: 0 !important;
+}
+.menuitem:after {
+  content: "\25BA \0020";
+}
+
+p {
+  padding-bottom:5px;
+}
+.hideh1 {
+  display:block !important;
+}
+
+h2.menu, h3.menu, hr.menu {
+  max-width:100%;
+}
+
+.xde-outside {
+  display: block;
+}
+#contents p.xde-outside {
+  display: block;
+}
+
+.xde-inside, .encaps_fav {
+  display: none;
+}
+
+

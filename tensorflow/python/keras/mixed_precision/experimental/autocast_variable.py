@@ -113,17 +113,15 @@ class AutoCastVariable(variables.Variable):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts this variable to a tensor."""
     if not self._should_cast():
-      return ops.internal_convert_to_tensor(self._variable, dtype, name,
-                                            as_ref)
+      return ops.convert_to_tensor(self._variable, dtype, name, as_ref)
     # TODO(reedwm): Support as_ref?
     assert not as_ref
     if dtype is not None and not dtype.is_compatible_with(self.dtype):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.internal_convert_to_tensor(self._variable,
-                                         self._variable.dtype, name,
-                                         as_ref=False)
+    val = ops.convert_to_tensor(
+        self._variable, self._variable.dtype, name, as_ref=False)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
@@ -343,6 +341,24 @@ def create_autocast_variable(variable):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
+    """An AutoCastVariable that also subclasses from DistributedVariable."""
+
+    def __init__(self, maybe_variable, *args, **kwargs):
+      if not args and not kwargs:
+        # The common case: We call the super constructor with a single argument,
+        # which is a variable.
+        super(AutoCastDistributedVariable, self).__init__(maybe_variable)
+      else:
+        # This 'else' branch is needed, as distribution strategies sometimes
+        # clone a distributed variable by doing the following:
+        #
+        #    var = type(var)(var._distribute_strategy, var._device_map, ...)
+        #
+        # In this case, `maybe_variable` will instead be a distribution
+        # strategy. We create the DistributedVariable before wrapping it.
+        distribution_strategy = maybe_variable
+        inner_var = variable.__class__(distribution_strategy, *args, **kwargs)
+        super(AutoCastDistributedVariable, self).__init__(inner_var)
 
     def __repr__(self):
       # pylint: disable=missing-format-attribute

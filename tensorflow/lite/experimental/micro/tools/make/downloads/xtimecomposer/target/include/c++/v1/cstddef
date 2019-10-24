@@ -1,0 +1,102 @@
+// -*- C++ -*-
+//===--------------------------- cstddef ----------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_CSTDDEF
+#define _LIBCPP_CSTDDEF
+
+/*
+    cstddef synopsis
+
+Macros:
+
+    offsetof(type,member-designator)
+    NULL
+
+namespace std
+{
+
+Types:
+
+    ptrdiff_t
+    size_t
+    max_align_t
+    nullptr_t
+
+}  // std
+
+*/
+
+#include <__config>
+
+#include <stddef.h>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+using ::ptrdiff_t;
+using ::size_t;
+
+#if defined(__CLANG_MAX_ALIGN_T_DEFINED) || defined(_GCC_MAX_ALIGN_T)
+// Re-use the compiler's <stddef.h> max_align_t where possible.
+using ::max_align_t;
+#else
+typedef long double max_align_t;
+#endif
+
+#ifdef _LIBCPP_HAS_NO_NULLPTR
+
+struct _LIBCPP_TYPE_VIS_ONLY nullptr_t
+{
+    void* __lx;
+
+    struct __nat {int __for_bool_;};
+
+    _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR nullptr_t() : __lx(0) {}
+    _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR nullptr_t(int __nat::*) : __lx(0) {}
+
+    _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR operator int __nat::*() const {return 0;}
+
+    template <class _Tp>
+        _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR
+        operator _Tp* () const {return 0;}
+
+    template <class _Tp, class _Up>
+        _LIBCPP_ALWAYS_INLINE
+        operator _Tp _Up::* () const {return 0;}
+
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator==(nullptr_t, nullptr_t) {return true;}
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator!=(nullptr_t, nullptr_t) {return false;}
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator<(nullptr_t, nullptr_t) {return false;}
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator<=(nullptr_t, nullptr_t) {return true;}
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator>(nullptr_t, nullptr_t) {return false;}
+    friend _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR bool operator>=(nullptr_t, nullptr_t) {return true;}
+};
+
+inline _LIBCPP_ALWAYS_INLINE _LIBCPP_CONSTEXPR nullptr_t __get_nullptr_t() {return nullptr_t(0);}
+
+#define nullptr _VSTD::__get_nullptr_t()
+
+#endif  // _LIBCPP_HAS_NO_NULLPTR
+
+_LIBCPP_END_NAMESPACE_STD
+
+#ifndef _LIBCPP_HAS_NO_NULLPTR
+
+namespace std
+{
+    typedef decltype(nullptr) nullptr_t;
+}
+
+#endif  // _LIBCPP_HAS_NO_NULLPTR
+
+#endif  // _LIBCPP_CSTDDEF

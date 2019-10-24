@@ -627,6 +627,9 @@ def _aggregate_variable(v, collections):
 
 
 @tf_export(v1=['metrics.auc'])
+@deprecated(None,
+            'The value of AUC returned by this may race with the update so '
+            'this is deprected. Please use tf.keras.metrics.AUC instead.')
 def auc(labels,
         predictions,
         weights=None,

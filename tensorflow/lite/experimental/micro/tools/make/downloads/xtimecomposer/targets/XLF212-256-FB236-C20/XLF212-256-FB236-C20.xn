@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XLF212-256-FB236-C20 Device</Name>
+
+  <Declarations>
+    <Declaration>tileref tile[2]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS2-LFnA-256-FB236">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS2-L12A-256" SystemFrequency="500MHz">
+          <Boot>
+            <Source Location="bootFlash"/>
+          </Boot>
+          <Tile Number="0" Reference="tile[0]">
+            <Port Location="XS1_PORT_1B" Name="PORT_SQI_CS"/>
+            <Port Location="XS1_PORT_1C" Name="PORT_SQI_SCLK"/>
+            <Port Location="XS1_PORT_4B" Name="PORT_SQI_SIO"/>
+          </Tile>
+          <Tile Number="1" Reference="tile[1]"/>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+
+  <ExternalDevices>
+    <Device NodeId="0" Tile="0" Class="SQIFlash" Name="bootFlash" Type="S25LQ016B" PageSize="256" SectorSize="4096" NumPages="8192">
+      <Attribute Name="PORT_SQI_CS" Value="PORT_SQI_CS"/>
+      <Attribute Name="PORT_SQI_SCLK" Value="PORT_SQI_SCLK"/>
+      <Attribute Name="PORT_SQI_SIO" Value="PORT_SQI_SIO"/>
+    </Device>
+  </ExternalDevices>
+
+  <JTAGChain>
+    <JTAGDevice NodeId="0"/>
+  </JTAGChain>
+
+</Network>

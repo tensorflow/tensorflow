@@ -56,7 +56,8 @@ namespace {
 static constexpr const bool kDoNotCheckDuplicates = true;
 
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 inline bool IsNextIteration(const NodeDef& node_def) {

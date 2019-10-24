@@ -147,24 +147,20 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_invariant_code_motion",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
-        "//tensorflow/core:lib",  # fixdeps: keep
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "@llvm//:aarch64_code_gen",  # fixdeps: keep
-        "@llvm//:aarch64_disassembler",  # fixdeps: keep
-        "@llvm//:arm_code_gen",  # fixdeps: keep
-        "@llvm//:arm_disassembler",  # fixdeps: keep
         "@llvm//:core",
-        "@llvm//:mc",  # fixdeps: keep
+        "@llvm//:mc",
         "@llvm//:object",
         "@llvm//:support",
-        "@llvm//:target",  # fixdeps: keep
-        "@llvm//:x86_code_gen",  # fixdeps: keep
+        "@llvm//:target",
         "@llvm//:x86_disassembler",  # fixdeps: keep
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ] + select({
         "//tensorflow:linux_ppc64le": [
-            "@llvm//:powerpc_disassembler",
-            "@llvm//:powerpc_code_gen",
+            "@llvm//:powerpc_disassembler",  # fixdeps: keep
+            "@llvm//:powerpc_code_gen",  # fixdeps: keep
         ],
         "//conditions:default": [
         ],
@@ -732,8 +728,8 @@ tf_cc_test(
     srcs = ["cpu_instruction_fusion_test.cc"],
     deps = [
         ":cpu_instruction_fusion",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
@@ -794,7 +790,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
@@ -1010,7 +1005,7 @@ tf_cc_test(
         ":ir_emission_utils",
         ":target_machine_features_fake",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

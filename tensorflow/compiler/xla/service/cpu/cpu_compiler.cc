@@ -159,21 +159,7 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-  LLVMInitializeX86Target();
-  LLVMInitializeX86TargetInfo();
-  LLVMInitializeX86TargetMC();
-  LLVMInitializeX86AsmPrinter();
-  LLVMInitializeX86Disassembler();
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmPrinter();
-  LLVMInitializeARMDisassembler();
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmPrinter();
-  LLVMInitializeAArch64Disassembler();
+  llvm::InitializeNativeTargetDisassembler();
 }
 
 namespace {

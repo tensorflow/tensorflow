@@ -1,0 +1,1087 @@
+// -*- C++ -*-
+//===----------------------------------------------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_FUNCTIONAL_BASE_03
+#define _LIBCPP_FUNCTIONAL_BASE_03
+
+// manual variadic expansion for <functional>
+
+// __weak_result_type
+
+template <class _Tp>
+struct __derives_from_unary_function
+{
+private:
+    struct __two {char __lx; char __lxx;};
+    static __two __test(...);
+    template <class _Ap, class _Rp>
+        static unary_function<_Ap, _Rp>
+        __test(const volatile unary_function<_Ap, _Rp>*);
+public:
+    static const bool value = !is_same<decltype(__test((_Tp*)0)), __two>::value;
+    typedef decltype(__test((_Tp*)0)) type;
+};
+
+template <class _Tp>
+struct __derives_from_binary_function
+{
+private:
+    struct __two {char __lx; char __lxx;};
+    static __two __test(...);
+    template <class _A1, class _A2, class _Rp>
+        static binary_function<_A1, _A2, _Rp>
+        __test(const volatile binary_function<_A1, _A2, _Rp>*);
+public:
+    static const bool value = !is_same<decltype(__test((_Tp*)0)), __two>::value;
+    typedef decltype(__test((_Tp*)0)) type;
+};
+
+template <class _Tp, bool = __derives_from_unary_function<_Tp>::value>
+struct __maybe_derive_from_unary_function  // bool is true
+    : public __derives_from_unary_function<_Tp>::type
+{
+};
+
+template <class _Tp>
+struct __maybe_derive_from_unary_function<_Tp, false>
+{
+};
+
+template <class _Tp, bool = __derives_from_binary_function<_Tp>::value>
+struct __maybe_derive_from_binary_function  // bool is true
+    : public __derives_from_binary_function<_Tp>::type
+{
+};
+
+template <class _Tp>
+struct __maybe_derive_from_binary_function<_Tp, false>
+{
+};
+
+template <class _Tp, bool = __has_result_type<_Tp>::value>
+struct __weak_result_type_imp // bool is true
+    : public __maybe_derive_from_unary_function<_Tp>,
+      public __maybe_derive_from_binary_function<_Tp>
+{
+    typedef typename _Tp::result_type result_type;
+};
+
+template <class _Tp>
+struct __weak_result_type_imp<_Tp, false>
+    : public __maybe_derive_from_unary_function<_Tp>,
+      public __maybe_derive_from_binary_function<_Tp>
+{
+};
+
+template <class _Tp>
+struct __weak_result_type
+    : public __weak_result_type_imp<typename remove_reference<_Tp>::type>
+{
+};
+
+// 0 argument case
+
+template <class _Rp>
+struct __weak_result_type<_Rp ()>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp>
+struct __weak_result_type<_Rp (&)()>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp>
+struct __weak_result_type<_Rp (*)()>
+{
+    typedef _Rp result_type;
+};
+
+// 1 argument case
+
+template <class _Rp, class _A1>
+struct __weak_result_type<_Rp (_A1)>
+    : public unary_function<_A1, _Rp>
+{
+};
+
+template <class _Rp, class _A1>
+struct __weak_result_type<_Rp (&)(_A1)>
+    : public unary_function<_A1, _Rp>
+{
+};
+
+template <class _Rp, class _A1>
+struct __weak_result_type<_Rp (*)(_A1)>
+    : public unary_function<_A1, _Rp>
+{
+};
+
+template <class _Rp, class _Cp>
+struct __weak_result_type<_Rp (_Cp::*)()>
+    : public unary_function<_Cp*, _Rp>
+{
+};
+
+template <class _Rp, class _Cp>
+struct __weak_result_type<_Rp (_Cp::*)() const>
+    : public unary_function<const _Cp*, _Rp>
+{
+};
+
+template <class _Rp, class _Cp>
+struct __weak_result_type<_Rp (_Cp::*)() volatile>
+    : public unary_function<volatile _Cp*, _Rp>
+{
+};
+
+template <class _Rp, class _Cp>
+struct __weak_result_type<_Rp (_Cp::*)() const volatile>
+    : public unary_function<const volatile _Cp*, _Rp>
+{
+};
+
+// 2 argument case
+
+template <class _Rp, class _A1, class _A2>
+struct __weak_result_type<_Rp (_A1, _A2)>
+    : public binary_function<_A1, _A2, _Rp>
+{
+};
+
+template <class _Rp, class _A1, class _A2>
+struct __weak_result_type<_Rp (*)(_A1, _A2)>
+    : public binary_function<_A1, _A2, _Rp>
+{
+};
+
+template <class _Rp, class _A1, class _A2>
+struct __weak_result_type<_Rp (&)(_A1, _A2)>
+    : public binary_function<_A1, _A2, _Rp>
+{
+};
+
+template <class _Rp, class _Cp, class _A1>
+struct __weak_result_type<_Rp (_Cp::*)(_A1)>
+    : public binary_function<_Cp*, _A1, _Rp>
+{
+};
+
+template <class _Rp, class _Cp, class _A1>
+struct __weak_result_type<_Rp (_Cp::*)(_A1) const>
+    : public binary_function<const _Cp*, _A1, _Rp>
+{
+};
+
+template <class _Rp, class _Cp, class _A1>
+struct __weak_result_type<_Rp (_Cp::*)(_A1) volatile>
+    : public binary_function<volatile _Cp*, _A1, _Rp>
+{
+};
+
+template <class _Rp, class _Cp, class _A1>
+struct __weak_result_type<_Rp (_Cp::*)(_A1) const volatile>
+    : public binary_function<const volatile _Cp*, _A1, _Rp>
+{
+};
+
+// 3 or more arguments
+
+template <class _Rp, class _A1, class _A2, class _A3>
+struct __weak_result_type<_Rp (_A1, _A2, _A3)>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp, class _A1, class _A2, class _A3>
+struct __weak_result_type<_Rp (&)(_A1, _A2, _A3)>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp, class _A1, class _A2, class _A3>
+struct __weak_result_type<_Rp (*)(_A1, _A2, _A3)>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp, class _Cp, class _A1, class _A2>
+struct __weak_result_type<_Rp (_Cp::*)(_A1, _A2)>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp, class _Cp, class _A1, class _A2>
+struct __weak_result_type<_Rp (_Cp::*)(_A1, _A2) const>
+{
+    typedef _Rp result_type;
+};
+
+template <class _Rp, class _Cp, class _A1, class _A2>
+struct __weak_result_type<_Rp (_Cp::*)(_A1, _A2) volatile>
+{
+    typedef _Rp result_type;
+};
+
+// __invoke
+
+// __ref_return0
+//
+// template <class _Tp, bool _HasResultType>
+// struct ________ref_return0  // _HasResultType is true
+// {
+//     typedef typename _Tp::result_type type;
+// };
+//
+// template <class _Tp>
+// struct ________ref_return0<_Tp, false>
+// {
+//     typedef void type;
+// };
+//
+// template <class _Tp, bool _IsClass>
+// struct ____ref_return0  // _IsClass is true
+//     : public ________ref_return0<_Tp, __has_result_type<typename remove_cv<_Tp>::type>::value>
+// {
+// };
+//
+// template <class _Tp, bool _HasResultType>
+// struct ______ref_return0  // _HasResultType is true
+// {
+//     typedef typename __callable_type<_Tp>::result_type type;
+// };
+//
+// template <class _Tp>
+// struct ______ref_return0<_Tp, false>  // pointer to member data
+// {
+//     typedef void type;
+// };
+//
+// template <class _Tp>
+// struct ____ref_return0<_Tp, false>
+//     : public ______ref_return0<typename remove_cv<_Tp>::type,
+//                  __has_result_type<__callable_type<typename remove_cv<_Tp>::type> >::value>
+// {
+// };
+//
+// template <class _Tp>
+// struct __ref_return0
+//     : public ____ref_return0<typename remove_reference<_Tp>::type,
+//                    is_class<typename remove_reference<_Tp>::type>::value>
+// {
+// };
+//
+// __ref_return1
+//
+// template <class _Tp, bool _IsClass, class _A0>
+// struct ____ref_return1  // _IsClass is true
+// {
+//     typedef typename result_of<_Tp(_A0)>::type type;
+// };
+//
+// template <class _Tp, bool _HasResultType, class _A0>
+// struct ______ref_return1  // _HasResultType is true
+// {
+//     typedef typename __callable_type<_Tp>::result_type type;
+// };
+//
+// template <class _Tp, class _A0, bool>
+// struct __ref_return1_member_data1;
+//
+// template <class _Rp, class _Cp, class _A0>
+// struct __ref_return1_member_data1<_Rp _Cp::*, _A0, true>
+// {
+//     typedef typename __apply_cv<_A0, _Rp>::type& type;
+// };
+//
+// template <class _Rp, class _Cp, class _A0>
+// struct __ref_return1_member_data1<_Rp _Cp::*, _A0, false>
+// {
+//     static _A0 __a;
+//     typedef typename __apply_cv<decltype(*__a), _Rp>::type& type;
+// };
+//
+// template <class _Tp, class _A0>
+// struct __ref_return1_member_data;
+//
+// template <class _Rp, class _Cp, class _A0>
+// struct __ref_return1_member_data<_Rp _Cp::*, _A0>
+//     : public __ref_return1_member_data1<_Rp _Cp::*, _A0,
+//                 is_same<typename remove_cv<_Cp>::type,
+//                         typename remove_cv<typename remove_reference<_A0>::type>::type>::value>
+// {
+// };
+//
+// template <class _Tp, class _A0>
+// struct ______ref_return1<_Tp, false, _A0>  // pointer to member data
+//     : public __ref_return1_member_data<typename remove_cv<_Tp>::type, _A0>
+// {
+// };
+//
+// template <class _Tp, class _A0>
+// struct ____ref_return1<_Tp, false, _A0>
+//     : public ______ref_return1<typename remove_cv<_Tp>::type,
+//                  __has_result_type<__callable_type<typename remove_cv<_Tp>::type> >::value, _A0>
+// {
+// };
+//
+// template <class _Tp, class _A0>
+// struct __ref_return1
+//     : public ____ref_return1<typename remove_reference<_Tp>::type,
+//                    is_class<typename remove_reference<_Tp>::type>::value, _A0>
+// {
+// };
+//
+// __ref_return2
+//
+// template <class _Tp, bool _IsClass, class _A0, class _A1>
+// struct ____ref_return2  // _IsClass is true
+// {
+//     typedef typename result_of<_Tp(_A0, _A1)>::type type;
+// };
+//
+// template <class _Tp, bool _HasResultType, class _A0, class _A1>
+// struct ______ref_return2  // _HasResultType is true
+// {
+//     typedef typename __callable_type<_Tp>::result_type type;
+// };
+//
+// template <class _Tp>
+// struct ______ref_return2<_Tp, false, class _A0, class _A1>  // pointer to member data
+// {
+//     static_assert(sizeof(_Tp) == 0, "An attempt has been made to `call` a pointer"
+//                          " to member data with too many arguments.");
+// };
+//
+// template <class _Tp, class _A0, class _A1>
+// struct ____ref_return2<_Tp, false, _A0, _A1>
+//     : public ______ref_return2<typename remove_cv<_Tp>::type,
+//                  __has_result_type<__callable_type<typename remove_cv<_Tp>::type> >::value, _A0, _A1>
+// {
+// };
+//
+// template <class _Tp, class _A0, class _A1>
+// struct __ref_return2
+//     : public ____ref_return2<typename remove_reference<_Tp>::type,
+//                    is_class<typename remove_reference<_Tp>::type>::value, _A0, _A1>
+// {
+// };
+//
+// __ref_return3
+//
+// template <class _Tp, bool _IsClass, class _A0, class _A1, class _A2>
+// struct ____ref_return3  // _IsClass is true
+// {
+//     typedef typename result_of<_Tp(_A0, _A1, _A2)>::type type;
+// };
+//
+// template <class _Tp, bool _HasResultType, class _A0, class _A1, class _A2>
+// struct ______ref_return3  // _HasResultType is true
+// {
+//     typedef typename __callable_type<_Tp>::result_type type;
+// };
+//
+// template <class _Tp>
+// struct ______ref_return3<_Tp, false, class _A0, class _A1, class _A2>  // pointer to member data
+// {
+//     static_assert(sizeof(_Tp) == 0, "An attempt has been made to `call` a pointer"
+//                          " to member data with too many arguments.");
+// };
+//
+// template <class _Tp, class _A0, class _A1, class _A2>
+// struct ____ref_return3<_Tp, false, _A0, _A1, _A2>
+//     : public ______ref_return3<typename remove_cv<_Tp>::type,
+//                  __has_result_type<__callable_type<typename remove_cv<_Tp>::type> >::value, _A0, _A1, _A2>
+// {
+// };
+//
+// template <class _Tp, class _A0, class _A1, class _A2>
+// struct __ref_return3
+//     : public ____ref_return3<typename remove_reference<_Tp>::type,
+//                    is_class<typename remove_reference<_Tp>::type>::value, _A0, _A1, _A2>
+// {
+// };
+
+// first bullet
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(), _T1& __t1)
+{
+    return (__t1.*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0), _T1& __t1, _A0& __a0)
+{
+    return (__t1.*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1), _T1& __t1, _A0& __a0, _A1& __a1)
+{
+    return (__t1.*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2), _T1& __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return (__t1.*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() const, _T1& __t1)
+{
+    return (__t1.*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) const, _T1& __t1, _A0& __a0)
+{
+    return (__t1.*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) const, _T1& __t1, _A0& __a0, _A1& __a1)
+{
+    return (__t1.*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) const, _T1& __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return (__t1.*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() volatile, _T1& __t1)
+{
+    return (__t1.*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) volatile, _T1& __t1, _A0& __a0)
+{
+    return (__t1.*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) volatile, _T1& __t1, _A0& __a0, _A1& __a1)
+{
+    return (__t1.*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) volatile, _T1& __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return (__t1.*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() const volatile, _T1& __t1)
+{
+    return (__t1.*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) const volatile, _T1& __t1, _A0& __a0)
+{
+    return (__t1.*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) const volatile, _T1& __t1, _A0& __a0, _A1& __a1)
+{
+    return (__t1.*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) const volatile, _T1& __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return (__t1.*__f)(__a0, __a1, __a2);
+}
+
+// second bullet
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(), _T1 __t1)
+{
+    return ((*__t1).*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0), _T1 __t1, _A0& __a0)
+{
+    return ((*__t1).*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1), _T1 __t1, _A0& __a0, _A1& __a1)
+{
+    return ((*__t1).*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2), _T1 __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return ((*__t1).*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() const, _T1 __t1)
+{
+    return ((*__t1).*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) const, _T1 __t1, _A0& __a0)
+{
+    return ((*__t1).*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) const, _T1 __t1, _A0& __a0, _A1& __a1)
+{
+    return ((*__t1).*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) const, _T1 __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return ((*__t1).*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() volatile, _T1 __t1)
+{
+    return ((*__t1).*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) volatile, _T1 __t1, _A0& __a0)
+{
+    return ((*__t1).*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) volatile, _T1 __t1, _A0& __a0, _A1& __a1)
+{
+    return ((*__t1).*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) volatile, _T1 __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return ((*__t1).*__f)(__a0, __a1, __a2);
+}
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)() const volatile, _T1 __t1)
+{
+    return ((*__t1).*__f)();
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0) const volatile, _T1 __t1, _A0& __a0)
+{
+    return ((*__t1).*__f)(__a0);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1) const volatile, _T1 __t1, _A0& __a0, _A1& __a1)
+{
+    return ((*__t1).*__f)(__a0, __a1);
+}
+
+template <class _Rp, class _Tp, class _T1, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    _Rp
+>::type
+__invoke(_Rp (_Tp::*__f)(_A0, _A1, _A2) const volatile, _T1 __t1, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return ((*__t1).*__f)(__a0, __a1, __a2);
+}
+
+// third bullet
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename enable_if
+<
+    is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+    typename __apply_cv<_T1, _Rp>::type&
+>::type
+__invoke(_Rp _Tp::* __f, _T1& __t1)
+{
+    return __t1.*__f;
+}
+
+template <class _Rp, class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+void
+__invoke(_Rp _Tp::*)
+{
+}
+
+// template <class _Dp, class _Rp, class _Tp, class _T1>
+// inline _LIBCPP_INLINE_VISIBILITY
+// typename enable_if
+// <
+//     is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+//     typename __ref_return1<_Rp _Tp::*, _T1>::type
+// >::type
+// __invoke(_Rp _Tp::* __f, _T1& __t1)
+// {
+//     return __t1.*__f;
+// }
+
+// forth bullet
+
+template <class _T1, class _Rp, bool>
+struct __4th_helper
+{
+};
+
+template <class _T1, class _Rp>
+struct __4th_helper<_T1, _Rp, true>
+{
+    typedef typename __apply_cv<decltype(*_VSTD::declval<_T1>()), _Rp>::type type;
+};
+
+template <class _Rp, class _Tp, class _T1>
+inline _LIBCPP_INLINE_VISIBILITY
+typename __4th_helper<_T1, _Rp,
+                      !is_base_of<_Tp,
+                                  typename remove_reference<_T1>::type
+                                 >::value
+                     >::type&
+__invoke(_Rp _Tp::* __f, _T1& __t1)
+{
+    return (*__t1).*__f;
+}
+
+// template <class _Dp, class _Rp, class _Tp, class _T1>
+// inline _LIBCPP_INLINE_VISIBILITY
+// typename enable_if
+// <
+//     !is_base_of<_Tp, typename remove_reference<_T1>::type>::value,
+//     typename __ref_return1<_Rp _Tp::*, _T1>::type
+// >::type
+// __invoke(_Rp _Tp::* __f, _T1 __t1)
+// {
+//     return (*__t1).*__f;
+// }
+
+// fifth bullet
+
+template <class _Fp>
+inline _LIBCPP_INLINE_VISIBILITY
+decltype(declval<_Fp>()())
+__invoke(_Fp __f)
+{
+    return __f();
+}
+
+template <class _Fp, class _A0>
+inline _LIBCPP_INLINE_VISIBILITY
+decltype(declval<_Fp>()(declval<_A0&>()))
+__invoke(_Fp __f, _A0& __a0)
+{
+    return __f(__a0);
+}
+
+template <class _Fp, class _A0, class _A1>
+inline _LIBCPP_INLINE_VISIBILITY
+decltype(declval<_Fp>()(declval<_A0&>(), declval<_A1&>()))
+__invoke(_Fp __f, _A0& __a0, _A1& __a1)
+{
+    return __f(__a0, __a1);
+}
+
+template <class _Fp, class _A0, class _A1, class _A2>
+inline _LIBCPP_INLINE_VISIBILITY
+decltype(declval<_Fp>()(declval<_A0&>(), declval<_A1&>(), declval<_A2&>()))
+__invoke(_Fp __f, _A0& __a0, _A1& __a1, _A2& __a2)
+{
+    return __f(__a0, __a1, __a2);
+}
+
+// template <class _Rp, class _Fp>
+// inline _LIBCPP_INLINE_VISIBILITY
+// _Rp
+// __invoke(_Fp& __f)
+// {
+//     return __f();
+// }
+//
+// template <class _Rp, class _Fp, class _A0>
+// inline _LIBCPP_INLINE_VISIBILITY
+// typename enable_if
+// <
+//     !is_member_pointer<_Fp>::value,
+//     _Rp
+// >::type
+// __invoke(_Fp& __f, _A0& __a0)
+// {
+//     return __f(__a0);
+// }
+//
+// template <class _Rp, class _Fp, class _A0, class _A1>
+// inline _LIBCPP_INLINE_VISIBILITY
+// _Rp
+// __invoke(_Fp& __f, _A0& __a0, _A1& __a1)
+// {
+//     return __f(__a0, __a1);
+// }
+//
+// template <class _Rp, class _Fp, class _A0, class _A1, class _A2>
+// inline _LIBCPP_INLINE_VISIBILITY
+// _Rp
+// __invoke(_Fp& __f, _A0& __a0, _A1& __a1, _A2& __a2)
+// {
+//     return __f(__a0, __a1, __a2);
+// }
+
+template <class _Tp>
+struct __has_type
+{
+private:
+    struct __two {char __lx; char __lxx;};
+    template <class _Up> static __two __test(...);
+    template <class _Up> static char __test(typename _Up::type* = 0);
+public:
+    static const bool value = sizeof(__test<_Tp>(0)) == 1;
+};
+
+template <class _Fp, bool = __has_result_type<__weak_result_type<_Fp> >::value>
+struct __invoke_return
+{
+    typedef typename __weak_result_type<_Fp>::result_type type;
+};
+
+template <class _Fp>
+struct __invoke_return<_Fp, false>
+{
+    typedef decltype(__invoke(_VSTD::declval<_Fp>())) type;
+};
+
+template <class _Tp, class _A0>
+struct __invoke_return0
+{
+    typedef decltype(__invoke(_VSTD::declval<_Tp>(), _VSTD::declval<_A0>())) type;
+};
+
+template <class _Rp, class _Tp, class _A0>
+struct __invoke_return0<_Rp _Tp::*, _A0>
+{
+    typedef typename __apply_cv<_A0, _Rp>::type& type;
+};
+
+template <class _Rp, class _Tp, class _A0>
+struct __invoke_return0<_Rp _Tp::*, _A0*>
+{
+    typedef typename __apply_cv<_A0, _Rp>::type& type;
+};
+
+template <class _Tp, class _A0, class _A1>
+struct __invoke_return1
+{
+    typedef decltype(__invoke(_VSTD::declval<_Tp>(), _VSTD::declval<_A0>(),
+                                                    _VSTD::declval<_A1>())) type;
+};
+
+template <class _Tp, class _A0, class _A1, class _A2>
+struct __invoke_return2
+{
+    typedef decltype(__invoke(_VSTD::declval<_Tp>(), _VSTD::declval<_A0>(),
+                                                    _VSTD::declval<_A1>(),
+                                                    _VSTD::declval<_A2>())) type;
+};
+
+template <class _Tp>
+class _LIBCPP_TYPE_VIS_ONLY reference_wrapper
+    : public __weak_result_type<_Tp>
+{
+public:
+    // types
+    typedef _Tp type;
+private:
+    type* __f_;
+
+public:
+    // construct/copy/destroy
+    _LIBCPP_INLINE_VISIBILITY reference_wrapper(type& __f) : __f_(&__f) {}
+
+    // access
+    _LIBCPP_INLINE_VISIBILITY operator type&    () const {return *__f_;}
+    _LIBCPP_INLINE_VISIBILITY          type& get() const {return *__f_;}
+
+    // invoke
+
+    _LIBCPP_INLINE_VISIBILITY
+    typename __invoke_return<type&>::type
+       operator() () const
+       {
+           return __invoke(get());
+       }
+
+    template <class _A0>
+       _LIBCPP_INLINE_VISIBILITY
+       typename __invoke_return0<type&, _A0>::type
+          operator() (_A0& __a0) const
+          {
+              return __invoke<type&, _A0>(get(), __a0);
+          }
+
+    template <class _A0, class _A1>
+       _LIBCPP_INLINE_VISIBILITY
+       typename __invoke_return1<type&, _A0, _A1>::type
+          operator() (_A0& __a0, _A1& __a1) const
+          {
+              return __invoke<type&, _A0, _A1>(get(), __a0, __a1);
+          }
+
+    template <class _A0, class _A1, class _A2>
+       _LIBCPP_INLINE_VISIBILITY
+       typename __invoke_return2<type&, _A0, _A1, _A2>::type
+          operator() (_A0& __a0, _A1& __a1, _A2& __a2) const
+          {
+              return __invoke<type&, _A0, _A1, _A2>(get(), __a0, __a1, __a2);
+          }
+};
+
+template <class _Tp> struct __is_reference_wrapper_impl : public false_type {};
+template <class _Tp> struct __is_reference_wrapper_impl<reference_wrapper<_Tp> > : public true_type {};
+template <class _Tp> struct __is_reference_wrapper
+    : public __is_reference_wrapper_impl<typename remove_cv<_Tp>::type> {};
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+reference_wrapper<_Tp>
+ref(_Tp& __t)
+{
+    return reference_wrapper<_Tp>(__t);
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+reference_wrapper<_Tp>
+ref(reference_wrapper<_Tp> __t)
+{
+    return ref(__t.get());
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+reference_wrapper<const _Tp>
+cref(const _Tp& __t)
+{
+    return reference_wrapper<const _Tp>(__t);
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+reference_wrapper<const _Tp>
+cref(reference_wrapper<_Tp> __t)
+{
+    return cref(__t.get());
+}
+
+#endif  // _LIBCPP_FUNCTIONAL_BASE_03

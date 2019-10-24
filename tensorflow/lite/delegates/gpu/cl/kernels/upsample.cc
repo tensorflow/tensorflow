@@ -47,8 +47,9 @@ std::string GetUpsampleCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(0) % dst_size.w;\n";
-    c += "  int X = get_global_id(0) / dst_size.w;\n";
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
     c += "  if (get_global_id(0) >= dst_size.x || Y >= dst_size.y || Z >= "
          "dst_size.z) return;\n";
   } else {

@@ -1,0 +1,8 @@
+Metadata-Version: 1.0
+Name: wsgiref
+Version: 0.1.2
+Summary: WSGI (PEP 333) Reference Library
+Author: Phillip J. Eby
+Author-email: web-sig@python.org
+License: PSF or ZPL
+Platform: UNKNOWN

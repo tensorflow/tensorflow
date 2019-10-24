@@ -1703,7 +1703,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
       # Multiple assertion could fail, but the evaluation order is arbitrary.
       # Match gainst generic pattern.
@@ -2042,7 +2042,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -2055,7 +2055,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1
@@ -3726,7 +3726,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -3737,7 +3737,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1

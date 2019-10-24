@@ -1,0 +1,213 @@
+// -*- C++ -*-
+//===--------------------------- cwctype ----------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_CWCTYPE
+#define _LIBCPP_CWCTYPE
+
+/*
+    cwctype synopsis
+
+Macros:
+
+    WEOF
+
+namespace std
+{
+
+Types:
+
+    wint_t
+    wctrans_t
+    wctype_t
+
+int iswalnum(wint_t wc);
+int iswalpha(wint_t wc);
+int iswblank(wint_t wc);  // C99
+int iswcntrl(wint_t wc);
+int iswdigit(wint_t wc);
+int iswgraph(wint_t wc);
+int iswlower(wint_t wc);
+int iswprint(wint_t wc);
+int iswpunct(wint_t wc);
+int iswspace(wint_t wc);
+int iswupper(wint_t wc);
+int iswxdigit(wint_t wc);
+int iswctype(wint_t wc, wctype_t desc);
+wctype_t wctype(const char* property);
+wint_t towlower(wint_t wc);
+wint_t towupper(wint_t wc);
+wint_t towctrans(wint_t wc, wctrans_t desc);
+wctrans_t wctrans(const char* property);
+
+}  // std
+
+*/
+
+#include <__config>
+#include <cctype>
+#include <wctype.h>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+using ::wint_t;
+using ::wctrans_t;
+using ::wctype_t;
+
+#ifdef iswalnum
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswalnum(wint_t __wc) {return iswalnum(__wc);}
+#undef iswalnum
+inline _LIBCPP_INLINE_VISIBILITY int iswalnum(wint_t __wc) {return __libcpp_iswalnum(__wc);}
+#else  // iswalnum
+using ::iswalnum;
+#endif
+
+#ifdef iswalpha
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswalpha(wint_t __wc) {return iswalpha(__wc);}
+#undef iswalpha
+inline _LIBCPP_INLINE_VISIBILITY int iswalpha(wint_t __wc) {return __libcpp_iswalpha(__wc);}
+#else  // iswalpha
+using ::iswalpha;
+#endif
+
+#ifdef iswblank
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswblank(wint_t __wc) {return iswblank(__wc);}
+#undef iswblank
+inline _LIBCPP_INLINE_VISIBILITY int iswblank(wint_t __wc) {return __libcpp_iswblank(__wc);}
+#else  // iswblank
+using ::iswblank;
+#endif
+
+#ifdef iswcntrl
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswcntrl(wint_t __wc) {return iswcntrl(__wc);}
+#undef iswcntrl
+inline _LIBCPP_INLINE_VISIBILITY int iswcntrl(wint_t __wc) {return __libcpp_iswcntrl(__wc);}
+#else  // iswcntrl
+using ::iswcntrl;
+#endif
+
+#ifdef iswdigit
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswdigit(wint_t __wc) {return iswdigit(__wc);}
+#undef iswdigit
+inline _LIBCPP_INLINE_VISIBILITY int iswdigit(wint_t __wc) {return __libcpp_iswdigit(__wc);}
+#else  // iswdigit
+using ::iswdigit;
+#endif
+
+#ifdef iswgraph
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswgraph(wint_t __wc) {return iswgraph(__wc);}
+#undef iswgraph
+inline _LIBCPP_INLINE_VISIBILITY int iswgraph(wint_t __wc) {return __libcpp_iswgraph(__wc);}
+#else  // iswgraph
+using ::iswgraph;
+#endif
+
+#ifdef iswlower
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswlower(wint_t __wc) {return iswlower(__wc);}
+#undef iswlower
+inline _LIBCPP_INLINE_VISIBILITY int iswlower(wint_t __wc) {return __libcpp_iswlower(__wc);}
+#else  // iswlower
+using ::iswlower;
+#endif
+
+#ifdef iswprint
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswprint(wint_t __wc) {return iswprint(__wc);}
+#undef iswprint
+inline _LIBCPP_INLINE_VISIBILITY int iswprint(wint_t __wc) {return __libcpp_iswprint(__wc);}
+#else  // iswprint
+using ::iswprint;
+#endif
+
+#ifdef iswpunct
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswpunct(wint_t __wc) {return iswpunct(__wc);}
+#undef iswpunct
+inline _LIBCPP_INLINE_VISIBILITY int iswpunct(wint_t __wc) {return __libcpp_iswpunct(__wc);}
+#else  // iswpunct
+using ::iswpunct;
+#endif
+
+#ifdef iswspace
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswspace(wint_t __wc) {return iswspace(__wc);}
+#undef iswspace
+inline _LIBCPP_INLINE_VISIBILITY int iswspace(wint_t __wc) {return __libcpp_iswspace(__wc);}
+#else  // iswspace
+using ::iswspace;
+#endif
+
+#ifdef iswupper
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswupper(wint_t __wc) {return iswupper(__wc);}
+#undef iswupper
+inline _LIBCPP_INLINE_VISIBILITY int iswupper(wint_t __wc) {return __libcpp_iswupper(__wc);}
+#else  // iswupper
+using ::iswupper;
+#endif
+
+#ifdef iswxdigit
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswxdigit(wint_t __wc) {return iswxdigit(__wc);}
+#undef iswxdigit
+inline _LIBCPP_INLINE_VISIBILITY int iswxdigit(wint_t __wc) {return __libcpp_iswxdigit(__wc);}
+#else  // iswxdigit
+using ::iswxdigit;
+#endif
+
+#ifdef iswctype
+inline _LIBCPP_INLINE_VISIBILITY int __libcpp_iswctype(wint_t __w, wctype_t __d) {return iswctype(__w, __d);}
+#undef iswctype
+inline _LIBCPP_INLINE_VISIBILITY int iswctype(wint_t __w, wctype_t __d) {return __libcpp_iswctype(__w, __d);}
+#else  // iswctype
+using ::iswctype;
+#endif
+
+#ifdef wctype
+inline _LIBCPP_INLINE_VISIBILITY wctype_t __libcpp_wctype(const char* __p) {return wctype(__p);}
+#undef wctype
+inline _LIBCPP_INLINE_VISIBILITY wctype_t wctype(const char* __p) {return __libcpp_wctype(__p);}
+#else  // wctype
+using ::wctype;
+#endif
+
+#ifdef towlower
+inline _LIBCPP_INLINE_VISIBILITY wint_t __libcpp_towlower(wint_t __wc) {return towlower(__wc);}
+#undef towlower
+inline _LIBCPP_INLINE_VISIBILITY wint_t towlower(wint_t __wc) {return __libcpp_towlower(__wc);}
+#else  // towlower
+using ::towlower;
+#endif
+
+#ifdef towupper
+inline _LIBCPP_INLINE_VISIBILITY wint_t __libcpp_towupper(wint_t __wc) {return towupper(__wc);}
+#undef towupper
+inline _LIBCPP_INLINE_VISIBILITY wint_t towupper(wint_t __wc) {return __libcpp_towupper(__wc);}
+#else  // towupper
+using ::towupper;
+#endif
+
+#ifdef towctrans
+inline _LIBCPP_INLINE_VISIBILITY wint_t __libcpp_towctrans(wint_t __wc, wctype_t __d) {return towctrans(__wc, __d);}
+#undef towctrans
+inline _LIBCPP_INLINE_VISIBILITY wint_t towctrans(wint_t __wc, wctype_t __d) {return __libcpp_towctrans(__wc, __d);}
+#else  // towctrans
+using ::towctrans;
+#endif
+
+#ifdef wctrans
+inline _LIBCPP_INLINE_VISIBILITY wctrans_t __libcpp_wctrans(const char* __p) {return wctrans(__p);}
+#undef wctrans
+inline _LIBCPP_INLINE_VISIBILITY wctrans_t wctrans(const char* __p) {return __libcpp_wctrans(__p);}
+#else  // wctrans
+using ::wctrans;
+#endif
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif  // _LIBCPP_CWCTYPE

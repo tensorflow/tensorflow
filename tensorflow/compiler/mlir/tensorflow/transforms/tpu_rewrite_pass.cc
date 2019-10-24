@@ -86,6 +86,7 @@ llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
   llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
 
   llvm::SmallVector<Attribute, 8> worklist;
+  worklist.reserve(op->getAttrs().size());
   for (auto named_attr : op->getAttrs()) {
     worklist.push_back(named_attr.second);
   }
@@ -315,7 +316,7 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
 
     auto shape_op = builder->create<TF::ShapeOp>(
         launch_func.getLoc(),
-        builder->getTensorType({-1}, builder->getIntegerType(64)),
+        RankedTensorType::get({-1}, builder->getIntegerType(64)),
         operand_and_idx.value());
     compile_op_operands.emplace_back(shape_op.getResult());
   }
@@ -338,11 +339,11 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(
-      builder->getTensorType({}, builder->getType<TF::StringType>()));
+      RankedTensorType::get({}, builder->getType<TF::StringType>()));
 
   // Result #1 is key to look up executable binary in compilation cache.
   compile_op_state.addTypes(
-      builder->getTensorType({}, builder->getType<TF::StringType>()));
+      RankedTensorType::get({}, builder->getType<TF::StringType>()));
 
   return builder->createOperation(compile_op_state);
 }
@@ -366,7 +367,7 @@ Operation* BuildExecuteOp(Operation* compile_op,
   llvm::SmallVector<Attribute, 4> tensor_input_types_attrs;
   tensor_input_types_attrs.reserve(tensor_inputs.size());
   for (Value* v : tensor_inputs) {
-    tensor_input_types_attrs.emplace_back(builder->getTypeAttr(v->getType()));
+    tensor_input_types_attrs.emplace_back(TypeAttr::get(v->getType()));
   }
   execute_op_state.addAttribute(
       "Targs", builder->getArrayAttr(tensor_input_types_attrs));
@@ -378,7 +379,7 @@ Operation* BuildExecuteOp(Operation* compile_op,
   llvm::SmallVector<Attribute, 4> output_types_attrs;
   output_types_attrs.reserve(launch_func.getNumResults());
   for (Value* v : launch_func.getResults()) {
-    output_types_attrs.emplace_back(builder->getTypeAttr(v->getType()));
+    output_types_attrs.emplace_back(TypeAttr::get(v->getType()));
   }
   execute_op_state.addAttribute("Tresults",
                                 builder->getArrayAttr(output_types_attrs));
@@ -440,21 +441,10 @@ void TPURewritePass::runOnModule() {
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
-  }
+  if (result.wasInterrupted()) return signalPassFailure();
 
-  // Eliminate TPUReplicatedInput and TPUReplicatedOutput now that the rewrite
-  // is complete.
-  getModule().walk([&](Operation* op) {
-    auto op_name = op->getName().getStringRef();
-    if (op_name != "tf.TPUReplicatedInput" &&
-        op_name != "tf.TPUReplicatedOutput")
-      return;
-    op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-    op->erase();
-  });
+  // Eliminate TPUCompilationResultOp now that the rewrite is complete.
+  getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }

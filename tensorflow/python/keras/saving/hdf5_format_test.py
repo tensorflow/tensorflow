@@ -315,7 +315,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                        name='d1'))
       ref_model.add(keras.layers.Dense(num_classes, name='d2'))
       ref_model.compile(loss=keras.losses.MSE,
-                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        optimizer='rmsprop',
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
@@ -327,7 +327,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    input_dim=input_dim, name='d1'))
       model.add(keras.layers.Dense(num_classes, name='d2'))
       model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    optimizer='rmsprop',
                     metrics=[keras.metrics.categorical_accuracy])
     with self.assertRaisesRegexp(ValueError,
                                  r'Layer #0 \(named \"d1\"\) expects 1 '

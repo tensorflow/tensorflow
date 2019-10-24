@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
@@ -44,6 +45,7 @@ using ::mlir::Builder;
 using ::mlir::FuncOp;
 using ::mlir::Identifier;
 using ::mlir::Location;
+using ::mlir::MemRefType;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
@@ -54,34 +56,39 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
+namespace lhlo = ::mlir::xla_lhlo;
+
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAdd:
-      func_builder.create<::mlir::xla_lhlo::AddOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMultiply:
-      func_builder.create<::mlir::xla_lhlo::MulOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSubtract:
-      func_builder.create<::mlir::xla_lhlo::SubOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
-      func_builder.create<::mlir::xla_lhlo::DivOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
-      func_builder.create<::mlir::xla_lhlo::AndOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMinimum:
-      func_builder.create<::mlir::xla_lhlo::MinOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MinOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMaximum:
-      func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::MaxOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kExp:
-      func_builder.create<::mlir::xla_lhlo::ExpOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kSelect:
+      func_builder.create<::mlir::xla_lhlo::SelectOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -90,60 +97,16 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
   return Status::OK();
 }
 
-StatusOr<::mlir::MemRefType> ConvertTensorType(const Shape& shape,
-                                               Builder builder) {
-  llvm::SmallVector<int64_t, 4> array;
-  array.reserve(shape.dimensions_size());
-  for (const auto dim : shape.dimensions()) {
-    array.push_back(dim);
-  }
-  switch (shape.element_type()) {
-    case PrimitiveType::PRED:
-      return builder.getMemRefType(array, builder.getI1Type());
-    case PrimitiveType::F16:
-      return builder.getMemRefType(array, builder.getF16Type());
-    case PrimitiveType::F32:
-      return builder.getMemRefType(array, builder.getF32Type());
-    case PrimitiveType::F64:
-      return builder.getMemRefType(array, builder.getF64Type());
-    case PrimitiveType::S8:
-      return builder.getMemRefType(array, builder.getIntegerType(8));
-    case PrimitiveType::S16:
-      return builder.getMemRefType(array, builder.getIntegerType(16));
-    case PrimitiveType::S32:
-      return builder.getMemRefType(array, builder.getIntegerType(32));
-    case PrimitiveType::S64:
-      return builder.getMemRefType(array, builder.getIntegerType(64));
-    default:
-      return tensorflow::errors::Internal(absl::StrCat(
-          "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
-  }
-}
-
-StatusOr<Type> ConvertType(const Shape& shape, Builder builder) {
-  if (shape.IsTuple()) {
-    Type mlir_type;
-    llvm::SmallVector<Type, 4> contents;
-    contents.reserve(shape.tuple_shapes_size());
-    for (const auto& subtype : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto mlir_subtype, ConvertType(subtype, builder));
-      contents.push_back(mlir_subtype);
-    }
-    return builder.getTupleType(contents);
-  }
-  return ConvertTensorType(shape, builder);
-}
-
 StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
     const HloInstruction& instruction, Builder builder) {
   llvm::SmallVector<Type, 4> arg_types;
   for (auto operand : instruction.operands()) {
-    TF_ASSIGN_OR_RETURN(auto operand_type,
-                        ConvertType(operand->shape(), builder));
+    TF_ASSIGN_OR_RETURN(auto operand_type, ConvertShapeToType<MemRefType>(
+                                               operand->shape(), builder));
     arg_types.push_back(operand_type);
   }
-  TF_ASSIGN_OR_RETURN(auto operand_type,
-                      ConvertType(instruction.shape(), builder));
+  TF_ASSIGN_OR_RETURN(auto operand_type, ConvertShapeToType<MemRefType>(
+                                             instruction.shape(), builder));
   arg_types.push_back(operand_type);
   return arg_types;
 }
@@ -222,8 +185,8 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   auto attribute =
       builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
 
-  auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
-      getLocation(fusion), attribute);
+  auto fusion_op =
+      func_builder.create<lhlo::FusionOp>(getLocation(fusion), attribute);
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
@@ -231,9 +194,9 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   llvm::SmallVector<Value*, 4> arg_values;
   for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
     arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
-        builder_.getUnknownLoc(), function.getArgument(i)));
+        getLocation(fusion), function.getArgument(i)));
   }
-  HloDialectEmitter hlo_emitter(body_builder, arg_values);
+  HloDialectEmitter hlo_emitter(emission_context_, body_builder, arg_values);
 
   TF_ASSIGN_OR_RETURN(
       auto result,
@@ -243,7 +206,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
   Value* result_memref = function.getArgument(function.getNumArguments() - 1);
-  body_builder.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), result,
+  body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
                                              result_memref);
 
   return Status::OK();
@@ -254,6 +217,22 @@ Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
+  llvm::SmallVector<NamedAttribute, 2> attributes{
+      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
+      builder_.getNamedAttr("comparison_direction",
+                            builder_.getStringAttr(ComparisonDirectionToString(
+                                compare->comparison_direction())))};
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
+                                          function.args_end()};
+  func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
+                                       arg_values, attributes);
   return Status::OK();
 }
 

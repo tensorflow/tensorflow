@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XS1-L02A-QF124-C5 Device</Name>
+  <Hidden/>
+
+  <Declarations>
+    <Declaration>tileref tile[2]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package ID="0" Type="XS1-L2A-QF124">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS1-L1A" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[0]"/>
+        </Node>
+        <Node Id="1" InPackageId="1" Type="XS1-L1A" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[1]"/>
+        </Node>
+      </Nodes>
+    </Package>
+  </Packages>
+
+  <Links>
+    <Link Encoding="5wire" Delays="0,1">
+      <LinkEndpoint NodeId="0" Link="XLG"/>
+      <LinkEndpoint NodeId="1" Link="XLF"/>
+    </Link>
+    <Link Encoding="5wire" Delays="0,1">
+      <LinkEndpoint NodeId="0" Link="XLH"/>
+      <LinkEndpoint NodeId="1" Link="XLE"/>
+    </Link>
+    <Link Encoding="5wire" Delays="0,1">
+      <LinkEndpoint NodeId="0" Link="XLE"/>
+      <LinkEndpoint NodeId="1" Link="XLH"/>
+    </Link>
+    <Link Encoding="5wire" Delays="0,1">
+      <LinkEndpoint NodeId="0" Link="XLF"/>
+      <LinkEndpoint NodeId="1" Link="XLG"/>
+    </Link>
+  </Links>
+
+  <JTAGChain>
+     <JTAGDevice NodeId="0"/>
+     <JTAGDevice NodeId="1"/>
+  </JTAGChain>
+ 
+</Network>
+

@@ -1,0 +1,47 @@
+<XSystem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="XSystem.xsd">
+  <System>
+    <Nodes>
+      <Node number="0" jtagId="0x00002731" userId="0x00000000">
+        <Switch sLinks="16"/>
+        <Processor number="0" numThreads="8" numTimers="10" numLocks="4" numSyncs="7" numChanEnds="32" numClkBlks="6">
+          <MemoryController>
+            <Ram base="0x10000" size="0x10000"/>
+          </MemoryController>
+        </Processor>
+        <Processor number="1" numThreads="8" numTimers="10" numLocks="4" numSyncs="7" numChanEnds="32" numClkBlks="6">
+          <MemoryController>
+            <Ram base="0x10000" size="0x10000"/>
+          </MemoryController>
+        </Processor>
+        <Processor number="2" numThreads="8" numTimers="10" numLocks="4" numSyncs="7" numChanEnds="32" numClkBlks="6">
+          <MemoryController>
+            <Ram base="0x10000" size="0x10000"/>
+          </MemoryController>
+        </Processor>
+        <Processor number="3" numThreads="8" numTimers="10" numLocks="4" numSyncs="7" numChanEnds="32" numClkBlks="6">
+          <MemoryController>
+            <Ram base="0x10000" size="0x10000"/>
+          </MemoryController>
+        </Processor>
+      </Node>
+    </Nodes>
+    <Connections>
+      <PLink width="9" pLink="0,0,0" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,0,1" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,0,2" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,0,3" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,1,0" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,1,1" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,1,2" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,1,3" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,2,0" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,2,1" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,2,2" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,2,3" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,3,0" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,3,1" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,3,2" outBufferBytes="16" inBufferBytes="16"/>
+      <PLink width="9" pLink="0,3,3" outBufferBytes="16" inBufferBytes="16"/>
+    </Connections>
+  </System>
+</XSystem>

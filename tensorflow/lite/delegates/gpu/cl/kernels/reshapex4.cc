@@ -43,8 +43,9 @@ std::string GetReshapeBatchedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  c += "  int B = get_global_id(0) % dst_size.w;\n";
-  c += "  int X = get_global_id(0) / dst_size.w;\n";
+  c += "  int linear_id = get_global_id(0);\n";
+  c += "  int X = linear_id / dst_size.w;\n";
+  c += "  int B = linear_id % dst_size.w;\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z || B >= "

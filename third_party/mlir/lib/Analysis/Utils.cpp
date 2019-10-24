@@ -40,7 +40,7 @@ using llvm::SmallDenseMap;
 void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   auto *currOp = op.getParentOp();
   AffineForOp currAffineForOp;
-  // Traverse up the hierarchy collecing all 'affine.for' operation while
+  // Traverse up the hierarchy collecting all 'affine.for' operation while
   // skipping over 'affine.if' operations.
   while (currOp && ((currAffineForOp = dyn_cast<AffineForOp>(currOp)) ||
                     isa<AffineIfOp>(currOp))) {
@@ -222,7 +222,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   cst.reset(numDims, numSymbols, 0, operands);
 
   // Add equality constraints.
-  // Add inequalties for loop lower/upper bounds.
+  // Add inequalities for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
     auto *operand = operands[i];
     if (auto loop = getForInductionVarOwner(operand)) {

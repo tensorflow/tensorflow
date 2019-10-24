@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
+
+#include <cstdint>
 #include <utility>
 
 namespace tflite {
@@ -40,7 +42,7 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
 
 ArenaPlanner::~ArenaPlanner() {}
 
-int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
+std::intptr_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
   if (type == kTfLiteArenaRwPersistent) {
     return persistent_arena_.BasePointer();
   }

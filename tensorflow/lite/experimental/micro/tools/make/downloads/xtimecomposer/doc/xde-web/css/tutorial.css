@@ -1,0 +1,226 @@
+/* needs to be merged in framwework.css */
+
+#body {
+float: none;
+margin: 0 auto;
+display: block;
+position: fixed;
+top: 168px;
+bottom: 0;
+width: 100%;
+padding:0;
+height: auto;
+overflow: auto;
+max-width: 100%;
+}
+#content, #content-kb {
+  padding:0 8px !important;
+}
+.node {
+  display:none;
+  max-width: 644px;
+}
+
+h3 {
+  cursor:pointer;
+  padding:0 5px 0 14px;
+  font-size:12px;
+  line-height:22px;
+  margin:1px 0;
+  font-weight:normal;
+  background:transparent url(images/rightarrow.png) no-repeat 2px 0.5em;
+}
+h3:hover {
+  background-color:#def;
+}
+h3.downarrow, h3.bold {
+  background-image: url(images/downarrow.png) !important;
+}
+.content > h2 {
+margin-bottom:0 !important;
+border-bottom:0 !important;
+font-size:15px !important;
+}
+
+.continue {
+  clear:both;
+  display: block;
+  padding:3px 6px;
+}
+.complete {
+  margin-left:0 !important;
+}
+
+.task_continue {
+  float:none;
+  padding-top:2px;
+  padding-bottom:2px;
+  margin-bottom:10px;
+  padding-left:20px !important;
+  margin-top:0;
+  background: transparent url(images/complete_task.gif) no-repeat left center;
+}
+.task_start, .task_next, .task_restart, .task_end, .task_intro_restart {
+  background: none;
+  padding:0;
+  margin:0;
+}
+.task_intro_restart {
+  padding-left: 40px;
+  padding-bottom: 8px;
+}
+.task_start a, .task_next a, .task_restart a, .task_end a, .task_intro_restart a {
+  clear:both;
+  display:block;
+  float:none;
+  padding-top:0;
+  padding-bottom:0;
+  padding-left:20px !important;
+  margin-bottom:10px;
+  margin-top:0;
+  background: transparent url(images/task_start.gif) no-repeat left center;
+}
+.task_end a {
+  background: transparent url(images/task_start.gif) no-repeat left center;
+}
+.task_next a {
+  background: transparent url(images/task_start.gif) no-repeat left center;
+  margin-bottom:0px;
+  padding-top:2px;
+}
+.task_restart a, .task_intro_restart a {
+  background: transparent url(images/task_restart.gif) no-repeat left center;
+  margin-bottom:0;
+  padding-top:2px;
+}
+.task_complete hr, .task_start hr, .complete-message hr {
+  background: #333;  
+  background: -webkit-gradient(linear, 0 0, 100% 100%, from(#017), to(#fff));
+  background: -moz-linear-gradient(top left, #017, #fff);
+  border:none;
+  float: left;
+  width: 100%;
+  margin-top:15px !important;
+  margin-bottom:3px;
+}
+
+h3 + div {
+  padding-left:5px;
+  padding-right:5px;
+  padding-bottom:5px;
+  margin-top:-2px;
+  /*float:left;*/
+}
+h3:first-child + div {
+  padding-left:0;
+  padding-top:5px;
+}
+.left-padded {
+  padding-left:10px !important;
+}
+.odd {
+  background-color: #d2d7e4 !important;
+}
+.even {
+  background-color: #edeff4 !important;
+}
+.current {
+  background-color: transparent !important;
+}
+h3.current {
+  font-weight:bold;
+}
+.current + div .codeoptions {
+  background-color:#fff;
+}
+.current + div {
+  padding-left:3px;
+}
+.block-views.even, .block-views.odd {
+  background-color:transparent !important;
+}
+
+.bold {
+  font-weight:bold;
+}
+#node-header {
+display:none;
+}
+#body, #searchdiv div, #menubar div {
+  margin:0 !important;
+}
+
+#index {
+  clear: both;
+  max-height: 105px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-bottom: 2px solid #CCC;
+  margin: -4px 0 0 0;
+  padding: 0;
+  position:fixed;
+  height:105px;
+  width:100%;
+}
+#index ul {
+  max-width: 644px;
+  margin: 0;
+  padding: 8px 0 2px 7px;
+}
+#index ul li a {
+  padding: 1px 0 1px 18px;
+  background: transparent url(images/cheatsheet.gif) no-repeat left center;
+  color:#333;
+}
+#index ul li a.complete {
+  float:none;
+  width:auto;
+  height:auto;
+  background: transparent url(images/cheatsheat_complete.gif) no-repeat left center;
+}
+#index ul li a.current {
+  float:none;
+  width:auto;
+  height:auto;
+  background: #fff url(images/cheatsheat_current.gif) no-repeat left center !important;
+  /*border: 1px solid #ddd;*/
+  padding:3px 3px 2px 18px !important;
+  font-weight:bold !important;
+}
+#index ul li ul {
+  padding-left:16px;
+  margin-top:0;
+  padding-top:3px;
+  max-width: auto;
+}
+#index ul li ul li a {
+  background: transparent url(images/task.gif) no-repeat left center;
+}
+#index ul li ul li a.current {
+  background: transparent url(images/task_current.gif) no-repeat left center !important;
+  font-weight:normal !important;
+}
+#index ul li ul li a.complete {
+  background: transparent url(images/task_complete.gif) no-repeat left center !important;
+}
+
+#index ul li a span {
+  padding:0 3px 0 1px;
+}
+#index ul li a.bold span {
+  background-color: highlight !important;
+  color:highlightText !important;
+  font-weight:normal !important;
+}
+#index ul li a:hover {
+  text-decoration:none;
+}
+#index ul li a:hover span {
+  background-color:#ddd;
+  
+}
+#switchcontent {
+  position:absolute;
+  right:0;
+  top:15px;
+}

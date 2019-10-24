@@ -42,6 +42,9 @@ namespace ops {
 namespace builtin {
 namespace activations {
 
+// TODO(b/142762739): We should figure out a multi-threading plan for most of
+// the activation ops below.
+
 enum KernelType {
   kReference,
   kGenericOptimized,
@@ -842,7 +845,8 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
       op_params.beta = params->beta;
       optimized_ops::Softmax(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+          GetTensorShape(output), GetTensorData<float>(output),
+          CpuBackendContext::GetFromContext(context));
       return kTfLiteOk;
     default:
       context->ReportError(

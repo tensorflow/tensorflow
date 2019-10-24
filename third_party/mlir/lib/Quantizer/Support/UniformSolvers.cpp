@@ -59,7 +59,7 @@ bool UniformParamsFromMinMaxSolver::compute() {
       double minOvershoot = boundingMin - adjMinMax.first;
       // If undershooting on the min or max end, return that because it is
       // to be unconditionally avoided. Otherwise return the end with the
-      // greateast magnitude of overshoot.
+      // greatest magnitude of overshoot.
       if (maxOvershoot < 0)
         return maxOvershoot;
       if (minOvershoot < 0)

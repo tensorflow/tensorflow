@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Network xmlns="http://www.xmos.com"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.xmos.com http://www.xmos.com">
+  <Type>Device</Type>
+  <Name>XL224-1024-FB374-I40 Device</Name>
+
+  <Declarations>
+    <Declaration>tileref tile[4]</Declaration>
+    <Declaration>tileref usb_tile[2]</Declaration>
+  </Declarations>
+
+  <Packages>
+    <Package id="0" Type="XS2-LnA-1024-FB374">
+      <Nodes>
+        <Node Id="0" InPackageId="0" Type="XS2-L12A-512" SystemFrequency="500MHz" OscillatorSrc="2">
+          <Tile Number="0" Reference="tile[0]"/>
+          <Tile Number="1" Reference="tile[1]"/>
+        </Node>
+        <Node Id="2" InPackageId="2" Type="XS2-L12A-512" SystemFrequency="500MHz">
+          <Tile Number="0" Reference="tile[2]"/>
+          <Tile Number="1" Reference="tile[3]"/>
+        </Node>
+      </Nodes>
+      <Links>
+        <Link Encoding="5wire" Delays="3clk">
+          <LinkEndpoint NodeId="0" Link="7"/>
+          <LinkEndpoint NodeId="2" Link="0"/>
+        </Link>
+        <Link Encoding="5wire" Delays="3clk">
+          <LinkEndpoint NodeId="0" Link="4"/>
+          <LinkEndpoint NodeId="2" Link="3"/>
+        </Link>
+        <Link Encoding="5wire" Delays="3clk">
+          <LinkEndpoint NodeId="0" Link="6"/>
+          <LinkEndpoint NodeId="2" Link="1"/>
+        </Link>
+        <Link Encoding="5wire" Delays="3clk">
+          <LinkEndpoint NodeId="0" Link="5"/>
+          <LinkEndpoint NodeId="2" Link="2"/>
+        </Link>
+      </Links>
+    </Package>
+  </Packages>
+
+  <JTAGChain>
+    <JTAGDevice NodeId="0"/>
+    <JTAGDevice NodeId="2"/>
+  </JTAGChain>
+
+</Network>

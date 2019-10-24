@@ -1,0 +1,472 @@
+module std [system] {
+  // FIXME: The standard does not require that each of these submodules
+  // re-exports its imported modules. We should provide an alternative form of
+  // export that issues a warning if a name from the submodule is used, and
+  // use that to provide a 'strict mode' for libc++.
+  module algorithm {
+    header "algorithm"
+    export initializer_list
+    export *
+  }
+  module array {
+    header "array"
+    export initializer_list
+    export *
+  }
+  module atomic {
+    header "atomic"
+    export *
+    requires cplusplus11
+  }
+  module bitset {
+    header "bitset"
+    export string
+    export iosfwd
+    export *
+  }
+  // No submodule for cassert. It fundamentally needs repeated, textual inclusion.
+  module ccomplex {
+    header "ccomplex"
+    export complex
+    export *
+  }
+  module cctype {
+    header "cctype"
+    export *
+  }
+  module cerrno {
+    header "cerrno"
+/*
+    export_macros    ECONNREFUSED, EIO,          ENODEV,      ENOTEMPTY,       ERANGE,
+      E2BIG,         ECONNRESET,   EISCONN,      ENOENT,      ENOTRECOVERABLE, EROFS,
+      EACCES,        EDEADLK,      EISDIR,       ENOEXEC,     ENOTSOCK,        ESPIPE,
+      EADDRINUSE,    EDESTADDRREQ, ELOOP,        ENOLCK,      ENOTSUP,         ESRCH,
+      EADDRNOTAVAIL, EDOM,         EMFILE,       ENOLINK,     ENOTTY,          ETIME,
+      EAFNOSUPPORT,  EEXIST,       EMLINK,       ENOMEM,      ENXIO,           ETIMEDOUT,
+      EAGAIN,        EFAULT,       EMSGSIZE,     ENOMSG,      EOPNOTSUPP,      ETXTBSY,
+      EALREADY,      EFBIG,        ENAMETOOLONG, ENOPROTOOPT, EOVERFLOW,       EWOULDBLOCK,
+      EBADF,         EHOSTUNREACH, ENETDOWN,     ENOSPC,      EOWNERDEAD,      EXDEV,
+      EBADMSG,       EIDRM,        ENETRESET,    ENOSR,       EPERM,           errno,
+      EBUSY,         EILSEQ,       ENETUNREACH,  ENOSTR,      EPIPE,
+      ECANCELED,     EINPROGRESS,  ENFILE,       ENOSYS,      EPROTO,
+      ECHILD,        EINTR,        ENOBUFS,      ENOTCONN,    EPROTONOSUPPORT,
+      ECONNABORTED,  EINVAL,       ENODATA,      ENOTDIR,     EPROTOTYPE
+*/
+    export *
+  }
+  module cfenv {
+    header "cfenv"
+/*
+    export_macros FE_ALL_EXCEPT, FE_DIVBYZERO, FE_INEXACT, FE_INVALID, FE_OVERFLOW,
+                  FE_UNDERFLOW, FE_DOWNWARD, FE_TONEAREST, FE_TOWARDZERO, FE_UPWARD,
+                  FE_DFL_ENV
+*/
+    export *
+  }
+  module cfloat {
+    header "cfloat"
+/*
+    export_macros FLT_EVAL_METHOD, FLT_RADIX, FLT_ROUNDS,
+                  FLT_DIG, FLT_EPSILON, FLT_MANT_DIG,
+                  FLT_MAX, FLT_MAX_10_EXP, FLT_MAX_EXP,
+                  FLT_MIN, FLT_MIN_10_EXP, FLT_MIN_EXP,
+                  DBL_DIG, DBL_EPSILON, DBL_MANT_DIG,
+                  DBL_MAX, DBL_MAX_10_EXP, DBL_MAX_EXP,
+                  DBL_MIN, DBL_MIN_10_EXP, DBL_MIN_EXP,
+                  LDBL_DIG, LDBL_EPSILON, LDBL_MANT_DIG,
+                  LDBL_MAX, LDBL_MAX_10_EXP, LDBL_MAX_EXP,
+                  LDBL_MIN, LDBL_MIN_10_EXP, LDBL_MIN_EXP
+*/
+    export *
+  }
+  module chrono {
+    header "chrono"
+    export *
+  }
+  module cinttypes {
+    header "cinttypes"
+    export cstdint
+/*
+    export_macros
+      PRId8, PRId16, PRId32, PRId64, PRIdFAST8, PRIdFAST16, PRIdFAST32, PRIdFAST64, PRIdLEAST8, PRIdLEAST16, PRIdLEAST32, PRIdLEAST64, PRIdMAX, PRIdPTR,
+      PRIi8, PRIi16, PRIi32, PRIi64, PRIiFAST8, PRIiFAST16, PRIiFAST32, PRIiFAST64, PRIiLEAST8, PRIiLEAST16, PRIiLEAST32, PRIiLEAST64, PRIiMAX, PRIiPTR,
+      PRIo8, PRIo16, PRIo32, PRIo64, PRIoFAST8, PRIoFAST16, PRIoFAST32, PRIoFAST64, PRIoLEAST8, PRIoLEAST16, PRIoLEAST32, PRIoLEAST64, PRIoMAX, PRIoPTR,
+      PRIu8, PRIu16, PRIu32, PRIu64, PRIuFAST8, PRIuFAST16, PRIuFAST32, PRIuFAST64, PRIuLEAST8, PRIuLEAST16, PRIuLEAST32, PRIuLEAST64, PRIuMAX, PRIuPTR,
+      PRIx8, PRIx16, PRIx32, PRIx64, PRIxFAST8, PRIxFAST16, PRIxFAST32, PRIxFAST64, PRIxLEAST8, PRIxLEAST16, PRIxLEAST32, PRIxLEAST64, PRIxMAX, PRIxPTR,
+      PRIX8, PRIX16, PRIX32, PRIX64, PRIXFAST8, PRIXFAST16, PRIXFAST32, PRIXFAST64, PRIXLEAST8, PRIXLEAST16, PRIXLEAST32, PRIXLEAST64, PRIXMAX, PRIXPTR,
+      SCNd8, SCNd16, SCNd32, SCNd64, SCNdFAST8, SCNdFAST16, SCNdFAST32, SCNdFAST64, SCNdLEAST8, SCNdLEAST16, SCNdLEAST32, SCNdLEAST64, SCNdMAX, SCNdPTR,
+      SCNi8, SCNi16, SCNi32, SCNi64, SCNiFAST8, SCNiFAST16, SCNiFAST32, SCNiFAST64, SCNiLEAST8, SCNiLEAST16, SCNiLEAST32, SCNiLEAST64, SCNiMAX, SCNiPTR,
+      SCNo8, SCNo16, SCNo32, SCNo64, SCNoFAST8, SCNoFAST16, SCNoFAST32, SCNoFAST64, SCNoLEAST8, SCNoLEAST16, SCNoLEAST32, SCNoLEAST64, SCNoMAX, SCNoPTR,
+      SCNu8, SCNu16, SCNu32, SCNu64, SCNuFAST8, SCNuFAST16, SCNuFAST32, SCNuFAST64, SCNuLEAST8, SCNuLEAST16, SCNuLEAST32, SCNuLEAST64, SCNuMAX, SCNuPTR,
+      SCNx8, SCNx16, SCNx32, SCNx64, SCNxFAST8, SCNxFAST16, SCNxFAST32, SCNxFAST64, SCNxLEAST8, SCNxLEAST16, SCNxLEAST32, SCNxLEAST64, SCNxMAX, SCNxPTR,
+      SCNX8, SCNX16, SCNX32, SCNX64, SCNXFAST8, SCNXFAST16, SCNXFAST32, SCNXFAST64, SCNXLEAST8, SCNXLEAST16, SCNXLEAST32, SCNXLEAST64, SCNXMAX, SCNXPTR
+*/
+    export *
+  }
+  module ciso646 {
+    header "ciso646"
+    export *
+  }
+  module climits {
+    header "climits"
+/*
+    export_macros CHAR_BIT,  CHAR_MIN,  CHAR_MAX,
+                  SCHAR_MIN, SCHAR_MAX, UCHAR_MAX,
+                  SHRT_MIN,  SHRT_MAX,  USHRT_MAX,
+                  INT_MIN,   INT_MAX,   UINT_MAX,
+                  LONG_MIN,  LONG_MAX,  ULONG_MAX,
+                  LLONG_MIN, LLONG_MAX, ULLONG_MAX,
+                  MB_LEN_MAX
+*/
+    export *
+  }
+  module clocale {
+    header "clocale"
+/*
+    export_macros LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY, LC_NUMERIC, LC_TIME, NULL
+*/
+    export *
+  }
+  module cmath {
+    header "cmath"
+/*
+    export_macros FP_FAST_FMA, FP_FAST_FMAF, FP_FAST_FMAL, FP_ILOGBO, FP_ILOGBNAN,
+                  FP_INFINITE, FP_NAN, FP_NORMAL, FP_SUBNORMAL, FP_ZERO,
+                  HUGE_VAL, HUGE_VALF, HUGE_VALL, INFINITY, NAN,
+                  MATH_ERRNO, MATH_ERREXCEPT, math_errhandling
+*/
+    export *
+  }
+  module codecvt {
+    header "codecvt"
+    export *
+  }
+  module complex {
+    header "complex"
+    export *
+  }
+  module condition_variable {
+    header "condition_variable"
+    export *
+  }
+  module csetjmp {
+    header "csetjmp"
+/*
+    export_macros setjmp
+*/
+    export *
+  }
+  module csignal {
+    header "csignal"
+/*
+    export_macros SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM,
+                  SIG_DFL, SIG_IGN, SIG_ERR
+*/
+    export *
+  }
+  module cstdarg {
+    header "cstdarg"
+/*
+    export_macros va_arg, va_start, va_end, va_copy
+*/
+    export *
+  }
+  module cstdbool {
+    header "cstdbool"
+/*
+    export_macros __bool_true_false_are_defined
+*/
+    export *
+  }
+  module cstddef {
+    header "cstddef"
+/*
+    export_macros NULL, offsetof
+*/
+    export *
+  }
+  module cstdint {
+    header "cstdint"
+/*
+    export_macros
+      INT_8_MIN, INT_8_MAX, UINT_8_MAX, INT_16_MIN, INT_16_MAX, UINT_16_MAX,
+      INT_32_MIN, INT_32_MAX, UINT_32_MAX, INT_64_MIN, INT_64_MAX, UINT_64_MAX,
+      INT_FAST8_MIN, INT_FAST8_MAX, UINT_FAST8_MAX, INT_FAST16_MIN, INT_FAST16_MAX, UINT_FAST16_MAX,
+      INT_FAST32_MIN, INT_FAST32_MAX, UINT_FAST32_MAX, INT_FAST64_MIN, INT_FAST64_MAX, UINT_FAST64_MAX,
+      INT_LEAST8_MIN, INT_LEAST8_MAX, UINT_LEAST8_MAX, INT_LEAST16_MIN, INT_LEAST16_MAX, UINT_LEAST16_MAX,
+      INT_LEAST32_MIN, INT_LEAST32_MAX, UINT_LEAST32_MAX, INT_LEAST64_MIN, INT_LEAST64_MAX, UINT_LEAST64_MAX,
+      INT_MAX_MIN, INT_MAX_MAX, UINT_MAX_MAX, INT_PTR_MIN, INT_PTR_MAX, UINT_PTR_MAX,
+      PTRDIFF_MIN, PTRDIFF_MAX, SIG_ATOMIC_MIN, SIG_ATOMIC_MAX, WCHAR_MIN, WCHAR_MAX, WINT_MIN, WINT_MAX,
+      SIZE_MAX
+*/
+    export *
+  }
+  module cstdio {
+    header "cstdio"
+/*
+    export_macros BUFSIZ, EOF, FILENAME_MAX, FOPEN_MAX, L_tmpnam, NULL,
+                  SEEK_CUR, SEEK_END, SEEK_SET, TMP_MAX, _IOFBF, _IOLBF,
+                  stdin, stdout, stderr
+*/
+    export *
+  }
+  module cstdlib {
+    header "cstdlib"
+/*
+    export_macros RAND_MAX
+*/
+    export *
+  }
+  module cstring {
+    header "cstring"
+/*
+    export_macros NULL
+*/
+    export *
+  }
+  module ctgmath {
+    header "ctgmath"
+    export ccomplex
+    export cmath
+    export *
+  }
+  module ctime {
+    header "ctime"
+/*
+    export_macros NULL, CLOCKS_PER_SEC
+*/
+    export *
+  }
+  module cwchar {
+    header "cwchar"
+/*
+    export_macros NULL, WCHAR_MAX, WCHAR_MIN, WEOF
+*/
+    export *
+  }
+  module cwctype {
+    header "cwctype"
+/*
+    export_macros WEOF
+*/
+    export *
+  }
+  module deque {
+    header "deque"
+    export initializer_list
+    export *
+  }
+  module exception {
+    header "exception"
+    export *
+  }
+  module forward_list {
+    header "forward_list"
+    export initializer_list
+    export *
+  }
+  module fstream {
+    header "fstream"
+    export *
+  }
+  module functional {
+    header "functional"
+    export *
+  }
+  module future {
+    header "future"
+    export *
+  }
+  module initializer_list {
+    header "initializer_list"
+    export *
+  }
+  module iomanip {
+    header "iomanip"
+    export *
+  }
+  module ios {
+    header "ios"
+    export iosfwd
+    export *
+  }
+  module iosfwd {
+    header "iosfwd"
+    export *
+  }
+  module iostream {
+    header "iostream"
+    export ios
+    export streambuf
+    export istream
+    export ostream
+    export *
+  }
+  module istream {
+    header "istream"
+    // FIXME: should re-export ios, streambuf?
+    export *
+  }
+  module iterator {
+    header "iterator"
+    export *
+  }
+  module limits {
+    header "limits"
+    export *
+  }
+  module list {
+    header "list"
+    export initializer_list
+    export *
+  }
+  module locale {
+    header "locale"
+    export *
+  }
+  module map {
+    header "map"
+    export initializer_list
+    export *
+  }
+  module memory {
+    header "memory"
+    export *
+  }
+  module mutex {
+    header "mutex"
+    export *
+  }
+  module new {
+    header "new"
+    export *
+  }
+  module numeric {
+    header "numeric"
+    export *
+  }
+  module ostream {
+    header "ostream"
+    // FIXME: should re-export ios, streambuf?
+    export *
+  }
+  module queue {
+    header "queue"
+    export initializer_list
+    export *
+  }
+  module random {
+    header "random"
+    export initializer_list
+    export *
+  }
+  module ratio {
+    header "ratio"
+    export *
+  }
+  module regex {
+    header "regex"
+    export initializer_list
+    export *
+  }
+  module scoped_allocator {
+    header "scoped_allocator"
+    export *
+  }
+  module set {
+    header "set"
+    export initializer_list
+    export *
+  }
+  module sstream {
+    header "sstream"
+    // FIXME: should re-export istream, ostream, ios, streambuf, string?
+    export *
+  }
+  module stack {
+    header "stack"
+    export initializer_list
+    export *
+  }
+  module stdexcept {
+    header "stdexcept"
+    export *
+  }
+  module streambuf {
+    header "streambuf"
+    export *
+  }
+  module string {
+    header "string"
+    export initializer_list
+    export *
+  }
+  module strstream {
+    header "strstream"
+    requires !cplusplus11
+  }
+  module system_error {
+    header "system_error"
+    export *
+  }
+  module thread {
+    header "thread"
+    export *
+  }
+  module tuple {
+    header "tuple"
+    export *
+  }
+  module type_traits {
+    header "type_traits"
+    export *
+  }
+  module typeindex {
+    header "typeindex"
+    export *
+  }
+  module typeinfo {
+    header "typeinfo"
+    export *
+  }
+  module unordered_map {
+    header "unordered_map"
+    export initializer_list
+    export *
+  }
+  module unordered_set {
+    header "unordered_set"
+    export initializer_list
+    export *
+  }
+  module utility {
+    header "utility"
+    export initializer_list
+    export *
+  }
+  module valarray {
+    header "valarray"
+    export initializer_list
+    export *
+  }
+  module vector {
+    header "vector"
+    export initializer_list
+    export *
+  }
+
+  // FIXME: These should be private.
+  module __bit_reference { header "__bit_reference" export * }
+  module __config { header "__config" export * }
+  module __debug { header "__debug" export * }
+  module __functional_base { header "__functional_base" export * }
+  module __hash_table { header "__hash_table" export * }
+  module __locale { header "__locale" export * }
+  module __mutex_base { header "__mutex_base" export * }
+  module __split_buffer { header "__split_buffer" export * }
+  module __sso_allocator { header "__sso_allocator" export * }
+  module __std_stream { header "__std_stream" export * }
+  module __tree { header "__tree" export * }
+  module __tuple { header "__tuple" export * }
+  module __undef_min_max { header "__undef_min_max" export * }
+}

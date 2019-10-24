@@ -336,7 +336,7 @@ Result addConstantAndSink(SDBMDirectExpr expr, int64_t constant, bool negated,
 
 // Construct an expression lhs + constant while maintaining the canonical form
 // of the SDBM expressions, in particular sink the constant expression to the
-// nearest sum expression in the left subtree of the expresison tree.
+// nearest sum expression in the left subtree of the expression tree.
 static SDBMExpr addConstant(SDBMVaryingExpr lhs, int64_t constant) {
   if (auto lhsDiff = lhs.dyn_cast<SDBMDiffExpr>())
     return addConstantAndSink<SDBMExpr>(
@@ -438,7 +438,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       assert(!lhs.isa<SDBMConstantExpr>() && "non-canonical affine expression");
 
       // If RHS is a constant, we can always extend the SDBM expression to
-      // include it by sinking the constant into the nearest sum expresion.
+      // include it by sinking the constant into the nearest sum expression.
       if (auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>()) {
         int64_t constant = rhsConstant.getValue();
         auto varying = lhs.dyn_cast<SDBMVaryingExpr>();

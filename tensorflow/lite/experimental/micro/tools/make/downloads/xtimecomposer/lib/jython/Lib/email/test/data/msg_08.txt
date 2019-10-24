@@ -1,0 +1,24 @@
+MIME-Version: 1.0
+From: Barry Warsaw <barry@zope.com>
+To: Dingus Lovers <cravindogs@cravindogs.com>
+Subject: Lyrics
+Date: Fri, 20 Apr 2001 19:35:02 -0400
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: text/plain; charset="us-ascii"
+
+
+--BOUNDARY
+Content-Type: text/html; charset="iso-8859-1"
+
+
+--BOUNDARY
+Content-Type: text/plain; charset="iso-8859-2"
+
+
+--BOUNDARY
+Content-Type: text/plain; charset="koi8-r"
+
+
+--BOUNDARY--

@@ -111,6 +111,14 @@ class PForTest(PForTestCase):
         compute, array_ops.ones((10, 5, 3)))
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_vectorized_map_with_dynamic_shape(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    x = array_ops.placeholder_with_default(
+        array_ops.ones((10, 5, 3)), shape=None)
+    result = pfor_control_flow_ops.vectorized_map(compute, x)
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
   def test_vectorized_map_example_1(self):
     def outer_product(a):
       return math_ops.tensordot(a, a, 0)
@@ -172,6 +180,25 @@ class IndexedSlicesTest(PForTestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
+
+  def test_reduce(self):
+
+    def reduce_fn(p, q):
+      return math_ops.reduce_mean(p + q, axis=0)
+
+    x = random_ops.random_uniform([4, 3, 2])
+    y = random_ops.random_uniform([4, 3, 2])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      reduced = pfor_config.reduce(reduce_fn, x_i, y_i)
+      return reduced + x_i
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 4)
+    ans = reduce_fn(x, y) + x
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
 
   def test_reduce_concat(self):
     x = random_ops.random_uniform([8, 3])

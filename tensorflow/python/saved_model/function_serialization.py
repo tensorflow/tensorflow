@@ -30,7 +30,16 @@ def _serialize_function_spec(function_spec, coder):
         "Missing support to serialize a method function without a named "
         "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
-  proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
+
+  # Intentionally skip encoding annotations of a function because function
+  # annotations are mainly for optional type checking during development
+  # and does not affect runtime behavior.
+  # https://www.python.org/dev/peps/pep-3107/
+  # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
+  proto.fullargspec.CopyFrom(
+      coder.encode_structure(
+          function_spec.fullargspec._replace(annotations={})))
+
   proto.is_method = function_spec.is_method
   proto.input_signature.CopyFrom(
       coder.encode_structure(function_spec.input_signature))

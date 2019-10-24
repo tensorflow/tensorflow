@@ -1,0 +1,314 @@
+// -*- C++ -*-
+//===-------------------------- dynarray ----------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_DYNARRAY
+#define _LIBCPP_DYNARRAY
+
+#include <__config>
+#if _LIBCPP_STD_VER > 11
+
+/*
+    dynarray synopsis
+
+namespace std { namespace experimental {
+
+template< typename T >
+class dynarray
+{
+    // types:
+    typedef       T                               value_type;
+    typedef       T&                              reference;
+    typedef const T&                              const_reference;
+    typedef       T*                              pointer;
+    typedef const T*                              const_pointer;
+    typedef       implementation-defined          iterator;
+    typedef       implementation-defined          const_iterator;
+    typedef reverse_iterator<iterator>            reverse_iterator;
+    typedef reverse_iterator<const_iterator>      const_reverse_iterator;
+    typedef size_t                                size_type;
+    typedef ptrdiff_t                             difference_type;
+
+public:
+    // construct/copy/destroy:
+    explicit dynarray(size_type c);
+    dynarray(size_type c, const T& v);
+    dynarray(const dynarray& d);
+    dynarray(initializer_list<T>);
+
+    template <class Alloc>
+      dynarray(allocator_arg_t, const Alloc& a, size_type c, const Alloc& alloc);
+    template <class Alloc>
+      dynarray(allocator_arg_t, const Alloc& a, size_type c, const T& v, const Alloc& alloc);
+    template <class Alloc>
+      dynarray(allocator_arg_t, const Alloc& a, const dynarray& d, const Alloc& alloc);
+    template <class Alloc>
+      dynarray(allocator_arg_t, const Alloc& a, initializer_list<T>, const Alloc& alloc);
+    dynarray& operator=(const dynarray&) = delete;
+    ~dynarray();
+
+    // iterators:
+    iterator       begin()        noexcept;
+    const_iterator begin()  const noexcept;
+    const_iterator cbegin() const noexcept;
+    iterator       end()          noexcept;
+    const_iterator end()    const noexcept;
+    const_iterator cend()   const noexcept;
+
+    reverse_iterator       rbegin()        noexcept;
+    const_reverse_iterator rbegin()  const noexcept;
+    const_reverse_iterator crbegin() const noexcept;
+    reverse_iterator       rend()          noexcept;
+    const_reverse_iterator rend()    const noexcept;
+    const_reverse_iterator crend()   const noexcept;
+
+    // capacity:
+    size_type size()     const noexcept;
+    size_type max_size() const noexcept;
+    bool      empty()    const noexcept;
+
+    // element access:
+    reference       operator[](size_type n);
+    const_reference operator[](size_type n) const;
+
+    reference       front();
+    const_reference front() const;
+    reference       back();
+    const_reference back()  const;
+
+    const_reference at(size_type n) const;
+    reference       at(size_type n);
+
+    // data access:
+    T*       data()       noexcept;
+    const T* data() const noexcept;
+
+    // mutating member functions:
+    void fill(const T& v);
+};
+
+}}  // std::experimental
+
+*/
+
+#include <__functional_base>
+#include <iterator>
+#include <stdexcept>
+#include <initializer_list>
+#include <new>
+#include <algorithm>
+
+#if defined(_LIBCPP_NO_EXCEPTIONS)
+    #include <cassert>
+#endif
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+namespace std { namespace experimental { inline namespace __array_extensions_v1 {
+
+template <class _Tp>
+struct _LIBCPP_TYPE_VIS_ONLY dynarray
+{
+public:
+    // types:
+    typedef dynarray __self;
+    typedef _Tp                                   value_type;
+    typedef value_type&                           reference;
+    typedef const value_type&                     const_reference;
+    typedef value_type*                           iterator;
+    typedef const value_type*                     const_iterator;
+    typedef value_type*                           pointer;
+    typedef const value_type*                     const_pointer;
+    typedef size_t                                size_type;
+    typedef ptrdiff_t                             difference_type;
+    typedef std::reverse_iterator<iterator>       reverse_iterator;
+    typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
+
+private:
+    size_t                  __size_;
+    value_type *            __base_;
+    _LIBCPP_ALWAYS_INLINE dynarray () noexcept : __base_(nullptr), __size_(0) {}
+    
+    static inline _LIBCPP_INLINE_VISIBILITY value_type* __allocate ( size_t count )
+    {
+        if ( numeric_limits<size_t>::max() / sizeof (value_type) <= count )
+        {
+#ifndef _LIBCPP_NO_EXCEPTIONS
+            throw bad_array_length();
+#else
+            assert(!"dynarray::allocation");
+#endif
+        }
+        return static_cast<value_type *> (_VSTD::__allocate (sizeof(value_type) * count));
+    }
+
+    static inline _LIBCPP_INLINE_VISIBILITY void __deallocate ( value_type* __ptr ) noexcept
+    {
+        _VSTD::__deallocate (static_cast<void *> (__ptr));
+    }
+
+public:
+
+    explicit dynarray(size_type __c);
+    dynarray(size_type __c, const value_type& __v);
+    dynarray(const dynarray& __d);
+    dynarray(initializer_list<value_type>);
+
+//  We're not implementing these right now.
+//  Updated with the resolution of LWG issue #2255
+//     template <typename _Alloc>
+//       dynarray(allocator_arg_t, const _Alloc& __alloc, size_type __c);
+//     template <typename _Alloc>
+//       dynarray(allocator_arg_t, const _Alloc& __alloc, size_type __c, const value_type& __v);
+//     template <typename _Alloc>
+//       dynarray(allocator_arg_t, const _Alloc& __alloc, const dynarray& __d);
+//     template <typename _Alloc>
+//       dynarray(allocator_arg_t, const _Alloc& __alloc, initializer_list<value_type>);
+
+    dynarray& operator=(const dynarray&) = delete;
+    ~dynarray();
+
+    // iterators:
+    inline _LIBCPP_INLINE_VISIBILITY iterator       begin()        noexcept { return iterator(data()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_iterator begin()  const noexcept { return const_iterator(data()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_iterator cbegin() const noexcept { return const_iterator(data()); }
+    inline _LIBCPP_INLINE_VISIBILITY iterator       end()          noexcept { return iterator(data() + __size_); }
+    inline _LIBCPP_INLINE_VISIBILITY const_iterator end()    const noexcept { return const_iterator(data() + __size_); }
+    inline _LIBCPP_INLINE_VISIBILITY const_iterator cend()   const noexcept { return const_iterator(data() + __size_); }
+
+    inline _LIBCPP_INLINE_VISIBILITY reverse_iterator       rbegin()        noexcept { return reverse_iterator(end()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_reverse_iterator rbegin()  const noexcept { return const_reverse_iterator(end()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(end()); }
+    inline _LIBCPP_INLINE_VISIBILITY reverse_iterator       rend()          noexcept { return reverse_iterator(begin()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_reverse_iterator rend()    const noexcept { return const_reverse_iterator(begin()); }
+    inline _LIBCPP_INLINE_VISIBILITY const_reverse_iterator crend()   const noexcept { return const_reverse_iterator(begin()); }
+
+    // capacity:
+    inline _LIBCPP_INLINE_VISIBILITY size_type size()     const noexcept { return __size_; }
+    inline _LIBCPP_INLINE_VISIBILITY size_type max_size() const noexcept { return __size_; }
+    inline _LIBCPP_INLINE_VISIBILITY bool      empty()    const noexcept { return __size_ == 0; }
+
+    // element access:
+    inline _LIBCPP_INLINE_VISIBILITY reference       operator[](size_type __n)       { return data()[__n]; }
+    inline _LIBCPP_INLINE_VISIBILITY const_reference operator[](size_type __n) const { return data()[__n]; }
+
+    inline _LIBCPP_INLINE_VISIBILITY reference       front()       { return data()[0]; }
+    inline _LIBCPP_INLINE_VISIBILITY const_reference front() const { return data()[0]; }
+    inline _LIBCPP_INLINE_VISIBILITY reference       back()        { return data()[__size_-1]; }
+    inline _LIBCPP_INLINE_VISIBILITY const_reference back()  const { return data()[__size_-1]; }
+
+    inline _LIBCPP_INLINE_VISIBILITY const_reference at(size_type __n) const;
+    inline _LIBCPP_INLINE_VISIBILITY reference       at(size_type __n);
+
+    // data access:
+    inline _LIBCPP_INLINE_VISIBILITY _Tp*       data()       noexcept { return __base_; }
+    inline _LIBCPP_INLINE_VISIBILITY const _Tp* data() const noexcept { return __base_; }
+
+    // mutating member functions:
+    inline _LIBCPP_INLINE_VISIBILITY void fill(const value_type& __v) { fill_n(begin(), __size_, __v); }
+};
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+dynarray<_Tp>::dynarray(size_type __c) : dynarray ()
+{
+    __base_ = __allocate (__c);
+    value_type *__data = data ();
+    for ( __size_ = 0; __size_ < __c; ++__size_, ++__data )
+        ::new (__data) value_type;
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+dynarray<_Tp>::dynarray(size_type __c, const value_type& __v) : dynarray ()
+{
+    __base_ = __allocate (__c);
+    value_type *__data = data ();
+    for ( __size_ = 0; __size_ < __c; ++__size_, ++__data )
+        ::new (__data) value_type (__v);
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+dynarray<_Tp>::dynarray(initializer_list<value_type> __il) : dynarray ()
+{
+    size_t sz = __il.size();
+    __base_ = __allocate (sz);
+    value_type *__data = data ();
+    auto src = __il.begin();
+    for ( __size_ = 0; __size_ < sz; ++__size_, ++__data, ++src )
+        ::new (__data) value_type (*src);
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+dynarray<_Tp>::dynarray(const dynarray& __d) : dynarray ()
+{
+    size_t sz = __d.size();
+    __base_ = __allocate (sz);
+    value_type *__data = data ();
+    auto src = __d.begin();
+    for ( __size_ = 0; __size_ < sz; ++__size_, ++__data, ++src )
+        ::new (__data) value_type (*src);
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+dynarray<_Tp>::~dynarray()
+{ 
+    value_type *__data = data () + __size_;
+    for ( size_t i = 0; i < __size_; ++i )
+        (--__data)->value_type::~value_type();
+    __deallocate ( __base_ );
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+typename dynarray<_Tp>::reference
+dynarray<_Tp>::at(size_type __n)
+{
+    if (__n >= __size_)
+    {
+#ifndef _LIBCPP_NO_EXCEPTIONS
+        throw out_of_range("dynarray::at");
+#else
+        assert(!"dynarray::at out_of_range");
+#endif
+    }
+    return data()[__n];
+}
+
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY
+typename dynarray<_Tp>::const_reference
+dynarray<_Tp>::at(size_type __n) const
+{
+    if (__n >= __size_)
+    {
+#ifndef _LIBCPP_NO_EXCEPTIONS
+        throw out_of_range("dynarray::at");
+#else
+        assert(!"dynarray::at out_of_range");
+#endif
+    }
+    return data()[__n];
+}
+
+}}}
+
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+template <class _Tp, class _Alloc>
+struct _LIBCPP_TYPE_VIS_ONLY uses_allocator<std::experimental::dynarray<_Tp>, _Alloc> : true_type {};
+_LIBCPP_END_NAMESPACE_STD
+
+#endif  // if _LIBCPP_STD_VER > 11 
+#endif  // _LIBCPP_DYNARRAY

@@ -3043,6 +3043,7 @@ REGISTER_OP("QuantizeV2")
         "'HALF_AWAY_FROM_ZERO'")
     .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
+    .Attr("ensure_minimum_range: float = 0.01")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
       Status s = c->GetAttr("axis", &axis);

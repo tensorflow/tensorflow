@@ -18,10 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import image_ops_impl as image_ops
+from tensorflow.python.ops import math_ops
 
 ResizeMethod = image_ops.ResizeMethod
 
@@ -84,6 +89,78 @@ class Resizing(Layer):
         'interpolation': self.interpolation,
     }
     base_config = super(Resizing, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class CenterCrop(Layer):
+  """Crop the central portion of the images to target height and width.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, target_height, target_width, channels)`.
+
+  If the input height/width is even and the target height/width is odd (or
+  inversely), the input image is left-padded by 1 pixel.
+
+  Attributes:
+    height: Integer, the height of the output shape.
+    width: Integer, the width of the output shape.
+  """
+
+  def __init__(self, height, width, **kwargs):
+    self.target_height = height
+    self.target_width = width
+    self.input_spec = InputSpec(ndim=4)
+    super(CenterCrop, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    channel_axis = 3
+    channel_dim = int(input_shape[channel_axis])
+    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
+    self.built = True
+
+  def call(self, inputs):
+    inputs_shape = array_ops.shape(inputs)
+    h_axis, w_axis = 1, 2
+    img_hd = inputs_shape[h_axis]
+    img_wd = inputs_shape[w_axis]
+    img_hd_diff = img_hd - self.target_height
+    img_wd_diff = img_wd - self.target_width
+    checks = []
+    checks.append(
+        check_ops.assert_non_negative(
+            img_hd_diff,
+            message='The crop height {} should not be greater than input '
+            'height.'.format(self.target_height)))
+    checks.append(
+        check_ops.assert_non_negative(
+            img_wd_diff,
+            message='The crop width {} should not be greater than input '
+            'width.'.format(self.target_width)))
+    with ops.control_dependencies(checks):
+      bbox_h_start = math_ops.cast(img_hd_diff / 2, dtypes.int32)
+      bbox_w_start = math_ops.cast(img_wd_diff / 2, dtypes.int32)
+      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops.stack(
+          [-1, self.target_height, self.target_width, -1])
+      outputs = array_ops.slice(inputs, bbox_begin, bbox_size)
+      return outputs
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    return tensor_shape.TensorShape(
+        [input_shape[0], self.target_height, self.target_width, input_shape[3]])
+
+  def get_config(self):
+    config = {
+        'height': self.target_height,
+        'width': self.target_width,
+    }
+    base_config = super(CenterCrop, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 

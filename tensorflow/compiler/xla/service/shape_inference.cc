@@ -928,8 +928,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64> broadcast_dimensions) {
   VLOG(2) << StrFormat(
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
-      HloOpcodeString(opcode), ShapeUtil::HumanString(lhs),
-      ShapeUtil::HumanString(rhs), StrJoin(broadcast_dimensions, ", "));
+      HloOpcodeString(opcode), ShapeUtil::HumanStringWithLayout(lhs),
+      ShapeUtil::HumanStringWithLayout(rhs),
+      StrJoin(broadcast_dimensions, ", "));
+
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 

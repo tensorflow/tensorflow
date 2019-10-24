@@ -232,7 +232,8 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
                                 info.rhsType.getScale() /
                                 info.resultType.getScale();
   if (outputMultiplierReal > 1.0) {
-    info.op->emitWarning("unimplemented: cannot multiply with multipler > 1.0");
+    info.op->emitWarning(
+        "unimplemented: cannot multiply with multiplier > 1.0");
     return failure();
   }
 

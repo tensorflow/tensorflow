@@ -1,0 +1,172 @@
+// -*- C++ -*-
+//===----------------------------- new ------------------------------------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_NEW
+#define _LIBCPP_NEW
+
+/*
+    new synopsis
+
+namespace std
+{
+
+class bad_alloc
+    : public exception
+{
+public:
+    bad_alloc() noexcept;
+    bad_alloc(const bad_alloc&) noexcept;
+    bad_alloc& operator=(const bad_alloc&) noexcept;
+    virtual const char* what() const noexcept;
+};
+
+class bad_array_length : public bad_alloc // C++14
+{
+public:
+    bad_array_length() noexcept;
+};
+
+class bad_array_new_length : public bad_alloc
+{
+public:
+    bad_array_new_length() noexcept;
+};
+
+struct nothrow_t {};
+extern const nothrow_t nothrow;
+typedef void (*new_handler)();
+// xcore requires arg 'new_p' to have its fptrgroup attribute set viz:
+//    __attribute__((fptrgroup("std_new_handler"))) void myHandler() {...}
+new_handler set_new_handler(new_handler new_p) noexcept;
+new_handler get_new_handler() noexcept;
+
+}  // std
+
+void* operator new(std::size_t size);                                   // replaceable
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept;   // replaceable
+void  operator delete(void* ptr) noexcept;                              // replaceable
+void  operator delete(void* ptr, const std::nothrow_t&) noexcept;       // replaceable
+
+void* operator new[](std::size_t size);                                 // replaceable
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept; // replaceable
+void  operator delete[](void* ptr) noexcept;                            // replaceable
+void  operator delete[](void* ptr, const std::nothrow_t&) noexcept;     // replaceable
+
+void* operator new  (std::size_t size, void* ptr) noexcept;
+void* operator new[](std::size_t size, void* ptr) noexcept;
+void  operator delete  (void* ptr, void*) noexcept;
+void  operator delete[](void* ptr, void*) noexcept;
+
+*/
+
+#include <__config>
+#include <exception>
+#include <cstddef>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+namespace std  // purposefully not using versioning namespace
+{
+
+class _LIBCPP_EXCEPTION_ABI bad_alloc
+    : public exception
+{
+public:
+    bad_alloc() _NOEXCEPT;
+    virtual ~bad_alloc() _NOEXCEPT;
+    virtual const char* what() const _NOEXCEPT;
+};
+
+class _LIBCPP_EXCEPTION_ABI bad_array_new_length
+    : public bad_alloc
+{
+public:
+    bad_array_new_length() _NOEXCEPT;
+    virtual ~bad_array_new_length() _NOEXCEPT;
+    virtual const char* what() const _NOEXCEPT;
+};
+
+#if defined(_LIBCPP_BUILDING_NEW) || (_LIBCPP_STD_VER > 11)
+
+class _LIBCPP_EXCEPTION_ABI bad_array_length
+    : public bad_alloc
+{
+public:
+    bad_array_length() _NOEXCEPT;
+    virtual ~bad_array_length() _NOEXCEPT;
+    virtual const char* what() const _NOEXCEPT;
+};
+
+#define _LIBCPP_BAD_ARRAY_LENGTH_DEFINED
+
+#endif  // defined(_LIBCPP_BUILDING_NEW) || (_LIBCPP_STD_VER > 11)
+
+_LIBCPP_FUNC_VIS void __throw_bad_alloc();  // not in C++ spec
+
+struct _LIBCPP_TYPE_VIS nothrow_t {};
+extern _LIBCPP_FUNC_VIS const nothrow_t nothrow;
+typedef void (*new_handler)();
+_LIBCPP_FUNC_VIS new_handler set_new_handler(new_handler) _NOEXCEPT;
+_LIBCPP_FUNC_VIS new_handler get_new_handler() _NOEXCEPT;
+
+}  // std
+
+#if defined(_WIN32) && !defined(cxx_EXPORTS)
+# define _LIBCPP_NEW_DELETE_VIS _LIBCPP_FUNC_VIS_ONLY
+#else
+# define _LIBCPP_NEW_DELETE_VIS _LIBCPP_FUNC_VIS
+#endif
+
+_LIBCPP_NEW_DELETE_VIS void* operator new(std::size_t __sz)
+#if !__has_feature(cxx_noexcept)
+    throw(std::bad_alloc)
+#endif
+;
+_LIBCPP_NEW_DELETE_VIS void* operator new(std::size_t __sz, const std::nothrow_t&) _NOEXCEPT _NOALIAS;
+_LIBCPP_NEW_DELETE_VIS void  operator delete(void* __p) _NOEXCEPT;
+_LIBCPP_NEW_DELETE_VIS void  operator delete(void* __p, const std::nothrow_t&) _NOEXCEPT;
+
+_LIBCPP_NEW_DELETE_VIS void* operator new[](std::size_t __sz)
+#if !__has_feature(cxx_noexcept)
+    throw(std::bad_alloc)
+#endif
+;
+_LIBCPP_NEW_DELETE_VIS void* operator new[](std::size_t __sz, const std::nothrow_t&) _NOEXCEPT _NOALIAS;
+_LIBCPP_NEW_DELETE_VIS void  operator delete[](void* __p) _NOEXCEPT;
+_LIBCPP_NEW_DELETE_VIS void  operator delete[](void* __p, const std::nothrow_t&) _NOEXCEPT;
+
+inline _LIBCPP_INLINE_VISIBILITY void* operator new  (std::size_t, void* __p) _NOEXCEPT {return __p;}
+inline _LIBCPP_INLINE_VISIBILITY void* operator new[](std::size_t, void* __p) _NOEXCEPT {return __p;}
+inline _LIBCPP_INLINE_VISIBILITY void  operator delete  (void*, void*) _NOEXCEPT {}
+inline _LIBCPP_INLINE_VISIBILITY void  operator delete[](void*, void*) _NOEXCEPT {}
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+inline _LIBCPP_INLINE_VISIBILITY void *__allocate(size_t __size) {
+#ifdef _LIBCPP_HAS_NO_BUILTIN_OPERATOR_NEW_DELETE
+  return ::operator new(__size);
+#else
+  return __builtin_operator_new(__size);
+#endif
+}
+
+inline _LIBCPP_INLINE_VISIBILITY void __deallocate(void *__ptr) {
+#ifdef _LIBCPP_HAS_NO_BUILTIN_OPERATOR_NEW_DELETE
+  ::operator delete(__ptr);
+#else
+  __builtin_operator_delete(__ptr);
+#endif
+}
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif  // _LIBCPP_NEW

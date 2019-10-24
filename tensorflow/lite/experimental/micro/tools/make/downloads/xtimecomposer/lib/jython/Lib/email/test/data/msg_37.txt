@@ -1,0 +1,22 @@
+Content-Type: multipart/mixed; boundary=ABCDE
+
+--ABCDE
+Content-Type: text/x-one
+
+Blah
+
+--ABCDE
+--ABCDE
+Content-Type: text/x-two
+
+Blah
+
+--ABCDE
+--ABCDE
+--ABCDE
+--ABCDE
+Content-Type: text/x-two
+
+Blah
+
+--ABCDE--

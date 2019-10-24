@@ -1,0 +1,6 @@
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+X-Foobar-Spoink-Defrobnit: wasnipoop; giraffes="very-long-necked-animals";
+	spooge="yummy"; hippos="gargantuan"; marshmallows="gooey"
+

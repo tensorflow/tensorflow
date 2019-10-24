@@ -44,12 +44,21 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "profiler_service_monitor_result_proto",
+    srcs = ["profiler_service_monitor_result.proto"],
+    cc_api_version = 2,
+)
+
+tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
+    protodeps = [
+        ":op_profile_proto",
+        ":profiler_service_monitor_result_proto",
+    ] + tf_additional_all_protos(),
 )
 
 tf_proto_library(
@@ -69,6 +78,7 @@ tf_proto_library(
             "profiler_service.proto",
             "profiler_analysis.proto",
             "op_profile.proto",
+            "profiler_service_monitor_result.proto",
         ],
     ),
     cc_api_version = 2,

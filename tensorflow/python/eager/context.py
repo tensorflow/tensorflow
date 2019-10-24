@@ -606,7 +606,7 @@ class Context(object):
 
     Args:
       collective_leader: a device string for collective leader, e.g.
-        "/job:worker/replica:0/task:"; empty string means local execution of
+        "/job:worker/replica:0/task:0"; empty string means local execution of
           collective ops.
       scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
         allocator to run with.
@@ -729,6 +729,8 @@ class Context(object):
     """
     if isinstance(name, LogicalDevice):
       name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -1243,7 +1245,7 @@ class Context(object):
               "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
-                       dev.device_type())
+                       dev.device_type)
 
     if self._virtual_device_map.get(dev) == virtual_devices:
       return

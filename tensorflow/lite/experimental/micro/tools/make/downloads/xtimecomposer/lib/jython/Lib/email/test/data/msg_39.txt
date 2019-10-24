@@ -1,0 +1,83 @@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----- =_aaaaaaaaaa0"
+
+------- =_aaaaaaaaaa0
+Content-Type: multipart/mixed; boundary="----- =_aaaaaaaaaa1"
+Content-ID: <20592.1022586929.1@example.com>
+
+------- =_aaaaaaaaaa1
+Content-Type: multipart/alternative; boundary="----- =_aaaaaaaaaa1"
+Content-ID: <20592.1022586929.2@example.com>
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.3@example.com>
+Content-Description: patch1
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.4@example.com>
+Content-Description: patch2
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1--
+
+------- =_aaaaaaaaaa1
+Content-Type: multipart/alternative; boundary="----- =_aaaaaaaaaa1"
+Content-ID: <20592.1022586929.6@example.com>
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.7@example.com>
+Content-Description: patch3
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.8@example.com>
+Content-Description: patch4
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1--
+
+------- =_aaaaaaaaaa1
+Content-Type: multipart/alternative; boundary="----- =_aaaaaaaaaa1"
+Content-ID: <20592.1022586929.10@example.com>
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.11@example.com>
+Content-Description: patch5
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1
+Content-Type: application/octet-stream
+Content-ID: <20592.1022586929.12@example.com>
+Content-Description: patch6
+Content-Transfer-Encoding: base64
+
+XXX
+
+------- =_aaaaaaaaaa1--
+
+------- =_aaaaaaaaaa1--
+
+------- =_aaaaaaaaaa0
+Content-Type: text/plain; charset="us-ascii"
+Content-ID: <20592.1022586929.15@example.com>
+
+--
+It's never too late to have a happy childhood.
+
+------- =_aaaaaaaaaa0--

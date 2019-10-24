@@ -1,0 +1,12 @@
+MIME-Version: 1.0
+From: Barry <barry@digicool.com>
+To: Dingus Lovers <cravindogs@cravindogs.com>
+Subject: Here is your dingus fish
+Date: Fri, 20 Apr 2001 19:35:02 -0400
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+Hi there,
+
+This is the dingus fish.
+
+[Non-text (image/gif) part of message omitted, filename dingusfish.gif]

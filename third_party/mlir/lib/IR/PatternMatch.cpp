@@ -101,6 +101,14 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
   // the notifyOperationRemoved hook in the process.
 }
 
+/// This method erases an operation that is known to have no uses. The uses of
+/// the given operation *must* be known to be dead.
+void PatternRewriter::eraseOp(Operation *op) {
+  assert(op->use_empty() && "expected 'op' to have no uses");
+  notifyOperationRemoved(op);
+  op->erase();
+}
+
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(

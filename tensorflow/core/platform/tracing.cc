@@ -20,10 +20,11 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace tracing {

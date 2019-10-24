@@ -1,0 +1,186 @@
+.DEFAULT_GOAL := all
+
+# User must use xmake and not make
+ifneq ($(basename $(notdir $(lastword $(MAKE)))),xmake)
+  $(error You must use `xmake' to build the project and not `$(MAKE)')
+endif
+
+ifeq ($(_COMMON1),1)
+
+else
+
+export
+
+# Overide windows shell in case cygwin is present
+SHELL := $(if $(findstring Windows, $(OS))$(findstring WINDOWS,$(OS)),$(windir)\system32\cmd.exe,$(SHELL))
+
+MAKEFILE_LIST1 := $(foreach x, $(MAKEFILE_LIST), $(if $(wildcard $x),$x,"""$x"""))
+MAKEFILE_LIST2 := $(subst """,,$(subst """  """,&&&,$(MAKEFILE_LIST1)))
+
+XCOMMON_MAKEFILE := $(subst &&&,\ ,$(filter %Makefile.common,$(MAKEFILE_LIST2)))
+
+CURRENT_MAKEFILE := $(filter-out %Makefile.common,$(MAKEFILE_LIST2))
+
+MODULE_XCOMMON_DIR := $(patsubst %/Makefile.common,%,$(XCOMMON_MAKEFILE))/..
+
+include $(MODULE_XCOMMON_DIR)/build/Makefile.file_handling
+
+
+BASE_DIR ?= .
+
+VERBOSE ?= 0
+
+export VERBOSE
+
+ifeq ($(strip $(APP_NAME)),)
+APP_NAME := $(call UNMANGLE,$(notdir $(call MANGLE,$(abspath .))))
+endif
+APP_NAME ?= $(call UNMANGLE,$(notdir $(call MANGLE,$(abspath .))))
+
+APP_NAME := $(subst $(SP),\$(SP),$(subst \$(SP),$(SP),$(subst $(QUOTE),,$(strip $(APP_NAME)))))
+
+CONFIG_EXT = $(if $(CONFIG),$(if $(filter Default Release,$(CONFIG)),,_$(CONFIG)),)
+
+ifneq ($(CONFIG),All)
+APP_NAME := $(APP_NAME)$(CONFIG_EXT)
+endif
+
+APP_NAME0 := $(APP_NAME)
+
+BIN_DIR=$(BASE_DIR)/bin/$(if $(filter Default,$(CONFIG)),,$(CONFIG))
+
+EXPLICIT_DEFAULT=$(if $(filter XCC_FLAGS,$(.VARIABLES)),Default,)
+
+ALL_CONFIGS = $(sort $(EXPLICIT_DEFAULT) $(strip $(foreach x,$(filter XCC_FLAGS_%,$(.VARIABLES)),$(if $(findstring .,$x),,$(subst XCC_FLAGS_,,$x)))) $(strip $(foreach x,$(filter INCLUDE_ONLY_IN_%,$(.VARIABLES)),$(subst INCLUDE_ONLY_IN_,,$x))))
+
+OTHER_CONFIGS = $(filter-out $(CONFIG),$(ALL_CONFIGS))
+
+ifeq ($(BUILDING_LIBRARY),)
+CONFIG ?= $(if $(word 2,$(ALL_CONFIGS)),All,$(ALL_CONFIGS))
+else
+CONFIG := $(LIBRARY)
+endif
+
+ifeq ($(filter $(CONFIG),All $(ALL_CONFIGS)),$(CONFIG))
+VALID_CONFIG := 1
+else
+VALID_CONFIG := 0
+endif
+
+ifeq ($(VERBOSE),1)
+AT =
+else
+AT = @
+endif
+
+default_target: all
+	@echo "Done"
+
+.PHONY: $(BIN_DIR)/$(APP_NAME).xe
+.PHONY: clean_common
+
+$(BIN_DIR)/$(APP_NAME).xe: analyze
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory $(BIN_DIR)/$(APP_NAME).xe
+
+check_module_deps:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory check_module_deps
+
+check_modules:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory check_modules
+
+check_modules_msg:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory check_modules_msg
+
+
+analyze:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory analyze
+
+BIN_TARGETS = check_modules_msg check_modules check_module_deps $(BIN_DIR)/$(APP_NAME).xe
+
+clean_common:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory clean_common
+
+list_includes_xcore:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory list_includes
+
+show_xcore_dirs:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory show_xcore_dirs
+
+report_modules:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory list_modules
+
+project_info: report_modules list_includes_xcore show_xcore_dirs
+
+
+taskgraph:
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common1 --no-print-directory taskgraph
+
+
+# The final target of the build. This is usually dependent on a binary file
+# in the $(BIN_DIR) directory e.g.
+#
+#  all : $(BIN_DIR)/my_app.xe
+ifeq ($(OVERRIDE_ALL_TARGET),)
+ifeq ($(VALID_CONFIG),0)
+
+.PHONY: report_invalid
+report_invalid:
+	@echo Invalid build configuration: $(CONFIG)
+	@echo
+	@echo Valid build configurations are: $(ALL_CONFIGS)
+
+all: report_invalid
+	$(error Invalid configuration)
+
+else
+ifeq ($(CONFIG),All)
+
+%.all: CONFIG0=$*
+%.all: BIN_DIR0=$(BASE_DIR)/bin/$(if $(filter Default,$*),,$*)
+
+%.all:
+	@echo Building configuration $(CONFIG0)
+	@$(MAKE) BIN_DIR=$(BIN_DIR0) CONFIG=$(CONFIG0) --no-print-directory all
+
+
+all: $(foreach config,$(ALL_CONFIGS),$(config).all)
+	@echo Built all configurations
+else
+all: $(PREBUILD_TARGET) $(BIN_TARGETS)
+	@echo Build Complete
+	$(if $(POSTBUILD_TARGET),@$(MAKE) --no-print-directory $(POSTBUILD_TARGET))
+	$(if $(POSTBUILD_TARGET),@echo Post-build complete)
+
+endif
+endif
+endif
+
+ifeq ($(OVERRIDE_CLEAN_TARGET),)
+ifeq ($(VALID_CONFIG),0)
+clean:
+	@echo Invalid build configuration: $(CONFIG)
+	@echo
+	@echo Valid build configurations are: $(ALL_CONFIGS)
+else
+ifeq ($(CONFIG),All)
+
+%.clean: CONFIG0=$*
+%.clean: BIN_DIR0=$(BASE_DIR)/bin/$(if $(filter Default,$*),,$*)
+
+%.clean:
+	@echo Cleaning configuration $(CONFIG0)
+	@$(MAKE) -f $(MODULE_XCOMMON_DIR)/build/Makefile.common BIN_DIR=$(BIN_DIR0) CONFIG=$(CONFIG0) --no-print-directory clean
+
+clean: $(foreach config,$(ALL_CONFIGS),$(config).clean)
+	@echo Cleaned all configurations
+else
+
+clean: clean_common
+endif
+endif
+endif
+
+endif
+
+allconfigs:
+	@echo $(ALL_CONFIGS)

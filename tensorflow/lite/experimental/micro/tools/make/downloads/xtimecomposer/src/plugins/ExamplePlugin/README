@@ -1,0 +1,12 @@
+This is an example plugin using the XMOS Simulator Interface (XSI).
+
+To build:
+
+Windows (using Visual Studio):
+  nmake -f MakefilePC.mak
+
+Linux:
+  make -f MakefileUnix.mak
+
+Mac:
+  make -f MakefileMac.mak

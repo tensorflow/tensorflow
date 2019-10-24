@@ -32,9 +32,17 @@ class Profiler {
 
   virtual ~Profiler() {}
 
-  // Signals the beginning of an event, returning a handle to the profile event.
+  // Signals the beginning of an event from a subgraph indexed at
+  // 'event_subgraph_index', returning a handle to the profile event.
   virtual uint32_t BeginEvent(const char* tag, EventType event_type,
-                              uint32_t event_metadata) = 0;
+                              uint32_t event_metadata,
+                              uint32_t event_subgraph_index) = 0;
+  // Similar w/ the above, but the event comes from the primary subgraph that's
+  // indexed at 0.
+  virtual uint32_t BeginEvent(const char* tag, EventType event_type,
+                              uint32_t event_metadata) {
+    return BeginEvent(tag, event_type, event_metadata, /*primary subgraph*/ 0);
+  }
 
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
@@ -81,5 +89,9 @@ class ScopedOperatorProfile : public ScopedProfile {
       (profiler), (tag), (node_index))
 #define TFLITE_SCOPED_OPERATOR_PROFILE(profiler, node_index) \
   TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "OpInvoke", (node_index))
+
+#define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, node_index)   \
+  TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "DelegateOpInvoke", \
+                                        (node_index))
 
 #endif  // TENSORFLOW_LITE_CORE_API_PROFILER_H_

@@ -305,6 +305,12 @@ def run_functions_eagerly(run_eagerly):
   RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
 
 
+@tf_export("config.experimental_functions_run_eagerly")
+def functions_run_eagerly():
+  """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return RUN_FUNCTIONS_EAGERLY
+
+
 class FunctionDeleter(object):
 
   def __init__(self, func_graph):
@@ -549,7 +555,18 @@ class Function(object):
       return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    result = self._call(*args, **kwds)
+    if self._experimental_compile:
+      # V2 control flow relies on XLAControlFlowContext to generate a
+      # XLA-compatible function graph.
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      try:
+        xla_context.Enter()
+        result = self._call(*args, **kwds)
+      finally:
+        xla_context.Exit()
+    else:
+      result = self._call(*args, **kwds)
+
     if tracing_count == self._get_tracing_count():
       self._call_counter.called_without_tracing()
       return result

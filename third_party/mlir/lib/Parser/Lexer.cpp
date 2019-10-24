@@ -30,7 +30,7 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-// Returns true if 'c' is an allowable puncuation character: [$._-]
+// Returns true if 'c' is an allowable punctuation character: [$._-]
 // Returns false otherwise.
 static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
@@ -284,7 +284,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 
   // Handle the hexadecimal case.
   if (curPtr[-1] == '0' && *curPtr == 'x') {
-    // If we see stuff like 0xi32, this is a literal `0` follwed by an
+    // If we see stuff like 0xi32, this is a literal `0` followed by an
     // identifier `xi32`, stop after `0`.
     if (!isxdigit(curPtr[1]))
       return formToken(Token::integer, tokStart);

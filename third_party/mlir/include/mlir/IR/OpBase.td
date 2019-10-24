@@ -363,6 +363,17 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class Complex<Type type>
+    : Type<And<[
+          CPred<"$_self.isa<ComplexType>()">,
+          SubstLeaves<"$_self", "$_self.cast<ComplexType>().getElementType()",
+           type.predicate>]>,
+           "complex type with " # type.description # " elements"> {
+  Type elementType = type;
+}
+
+def AnyComplex : Type<CPred<"$_self.isa<ComplexType>()">, "complex-type">;
+
 class OpaqueType<string dialect, string name, string description>
   : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
          description>;
@@ -959,13 +970,31 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "RankedTensorType::get({}, $_builder.getIntegerType(" # width # ")), "
     "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
   let convertFromStorage = "$_self";
 }
 
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
+
+class FloatElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseElementsAttr>().getType()."
+      "getElementType().isF" # width # "()">,
+  width # "-bit float elements attribute"> {
+
+  let storageType = [{ DenseElementsAttr }];
+  let returnType = [{ DenseElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "RankedTensorType::get({}, $_builder.getF" # width # "Type()),"
+    "llvm::makeArrayRef($0))";
+  let convertFromStorage = "$_self";
+}
+
+def F64ElementsAttr : FloatElementsAttr<64>;
 
 // A `width`-bit floating point elements attribute. The attribute should be
 // ranked and has a shape as specified in `dims`.
@@ -984,7 +1013,7 @@ class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
   let returnType = [{ DenseFPElementsAttr }];
 
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "RankedTensorType::get({" # StrJoinInt<dims>.result #
     "}, $_builder.getF" # width # "Type()), "
     "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
   let convertFromStorage = "$_self";
@@ -1250,6 +1279,8 @@ def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
+// Op is a symbol.
+def Symbol : NativeOpTrait<"Symbol">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

@@ -1,0 +1,22 @@
+<XSystem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="XSystem.xsd">
+  <System>
+    <Nodes>
+      <Node number="0" jtagId="0x2633" userId="0x00000000">
+        <Switch sLinks="8"/>
+        <Processor number="0" numThreads="5" numTimers="10" numLocks="4" numSyncs="7" numChanEnds="32" numClkBlks="6">
+          <MemoryController>
+            <Ram base="0x10000" size="0x10000"/>
+          </MemoryController>
+        </Processor>
+      </Node>
+    </Nodes>
+
+    <Connections>
+      <PLink width="9" pLink="0,0,0" outBufferBytes="4" inBufferBytes="5"/>
+      <PLink width="9" pLink="0,0,1" outBufferBytes="4" inBufferBytes="5"/>
+      <PLink width="9" pLink="0,0,2" outBufferBytes="4" inBufferBytes="5"/>
+      <PLink width="9" pLink="0,0,3" outBufferBytes="4" inBufferBytes="5"/>
+    </Connections>
+
+  </System>
+</XSystem>

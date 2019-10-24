@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+import os
+from waflib import Scripting
+
+WAFVERSION = "2.0.17"
+
+if __name__ == '__main__':
+    Scripting.waf_entry_point(os.getcwd(), WAFVERSION, '.')
+

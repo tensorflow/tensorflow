@@ -51,6 +51,12 @@ limitations under the License.
     return nullptr;                                                         \
   }
 
+#define TFLITE_PY_NODES_BOUNDS_CHECK(i)                   \
+  if (i >= interpreter_->nodes_size() || i < 0) {         \
+    PyErr_Format(PyExc_ValueError, "Invalid node index"); \
+    return nullptr;                                       \
+  }
+
 #define TFLITE_PY_ENSURE_VALID_INTERPRETER()                               \
   if (!interpreter_) {                                                     \
     PyErr_SetString(PyExc_ValueError, "Interpreter was not initialized."); \
@@ -357,6 +363,52 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
     dynamic_buffer.WriteToTensor(tensor, nullptr);
   }
   Py_RETURN_NONE;
+}
+
+int InterpreterWrapper::NumNodes() const {
+  if (!interpreter_) {
+    return 0;
+  }
+  return interpreter_->nodes_size();
+}
+
+PyObject* InterpreterWrapper::NodeInputs(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_NODES_BOUNDS_CHECK(i);
+
+  const TfLiteNode* node = &(interpreter_->node_and_registration(i)->first);
+  PyObject* inputs =
+      PyArrayFromIntVector(node->inputs->data, node->inputs->size);
+  return inputs;
+}
+
+PyObject* InterpreterWrapper::NodeOutputs(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_NODES_BOUNDS_CHECK(i);
+
+  const TfLiteNode* node = &(interpreter_->node_and_registration(i)->first);
+  PyObject* outputs =
+      PyArrayFromIntVector(node->outputs->data, node->outputs->size);
+  return outputs;
+}
+
+std::string InterpreterWrapper::NodeName(int i) const {
+  if (!interpreter_ || i >= interpreter_->nodes_size() || i < 0) {
+    return "";
+  }
+  // Get op name from registration
+  const TfLiteRegistration* node_registration =
+      &(interpreter_->node_and_registration(i)->second);
+  int32_t op_code = node_registration->builtin_code;
+  std::string op_name;
+  if (op_code == tflite::BuiltinOperator_CUSTOM) {
+    const char* custom_name = node_registration->custom_name;
+    op_name = custom_name ? custom_name : "UnknownCustomOp";
+  } else {
+    op_name = tflite::EnumNamesBuiltinOperator()[op_code];
+  }
+  std::string op_name_str(op_name);
+  return op_name_str;
 }
 
 namespace {
