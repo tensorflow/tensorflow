@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // Automatically created from a TensorFlow Lite flatbuffer using the command:
-// xxd -i sine_model.tflite > sine_model_data.cc
+// xxd -i mnist_model.tflite > mnist_model_data.cc
 // See the README for a full description of the creation process.
 
-#include "tensorflow/lite/experimental/micro/examples/hello_xmos/sine_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/hello_xmos/mnist_model_data.h"
 
 // We need to keep the data array aligned on some architectures.
 #ifdef __has_attribute
@@ -32,7 +32,7 @@ limitations under the License.
 #endif
 
 // model data from xxd -i  model_quant.tflite > model_quant.cc
-extern const unsigned char g_sine_model_data[] = {
+extern const unsigned char g_mnist_model_data[] = {
   0x18, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x0e, 0x00,
   0x18, 0x00, 0x04, 0x00, 0x08, 0x00, 0x0c, 0x00, 0x10, 0x00, 0x14, 0x00,
   0x0e, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x74, 0x22, 0x00, 0x00,
@@ -777,7 +777,7 @@ extern const unsigned char g_sine_model_data[] = {
   0x0c, 0x00, 0x07, 0x00, 0x00, 0x00, 0x08, 0x00, 0x0a, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x09, 0x04, 0x00, 0x00, 0x00
 };
-extern const int g_sine_model_data_len = 8912;
+extern const int g_mnist_model_data_len = 8912;
 
 extern const float g_digits[10][784] = {
 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 

@@ -30,7 +30,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_sine_model_data);
+  const tflite::Model* model = ::tflite::GetModel(g_mnist_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
