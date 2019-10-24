@@ -151,4 +151,7 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 4,
+    tags = [
+        "no_windows_gpu",
+    ],
 )
