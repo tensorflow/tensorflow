@@ -13,7 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/hello_xmos/constants.h"
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_OUTPUT_HANDLER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_OUTPUT_HANDLER_H_
 
-// This is a small number so that it's easy to read the logs
-const int kInferencesPerCycle = 20;
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+
+// Called by the main loop to produce some output based on the x and y values
+void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
+                  float y_value);
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_OUTPUT_HANDLER_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_XMOS_CONSTANTS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_XMOS_CONSTANTS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_CONSTANTS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_CONSTANTS_H_
 
 // This constant determines the number of inferences to perform across the range
 // of x values defined above. Since each inference takes time, the higher this

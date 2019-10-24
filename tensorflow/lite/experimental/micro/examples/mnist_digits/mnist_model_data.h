@@ -18,8 +18,8 @@ limitations under the License.
 // don't have a file system. It was created using the command:
 // xxd -i mnist_model.tflite > mnist_model_data.cc
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_XMOS_mnist_MODEL_DATA_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_XMOS_mnist_MODEL_DATA_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_mnist_MODEL_DATA_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MNIST_DIGITS_mnist_MODEL_DATA_H_
 
 extern const unsigned char g_mnist_model_data[];
 extern const int g_mnist_model_data_len;

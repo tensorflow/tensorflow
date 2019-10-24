@@ -21,14 +21,14 @@ cc_library(
 )
 
 tflite_micro_cc_test(
-    name = "hello_xmos_test",
+    name = "mnist_digits_test",
     srcs = [
         "hello_world_test.cc",
     ],
     deps = [
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/hello_xmos:mnist_model_data",
+        "//tensorflow/lite/experimental/micro/examples/mnist_digits:mnist_model_data",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -61,7 +61,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "hello_xmos",
+    name = "mnist_digits",
     srcs = [
         "main.cc",
     ],
@@ -75,7 +75,7 @@ cc_binary(
         ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/hello_xmos:mnist_model_data",
+        "//tensorflow/lite/experimental/micro/examples/mnist_digits:mnist_model_data",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],

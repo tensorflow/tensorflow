@@ -13,21 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/hello_xmos/output_handler.h"
+#include "tensorflow/lite/experimental/micro/examples/mnist_digits/output_handler.h"
 
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
-#include "tensorflow/lite/experimental/micro/testing/test_utils.h"
-
-TF_LITE_MICRO_TESTS_BEGIN
-
-TF_LITE_MICRO_TEST(TestCallability) {
-  tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
-
-  // This will have external side-effects (like printing to the debug console
-  // or lighting an LED) that are hard to observe, so the most we can do is
-  // make sure the call doesn't crash.
-  HandleOutput(error_reporter, 0, 0);
+void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
+                  float y_value) {
+  // Log the current X and Y values
+  error_reporter->Report("x_value: %f, y_value: %f\n", x_value, y_value);
 }
-
-TF_LITE_MICRO_TESTS_END

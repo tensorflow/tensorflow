@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/hello_xmos/output_handler.h"
+#include "tensorflow/lite/experimental/micro/examples/mnist_digits/constants.h"
 
-void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
-                  float y_value) {
-  // Log the current X and Y values
-  error_reporter->Report("x_value: %f, y_value: %f\n", x_value, y_value);
-}
+// This is a small number so that it's easy to read the logs
+const int kInferencesPerCycle = 20;

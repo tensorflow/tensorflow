@@ -17,7 +17,7 @@ limitations under the License.
 // xxd -i mnist_model.tflite > mnist_model_data.cc
 // See the README for a full description of the creation process.
 
-#include "tensorflow/lite/experimental/micro/examples/hello_xmos/mnist_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/mnist_digits/mnist_model_data.h"
 
 // We need to keep the data array aligned on some architectures.
 #ifdef __has_attribute
