@@ -67,7 +67,7 @@ def make_prelu_tests(options):
     alpha_values = create_tensor_data(np.float32, alpha_shape)
 
     # There should be only 1 trainable variable tensor.
-    variables = tf.all_variables()
+    variables = tf.compat.v1.all_variables()
     assert len(variables) == 1
     sess.run(variables[0].assign(alpha_values))
 
