@@ -187,17 +187,17 @@ def softsign(x):
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Applies the rectified linear unit activation function.
-  
-  With default values, this returns the standard ReLU activation: 
+
+  With default values, this returns the standard ReLU activation:
   `max(x, 0)`, the element-wise maximum of 0 and the input tensor.
 
-  Modifying default parameters allows you to use non-zero thresholds, 
-  change the max value of the activation, 
-  and to user non-zero multiple of the input for values below the threshold.
+  Modifying default parameters allows you to use non-zero thresholds,
+  change the max value of the activation,
+  and to use a non-zero multiple of the input for values below the threshold.
 
   For example:
   >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
-  >>> tf.keras.activations.relu(foo).numpy() 
+  >>> tf.keras.activations.relu(foo).numpy()
   # ==> array([0., 0., 0., 5., 10.], dtype=float32)
   >>> tf.keras.activations.relu(foo, alpha=0.5).numpy()
   # ==> array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
