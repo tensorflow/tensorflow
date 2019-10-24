@@ -2446,9 +2446,9 @@ class LSTM(RNN):
       batch them into fewer, larger operations. These modes will
       have different performance profiles on different hardware and
       for different applications.
-    return_sequences: Boolean. Whether to return the last output.
+    return_sequences: Boolean (default False). Whether to return the last output.
       in the output sequence, or the full sequence.
-    return_state: Boolean. Whether to return the last state
+    return_state: Boolean (default False). Whether to return the last state
       in addition to the output.
     go_backwards: Boolean (default False).
       If True, process the input sequence backwards and return the
