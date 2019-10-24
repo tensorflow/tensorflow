@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/output_handler.h"
 
-#include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP/bsp/am_bsp.h"
-#include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/tf_accelerometer.h"
-#include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_adc/tf_adc.h"
-#include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/mcu/apollo3/am_mcu_apollo.h"
-#include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/utils/am_util.h"
+#include "am_bsp.h"         // NOLINT
+#include "am_mcu_apollo.h"  // NOLINT
+#include "am_util.h"        // NOLINT
+
+// #include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/tf_accelerometer.h"
+// #include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_adc/tf_adc.h"
 
 void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
   // The first time this method runs, set up our LEDs correctly
