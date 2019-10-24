@@ -58,7 +58,7 @@ def make_lstm_tests(options):
     # forget_bias == 0, inner state activation == tanh.
     # TODO(zhixianyan): Add another test with forget_bias == 1.
     # TODO(zhixianyan): Add another test with relu as activation.
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+    lstm_cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(
         num_cells, forget_bias=0.0, state_is_tuple=True)
     cell_outputs, _ = rnn.static_rnn(
         lstm_cell, inputs_after_split, dtype=tf.float32)

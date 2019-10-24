@@ -40,8 +40,8 @@ def make_unfused_gru_tests(options):
             tf.float32, [parameters["batch_size"], parameters["units"]])
         for _ in range(parameters["time"])
     ]
-    cell_fw = tf.nn.rnn_cell.GRUCell(parameters["units"])
-    cell_bw = tf.nn.rnn_cell.GRUCell(parameters["units"])
+    cell_fw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
+    cell_bw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
     outputs, _, _ = tf.nn.static_bidirectional_rnn(
         cell_fw, cell_bw, inputs, dtype=tf.float32)
 
