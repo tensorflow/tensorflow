@@ -54,7 +54,7 @@ def make_unfused_gru_tests(options):
                            [parameters["batch_size"], parameters["units"]])
         for _ in range(parameters["time"])
     ]
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
     return input_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, input_values)))
