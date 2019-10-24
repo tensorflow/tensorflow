@@ -128,12 +128,7 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 	// with "go vet" till https://github.com/golang/go/issues/17201 is
 	// resolved.
 	buf.length = C.size_t(len(def))
-	buf.data = C.malloc(buf.length)
-	if buf.data == nil {
-		return fmt.Errorf("unable to allocate memory")
-	}
-	defer C.free(buf.data)
-	C.memcpy(buf.data, C.CBytes(def), buf.length)
+	buf.data = C.CBytes(def)
 
 	status := newStatus()
 
