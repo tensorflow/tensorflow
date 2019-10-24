@@ -60,7 +60,26 @@ struct SymbolUsesPass : public ModulePass<SymbolUsesPass> {
     }
   }
 };
+
+/// This is a symbol test pass that tests the symbol use replacement
+/// functionality provided by the symbol table.
+struct SymbolReplacementPass : public ModulePass<SymbolReplacementPass> {
+  void runOnModule() override {
+    auto module = getModule();
+
+    for (FuncOp func : module.getOps<FuncOp>()) {
+      StringAttr newName = func.getAttrOfType<StringAttr>("sym.new_name");
+      if (!newName)
+        continue;
+      if (succeeded(func.replaceAllSymbolUses(newName.getValue(), module)))
+        func.setName(newName.getValue());
+    }
+  }
+};
 } // end anonymous namespace
 
 static PassRegistration<SymbolUsesPass> pass("test-symbol-uses",
                                              "Test detection of symbol uses");
+
+static PassRegistration<SymbolReplacementPass>
+    rauwPass("test-symbol-rauw", "Test replacement of symbol uses");
