@@ -96,3 +96,13 @@ toco::TocoGetPotentiallySupportedOps
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
+
+[python_traceme] # traceme
+tensorflow::profiler::PythonTraceMe::Init
+tensorflow::profiler::PythonTraceMe::Enter
+tensorflow::profiler::PythonTraceMe::Exit
+tensorflow::profiler::PythonTraceMe::IsEnabled
+
+[traceme_recorder] # traceme
+tensorflow::profiler::internal::g_trace_level
+

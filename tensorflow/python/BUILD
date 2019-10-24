@@ -105,6 +105,7 @@ py_library(
         ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_traceme",
         ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
@@ -226,6 +227,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_scoped_annotation",
+        ":_pywrap_traceme",
         ":_pywrap_util_port",
         ":lib",
         ":util",
@@ -589,6 +591,24 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_traceme",
+    srcs = ["util/traceme_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/core/profiler/internal:python_traceme_hdrs",
+        "//tensorflow/core/profiler/lib:traceme_hdrs",
+    ],
+    module_name = "_pywrap_traceme",
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -969,6 +989,7 @@ py_library(
         ":_pywrap_scoped_annotation",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
+        ":_pywrap_traceme",
         ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
@@ -5234,7 +5255,6 @@ tf_py_wrap_cc(
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "util/py_checkpoint_reader.i",
-        "util/traceme.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5338,6 +5358,8 @@ genrule(
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core/profiler/internal:python_traceme",  # traceme
+        "//tensorflow/core/profiler/internal:traceme_recorder",  # traceme
         ":py_exception_registry",  # py_exception_registry
         ":kernel_registry",
         "//tensorflow/lite/toco/python:toco_python_api",  # toco

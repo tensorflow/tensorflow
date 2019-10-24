@@ -13,25 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include <std_string.i>
-%include "tensorflow/python/lib/core/strings.i"
-%include "tensorflow/python/platform/base.i"
-
-%{
+#include "include/pybind11/pybind11.h"
 #include "tensorflow/core/profiler/internal/python_traceme.h"
-%}
 
-%ignoreall
+namespace py = pybind11;
 
-%unignore tensorflow;
-%unignore tensorflow::profiler;
-%unignore tensorflow::profiler::PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::Enter;
-%unignore tensorflow::profiler::PythonTraceMe::Exit;
-%unignore tensorflow::profiler::PythonTraceMe::~PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::IsEnabled;
-
-%include "tensorflow/core/profiler/internal/python_traceme.h"
-
-%unignoreall
+PYBIND11_MODULE(_pywrap_traceme, m) {
+  py::class_<tensorflow::profiler::PythonTraceMe> traceme_class(
+      m, "PythonTraceMe");
+  traceme_class.def(py::init<const std::string&>())
+      .def("Enter", &tensorflow::profiler::PythonTraceMe::Enter)
+      .def("Exit", &tensorflow::profiler::PythonTraceMe::Exit)
+      .def_static("IsEnabled", &tensorflow::profiler::PythonTraceMe::IsEnabled);
+};
