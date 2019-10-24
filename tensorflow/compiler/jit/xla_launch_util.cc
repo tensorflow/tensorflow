@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -367,6 +368,7 @@ static Status SetBufferForResourceVarTensorUnderAllocateXlaTensors(
     }
   }
   *variable_infos[i].var()->tensor() = output_tensor;
+  variable_infos[i].var()->is_initialized |= write.modified;
   return Status::OK();
 }
 
@@ -540,6 +542,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           kernel->input_mapping, resource_var_snapshots, write.type,
           write.shape, buffer, allocator);
       *variable_infos[i].var()->tensor() = output_tensor;
+      variable_infos[i].var()->is_initialized |= write.modified;
     }
     ++output_num;
   }
