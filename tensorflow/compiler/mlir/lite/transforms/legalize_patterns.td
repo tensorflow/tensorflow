@@ -64,6 +64,11 @@ def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
 //===----------------------------------------------------------------------===//
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
+def IsAllOnes : AttrConstraint<CPred<"TFIntListIsAllOnes($_self)">>;
+def IsSameOrValid : AttrConstraint<
+    CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
+          "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
+    "'SAME' or 'VALID' paddings">;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
 def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
@@ -305,3 +310,31 @@ def : Pat<
 
 def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
 
+class I32VectorElementsAttr<int len> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(32)">,
+  "32-bit int elements attribute of shape [" # len # "]"> {
+
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+
+  let constBuilderCall = "DenseElementsAttr::get("
+    "RankedTensorType::get({" # len # "}, $_builder.getIntegerType(32)), $0)";
+}
+
+def : Pat<
+  (TF_Conv2DBackpropInputOp $input_sizes, $filter, $out_backprop,
+     IsIntList1XY1:$strides,
+     BoolAttr:$use_cudnn_on_gpu,
+     IsSameOrValid:$padding,
+     I64ArrayAttr:$explicit_paddings,
+     IsDataFormatNHWC:$data_format,
+     IsAllOnes:$dilations),
+  (TFL_TransposeConvOp $input_sizes,
+     (TF_TransposeOp $filter,
+       (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
+     $out_backprop,
+     /*padding=*/ $padding,
+     /*stride_h=*/ ExtractI32At<1>:$strides,
+     /*stride_w=*/ ExtractI32At<2>:$strides)>;
