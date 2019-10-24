@@ -339,14 +339,14 @@ Status InsertBufferLoadPreduleIntoKernel(
             loc, entryType, builder.getI64IntegerAttr(extent.value()));
         builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
       }
-      // Finally, fill the strides with all zero.
+      // Finally, fill the strides with all ones.
       for (int64 idx = 0; idx < shape.rank(); ++idx) {
         auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
             loc, offsetType, builder.getI64IntegerAttr(idx));
         auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
             loc, entryType, descPtr,
             llvm::ArrayRef<Value*>{zero, strideIndex, indexValue});
-        builder.create<mlir::LLVM::StoreOp>(loc, zero, strideEntryPtr);
+        builder.create<mlir::LLVM::StoreOp>(loc, one, strideEntryPtr);
       }
       // Now we can use the descriptor instead of the original argument.
       value->replaceAllUsesWith(descPtr);
