@@ -82,7 +82,8 @@ class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 }
 
-class UnaryOpSameOperandAndResultType<string mnemonic, list<OpTrait> traits = []> :
+class UnaryOpSameOperandAndResultType<string mnemonic,
+                                      list<OpTrait> traits = []> :
     UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
   let parser = [{
     return impl::parseOneResultSameOperandTypeOp(parser, result);
