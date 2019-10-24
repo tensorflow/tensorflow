@@ -310,11 +310,11 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@com_google_googletest//:gtest",
-            "//tensorflow/core/lib/strings:string_utils",
             "//tensorflow/core/platform",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:net",
+            "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:types",
         ],
         "tags": ["no_oss", "manual"],
