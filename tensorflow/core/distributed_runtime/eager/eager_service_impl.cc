@@ -170,10 +170,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   }
   {
     mutex_lock l(contexts_mu_);
-    if (contexts_.find(request->context_id()) != contexts_.end()) {
-      return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                     "Context id: <", request->context_id(),
-                                     "> already exists.");
+    auto context_it = contexts_.find(request->context_id());
+    if (context_it != contexts_.end()) {
+      if (request->context_view_id() <
+          context_it->second->Context()->GetContextViewId()) {
+        return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                       "Context id: <", request->context_id(),
+                                       "> already exists.");
+      } else {
+        // For existing context with a stale context_view_id, close the old one
+        // and recreate with new view id. This is likely due to the worker
+        // disconnected and then reconnected after one or more cluster updates.
+        context_it->second->Unref();
+        contexts_.erase(context_it);
+      }
     }
     contexts_.emplace(request->context_id(),
                       new ServerContext(ctx, request->keep_alive_secs(), env_));

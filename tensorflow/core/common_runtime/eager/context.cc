@@ -747,7 +747,6 @@ Status EagerContext::InitializeRemoteMaster(
 Status EagerContext::UpdateRemoteMaster(
     WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& add_remote_contexts,
     const std::vector<string>& remove_remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
@@ -784,10 +783,10 @@ Status EagerContext::UpdateRemoteMaster(
   }
   std::vector<const FunctionDef*> function_defs = ListRegisteredFunctions();
   TF_RETURN_IF_ERROR(SetMasterContextState(
-      nullptr, worker_env, std::move(worker_session),
-      std::move(remote_eager_workers), std::move(remote_device_manager),
+      /*server=*/nullptr, worker_env, std::move(worker_session),
+      std::move(remote_eager_workers), /*remote_device_manager=*/nullptr,
       context_id, GetContextViewId() + 1, r, local_device_mgr, keep_alive_secs,
-      cluster_flr, nullptr));
+      cluster_flr, /*remote_mgr=*/nullptr));
 
   // Register existing functions to the newly added remote workers. Note that
   // this should happen only after updating `remote_contexts_` because new
@@ -803,8 +802,9 @@ Status EagerContext::UpdateRemoteMaster(
 }
 
 // Set distributed execution related fields in the master context. Passing
-// nullptr to `server` will update the existing GRPC server in context (instead
-// of resetting with a new server).
+// nullptr to `server` / `remote_device_mgr` will only update the existing GRPC
+// server / remote device manager in the master context (instead of resetting
+// with new ones).
 Status EagerContext::SetMasterContextState(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
@@ -848,7 +848,10 @@ Status EagerContext::SetMasterContextState(
   worker_session_ = worker_session;
   remote_eager_workers_ = std::move(remote_eager_workers);
 
-  remote_device_manager_ = std::move(remote_device_manager);
+  if (remote_device_manager != nullptr) {
+    remote_device_manager_ = std::move(remote_device_manager);
+  }
+  DCHECK(remote_device_manager_ != nullptr);
 
   InitDeviceMapAndAsync();
 
