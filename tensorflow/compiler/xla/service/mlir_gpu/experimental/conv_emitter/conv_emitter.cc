@@ -44,26 +44,6 @@ namespace xla {
 namespace mlir_gpu {
 namespace {
 
-class NameLookupTable {
- public:
-  llvm::StringRef FindOrCreate(mlir::Value* key) {
-    auto it = names_.find(key);
-    if (it != names_.end()) {
-      return it->second;
-    }
-    names_.try_emplace(key, std::string("%") + std::to_string(count_++));
-    return names_.at(key);
-  }
-
-  void Insert(mlir::Value* key, llvm::StringRef value) {
-    CHECK(names_.try_emplace(key, std::string(value)).second);
-  }
-
- private:
-  int64 count_ = 0;
-  absl::flat_hash_map<mlir::Value*, std::string> names_;
-};
-
 // Various extracted information for input shapes.
 struct ShapeInfo {
   // Buffer dimensions in the order of NCHW.
@@ -128,193 +108,11 @@ ShapeInfo GetShapeInfo(const Shape& shape, int64 n_dim, int64 c_dim,
   return shape_info;
 }
 
-void PrintExprWithBindings(mlir::AffineExpr expr,
-                           absl::Span<mlir::Value* const> indices,
-                           NameLookupTable* names, llvm::raw_ostream& p) {
-  if (auto bin = expr.dyn_cast<mlir::AffineBinaryOpExpr>()) {
-    p << "(";
-    PrintExprWithBindings(bin.getLHS(), indices, names, p);
-    switch (expr.getKind()) {
-      case mlir::AffineExprKind::Add:
-        p << " + ";
-        break;
-      case mlir::AffineExprKind::Mul:
-        p << " * ";
-        break;
-      case mlir::AffineExprKind::Mod:
-        p << " % ";
-        break;
-      case mlir::AffineExprKind::FloorDiv:
-        p << " floordiv ";
-        break;
-      case mlir::AffineExprKind::CeilDiv:
-        p << " ceildiv ";
-        break;
-      default:
-        p << " <unknown affine expr> ";
-    }
-    PrintExprWithBindings(bin.getRHS(), indices, names, p);
-    p << ")";
-    return;
-  }
-  if (auto constant = expr.dyn_cast<mlir::AffineConstantExpr>()) {
-    p << constant.getValue();
-    return;
-  }
-  if (auto dim_expr = expr.dyn_cast<mlir::AffineDimExpr>()) {
-    p << names->FindOrCreate(indices[dim_expr.getPosition()]);
-    return;
-  }
-  CHECK(false);
-}
-
 bool IsSimpleLoop(mlir::AffineForOp loop) {
   return loop.getLowerBoundMap().isSingleConstant() &&
          loop.getLowerBoundMap().getSingleConstantResult() == 0 &&
          loop.getStep() == 1 && loop.getUpperBoundMap().getNumResults() == 1 &&
          std::next(loop.region().begin()) == loop.region().end();
-}
-
-void PrintRangeForAffineLoop(mlir::AffineForOp loop, NameLookupTable* names,
-                             llvm::raw_ostream& p) {
-  CHECK(IsSimpleLoop(loop));
-  p << names->FindOrCreate(loop.getInductionVar());
-  p << " in ";
-  auto affine_map = loop.getUpperBoundMap();
-  CHECK_EQ(1, affine_map.getNumResults());
-  PrintExprWithBindings(
-      affine_map.getResult(0),
-      std::vector<mlir::Value*>(loop.getUpperBoundOperands().begin(),
-                                loop.getUpperBoundOperands().end()),
-      names, p);
-}
-
-void PrintIndices(mlir::AffineMap affine_map,
-                  absl::Span<mlir::Value* const> indices,
-                  NameLookupTable* names, llvm::raw_ostream& p) {
-  bool first = true;
-  for (mlir::AffineExpr expr : affine_map.getResults()) {
-    if (!std::exchange(first, false)) {
-      p << ", ";
-    }
-    PrintExprWithBindings(expr, indices, names, p);
-  }
-}
-
-void ToStringImpl(mlir::Operation* node, NameLookupTable* names,
-                  int indent_level, llvm::raw_ostream& p) {
-  if (mlir::isa<mlir::AffineTerminatorOp>(node)) {
-    return;
-  }
-  p << "\n";
-  for (int i = 0; i < indent_level; i++) {
-    p << "  ";
-  }
-  if (auto loop = mlir::dyn_cast<mlir::AffineForOp>(node)) {
-    llvm::SmallVector<mlir::AffineForOp, 4> all_loops;
-    getPerfectlyNestedLoops(all_loops, loop);
-    CHECK(!all_loops.empty());
-    p << "for (";
-    bool first = true;
-    for (const auto& loop : all_loops) {
-      if (!std::exchange(first, false)) {
-        p << ", ";
-      }
-      PrintRangeForAffineLoop(loop, names, p);
-    }
-    CHECK_EQ(1, all_loops.back().region().getBlocks().size());
-    p << ") {";
-    for (mlir::Operation& op : all_loops.back().getBody()->getOperations()) {
-      ToStringImpl(&op, names, indent_level + 1, p);
-    }
-    p << "\n";
-    for (int i = 0; i < indent_level; i++) {
-      p << "  ";
-    }
-    p << "}";
-    return;
-  }
-  if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(node)) {
-    p << names->FindOrCreate(load.getResult());
-    p << " = ";
-    p << names->FindOrCreate(load.getMemRef());
-    p << "[";
-    PrintIndices(load.getAffineMap(),
-                 std::vector<mlir::Value*>(load.getMapOperands().begin(),
-                                           load.getMapOperands().end()),
-                 names, p);
-    p << "]";
-    return;
-  }
-  if (auto store = mlir::dyn_cast<mlir::AffineStoreOp>(node)) {
-    p << names->FindOrCreate(store.getMemRef());
-    p << "[";
-    PrintIndices(store.getAffineMap(),
-                 std::vector<mlir::Value*>(store.getMapOperands().begin(),
-                                           store.getMapOperands().end()),
-                 names, p);
-    p << "]";
-    p << " = ";
-    p << names->FindOrCreate(store.getValueToStore());
-    return;
-  }
-  if (auto alloca = mlir::dyn_cast<mlir::AllocOp>(node)) {
-    p << names->FindOrCreate(alloca.getResult());
-    p << " = alloc() : ";
-    alloca.getType().print(p);
-    return;
-  }
-  if (auto add = mlir::dyn_cast<mlir::AddFOp>(node)) {
-    p << names->FindOrCreate(add.getResult());
-    p << " = addf(";
-    p << names->FindOrCreate(add.lhs());
-    p << ", ";
-    p << names->FindOrCreate(add.rhs());
-    p << ")";
-    return;
-  }
-  if (auto mul = mlir::dyn_cast<mlir::MulFOp>(node)) {
-    p << names->FindOrCreate(mul.getResult());
-    p << " = mulf(";
-    p << names->FindOrCreate(mul.lhs());
-    p << ", ";
-    p << names->FindOrCreate(mul.rhs());
-    p << ")";
-    return;
-  }
-  if (auto constant = mlir::dyn_cast<mlir::ConstantOp>(node)) {
-    p << names->FindOrCreate(constant.getResult());
-    p << " = ";
-    constant.getValue().print(p);
-    return;
-  }
-  if (auto convert = mlir::dyn_cast<mlir::FPExtOp>(node)) {
-    p << names->FindOrCreate(convert.getResult());
-    p << " = convert(";
-    p << names->FindOrCreate(convert.in());
-    p << ", ";
-    convert.getType().print(p);
-    p << ")";
-    return;
-  }
-  if (auto convert = mlir::dyn_cast<mlir::FPTruncOp>(node)) {
-    p << names->FindOrCreate(convert.getResult());
-    p << " = convert(";
-    p << names->FindOrCreate(convert.in());
-    p << ", ";
-    convert.getType().print(p);
-    p << ")";
-    return;
-  }
-  CHECK(false);
-}
-
-std::string ToString(mlir::Operation* node, const NameLookupTable& names) {
-  auto local_names = names;
-  std::string str;
-  llvm::raw_string_ostream strstream(str);
-  ToStringImpl(node, &local_names, 0, strstream);
-  return str;
 }
 
 struct BoundAffineMap {
@@ -608,27 +406,15 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     mlir::Value* input, mlir::Value* filter, mlir::Value* output,
     const ShapeInfo& input_shape_info, const ShapeInfo& filter_shape_info,
     const ShapeInfo& output_shape_info, const Window& window,
-    mlir::OpBuilder builder, NameLookupTable* names) {
+    mlir::OpBuilder builder) {
   CHECK(input_shape_info.element_type == builder.getF16Type());
   CHECK(filter_shape_info.element_type == builder.getF16Type());
   CHECK(output_shape_info.element_type == builder.getF16Type());
 
   auto location = mlir::UnknownLoc::get(builder.getContext());
 
-  names->Insert(input, "input");
-  names->Insert(filter, "filter");
-  names->Insert(output, "output");
-
   std::vector<mlir::AffineForOp> cartesian_product_loops =
       CreateNestedSimpleLoops(output_shape_info.nchw_dimensions, builder);
-  // batch dimension
-  names->Insert(cartesian_product_loops[0].getInductionVar(), "n");
-  // output feature dimension
-  names->Insert(cartesian_product_loops[1].getInductionVar(), "o");
-  // height index
-  names->Insert(cartesian_product_loops[2].getInductionVar(), "hi");
-  // width index
-  names->Insert(cartesian_product_loops[3].getInductionVar(), "wi");
 
   builder = cartesian_product_loops.back().getBodyBuilder();
 
@@ -644,12 +430,6 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   std::vector<mlir::AffineForOp> reduction_loops;
   reduction_loops = CreateNestedSimpleLoops(
       absl::MakeSpan(filter_shape_info.nchw_dimensions).subspan(1), builder);
-  // input feature dimension
-  names->Insert(reduction_loops[0].getInductionVar(), "c");
-  // filter height index
-  names->Insert(reduction_loops[1].getInductionVar(), "fhi");
-  // filter width index
-  names->Insert(reduction_loops[2].getInductionVar(), "fwi");
 
   mlir::AffineForOp loop_n = cartesian_product_loops[0];
   mlir::AffineForOp loop_o = cartesian_product_loops[1];
@@ -911,14 +691,11 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
 
   TF_RETURN_IF_ERROR(ConvIsImplemented(conv));
 
-  NameLookupTable names;
-
   TF_ASSIGN_OR_RETURN(
       InitialMlirConvAnchors initial_anchors,
       CreateNaiveMlirConv(input, filter, output, input_shape_info,
                           filter_shape_info, output_shape_info, conv->window(),
-                          builder, &names));
-  VLOG(1) << ToString(initial_anchors.cartesian_product_loops[0], names);
+                          builder));
 
   TF_ASSIGN_OR_RETURN(TransformedMlirConvAnchors transformed_anchors,
                       TransformMlirConv(initial_anchors));
@@ -929,8 +706,6 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
   // writeback the local alloc() if needed.
 
   // TODO(timshen): Implement CUDA-specific lowering.
-
-  VLOG(1) << ToString(transformed_anchors.cartesian_product_loops[0], names);
 
   return function;
 }

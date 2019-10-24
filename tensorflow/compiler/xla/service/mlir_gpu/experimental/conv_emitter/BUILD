@@ -51,6 +51,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
         "@llvm//:support",
+        "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardDialectRegistration",
     ],
 )
