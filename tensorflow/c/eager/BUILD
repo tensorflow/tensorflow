@@ -54,6 +54,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 
 using tensorflow::int64;
@@ -800,6 +801,8 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
+  tensorflow::profiler::TraceMe activity(
+      "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Deleting tensor handle " << h << " with internal handle "
           << h->handle;
   if (h->handle) {
