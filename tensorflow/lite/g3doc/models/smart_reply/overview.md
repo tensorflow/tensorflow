@@ -16,11 +16,11 @@ starter model and labels</a>
 There is a TensorFlow Lite sample application that demonstrates the smart reply
 model on Android.
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply">View
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android">View
 Android example</a>
 
 Read the
-[GitHub page](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/g3doc)
+[GitHub page](https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android/)
 to learn how the app works.
 
 ## How it works
@@ -42,7 +42,7 @@ The on-device model comes with several benefits. It is:
 
 <ul>
   <li><a href="https://arxiv.org/pdf/1708.00630.pdf">Research paper</a></li>
-  <li><a href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/">Source code</a></li>
+  <li><a href="https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android">Source code</a></li>
 </ul>
 
 ## Users
