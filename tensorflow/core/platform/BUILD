@@ -249,6 +249,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

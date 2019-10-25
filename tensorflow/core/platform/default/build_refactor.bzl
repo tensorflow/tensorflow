@@ -210,6 +210,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+        "alwayslink": 1,
     },
     "notification": {
         "name": "notification_impl",
@@ -298,6 +299,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
+        "alwayslink": 1,
     },
     "test": {
         "name": "test_impl",
