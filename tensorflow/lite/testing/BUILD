@@ -495,6 +495,7 @@ edgetpu_ops = [
     "pad",  # high error
     "reshape",
     "resize_bilinear",
+    "sigmoid",
     "slice",
     "softmax",
     "space_to_depth",
