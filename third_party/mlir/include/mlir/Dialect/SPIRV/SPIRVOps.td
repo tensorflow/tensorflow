@@ -127,6 +127,8 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
 
   let builders = [OpBuilder<[{Builder *builder, OperationState &state,
                               Value *basePtr, ArrayRef<Value *> indices}]>];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----
