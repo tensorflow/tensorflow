@@ -1,157 +1,196 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-rewrite -tpu_compile_metadata_debug | FileCheck %s --dump-input=fail
 
+// Tests module with missing `tf.versions` attribute.
+
+// expected-error@+1 {{missing 'tf.versions' attribute}}
+module {
+  func @missing_tf_versions() {
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], num_replicas = 2} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
 // Tests `tf_device.launch_func` with missing `num_replicas` attribute.
 
-func @missing_num_replicas() {
-  // expected-error@+1 {{requires attribute 'num_replicas'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @missing_num_replicas() {
+    // expected-error@+1 {{requires attribute 'num_replicas'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with bad `num_replicas` attribute.
 
-func @bad_num_replicas() {
-  // expected-error@+1 {{requires attribute 'num_replicas'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = "", num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_num_replicas() {
+    // expected-error@+1 {{requires attribute 'num_replicas'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = "", num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with missing `num_cores_per_replicas` attribute.
 
-func @missing_num_cores_per_replica() {
-  // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @missing_num_cores_per_replica() {
+    // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with bad `num_cores_per_replicas` attribute.
 
-func @bad_num_cores_per_replica() {
-  // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = "", step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_num_cores_per_replica() {
+    // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = "", step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with missing `step_marker_location` attribute.
 
-func @bad_num_cores_per_replica() {
-  // expected-error@+1 {{requires attribute 'step_marker_location'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_num_cores_per_replica() {
+    // expected-error@+1 {{requires attribute 'step_marker_location'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with bad `step_marker_location` attribute.
 
-func @bad_step_marker_location() {
-  // expected-error@+1 {{requires attribute 'step_marker_location'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = 1, padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_step_marker_location() {
+    // expected-error@+1 {{requires attribute 'step_marker_location'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = 1, padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with unparsable `step_marker_location` attribute.
 
-func @unparsable_step_marker_location() {
-  // expected-error@+1 {{bad 'step_marker_location' attribute with value 'test'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "test", padding_map = []} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @unparsable_step_marker_location() {
+    // expected-error@+1 {{bad 'step_marker_location' attribute with value 'test'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "test", padding_map = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with missing `padding_map` attribute.
 
-func @missing_padding_map() {
-  // expected-error@+1 {{requires attribute 'padding_map'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP"} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @missing_padding_map() {
+    // expected-error@+1 {{requires attribute 'padding_map'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP"} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with bad `padding_map` attribute.
 
-func @bad_padding_map() {
-  // expected-error@+1 {{requires attribute 'padding_map'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ""} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_padding_map() {
+    // expected-error@+1 {{requires attribute 'padding_map'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ""} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with bad element in `padding_map` attribute.
 
-func @bad_element_padding_map() {
-  // expected-error@+1 {{bad 'padding_map' attribute at index 0, not a string}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [1]} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @bad_element_padding_map() {
+    // expected-error@+1 {{bad 'padding_map' attribute at index 0, not a string}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [1]} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with unparsable element in `padding_map` attribute.
 
-func @unparsable_element_padding_map() {
-  // expected-error@+1 {{bad 'padding_map' attribute at index 0 with value 'test'}}
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["test"]} : () -> ()
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @unparsable_element_padding_map() {
+    // expected-error@+1 {{bad 'padding_map' attribute at index 0 with value 'test'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["test"]} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
 
 // Tests `tf_device.launch_func` with unsupported operand type.
 
-func @unsupported_operand_type(%arg0: tensor<?xi2>) {
-  // expected-error@+1 {{failed to determine operand type at index 0: Converting i2 to DataType}}
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = []} : (tensor<?xi2>) -> tensor<?xi2>
-  return
-}
-func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
-  return %arg0 : tensor<?xi2>
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func @unsupported_operand_type(%arg0: tensor<?xi2>) {
+    // expected-error@+1 {{failed to determine operand type at index 0: Converting i2 to DataType}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = []} : (tensor<?xi2>) -> tensor<?xi2>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
+    return %arg0 : tensor<?xi2>
+  }
 }
 
 // -----
@@ -163,16 +202,18 @@ func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
 //   num_replicas: 1
 //   num_cores_per_replica: 1
 
-// CHECK-LABEL: func @default_step_marker_location
-func @default_step_marker_location() {
-  "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : () -> ()
-  // CHECK:      metadata
-  // CHECK-SAME: num_replicas: 1
-  // CHECK-SAME: num_cores_per_replica: 1
-  return
-}
-func @empty_func() {
-  return
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @default_step_marker_location
+  func @default_step_marker_location() {
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "tpu0", func = @empty_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : () -> ()
+    // CHECK:      metadata
+    // CHECK-SAME: num_replicas: 1
+    // CHECK-SAME: num_cores_per_replica: 1
+    return
+  }
+  func @empty_func() {
+    return
+  }
 }
 
 // -----
@@ -180,32 +221,36 @@ func @empty_func() {
 // Tests argument with unranked shape. Empty shape should be populated in the
 // metadata for associated argument.
 
-// CHECK-LABEL: func @unranked_shape_arg
-func @unranked_shape_arg(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>) -> tensor<*xi32>
-  // CHECK:      metadata
-  // CHECK-SAME: shape {\0A unknown_rank: true
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @unranked_shape_arg
+  func @unranked_shape_arg(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>) -> tensor<*xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: shape {\0A unknown_rank: true
 
-  return %0: tensor<*xi32>
-}
-func @_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  return %arg0 : tensor<*xi32>
+    return %0: tensor<*xi32>
+  }
+  func @_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    return %arg0 : tensor<*xi32>
+  }
 }
 
 // -----
 
 // Tests argument with partial shape.
 
-// CHECK-LABEL: func @partial_shape_arg
-func @partial_shape_arg(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
-  // CHECK:      metadata
-  // CHECK-SAME: args
-  // CHECK-SAME: shape {\0A dim {\0A size: -1\0A }\0A dim {\0A size: -1\0A }\0A dim {\0A size: 3\0A }\0A }
-  return %0: tensor<?x?x3xi32>
-}
-func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
-  return %arg0 : tensor<?x?x3xi32>
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @partial_shape_arg
+  func @partial_shape_arg(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: args
+    // CHECK-SAME: shape {\0A dim {\0A size: -1\0A }\0A dim {\0A size: -1\0A }\0A dim {\0A size: 3\0A }\0A }
+    return %0: tensor<?x?x3xi32>
+  }
+  func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
+    return %arg0 : tensor<?x?x3xi32>
+  }
 }
 
 // -----
@@ -225,57 +270,63 @@ func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
 //     }
 //   }
 
-// CHECK-LABEL: func @static_shape_arg
-func @static_shape_arg(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
-  // CHECK:      metadata
-  // CHECK-SAME: args
-  // CHECK-SAME: shape
-  // CHECK-SAME: dim
-  // CHECK-SAME: size: 1
-  // CHECK-SAME: dim
-  // CHECK-SAME: size: 2
-  // CHECK-SAME: dim
-  // CHECK-SAME: size: 3
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @static_shape_arg
+  func @static_shape_arg(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: args
+    // CHECK-SAME: shape
+    // CHECK-SAME: dim
+    // CHECK-SAME: size: 1
+    // CHECK-SAME: dim
+    // CHECK-SAME: size: 2
+    // CHECK-SAME: dim
+    // CHECK-SAME: size: 3
 
-  return %0: tensor<1x2x3xi32>
-}
-func @_func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
-  return %arg0 : tensor<1x2x3xi32>
+    return %0: tensor<1x2x3xi32>
+  }
+  func @_func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+    return %arg0 : tensor<1x2x3xi32>
+  }
 }
 
 // -----
 
 // Tests argument that is a resource variable.
 
-// CHECK-LABEL: func @resource_arg
-func @resource_arg(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
-  // CHECK:      metadata
-  // CHECK:      dtype: DT_RESOURCE
-  // CHECK-SAME: kind: VARIABLE
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @resource_arg
+  func @resource_arg(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
+    // CHECK:      metadata
+    // CHECK:      dtype: DT_RESOURCE
+    // CHECK-SAME: kind: VARIABLE
 
-  return %0: tensor<*x!tf.resource>
-}
-func @_func(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
-  return %arg0 : tensor<*x!tf.resource>
+    return %0: tensor<*x!tf.resource>
+  }
+  func @_func(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
+    return %arg0 : tensor<*x!tf.resource>
+  }
 }
 
 // -----
 
 // Tests argument that is a parameter.
 
-// CHECK-LABEL: func @parameter_arg
-func @parameter_arg(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xf32>) -> tensor<*xf32>
-  // CHECK:      metadata
-  // CHECK:      dtype: DT_FLOAT
-  // CHECK-SAME: kind: PARAMETER
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @parameter_arg
+  func @parameter_arg(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK:      metadata
+    // CHECK:      dtype: DT_FLOAT
+    // CHECK-SAME: kind: PARAMETER
 
-  return %0: tensor<*xf32>
-}
-func @_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  return %arg0 : tensor<*xf32>
+    return %0: tensor<*xf32>
+  }
+  func @_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    return %arg0 : tensor<*xf32>
+  }
 }
 
 // -----
@@ -323,58 +374,62 @@ func @_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 //   }
 //   step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
 
-// CHECK-LABEL: func @metadata
-func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<8xi32>) -> tensor<8xi32>
-  // CHECK:      metadata
-  // CHECK-SAME: args
-  // CHECK-SAME: dtype: DT_INT32
-  // CHECK-SAME: shape
-  // CHECK-SAME: dim
-  // CHECK-SAME: size: 8
-  // CHECK-SAME: kind: PARAMETER
-  // CHECK-SAME: sharding
-  // CHECK-SAME: type: MAXIMAL
-  // CHECK-SAME: tile_assignment_dimensions: 1
-  // CHECK-SAME: tile_assignment_devices: 0
-  // CHECK-SAME: retvals
-  // CHECK-SAME: sharding
-  // CHECK-SAME: type: MAXIMAL
-  // CHECK-SAME: tile_assignment_dimensions: 1
-  // CHECK-SAME: tile_assignment_devices: 0
-  // CHECK-SAME: num_replicas: 1
-  // CHECK-SAME: num_cores_per_replica: 1
-  // CHECK-SAME: padding_maps
-  // CHECK-SAME: arg_index: 1
-  // CHECK-SAME: shape_index: 2
-  // CHECK-SAME: padding_arg_index: 3
-  // CHECK-SAME: step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @metadata
+  func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<8xi32>) -> tensor<8xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: args
+    // CHECK-SAME: dtype: DT_INT32
+    // CHECK-SAME: shape
+    // CHECK-SAME: dim
+    // CHECK-SAME: size: 8
+    // CHECK-SAME: kind: PARAMETER
+    // CHECK-SAME: sharding
+    // CHECK-SAME: type: MAXIMAL
+    // CHECK-SAME: tile_assignment_dimensions: 1
+    // CHECK-SAME: tile_assignment_devices: 0
+    // CHECK-SAME: retvals
+    // CHECK-SAME: sharding
+    // CHECK-SAME: type: MAXIMAL
+    // CHECK-SAME: tile_assignment_dimensions: 1
+    // CHECK-SAME: tile_assignment_devices: 0
+    // CHECK-SAME: num_replicas: 1
+    // CHECK-SAME: num_cores_per_replica: 1
+    // CHECK-SAME: padding_maps
+    // CHECK-SAME: arg_index: 1
+    // CHECK-SAME: shape_index: 2
+    // CHECK-SAME: padding_arg_index: 3
+    // CHECK-SAME: step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
 
-  return %0: tensor<8xi32>
-}
-func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-  return %arg0 : tensor<8xi32>
+    return %0: tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
 }
 
 // -----
 
 // Tests shape ops are only generated for operands with non static shapes.
 
-// CHECK-LABEL: func @static_and_dynamic_shapes
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_1:[a-z0-9]*]]: tensor<8xi32>, %[[ARG_2:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_3:[a-z0-9]*]]: tensor<8xi32>)
-func @static_and_dynamic_shapes(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
-  // CHECK-NOT:  "tf.Shape"(%[[ARG_1]])
-  // CHECK-NOT:  "tf.Shape"(%[[ARG_3]])
-  // CHECK:      %[[ARG_0_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
-  // CHECK:      %[[ARG_2_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_2]])
-  %0 = "tf_device.launch_func"(%arg0, %arg1, %arg2, %arg3) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
-  // CHECK:      "tf._TPUCompileMlir"(%[[ARG_0_SHAPE]], %[[ARG_2_SHAPE]])
-  // CHECK-SAME: NumDynamicShapes = 2
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @static_and_dynamic_shapes
+  // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_1:[a-z0-9]*]]: tensor<8xi32>, %[[ARG_2:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_3:[a-z0-9]*]]: tensor<8xi32>)
+  func @static_and_dynamic_shapes(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
+    // CHECK-NOT:  "tf.Shape"(%[[ARG_1]])
+    // CHECK-NOT:  "tf.Shape"(%[[ARG_3]])
+    // CHECK:      %[[ARG_0_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
+    // CHECK:      %[[ARG_2_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_2]])
+    %0 = "tf_device.launch_func"(%arg0, %arg1, %arg2, %arg3) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
+    // CHECK:      "tf._TPUCompileMlir"(%[[ARG_0_SHAPE]], %[[ARG_2_SHAPE]])
+    // CHECK-SAME: NumDynamicShapes = 2
 
-  return %0: tensor<8xi32>
-}
-func @_func(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
-  return %arg1 : tensor<8xi32>
+    return %0: tensor<8xi32>
+  }
+  func @_func(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg1 : tensor<8xi32>
+  }
 }
 
 // -----
@@ -382,7 +437,7 @@ func @_func(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %a
 // Tests simple case of `tf_device.launch_func` on TPU with single input and
 // single output.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @single_tpu_launch_func
   func @single_tpu_launch_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -394,6 +449,7 @@ module {
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
+    // CHECK-SAME: tf.versions = {producer = 888 : i32}
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
@@ -418,7 +474,7 @@ module {
 
 // Tests that launch_func without _tpu_replicate attribute is ignored.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @single_gpu_launch_func
   func @single_gpu_launch_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -446,7 +502,7 @@ module {
 
 // Tests of `tf_device.launch_func` on TPU with nested function calls.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @with_nested_func
   func @with_nested_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -491,7 +547,7 @@ module {
 // Tests of `tf_device.launch_func` on TPU with referenced function that's not
 // via a standard call op.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @with_referenced_func
   func @with_referenced_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -535,7 +591,7 @@ module {
 // Tests rewriting `tf_device.launch_func` on TPU with a chain of referenced
 // functions.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @with_referenced_func_chain
   func @with_referenced_func_chain(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -587,7 +643,7 @@ module {
 // Tests rewriting `tf_device.launch_func` on TPU with multiple calls to same
 // function.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @with_multiple_call_same_referenced_func
   func @with_multiple_call_same_referenced_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -633,7 +689,7 @@ module {
 
 // Tests multiple `tf_device.launch_func` on TPU with different computation.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @multiple_launch_different_func
   func @multiple_launch_different_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -687,7 +743,7 @@ module {
 
 // Tests multiple `tf_device.launch_func` on TPU with same computation.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @multiple_launch_same_func
   func @multiple_launch_same_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -737,7 +793,7 @@ module {
 // Tests Functions referenced by TPU function via SymbolRefAttr nested in
 // ArrayAttr and DictionaryAttr.
 
-module {
+module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @single_tpu_launch_func
   func @single_tpu_launch_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -804,23 +860,25 @@ module {
 
 // Tests that TPUCompilationResult operations are properly rewritten
 
-// CHECK-LABEL: func @tpu_compilation_result
-func @tpu_compilation_result(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>) {
+module attributes {tf.versions = {producer = 888 : i32}} {
+  // CHECK-LABEL: func @tpu_compilation_result
+  func @tpu_compilation_result(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>) {
 
-  // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
-  // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
-  %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+    %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?xi32>) -> tensor<?xi32>
 
-  %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
-  %compile_result2 = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
+    %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
+    %compile_result2 = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
 
-  // CHECK-NOT: "tf.TPUCompilationResult"
+    // CHECK-NOT: "tf.TPUCompilationResult"
 
-  // CHECK: return %[[EXECUTE_OUTPUT]], %[[COMPILE_OUTPUT]]#0, %[[COMPILE_OUTPUT]]#0
-  return %1, %compile_result, %compile_result2 : tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>
-}
+    // CHECK: return %[[EXECUTE_OUTPUT]], %[[COMPILE_OUTPUT]]#0, %[[COMPILE_OUTPUT]]#0
+    return %1, %compile_result, %compile_result2 : tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>
+  }
 
-func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %0 : tensor<?xi32>
+  }
 }

@@ -59,6 +59,7 @@ constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kPaddingMapAttr[] = "padding_map";
+constexpr char kVersionsAttr[] = "tf.versions";
 
 // Rewrites `tf_device.launch_func` operations assigned to TPU into actual TPU
 // jit-compile runtime ops.
@@ -116,13 +117,22 @@ llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
 // Creates a new self-contained module that contains `entry_func` and all
 // referenced functions in `entry_func`. entry_func is renamed to "main".
 // Return value is serialized text formate of newly-created module.
-std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
+LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+                                          std::string* serialized_func_module) {
   ModuleOp module = entry_func.getParentOfType<ModuleOp>();
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningModuleRef module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
+  auto parent_module = entry_func.getParentOfType<ModuleOp>();
+  auto versions_attr = parent_module.getAttr(kVersionsAttr);
+  if (!versions_attr) {
+    return parent_module.emitError(
+        llvm::formatv("missing '{0}' attribute", kVersionsAttr));
+  }
+
+  module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
   ModuleManager module_manager(module_for_func.get());
 
   while (!referenced.empty()) {
@@ -156,12 +166,11 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
   }
 
   // Serialize module and return.
-  std::string txt_module;
   {
-    llvm::raw_string_ostream os(txt_module);
+    llvm::raw_string_ostream os(*serialized_func_module);
     module_for_func.get().print(os);
   }
-  return txt_module;
+  return success();
 }
 
 // Creates a missing attribute error message.
@@ -333,7 +342,8 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
   FuncOp func = launch_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       func_attr.getValue());
 
-  std::string txt_module = EncapsulateFuncAndSerialize(func);
+  std::string txt_module;
+  if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
   compile_op_state.addAttribute("mlir_module",
                                 builder->getStringAttr(txt_module));
 
