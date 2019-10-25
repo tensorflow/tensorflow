@@ -30,6 +30,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

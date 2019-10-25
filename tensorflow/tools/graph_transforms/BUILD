@@ -234,6 +234,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other
