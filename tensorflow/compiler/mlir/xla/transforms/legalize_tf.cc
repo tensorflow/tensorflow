@@ -115,11 +115,8 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value *value,
 /// the shape of the input value.
 static xla_hlo::ConvertOp CastElementsToI64(Location loc, Value *value,
                                             PatternRewriter *rewriter) {
-  auto type = value->getType().cast<RankedTensorType>();
-  assert(type && "CastElementsToI64 requires a shaped tensor as input.");
-  ArrayRef<int64_t> shape = type.getShape();
-  auto i64_type = RankedTensorType::get(shape, rewriter->getIntegerType(64));
-  return rewriter->create<xla_hlo::ConvertOp>(loc, i64_type, value);
+  return rewriter->create<xla_hlo::ConvertOp>(loc, value,
+                                              rewriter->getIntegerType(64));
 }
 
 // Returns size of dimension at the specified index, if ranked tensor.
@@ -188,9 +185,9 @@ static void BuildReduceBody(Type element_type, Region *body,
   block->addArguments({type, type});
 
   Location loc = body->getLoc();
-  auto reducer = builder->create<Op>(loc, type, block->getArgument(0),
-                                     block->getArgument(1),
-                                     /*broadcast_dimensions=*/nullptr);
+  auto reducer =
+      builder->create<Op>(loc, block->getArgument(0), block->getArgument(1),
+                          /*broadcast_dimensions=*/nullptr);
   builder->create<xla_hlo::ReturnOp>(loc, reducer.getResult());
 }
 
@@ -395,12 +392,10 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
   block->addArguments({input_type, index_type, input_type, index_type});
 
   Location loc = body->getLoc();
-  Type compare_type =
-      RankedTensorType::get(/*shape=*/{}, builder->getIntegerType(1));
   StringAttr compare_direction =
       StringAttr::get(direction, builder->getContext());
   Value *compare = builder->create<xla_hlo::CompareOp>(
-      loc, compare_type, block->getArgument(0), block->getArgument(2),
+      loc, block->getArgument(0), block->getArgument(2),
       /*broadcast_dimensions=*/nullptr, compare_direction);
 
   Value *selected_input = builder->create<xla_hlo::SelectOp>(
@@ -674,24 +669,18 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
 
     auto out_type = op.z()->getType().cast<TensorType>();
 
-    RankedTensorType l_type = op.x()->getType().dyn_cast<RankedTensorType>();
-    RankedTensorType r_type = op.y()->getType().dyn_cast<RankedTensorType>();
+    l = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), l,
+                                            rewriter.getF32Type());
+    r = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), r,
+                                            rewriter.getF32Type());
 
-    auto new_l_type =
-        ChangeTensorElementType(&rewriter, l_type, rewriter.getF32Type());
-    auto new_r_type =
-        ChangeTensorElementType(&rewriter, r_type, rewriter.getF32Type());
-
-    l = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_l_type, l);
-    r = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), new_r_type, r);
-
-    auto intermediate_type = rewriter.create<TF::FloorDivOp>(
+    auto intermediate = rewriter.create<TF::FloorDivOp>(
         op.getLoc(),
         ChangeTensorElementType(&rewriter, out_type, rewriter.getF32Type()), l,
         r);
 
     auto floor_op = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), out_type,
-                                                        intermediate_type);
+                                                        intermediate);
     rewriter.replaceOp(op, floor_op.getResult());
     return Pattern::matchSuccess();
   }
@@ -776,15 +765,14 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
             .cast<DenseIntElementsAttr>());
 
     auto scaled_input = rewriter.create<xla_hlo::MulOp>(
-        op.getLoc(), operand->getType(), operand, constant_ones,
-        DenseIntElementsAttr());
+        op.getLoc(), operand, constant_ones, DenseIntElementsAttr());
     auto tanh_op = rewriter.create<xla_hlo::TanhOp>(
         op.getLoc(), operand->getType(), scaled_input);
     auto mul_op = rewriter.create<xla_hlo::MulOp>(
-        op.getLoc(), operand->getType(), tanh_op, constant_ones,
+        op.getLoc(), tanh_op, constant_ones,
         /*DenseIntElementsAttr=*/DenseIntElementsAttr());
     auto add_op = rewriter.create<xla_hlo::AddOp>(
-        op.getLoc(), operand->getType(), mul_op, constant_ones,
+        op.getLoc(), mul_op, constant_ones,
         /*DenseIntElementsAttr=*/DenseIntElementsAttr());
 
     rewriter.replaceOp(op, add_op.getResult());
@@ -868,11 +856,10 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 
     if (use_log) {
       Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
-      rewriter.replaceOpWithNewOp<xla_hlo::SubOp>(
-          op, op.getType(), shifted_logits, log, batch_dims);
-    } else {
-      rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
+      rewriter.replaceOpWithNewOp<xla_hlo::SubOp>(op, shifted_logits, log,
                                                   batch_dims);
+    } else {
+      rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, exp, sum, batch_dims);
     }
     return Pattern::matchSuccess();
   }
@@ -1024,15 +1011,6 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       reduced_dimensions_bitmap[index] = true;
       xla_dimensions.push_back(index);
     }
-    SmallVector<int64_t, 4> reduced_shape;
-    reduced_shape.reserve(input_shape.size());
-    for (size_t i = 0; i < input_shape.size(); ++i) {
-      if (!reduced_dimensions_bitmap[i]) {
-        // If we are not reducing along dimension i.
-        int64_t dim = input_shape[i];
-        reduced_shape.push_back(dim);
-      }
-    }
 
     Location loc = op.getLoc();
     Type element_type = input_ty.getElementType();
@@ -1041,17 +1019,13 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     Type reduce_element_type =
         is_accumulation ? GetAccumulationType(element_type) : element_type;
     auto casted_input = rewriter.create<xla_hlo::ConvertOp>(
-        loc, RankedTensorType::get(input_shape, reduce_element_type),
-        op.input());
+        loc, op.input(), reduce_element_type);
 
     // Each reduction op can have a different initial value.
     Value *init = Derived::GetInitialValue(reduce_element_type, loc, rewriter);
 
-    Type reduced_out_type =
-        RankedTensorType::get(reduced_shape, reduce_element_type);
-    // TODO(hinsu): Infer reduced_out_type.
     auto reduction = rewriter.create<xla_hlo::ReduceOp>(
-        loc, reduced_out_type, casted_input.getResult(), init,
+        loc, casted_input.getResult(), init,
         GetI64ElementsAttr(xla_dimensions, &rewriter));
     BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.body(),
                                  &rewriter);
@@ -1071,14 +1045,11 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       auto divisor =
           GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      result = rewriter.create<xla_hlo::DivOp>(
-          loc, reduced_out_type, result, divisor.getResult(), broadcast_dims);
+      result = rewriter.create<xla_hlo::DivOp>(loc, result, divisor.getResult(),
+                                               broadcast_dims);
     }
 
-    Type reduced_final_type =
-        RankedTensorType::get(reduced_shape, element_type);
-    result =
-        rewriter.create<xla_hlo::ConvertOp>(loc, reduced_final_type, result);
+    result = rewriter.create<xla_hlo::ConvertOp>(loc, result, element_type);
 
     // Need to reshape back after the reduction if we're keeping the reduced
     // dimensions.
@@ -1198,22 +1169,14 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     dimensions.erase(dimensions.begin() + axis);
     ArrayRef<int64_t> reduction_result_shape(dimensions);
 
-    Type input_reduction_result_type = RankedTensorType::get(
-        reduction_result_shape, input_type.getElementType());
-    Type index_reduction_result_type = RankedTensorType::get(
-        reduction_result_shape, index_type.getElementType());
-
-    Type result_types[] = {input_reduction_result_type,
-                           index_reduction_result_type};
     Value *operands[] = {op.input(), index_values};
     Value *init_values[] = {init_value, index_init_value};
     DenseIntElementsAttr reduction_dimensions =
         GetI64ElementsAttr({axis}, &rewriter);
 
     auto reduction = rewriter.create<xla_hlo::ReduceOp>(
-        loc, llvm::ArrayRef<Type>(result_types),
-        llvm::ArrayRef<Value *>(operands), llvm::ArrayRef<Value *>(init_values),
-        reduction_dimensions);
+        loc, llvm::ArrayRef<Value *>(operands),
+        llvm::ArrayRef<Value *>(init_values), reduction_dimensions);
     StringRef direction = Derived::GetDirection();
     BuildArgMinMaxReductionBody(input_element_type, index_element_type,
                                 direction, &reduction.body(), &rewriter);
@@ -1342,11 +1305,8 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
       Type type = RankedTensorType::get(/*shape=*/{}, element_type);
       block->addArguments({type, type});
 
-      Type pred_type =
-          RankedTensorType::get(/*shape=*/{}, rewriter.getI1Type());
-
       auto reducer = rewriter.create<xla_hlo::CompareOp>(
-          loc, pred_type, block->getArgument(0), block->getArgument(1),
+          loc, block->getArgument(0), block->getArgument(1),
           /*broadcast_dimensions=*/nullptr,
           StringAttr::get("GE", rewriter.getContext()));
       rewriter.create<xla_hlo::ReturnOp>(loc, reducer.getResult());
@@ -1737,13 +1697,10 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
         llvm::to_vector<4>(indices_shape);
     output_dims.insert(output_dims.begin() + axis, depth);
 
-    auto index_type = RankedTensorType::get(output_dims, element_type);
-    auto compare_type =
-        RankedTensorType::get(output_dims, rewriter.getIntegerType(1));
-
     Location loc = op.getLoc();
+    auto index_type = RankedTensorType::get(output_dims, element_type);
     Value *compare = rewriter.create<xla_hlo::CompareOp>(
-        loc, compare_type, op.indices(),
+        loc, op.indices(),
         rewriter.create<xla_hlo::IotaOp>(
             loc, index_type,
             IntegerAttr::get(rewriter.getIntegerType(64), axis)),

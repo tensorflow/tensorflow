@@ -215,6 +215,18 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
+void ConvertOp::build(Builder* builder, OperationState& result, Value* operand,
+                      Type result_element_ty) {
+  Type result_ty;
+  Type operand_ty = operand->getType();
+  if (auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_ty.getShape(), result_element_ty);
+  } else {
+    result_ty = UnrankedTensorType::get(result_element_ty);
+  }
+  build(builder, result, result_ty, operand);
+}
+
 namespace {
 
 // Converts the values of an ElementsAttr into the corresponding type.
@@ -544,6 +556,41 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // ReduceOp
 //===----------------------------------------------------------------------===//
+
+// Returns the result type after reducing operand of the given type across the
+// specified dimensions.
+static TensorType GetReduceResultType(Type operand_ty,
+                                      DenseIntElementsAttr dimensions,
+                                      Builder* builder) {
+  Type element_ty = getElementTypeOrSelf(operand_ty);
+
+  auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return UnrankedTensorType::get(element_ty);
+
+  int64_t rank = ranked_ty.getRank();
+  llvm::SmallVector<bool, 4> dims_mask(rank, false);
+  for (int64_t dim : dimensions.getValues<int64_t>()) dims_mask[dim] = true;
+
+  SmallVector<int64_t, 4> shape;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!dims_mask[i]) shape.push_back(ranked_ty.getDimSize(i));
+  }
+
+  return RankedTensorType::get(shape, element_ty);
+}
+
+void ReduceOp::build(Builder* builder, OperationState& state,
+                     ArrayRef<Value*> operands, ArrayRef<Value*> init_values,
+                     DenseIntElementsAttr dimensions) {
+  SmallVector<Type, 1> result_ty;
+  result_ty.reserve(operands.size());
+
+  for (Value* operand : operands) {
+    result_ty.push_back(
+        GetReduceResultType(operand->getType(), dimensions, builder));
+  }
+  build(builder, state, result_ty, operands, init_values, dimensions);
+}
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
