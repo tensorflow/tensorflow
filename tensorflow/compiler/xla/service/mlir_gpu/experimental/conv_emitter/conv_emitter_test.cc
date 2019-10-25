@@ -95,20 +95,20 @@ CHECK-NEXT:               %cst = constant 0.000000e+00 : f32
 CHECK-NEXT:               affine.store %cst, %0[%arg7, %arg8] : memref<32x16xf32>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
-CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
-CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
-CHECK-NEXT:               affine.for %arg9 = 0 to 1 {
-CHECK-NEXT:                 affine.for %arg10 = 0 to 7 {
-CHECK-NEXT:                   affine.for %arg11 = 0 to 7 {
+CHECK-NEXT:           affine.for %arg7 = 0 to 1 {
+CHECK-NEXT:             affine.for %arg8 = 0 to 7 {
+CHECK-NEXT:               affine.for %arg9 = 0 to 7 {
+CHECK-NEXT:                 affine.for %arg10 = 0 to 32 {
+CHECK-NEXT:                   affine.for %arg11 = 0 to 16 {
 CHECK-NEXT:                     affine.for %arg12 = 0 to 4 {
-CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg10 - 3, (%arg6 * 16 + %arg8) * 2 + %arg11 - 3, %arg9 * 4 + %arg12] : memref<128x224x224x4xf16>
+CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg8 - 3, (%arg6 * 16 + %arg11) * 2 + %arg9 - 3, %arg7 * 4 + %arg12] : memref<128x224x224x4xf16>
 CHECK-NEXT:                       %2 = fpext %1 : f16 to f32
-CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg7, %arg10, %arg11, %arg9 * 4 + %arg12] : memref<64x7x7x4xf16>
+CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
 CHECK-NEXT:                       %4 = fpext %3 : f16 to f32
-CHECK-NEXT:                       %5 = affine.load %0[%arg7, %arg8] : memref<32x16xf32>
+CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                       %6 = mulf %2, %4 : f32
 CHECK-NEXT:                       %7 = addf %5, %6 : f32
-CHECK-NEXT:                       affine.store %7, %0[%arg7, %arg8] : memref<32x16xf32>
+CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                     }
 CHECK-NEXT:                   }
 CHECK-NEXT:                 }
