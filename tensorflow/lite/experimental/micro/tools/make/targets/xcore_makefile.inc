@@ -1,7 +1,7 @@
 # Settings for XMOS XS3 based processors
 #-Wno-unknown-attributes
 ifeq ($(TARGET), xcore)
-  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -Wno-unknown-pragmas -report
+  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -Wno-unknown-pragmas -Wno-unknown-attributes -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   
