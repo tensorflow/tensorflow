@@ -328,6 +328,8 @@ int Member::FindAndUpdateRoot(std::vector<Member>* tree, int node_id) {
 
 int Member::FindRoot(const std::vector<Member>& tree, int node_id) {
   const Member& member = tree[node_id];
+  // if member.parent is not the root of this disjoint tree. Recursively find
+  // and update member.parent.
   if (member.parent_ == node_id) {
     return member.parent_;
   }
