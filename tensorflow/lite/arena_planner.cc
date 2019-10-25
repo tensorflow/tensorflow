@@ -53,8 +53,8 @@ std::intptr_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
 }
 
 TfLiteStatus ArenaPlanner::ResetAllocations() {
-  TF_LITE_ENSURE_STATUS(arena_.Clear());
-  TF_LITE_ENSURE_STATUS(persistent_arena_.Clear());
+  TF_LITE_ENSURE_STATUS(arena_.ClearPlan());
+  TF_LITE_ENSURE_STATUS(persistent_arena_.ClearPlan());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
   // Note that we only clear the alloc_queue_ when re-planning allocations, as
@@ -203,6 +203,32 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
   }
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::ReleaseNonPersistentMemory() {
+  // Clear non-persistent arena's buffer.
+  TF_LITE_ENSURE_STATUS(arena_.ReleaseBuffer());
+  // Set data pointers for all non-persistent tensors to nullptr.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      tensor.data.raw = nullptr;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
+  // First commit arena_ to allocate underlying buffer.
+  TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
+  // Resolve allocations for all tensors not on the persistent arena.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+    }
+  }
   return kTfLiteOk;
 }
 
