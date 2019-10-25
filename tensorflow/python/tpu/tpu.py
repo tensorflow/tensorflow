@@ -92,7 +92,9 @@ def _tpu_system_device_name(job):
 
 
 @tf_export(v1=["tpu.initialize_system"])
-def initialize_system(embedding_config=None, job=None):
+def initialize_system(embedding_config=None,
+                      job=None,
+                      compilation_failure_closes_chips=True):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
@@ -103,6 +105,8 @@ def initialize_system(embedding_config=None, job=None):
       contains the TPU devices that will be initialized. If job=None it is
       assumed there is only one job in the TensorFlow flock, and an error will
       be returned if this assumption does not hold.
+    compilation_failure_closes_chips: Set the configuration whether
+      we want to close TPU chips when there is a compilation failure.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -110,7 +114,9 @@ def initialize_system(embedding_config=None, job=None):
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
+    return tpu_ops.configure_distributed_tpu(
+        embedding_config=config_string,
+        compilation_failure_closes_chips=compilation_failure_closes_chips)
 
 
 def initialize_system_for_tpu_embedding(embedding_config, job=None):
