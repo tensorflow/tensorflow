@@ -35,7 +35,6 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   };
 
  private:
-  // especially when adding more ops/rewrite rules in future.
   std::unordered_map<std::string, MklEagerOp> mkl_eager_ops_;
 
   // The entry point to execute the op rewrite.
@@ -81,7 +80,7 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   void InsertMKLEagerOps(MklEagerOp op);
 
   // Map used by FastCheckIfKernelRegistered.
-  std::unordered_map<std::string, bool> registered_kernels_map;
+  std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
@@ -197,13 +196,13 @@ bool MklEagerOpRewrite::FastCheckIfKernelRegistered(std::string op_name,
   // Check for kernel registration only once per op name and data type
   // for performance reasons.
   string registered_kernels_key = op_name + std::to_string(dt);
-  auto kernel_element = registered_kernels_map.find(registered_kernels_key);
+  auto kernel_element = registered_kernels_map_.find(registered_kernels_key);
   bool kernel_registered = false;
-  if (kernel_element == registered_kernels_map.end()) {
+  if (kernel_element == registered_kernels_map_.end()) {
     // Kernel registration is not verified even once yet.
     // So verify and store registration.
     kernel_registered = SlowCheckIfKernelRegistered(op_name, dt);
-    registered_kernels_map.insert(
+    registered_kernels_map_.insert(
         std::make_pair(registered_kernels_key, kernel_registered));
   } else {
     // Kernel is visited atleast once. return stored registration result.
