@@ -5,8 +5,10 @@ ifeq ($(TARGET), xcore)
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   
-  CXXFLAGS += $(PLATFORM_FLAGS)
-  CCFLAGS += $(PLATFORM_FLAGS)
+  override CXXFLAGS := -std=c++11 -g -DTF_LITE_STATIC_MEMORY -DNDEBUG
+  override CXXFLAGS += $(PLATFORM_FLAGS) 
+  override CCFLAGS := -g -DTF_LITE_STATIC_MEMORY -DNDEBUG
+  override CCFLAGS += $(PLATFORM_FLAGS)
   TARGET_ARCH := xcore
   TARGET_TOOLCHAIN_PREFIX := tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/bin/
   TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_xcore_binary.sh
