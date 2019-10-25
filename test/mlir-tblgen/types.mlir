@@ -155,6 +155,31 @@ func @nd_tensor_of_success_wrong_type_4d(%arg0: tensor<f32>, %arg1: tensor<10xf3
 
 // -----
 
+func @ranked_tensor_success(%arg0: tensor<i8>, %arg1: tensor<1xi32>, %arg2: tensor<?x?xf32>) {
+  "test.ranked_tensor_op"(%arg0) : (tensor<i8>) -> ()
+  "test.ranked_tensor_op"(%arg1) : (tensor<1xi32>) -> ()
+  "test.ranked_tensor_op"(%arg2) : (tensor<?x?xf32>) -> ()
+  return
+}
+
+// -----
+
+func @ranked_tensor_success(%arg0: tensor<*xf32>) {
+  // expected-error @+1 {{must be ranked tensor of any type values}}
+  "test.ranked_tensor_op"(%arg0) : (tensor<*xf32>) -> ()
+  return
+}
+
+// -----
+
+func @ranked_tensor_success(%arg0: vector<2xf32>) {
+  // expected-error @+1 {{must be ranked tensor of any type values}}
+  "test.ranked_tensor_op"(%arg0) : (vector<2xf32>) -> ()
+  return
+}
+
+// -----
+
 func @multi_tensor_rank_of_success(%arg0: tensor<i8>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<1xi8>, %arg4: tensor<1xi32>, %arg5: tensor<1xf32>) {
   "test.multi_tensor_rank_of"(%arg0) : (tensor<i8>) -> ()
   "test.multi_tensor_rank_of"(%arg1) : (tensor<i32>) -> ()
