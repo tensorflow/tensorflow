@@ -1001,6 +1001,17 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           .format(self.__wrapped__, self.__wrapped__._fields))
     return super(_TupleWrapper, self)._checkpoint_dependencies
 
+  def __getattribute__(self, name):
+    if (hasattr(type(self), name)
+        and isinstance(getattr(type(self), name), property)):
+      # Bypass ObjectProxy for properties. Whether this workaround is necessary
+      # appears to depend on the Python version but not the wrapt version: 3.4
+      # in particular seems to look up properties on the wrapped object instead
+      # of the wrapper without this logic.
+      return object.__getattribute__(self, name)
+    else:
+      return super(_TupleWrapper, self).__getattribute__(name)
+
 
 def _is_function(x):
   return isinstance(x, (def_function.Function, defun.ConcreteFunction))
