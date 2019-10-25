@@ -103,20 +103,61 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 
 ## Highlights
 
-* TF 2.0 delivers Keras as the central high level API used to build and train models. Keras provides several model-building APIs such as Sequential, Functional, and Subclassing along with eager execution, for immediate iteration and intuitive debugging, and `tf.data`, for building scalable input pipelines. Checkout [guide](https://www.tensorflow.org/beta/guide/keras/overview) for additional details.
-* Distribution Strategy: TF 2.0 users will be able to use the [`tf.distribute.Strategy`](https://www.tensorflow.org/beta/guide/distribute_strategy) API to distribute training with minimal code changes, yielding great out-of-the-box performance. It supports distributed training with Keras model.fit, as well as with custom training loops. Multi-GPU support is available, along with experimental support for multi worker and Cloud TPUs. Check out the [guide](https://www.tensorflow.org/beta/guide/distribute_strategy) for more details.
-* Functions, not Sessions. The traditional declarative programming model of building a graph and executing it via a `tf.Session` is discouraged, and replaced with by writing regular Python functions. Using the `tf.function` decorator, such functions can be turned into graphs which can be executed remotely, serialized, and optimized for performance.
-* Unification of `tf.train.Optimizers` and `tf.keras.Optimizers`. Use `tf.keras.Optimizers` for TF2.0. `compute_gradients` is removed as public API, use `GradientTape` to compute gradients.
-* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with tf.data, tf.distribute and tf.keras APIs. 
-* Unification of exchange formats to SavedModel. All TensorFlow ecosystem projects (TensorFlow Lite, TensorFlow JS, TensorFlow Serving, TensorFlow Hub) accept SavedModels. Model state should be saved to and restored from SavedModels.
-* API Changes: Many API symbols have been renamed or removed, and argument names have changed. Many of these changes are motivated by consistency and clarity. The 1.x API remains available in the compat.v1 module. A list of all symbol changes can be found [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0). 
- * API clean-up, included removing `tf.app`, `tf.flags`, and `tf.logging` in favor of [absl-py](https://github.com/abseil/abseil-py).
-* No more global variables with helper methods like `tf.global_variables_initializer` and `tf.get_global_step`.
-* Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
-* Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
-* Fixes autocomplete for most TensorFlow API references by switching to use relative imports in API `__init__.py` files.
-* Auto Mixed-Precision graph optimizer simplifies converting models to `float16` for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
-* Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to `TRUE` or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
+*   TF 2.0 delivers Keras as the central high level API used to build and train
+    models. Keras provides several model-building APIs such as Sequential,
+    Functional, and Subclassing along with eager execution, for immediate
+    iteration and intuitive debugging, and `tf.data`, for building scalable
+    input pipelines. Checkout
+    [guide](https://www.tensorflow.org/beta/guide/keras/overview) for additional
+    details.
+*   Distribution Strategy: TF 2.0 users will be able to use the
+    [`tf.distribute.Strategy`](https://www.tensorflow.org/beta/guide/distribute_strategy)
+    API to distribute training with minimal code changes, yielding great
+    out-of-the-box performance. It supports distributed training with Keras
+    model.fit, as well as with custom training loops. Multi-GPU support is
+    available, along with experimental support for multi worker and Cloud TPUs.
+    Check out the
+    [guide](https://www.tensorflow.org/beta/guide/distribute_strategy) for more
+    details.
+*   Functions, not Sessions. The traditional declarative programming model of
+    building a graph and executing it via a `tf.Session` is discouraged, and
+    replaced with by writing regular Python functions. Using the `tf.function`
+    decorator, such functions can be turned into graphs which can be executed
+    remotely, serialized, and optimized for performance.
+*   Unification of `tf.train.Optimizers` and `tf.keras.Optimizers`. Use
+    `tf.keras.Optimizers` for TF2.0. `compute_gradients` is removed as public
+    API, use `GradientTape` to compute gradients.
+*   AutoGraph translates Python control flow into TensorFlow expressions,
+    allowing users to write regular Python inside `tf.function`-decorated
+    functions. AutoGraph is also applied in functions used with tf.data,
+    tf.distribute and tf.keras APIs.
+*   Unification of exchange formats to SavedModel. All TensorFlow ecosystem
+    projects (TensorFlow Lite, TensorFlow JS, TensorFlow Serving, TensorFlow
+    Hub) accept SavedModels. Model state should be saved to and restored from
+    SavedModels.
+*   API Changes: Many API symbols have been renamed or removed, and argument
+    names have changed. Many of these changes are motivated by consistency and
+    clarity. The 1.x API remains available in the compat.v1 module. A list of
+    all symbol changes can be found
+    [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0).
+    *   API clean-up, included removing `tf.app`, `tf.flags`, and `tf.logging`
+        in favor of [absl-py](https://github.com/abseil/abseil-py).
+*   No more global variables with helper methods like
+    `tf.global_variables_initializer` and `tf.get_global_step`.
+*   Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()`
+    for enabling/disabling v2 control flow.
+*   Enable v2 control flow as part of `tf.enable_v2_behavior()` and
+    `TF2_BEHAVIOR=1`.
+*   Fixes autocomplete for most TensorFlow API references by switching to use
+    relative imports in API `__init__.py` files.
+*   Auto Mixed-Precision graph optimizer simplifies converting models to
+    `float16` for acceleration on Volta and Turing Tensor Cores. This feature
+    can be enabled by wrapping an optimizer class with
+    `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
+*   Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to "true" or "1"
+    forces the selection of deterministic cuDNN convolution and max-pooling
+    algorithms. When this is enabled, the algorithm selection procedure itself
+    is also deterministic.
 
 ## Breaking Changes
 * Many backwards incompatible API changes have been made to clean up the APIs and make them more consistent.
