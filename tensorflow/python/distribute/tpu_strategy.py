@@ -510,17 +510,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _broadcast_to(self, tensor, destinations):
     del destinations
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
-      result = tpu_ops.all_to_all(
-          broadcast_tensor,
-          concat_dimension=0,
-          split_dimension=0,
-          split_count=self._num_replicas_in_sync)
-
-      # This uses the broadcasted value from the first replica because the only
-      # caller of this is for ONLY_FIRST_REPLICA variables aggregation.
-      return result[0]
     return tensor
 
   @property
