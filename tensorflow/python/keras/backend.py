@@ -342,6 +342,7 @@ def set_learning_phase(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
@@ -366,6 +367,7 @@ def learning_phase_scope(value):
 
   Arguments:
      value: Learning phase value, either 0 or 1 (integers).
+            0 = test, 1 = train
 
   Yields:
     None.
@@ -408,6 +410,7 @@ def eager_learning_phase_scope(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Yields:
     None.
