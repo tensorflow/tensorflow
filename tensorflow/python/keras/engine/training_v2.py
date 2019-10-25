@@ -589,7 +589,7 @@ def _process_training_inputs(model,
     if validation_data:
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
-           validation_data)
+           validation_data, raise_if_ambiguous=False)
       # For eval data, we use a representative batch size of the
       # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
