@@ -209,16 +209,16 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   Arguments:
       x: Input `tensor` or `variable`.
-      alpha: A `float` that governs the slope for values lower than the 
+      alpha: A `float` that governs the slope for values lower than the
       threshold.
-      max_value: A `float` that sets the saturation threshold (the largest 
+      max_value: A `float` that sets the saturation threshold (the largest
       value the function will return).
       threshold: A `float` giving the threshold value of the activation function
       below which values will be damped or set to zero.
 
   Returns:
-      A `Tensor` representing the input tensor, transformed by the relu activation
-      function.
+      A `Tensor` representing the input tensor,
+      transformed by the relu activation function.
       Tensor will be of the same shape and dtype of input `x`.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
