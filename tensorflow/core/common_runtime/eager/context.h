@@ -329,7 +329,7 @@ class EagerContext : public core::RefCounted {
       DistributedFunctionLibraryRuntime* cluster_flr);
 
   Status StoreCollectiveOpsServer(
-      std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+      std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
   // TODO(fishx): Remove the custom deleter once we remove forward declaration.

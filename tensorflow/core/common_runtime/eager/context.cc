@@ -681,8 +681,10 @@ uint64 EagerContext::GetContextViewId() {
   return context_view_id_;
 }
 
+// Set collective ops related state in the context. Passing nullptr to
+// `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.reset(nullptr);
   unowned_collective_executor_mgr_ = rpc_collective_executor_mgr;
@@ -711,13 +713,16 @@ Status EagerContext::StoreCollectiveOpsServer(
       config ? config->graph_options().optimizer_options() : OptimizerOptions(),
       thread_pool_.get()));
 
-  // Memory leak!
-  if (server_ != nullptr) {
-    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "Servers don't support clean shutdown.";
-    server_.release();
+  if (new_server != nullptr) {
+    // Memory leak!
+    if (server_ != nullptr) {
+      LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                      "Servers don't support clean shutdown.";
+      server_.release();
+    }
+    server_ = std::move(new_server);
   }
-  server_ = std::move(server);
+  DCHECK(server_ != nullptr);
 
   return Status::OK();
 }
