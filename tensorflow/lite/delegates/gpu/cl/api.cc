@@ -519,10 +519,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
     create_info.hints.Add(ModelHints::kReduceKernelsCount);
     // TODO(sorokin) temporary hack to speed up init time in some cases.
     // TODO(sorokin): move this check to the place where hint is applied.
-    if ((create_info.precision == CalculationsPrecision::F16 ||
-         create_info.precision == CalculationsPrecision::F32_F16) &&
-        create_info.storage_type == TensorStorageType::TEXTURE_ARRAY &&
-        environment_->device().IsAdreno6xxOrHigher()) {
+    if (environment_->device().IsAdreno6xxOrHigher()) {
       create_info.hints.Add(ModelHints::kFastTuning);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
