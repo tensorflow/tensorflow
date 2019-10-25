@@ -1872,7 +1872,6 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
-  VLOG(5) << "Inlined function definition: " << DebugString(fbody->fdef);
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
