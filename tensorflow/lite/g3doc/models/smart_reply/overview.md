@@ -21,7 +21,8 @@ Android example</a>
 
 Read the
 [GitHub page](https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android/)
-to learn how the app works.
+to learn how the app works. Inside this project, you will also learn how to
+build an app with custom C++ ops.
 
 ## How it works
 
