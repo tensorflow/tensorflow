@@ -4012,6 +4012,28 @@ For each batch `i` and class `j` we have
   }];
 }
 
+def TF_SoftmaxCrossEntropyWithLogitsOp : TF_Op<"SoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_FpTensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
