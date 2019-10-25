@@ -123,10 +123,12 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:lhlo",
+        ":lhlo",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
+        "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
@@ -138,6 +140,7 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_linalg",
     srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
