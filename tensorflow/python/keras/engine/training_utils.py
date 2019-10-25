@@ -2001,10 +2001,16 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
     val_y = None
     val_sample_weight = None
   elif len(validation_data) == 2:
-    val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-    val_sample_weight = None
+    try:
+      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+      val_sample_weight = None
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   elif len(validation_data) == 3:
-    val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    try:
+      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   else:
     if raise_if_ambiguous:
       raise ValueError(
