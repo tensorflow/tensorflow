@@ -462,10 +462,15 @@ StatusOr<Node*> ImporterBase::ReplaceWithPlaceholderNode(
 
   while (!input_node->out_edges().empty()) {
     const Edge* oe = *input_node->out_edges().begin();
-    TF_RETURN_IF_ERROR(graph_->UpdateEdge(
-        placeholder_node,
-        oe->src_output() == Graph::kControlSlot ? Graph::kControlSlot : 0,
-        oe->dst(), oe->dst_input()));
+    // UpdateEdge cannot be used with control edges.
+    if (oe->src_output() == Graph::kControlSlot) {
+      graph_->AddControlEdge(placeholder_node, oe->dst());
+      graph_->RemoveControlEdge(oe);
+      continue;
+    }
+
+    TF_RETURN_IF_ERROR(
+        graph_->UpdateEdge(placeholder_node, 0, oe->dst(), oe->dst_input()));
   }
 
   graph_->RemoveNode(input_node);
