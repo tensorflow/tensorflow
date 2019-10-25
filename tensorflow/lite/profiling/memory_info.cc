@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/memory_info.h"
 
-#ifndef _MSC_VER
+#ifdef __linux__
 #include <malloc.h>
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -28,7 +28,7 @@ const int MemoryUsage::kValueNotSet = 0;
 
 MemoryUsage GetMemoryUsage() {
   MemoryUsage result;
-#ifndef _MSC_VER
+#ifdef __linux__
   rusage res;
   if (getrusage(RUSAGE_SELF, &res) == 0) {
     result.max_rss_kb = res.ru_maxrss;

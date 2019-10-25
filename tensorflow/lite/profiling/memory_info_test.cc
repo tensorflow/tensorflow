@@ -43,7 +43,7 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.max_rss_kb);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
 
-#ifndef _MSC_VER
+#ifdef __linux__
   result = GetMemoryUsage();
   // As the getrusage call may fail, we might not be able to get max_rss_kb.
   EXPECT_NE(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
