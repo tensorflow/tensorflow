@@ -44,11 +44,12 @@ namespace hifi3 {
     reg = AE_SEL16_7520(packed, reg);                     \
   }
 
-void FullyConnected(const FullyConnectedParams& params,
-                    const RuntimeShape& input_shape, const int8_t* input_data,
-                    const RuntimeShape& filter_shape, const int8_t* filter_data,
-                    const RuntimeShape& bias_shape, const int32_t* bias_data,
-                    const RuntimeShape& output_shape, int8_t* output_data) {
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int8_t* output_data) {
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -65,110 +66,63 @@ void FullyConnected(const FullyConnectedParams& params,
   const int output_depth = output_shape.Dims(1);
   TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+
+  ae_int32x2 offsets_input;
+  ((int32_t*)&offsets_input)[0] = input_offset;
+  ((int32_t*)&offsets_input)[1] = input_offset;
+
+  ae_int32x2 offsets_filter;
+  ((int32_t*)&offsets_filter)[0] = filter_offset;
+  ((int32_t*)&offsets_filter)[1] = filter_offset;
+
+  ae_int32x2 inputs_32x2;
+  ae_int32x2 filters_32x2;
+
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
-      // same...
-      int num_iters = (accum_depth + 3) / 4;
-
-      //int32 i1 = input_data[b * accum_depth];
-      //int32 i2 = *(input_data + (b * accum_depth));
-      //int32 f1 = filter_data[out_c * accum_depth];
-      //int32 f2 = *(filter_data + (out_c * accum_depth));
+      int num_iters = (accum_depth) / 2;
+      int extra = accum_depth % 2;
 
       const int8_t* in_ptr = input_data + (b * accum_depth);
+      const int8_t* filter_ptr = filter_data + (out_c * accum_depth);
+
+      int acc = 0;
       for (int d = 0; d < num_iters; d++) {
-        for (int i = 0; i < 4; i++) {
+        ((int32_t*)&inputs_32x2)[0] = *in_ptr++;
+        ((int32_t*)&inputs_32x2)[1] = *in_ptr++;
 
-          printf("(%d) input: %d - %d\n",
-                 b * accum_depth * d + i,
-                 *in_ptr, input_data[b * accum_depth * d + i]);
-          in_ptr++;
-        }
+        ((int32_t*)&filters_32x2)[0] = *filter_ptr++;
+        ((int32_t*)&filters_32x2)[1] = *filter_ptr++;
+
+        ae_int32x2 input_offsets_sum = AE_ADD32(offsets_input, inputs_32x2);
+        ae_int32x2 filter_offsets_sum = AE_ADD32(offsets_filter, filters_32x2);
+
+        ae_int32x2 input_filter_sums =
+            AE_MULP32X2(input_offsets_sum, filter_offsets_sum);
+        acc +=
+            AE_MOVAD32_H(input_filter_sums) + AE_MOVAD32_L(input_filter_sums);
       }
-      for (int d = 0; d < accum_depth; ++d) {
-        printf("(%d)  ", b * accum_depth + d);
+
+      for (int d = 0; d < extra; d++) {
+        // Handle odd tensor lengths:
+        int32 input_val = input_data[b * accum_depth + d];
+        int32 filter_val = filter_data[out_c * accum_depth + d];
+        acc += (filter_val + filter_offset) * (input_val + input_offset);
       }
-      printf("\n");
 
-      //int32 acc = 0;
-      //for (int d = 0; d < accum_depth; ++d) {
-      //  int32 input_val = input_data[b * accum_depth + d];
-      //  int32 filter_val = filter_data[out_c * accum_depth + d];
-      //  printf("input: %d - %d\n", input_val,
-      //         *(input_data + (b * accum_depth + d)));
-      //  printf("filter: %d - %d\n", filter_val,
-      //         *(filter_data + (out_c * accum_depth + d)));
-      //  acc += (filter_val + filter_offset) * (input_val + input_offset);
-      //}
+      if (bias_data) {
+        acc += bias_data[out_c];
+      }
 
-      /* printf("accum_depth: %d\n", accum_depth); */
-      /* printf("num_iters: %d\n", num_iters); */
-
-      /* const int8_t* input_ptr = input_data + b * accum_depth; */
-      /* const int8_t* filter_ptr = filter_data + out_c * accum_depth; */
-
-      /* printf("input_ptr: %d - %d\n", *input_ptr, input_data[b * accum_depth]); */
-      /* printf("filter_ptr: %d - %d\n", *filter_ptr, filter_ptr[out_c * accum_depth]); */
-
-      /* // TODO - account for offset! */
-      /* while (num_iters--) { */
-      /*   // */
-      /*   // TODO(kreeger): Left off right here. Need to do this properly. */
-      /*   // Intrinsics are working... */
-      /*   // */
-      /*   int8_t v1[] = {1, 2, 3, 4}; */
-      /*   ae_int16x4 reg1; */
-      /*   XT_PACK_INT8_16X4_REG(v1, reg1); */
-
-      /*   int8_t v2[] = {4, 3, 2, 1}; */
-      /*   ae_int16x4 reg2; */
-      /*   XT_PACK_INT8_16X4_REG(v2, reg2); */
-
-      /*   ae_int32x2 sum1 = AE_ZERO32(); */
-      /*   ae_int32x2 sum2 = AE_ZERO32(); */
-
-      /*   AE_MULA16X4(sum1, sum2, reg1, reg2); */
-
-      /*   ae_int32x2 sum12 = AE_ADD32(sum1, sum2); */
-      /*   printf("SUM: %d\n", AE_MOVAD32_L(sum12) + AE_MOVAD32_H(sum12)); */
-      /* } */
-
-
-      // if (bias_data) {
-      //   acc += bias_data[out_c];
-      // }
-      // acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-      // output_shift); acc += output_offset; acc = std::max(acc,
-      // output_activation_min); acc = std::min(acc, output_activation_max);
-      // output_data[out_c + output_depth * b] = static_cast<int8_t>(acc);
+      // TODO(kreeger): Optimize this stuff below:
+      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      acc += output_offset;
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_data[out_c + output_depth * b] = static_cast<int8_t>(acc);
     }
   }
 }
-
-/*
-  ae_int32x2 sum1 = AE_ZERO32();
-  ae_int32x2 sum2 = AE_ZERO32();
-
-  // Load the vectors.
-  const ae_int16x4* vec_1x4 = (const ae_int16x4*) (vec_1);
-  const ae_int16x4* vec_2x4 = (const ae_int16x4*) (vec_2);
-
-  int num_iterations = (n + 3) / 4;
-  while (num_iterations--) {
-    ae_int16x4 reg_1, reg_2;
-    // Load 4 16-bit elements.
-    AE_L16X4_IP(reg_1, vec_1x4, 8);
-    AE_L16X4_IP(reg_2, vec_2x4, 8);
-    // Multiply 4 16-bit numbers, and accumulate them in 4 32-bit accumulators.
-    AE_MULA16X4(sum1, sum2, reg_1, reg_2);
-  }
-  // Reduce the 4 32-bit accumulators into 2 32-bit accumulators.
-  ae_int32x2 sum12 = AE_ADD32(sum1, sum2);
-  // Return the sum of the two accumulators.
-  int sum12_L = AE_MOVAD32_L(sum12);
-  int sum12_H = AE_MOVAD32_H(sum12);
-  return sum12_L + sum12_H;
-*/
 
 }  // namespace hifi3
 }  // namespace xtensa
