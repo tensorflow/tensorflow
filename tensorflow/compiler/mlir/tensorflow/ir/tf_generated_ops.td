@@ -2072,7 +2072,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -3988,7 +3988,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
