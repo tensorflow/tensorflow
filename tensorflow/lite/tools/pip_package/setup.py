@@ -36,9 +36,9 @@ from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.build_py import build_py
 PACKAGE_NAME = 'tflite_runtime'
-PACKAGE_VERSION = os.environ['TENSORFLOW_VERSION']
+PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
 DOCLINES = __doc__.split('\n')
-TENSORFLOW_DIR = os.environ['TENSORFLOW_SRC_ROOT']
+TENSORFLOW_DIR = os.environ['TENSORFLOW_DIR']
 
 # Setup cross compiling
 TARGET = os.environ.get('TENSORFLOW_TARGET', None)
