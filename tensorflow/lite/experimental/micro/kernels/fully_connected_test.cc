@@ -165,8 +165,8 @@ void TestFullyConnectedQuantized(
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   clock_t t = clock();
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  clock_t total = clock() - t;
-  printf("QUANT TOTAL: %ld\n", total);
+  clock_t elaps = clock() - t;
+  printf("TOTAL: %ld\n", elaps);
   if (registration->free) {
     registration->free(&context, user_data);
   }

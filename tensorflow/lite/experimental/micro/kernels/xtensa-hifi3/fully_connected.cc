@@ -29,44 +29,15 @@ namespace tflite {
 namespace xtensa {
 namespace hifi3 {
 
-// Helper XTENSA wrappers:
-#define XT_PACK_INT8_16X4_REG(v, reg)                     \
-  {                                                       \
-    ae_int32x2 r;                                         \
-    ae_int16x4 packed;                                    \
-    const ae_p16x2s* vec_8x2 = (const ae_p16x2s*)(v - 4); \
-    AE_L16X2M_IU(r, vec_8x2, 4);                          \
-    ((int16_t*)&packed)[0] = ((int16_t*)&r)[1];           \
-    ((int16_t*)&packed)[1] = ((int16_t*)&r)[0];           \
-    ((int16_t*)&packed)[2] = ((int16_t*)&r)[3];           \
-    ((int16_t*)&packed)[3] = ((int16_t*)&r)[2];           \
-    reg = AE_SRAI16(packed, 8);                           \
-    reg = AE_SEL16_7520(packed, reg);                     \
-  }
-
-inline void FullyConnected(
-    const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int8_t* output_data) {
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  const int filter_dim_count = filter_shape.DimensionsCount();
-  const int batches = output_shape.Dims(0);
-  const int output_depth = output_shape.Dims(1);
-  TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
-  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
-
+template <typename T>
+inline void OptDotProdWithOffsets(
+    const int32 input_offset, const int32 filter_offset,
+    const int32 output_offset, const int32 output_multiplier,
+    const int output_shift, const int32 output_activation_min,
+    const int32 output_activation_max, const int filter_dim_count,
+    const int batches, const int output_depth, const int accum_depth,
+    const T* input_data, const T* filter_data, const int32* bias_data,
+    T* output_data) {
   ae_int32x2 offsets_input;
   ((int32_t*)&offsets_input)[0] = input_offset;
   ((int32_t*)&offsets_input)[1] = input_offset;
@@ -80,13 +51,14 @@ inline void FullyConnected(
 
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
+      int acc = 0;
+
       int num_iters = (accum_depth) / 2;
       int extra = accum_depth % 2;
 
-      const int8_t* in_ptr = input_data + (b * accum_depth);
-      const int8_t* filter_ptr = filter_data + (out_c * accum_depth);
+      const T* in_ptr = input_data + (b * accum_depth);
+      const T* filter_ptr = filter_data + (out_c * accum_depth);
 
-      int acc = 0;
       for (int d = 0; d < num_iters; d++) {
         ((int32_t*)&inputs_32x2)[0] = *in_ptr++;
         ((int32_t*)&inputs_32x2)[1] = *in_ptr++;
@@ -114,14 +86,83 @@ inline void FullyConnected(
         acc += bias_data[out_c];
       }
 
-      // TODO(kreeger): Optimize this stuff below:
+      // TODO(kreeger): The MultiplyByQuantizedMultiplier() method should be
+      // optimized as well:
       acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
-      output_data[out_c + output_depth * b] = static_cast<int8_t>(acc);
+      output_data[out_c + output_depth * b] = static_cast<T>(acc);
     }
   }
+}
+
+// Int8 optimized:
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int8_t* output_data) {
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = output_shape.Dims(0);
+  const int output_depth = output_shape.Dims(1);
+  TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+
+  OptDotProdWithOffsets<int8_t>(
+      input_offset, filter_offset, output_offset, output_multiplier,
+      output_shift, output_activation_min, output_activation_max,
+      filter_dim_count, batches, output_depth, accum_depth, input_data,
+      filter_data, bias_data, output_data);
+}
+
+// Uint8 optimized:
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data) {
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = MatchingDim(filter_shape, filter_dim_count - 2,
+                                       output_shape, output_dim_count - 1);
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+
+  OptDotProdWithOffsets<uint8_t>(
+      input_offset, filter_offset, output_offset, output_multiplier,
+      output_shift, output_activation_min, output_activation_max,
+      filter_dim_count, batches, output_depth, accum_depth, input_data,
+      filter_data, bias_data, output_data);
 }
 
 }  // namespace hifi3
@@ -227,18 +268,20 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-#define TF_LITE_FULLY_CONNECTED(output_data_type)                      \
-  reference_ops::FullyConnected(                                       \
-      op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
-      GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
-      GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
-      GetTensorShape(output), GetTensorData<output_data_type>(output))
   switch (output->type) {
     case kTfLiteUInt8:
-      TF_LITE_FULLY_CONNECTED(uint8_t);
+      xtensa::hifi3::FullyConnected(
+          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+          GetTensorShape(bias), GetTensorData<int32_t>(bias),
+          GetTensorShape(output), GetTensorData<uint8_t>(output));
       break;
     case kTfLiteInt16:
-      TF_LITE_FULLY_CONNECTED(int16_t);
+      reference_ops::FullyConnected(
+          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+          GetTensorShape(bias), GetTensorData<int32_t>(bias),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
       break;
     default:
       context->ReportError(
