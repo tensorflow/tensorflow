@@ -153,6 +153,8 @@ class DatasetParams {
 
   virtual int op_version() const { return op_version_; }
 
+  virtual bool sloppy() const { return false; }
+
  protected:
   std::vector<std::shared_ptr<DatasetParams>> input_dataset_params_;
   DataTypeVector output_dtypes_;
@@ -823,8 +825,9 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
   TEST_P(ParameterizedGetNextTest, GetNext) {                                 \
     auto test_case = GetParam();                                              \
     TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
-    TF_ASSERT_OK(CheckIteratorGetNext(test_case.expected_outputs,             \
-                                      /*compare_order=*/true));               \
+    TF_ASSERT_OK(CheckIteratorGetNext(                                        \
+        test_case.expected_outputs,                                           \
+        /*compare_order=*/!test_case.dataset_params.sloppy()));               \
   }                                                                           \
                                                                               \
   INSTANTIATE_TEST_SUITE_P(                                                   \
