@@ -460,7 +460,7 @@ class EagerContext : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   void CloseAndClearAllRemoteContexts();
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
-                           uint64 context_id);
+                           uint64 context_id, uint64 context_view_id);
 
   Status SetMasterContextState(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
