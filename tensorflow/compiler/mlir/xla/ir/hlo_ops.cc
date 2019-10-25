@@ -683,6 +683,9 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
     return RankedTensorType::get(out_shape, element_type);
   }
 
+  // Return unranked tensor for invalid broadcast dimensions.
+  if (!broadcast_dimensions) return UnrankedTensorType::get(element_type);
+
   auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
   auto shape_small = shape_x.size() <= shape_y.size() ? shape_x : shape_y;
 

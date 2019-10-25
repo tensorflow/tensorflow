@@ -1070,9 +1070,9 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       }
       auto divisor =
           GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
+      auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<xla_hlo::DivOp>(
-          loc, reduced_out_type, result, divisor.getResult(),
-          /* broadcast_dimensions= */ DenseIntElementsAttr());
+          loc, reduced_out_type, result, divisor.getResult(), broadcast_dims);
     }
 
     Type reduced_final_type =
