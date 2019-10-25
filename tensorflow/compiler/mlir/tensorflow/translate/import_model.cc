@@ -551,7 +551,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
         if (dtype == DT_INVALID) {
           dtype = node->output_type(0);
         }
-        node->AddAttr("dtype", it->second.imported_dtype);
+        node->AddAttr("dtype", dtype);
       }
     }
     // Adds the node to the shape refiner.

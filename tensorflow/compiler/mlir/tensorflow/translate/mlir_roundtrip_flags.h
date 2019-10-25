@@ -79,7 +79,7 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
                             std::vector<string>* order);
 
 // Parses the command line flag strings to the specification of nodes in
-// the Graph.
+// the Graph. `data_types` input string can be empty since the flag is optional.
 Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view data_types,
                            absl::string_view shapes,
