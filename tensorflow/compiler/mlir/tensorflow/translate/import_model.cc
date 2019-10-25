@@ -485,7 +485,7 @@ Status ImporterBase::GetInputOutputNodes(
     auto it = node_name_map.find(name);
     if (it == node_name_map.end()) {
       return errors::FailedPrecondition(
-          absl::StrCat("Graph does not contain node :", name));
+          absl::StrCat("Graph does not contain node: ", name));
     }
     nodes->insert(it->second);
     return Status::OK();
@@ -1633,7 +1633,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.output_arrays, ss, ",");
+      mlir::interleave(specs.output_arrays_order, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
