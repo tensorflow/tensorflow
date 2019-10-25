@@ -874,9 +874,16 @@ func @pretty_form_multi_result() -> (i16, i16) {
   return %quot, %rem : i16, i16
 }
 
+// CHECK-LABEL: func @pretty_form_multi_result_groups
+func @pretty_form_multi_result_groups() -> (i16, i16, i16, i16, i16) {
+  // CHECK: %[[RES:.*]]:5 =
+  // CHECK: return %[[RES]]#0, %[[RES]]#1, %[[RES]]#2, %[[RES]]#3, %[[RES]]#4
+  %group_1:2, %group_2, %group_3:2 = "foo_test"() : () -> (i16, i16, i16, i16, i16)
+  return %group_1#0, %group_1#1, %group_2, %group_3#0, %group_3#1 : i16, i16, i16, i16, i16
+}
+
 // CHECK-LABEL: func @pretty_dialect_attribute()
 func @pretty_dialect_attribute() {
-
   // CHECK: "foo.unknown_op"() {foo = #foo.simple_attr} : () -> ()
   "foo.unknown_op"() {foo = #foo.simple_attr} : () -> ()
 
