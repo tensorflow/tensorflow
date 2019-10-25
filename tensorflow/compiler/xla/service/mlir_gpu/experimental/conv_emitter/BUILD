@@ -53,6 +53,9 @@ tf_cc_test(
         "@llvm//:support",
         "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:LLVMTransforms",
+        "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardDialectRegistration",
+        "@local_config_mlir//:Transforms",
     ],
 )

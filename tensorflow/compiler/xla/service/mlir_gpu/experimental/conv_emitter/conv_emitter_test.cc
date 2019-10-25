@@ -18,9 +18,13 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -57,6 +61,14 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     function.print(strstream);
   }
   VLOG(1) << mlir_text;
+
+  {
+    mlir::PassManager pm(mlir_module->getContext());
+    pm.addPass(mlir::createLowerAffinePass());
+    pm.addPass(mlir::createLowerToLLVMPass());
+    CHECK(mlir::succeeded(pm.run(*mlir_module)));
+  }
+
   return mlir_text;
 }
 
