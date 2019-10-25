@@ -97,18 +97,39 @@ int32 NumIntraOpThreadsFromEnvironment() {
   return (val && strings::safe_strto32(val, &num)) ? num : 0;
 }
 
+#ifdef INTEL_MKL
+int32 OMPThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("OMP_NUM_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+int32 DefaultNumIntraOpThreads() {
+  // Use environment setting if specified (init once)
+  static int env_num_threads = NumIntraOpThreadsFromEnvironment();
+  if (env_num_threads > 0) {
+    return env_num_threads;
+  }
+
+  // Default to the maximum parallelism for the current process.
+  return port::MaxParallelism();
+}
+#endif
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
-    // MKL library executes ops in parallel using OMP threads
-    // Set inter_op conservatively to avoid thread oversubscription that could
-    // lead to severe perf degradations and OMP resource exhaustion
-    int mkl_intra_op = 1;
-#ifdef _OPENMP
-    mkl_intra_op = omp_get_max_threads();
-#endif  // _OPENMP
+    // MKL library executes ops in parallel using OMP threads.
+    // Setting inter_op conservatively to avoid thread oversubscription that
+    // could lead to severe perf degradations and OMP resource exhaustion.
+    // Inter ops are set such that mkl_inter_op * mkl_intra_op <= NumCores.
+    const int32 intra_op = options.config.intra_op_parallelism_threads();
+    const int32 omp_max_threads = OMPThreadsFromEnvironment();
+    const int32 mkl_intra_op =
+        (omp_max_threads > 0)
+            ? omp_max_threads
+            : (intra_op > 0) ? intra_op : DefaultNumIntraOpThreads();
     DCHECK_GE(mkl_intra_op, 1);
     const int32 mkl_inter_op = std::max(
         (DefaultNumInterOpThreads() + mkl_intra_op - 1) / mkl_intra_op, 2);
@@ -139,7 +160,7 @@ void SchedClosure(std::function<void()> closure) {
   uint64 id = tracing::GetUniqueArg();
   tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
 
-  Env::Default()->SchedClosure([id, closure = std::move(closure)]() {
+  Env::Default()->SchedClosure([ id, closure = std::move(closure) ]() {
     tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
     closure();
   });
