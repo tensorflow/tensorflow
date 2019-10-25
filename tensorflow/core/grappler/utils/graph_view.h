@@ -353,8 +353,12 @@ class Mutation {
   void ResetInternal();
 
   using MutableNodeViewDiff = internal::NodeViewDiff<MutableGraphView>;
+
+  // Adds a mutation to the `node`. Mutation function `mutate_fn` must return
+  // `true` if it actually does any mutations. If it returns `false` mutation
+  // will be ignored.
   void AddMutation(MutableNodeView* node,
-                   std::function<void(MutableNodeViewDiff*)> mutate_fn);
+                   std::function<bool(MutableNodeViewDiff*)> mutate_fn);
 
   MutableGraphView* graph_view_ = nullptr;
   int mutation_counter_ = 0;

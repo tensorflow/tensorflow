@@ -262,14 +262,16 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, Status* status) {
 
 void Mutation::AddMutation(
     MutableNodeView* node,
-    std::function<void(MutableNodeViewDiff*)> mutate_fn) {
+    std::function<bool(MutableNodeViewDiff*)> mutate_fn) {
   DCHECK(node->graph_view_ == graph_view_);
   if (node->update_index_ == internal::kMissingIndex) {
+    MutableNodeViewDiff diff(graph_view_, node->node_index_);
+    // If mutation is a no-op return and do not add it to the `updated_nodes_`.
+    if (!mutate_fn(&diff)) return;
     node->update_index_ = updated_nodes_.size();
-    updated_nodes_.emplace_back(graph_view_, node->node_index_);
-    mutate_fn(&updated_nodes_.back());
+    updated_nodes_.push_back(std::move(diff));
   } else if (!removed_nodes_.contains(node->node_index_)) {
-    auto& diff = updated_nodes_[node->update_index_];
+    MutableNodeViewDiff& diff = updated_nodes_[node->update_index_];
     mutate_fn(&diff);
   }
 }
@@ -290,7 +292,7 @@ void Mutation::RemoveNode(MutableNodeView* node) {
 
 void Mutation::UpdateNodeName(MutableNodeView* node, absl::string_view name) {
   AddMutation(node, [name](MutableNodeViewDiff* diff) {
-    internal::UpdateName(diff, name);
+    return internal::UpdateName(diff, name);
   });
 }
 
@@ -301,8 +303,9 @@ void Mutation::UpdateNodeName(const MutationNewNode& node,
 }
 
 void Mutation::UpdateNodeOp(MutableNodeView* node, absl::string_view op) {
-  AddMutation(
-      node, [op](MutableNodeViewDiff* diff) { internal::UpdateOp(diff, op); });
+  AddMutation(node, [op](MutableNodeViewDiff* diff) {
+    return internal::UpdateOp(diff, op);
+  });
 }
 
 void Mutation::UpdateNodeOp(const MutationNewNode& node, absl::string_view op) {
@@ -313,7 +316,7 @@ void Mutation::UpdateNodeOp(const MutationNewNode& node, absl::string_view op) {
 void Mutation::UpdateNodeDevice(MutableNodeView* node,
                                 absl::string_view device) {
   AddMutation(node, [device](MutableNodeViewDiff* diff) {
-    internal::UpdateDevice(diff, device);
+    return internal::UpdateDevice(diff, device);
   });
 }
 
@@ -326,7 +329,7 @@ void Mutation::UpdateNodeDevice(const MutationNewNode& node,
 void Mutation::AddOrUpdateRegularFanin(MutableNodeView* node, int index,
                                        const TensorId& fanin) {
   AddMutation(node, [index, fanin](MutableNodeViewDiff* diff) {
-    internal::AddOrUpdateRegularFanin(diff, index, fanin);
+    return internal::AddOrUpdateRegularFanin(diff, index, fanin);
   });
 }
 
@@ -340,7 +343,7 @@ void Mutation::AddOrUpdateRegularFanin(const MutationNewNode& node, int index,
 
 void Mutation::RemoveRegularFanin(MutableNodeView* node, int index) {
   AddMutation(node, [index](MutableNodeViewDiff* diff) {
-    internal::RemoveRegularFanin(diff, index);
+    return internal::RemoveRegularFanin(diff, index);
   });
 }
 
@@ -357,7 +360,7 @@ void Mutation::AddControllingFanin(MutableNodeView* node,
     const int control_index = it != node->controlling_fanins_index_.end()
                                   ? it->second
                                   : internal::kMissingIndex;
-    internal::AddControllingFanin(diff, control_index, fanin_node_name);
+    return internal::AddControllingFanin(diff, control_index, fanin_node_name);
   });
 }
 
@@ -374,7 +377,8 @@ void Mutation::RemoveControllingFanin(MutableNodeView* node,
     const int control_index = it != node->controlling_fanins_index_.end()
                                   ? it->second
                                   : internal::kMissingIndex;
-    internal::RemoveControllingFanin(diff, control_index, fanin_node_name);
+    return internal::RemoveControllingFanin(diff, control_index,
+                                            fanin_node_name);
   });
 }
 
@@ -388,7 +392,7 @@ void Mutation::AddOrUpdateNodeAttr(MutableNodeView* node,
                                    absl::string_view attr_name,
                                    const AttrValue& attr_value) {
   AddMutation(node, [attr_name, attr_value](MutableNodeViewDiff* diff) {
-    internal::AddOrUpdateAttribute(diff, attr_name, attr_value);
+    return internal::AddOrUpdateAttribute(diff, attr_name, attr_value);
   });
 }
 
@@ -403,7 +407,7 @@ void Mutation::AddOrUpdateNodeAttr(const MutationNewNode& node,
 void Mutation::RemoveNodeAttr(MutableNodeView* node,
                               absl::string_view attr_name) {
   AddMutation(node, [attr_name](MutableNodeViewDiff* diff) {
-    internal::RemoveAttribute(diff, attr_name);
+    return internal::RemoveAttribute(diff, attr_name);
   });
 }
 
@@ -807,10 +811,10 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
     diff.processed_attrs =
         AttrValueMap(node->attr().begin(), node->attr().end());
     for (const auto& attr_to_remove : diff.attrs_to_remove) {
-      diff.processed_attrs.erase(attr_to_remove);
+      (*diff.processed_attrs).erase(attr_to_remove);
     }
     for (const auto& attr_to_add : diff.attrs_to_add) {
-      gtl::InsertOrUpdate(&diff.processed_attrs, attr_to_add.first,
+      gtl::InsertOrUpdate(&(*diff.processed_attrs), attr_to_add.first,
                           attr_to_add.second);
     }
     const string& device = diff.update_device ? diff.device : node->device();
@@ -823,7 +827,7 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
                                   node->has_experimental_debug_info(),
                                   node->experimental_debug_info(),
                                   diff.update_op ? diff.op : node->op(), device,
-                                  AttrSlice(&diff.processed_attrs));
+                                  AttrSlice(&(*diff.processed_attrs)));
     if (!s.ok()) {
       LOG(WARNING) << s.error_message();
     }
@@ -1189,7 +1193,7 @@ void MutableGraphView::ApplyNodeUpdates() {
     if (diff.update_device) {
       node_def->set_device(diff.device);
     }
-    node_def->mutable_attr()->swap(diff.processed_attrs);
+    node_def->mutable_attr()->swap((*diff.processed_attrs));
 
     // Updated fanins. Only one of `regular_inputs_to_remove_` or
     // `regular_inputs_to_add_` can be set.
