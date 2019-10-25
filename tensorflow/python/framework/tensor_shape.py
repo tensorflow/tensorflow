@@ -1141,7 +1141,7 @@ class TensorShape(object):
     return TensorShape(dims)
 
   def is_fully_defined(self):
-    """Returns True iff `self` is fully defined in every dimension."""
+    """Returns True if `self` is fully defined in every dimension."""
     return (self._dims is not None and
             all(dim.value is not None for dim in self._dims))
 
