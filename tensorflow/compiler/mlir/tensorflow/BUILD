@@ -851,6 +851,7 @@ cc_library(
     deps = [
         ":lower_tf_inc_gen",
         ":tensorflow",
+        "//tensorflow/core:framework",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

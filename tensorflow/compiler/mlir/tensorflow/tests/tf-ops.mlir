@@ -172,6 +172,30 @@ func @testBiasAdd(%arg0: tensor<2x3x5x7xf32>, %arg1: tensor<5xf32>) -> tensor<2x
 
 // -----
 
+// Valid BiasAddGrad operation.
+func @testBiasAddGrad(%arg0: tensor<2x3x5x7xf32>) -> tensor<7xf32> {
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NHWC"} : (tensor<2x3x5x7xf32>) -> (tensor<7xf32>)
+  return %0 : tensor<7xf32>
+}
+
+// -----
+
+func @testBiasAddGrad(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires out_backprop operand to have rank at least two with `NHWC` data format}}
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NHWC"} : (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+
+// -----
+
+func @testBiasAddGrad(%arg0: tensor<2x3xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires out_backprop operand to have rank at least three with `NCHW` data format}}
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<2x3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+
+// -----
+
 // Test valid tf.BroadcastTo
 // CHECK-LABEL: func @testBroadcastTo(%arg0: tensor<16xf32>)
 func @testBroadcastTo(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
