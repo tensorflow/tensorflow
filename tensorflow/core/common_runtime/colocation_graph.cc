@@ -318,9 +318,7 @@ void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
 // changed.
 int Member::FindAndUpdateRoot(std::vector<Member>* tree, int node_id) {
   Member& member = (*tree)[node_id];
-  if (member.parent_ == node_id) {
-    // member.parent is the root of this disjoint tree.  Do nothing.
-  } else {
+  if (member.parent_ != node_id) {
     member.parent_ = FindAndUpdateRoot(tree, member.parent_);
   }
   // Now it is guaranteed that member.parent is the root of this disjoint
