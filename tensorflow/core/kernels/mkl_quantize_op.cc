@@ -65,12 +65,6 @@ template <typename Device, typename T>
 class MklQuantizeV2Op : public OpKernel {
  public:
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    half_range_ =
-        !std::is_signed<T>::value
-            ? 0.0f
-            : (static_cast<double>(std::numeric_limits<T>::max()) -
-               static_cast<double>(std::numeric_limits<T>::min()) + 1) /
-                  2.0f;
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx, (mode_string == "MIN_COMBINED" ||
@@ -252,7 +246,6 @@ class MklQuantizeV2Op : public OpKernel {
   }
 
  private:
-  float half_range_;
   float ensure_minimum_range_;
   int mode_;
   int round_mode_;
