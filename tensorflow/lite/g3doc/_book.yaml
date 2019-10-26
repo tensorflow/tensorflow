@@ -93,13 +93,14 @@ upper_tabs:
 
       - heading: "Microcontrollers"
       - title: "Overview"
-        path: /lite/microcontrollers/overview
+        path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
         path: /lite/microcontrollers/get_started
-      - title: "Build and convert models"
-        path: /lite/microcontrollers/build_convert
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
+      - title: "Build and convert models"
+        path: /lite/microcontrollers/build_convert
+
 
     - name: "Examples"
       contents:
