@@ -151,6 +151,7 @@ public class TensorImage {
 
   /**
    * Loads a TensorBuffer containing pixel values. The color layout should be RGB.
+   *
    * @param buffer The TensorBuffer to load.
    */
   public void load(TensorBuffer buffer) {
@@ -211,7 +212,7 @@ public class TensorImage {
     return container.getDataType();
   }
 
-  /** Handles RGB image data storage strategy of TensorBuffer. */
+  // Handles RGB image data storage strategy of TensorBuffer.
   private static class ImageContainer {
 
     private TensorBuffer bufferImage;
@@ -227,20 +228,15 @@ public class TensorImage {
       this.dataType = dataType;
     }
 
-    /**
-     * Internal method to set the image source-of-truth with a bitmap.
-     *
-     * @param bitmap: Have to be ARGB_8888 bitmap.
-     */
+    // Internal method to set the image source-of-truth with a bitmap. The bitmap has to be
+    // ARGB_8888.
     void set(Bitmap bitmap) {
       bitmapImage = bitmap;
       isBufferUpdated = false;
       isBitmapUpdated = true;
     }
 
-    /**
-     * Internal method to set the image source-of-truth with a TensorBuffer.
-     */
+    // Internal method to set the image source-of-truth with a TensorBuffer.
     void set(TensorBuffer buffer) {
       bufferImage = buffer;
       isBitmapUpdated = false;
@@ -251,9 +247,7 @@ public class TensorImage {
       return dataType;
     }
 
-    /**
-     * Internal method to update the internal Bitmap data by TensorBuffer data.
-     */
+    // Internal method to update the internal Bitmap data by TensorBuffer data.
     @NonNull
     Bitmap getBitmap() {
       if (isBitmapUpdated) {
@@ -279,7 +273,7 @@ public class TensorImage {
       return bitmapImage;
     }
 
-    /** Internal method to update the internal TensorBuffer data by Bitmap data. */
+    // Internal method to update the internal TensorBuffer data by Bitmap data.
     @NonNull
     TensorBuffer getTensorBuffer() {
       if (isBufferUpdated) {

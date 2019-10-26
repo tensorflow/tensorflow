@@ -19,6 +19,7 @@ import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
 
@@ -49,8 +50,19 @@ public class ResizeWithCropOrPadOp implements ImageOperator {
     output = Bitmap.createBitmap(this.targetWidth, this.targetHeight, Config.ARGB_8888);
   }
 
+  /**
+   * Applies the defined resizing with cropping or/and padding on given image and returns the
+   * result.
+   *
+   * <p>Note: the content of input {@code image} will change, and {@code image} is the same instance
+   * with the output.
+   *
+   * @param image input image.
+   * @return output image.
+   */
   @Override
-  public TensorImage apply(TensorImage image) {
+  @NonNull
+  public TensorImage apply(@NonNull TensorImage image) {
     Bitmap input = image.getBitmap();
     int srcL;
     int srcR;

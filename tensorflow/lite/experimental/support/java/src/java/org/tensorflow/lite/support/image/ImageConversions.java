@@ -103,6 +103,6 @@ class ImageConversions {
     buffer.loadArray(rgbValues, shape);
   }
 
-  /** Hide the constructor as the class is static. */
+  // Hide the constructor as the class is static.
   private ImageConversions() {}
 }

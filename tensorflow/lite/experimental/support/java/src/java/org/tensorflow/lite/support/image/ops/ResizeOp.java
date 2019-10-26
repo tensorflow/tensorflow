@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite.support.image.ops;
 
 import android.graphics.Bitmap;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
 
@@ -51,8 +52,18 @@ public class ResizeOp implements ImageOperator {
     useBilinear = (resizeMethod == ResizeMethod.BILINEAR);
   }
 
+  /**
+   * Applies the defined resizing on given image and returns the result.
+   *
+   * <p>Note: the content of input {@code image} will change, and {@code image} is the same instance
+   * with the output.
+   *
+   * @param image input image.
+   * @return output image.
+   */
   @Override
-  public TensorImage apply(TensorImage image) {
+  @NonNull
+  public TensorImage apply(@NonNull TensorImage image) {
     Bitmap scaled =
         Bitmap.createScaledBitmap(image.getBitmap(), targetWidth, targetHeight, useBilinear);
     image.load(scaled);

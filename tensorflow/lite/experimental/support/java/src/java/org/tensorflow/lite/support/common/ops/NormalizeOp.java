@@ -38,8 +38,8 @@ public class NormalizeOp implements TensorOperator {
    *   output = (input - mean) / stddev
    * </pre>
    *
-   * Note: If {@code mean} is set to 0 and {@code stddev} is set to 1, no computation will happen,
-   * and original input will be directly returned in execution.
+   * <p>Note: If {@code mean} is set to 0 and {@code stddev} is set to 1, no computation will
+   * happen, and original input will be directly returned in execution.
    *
    * <p>Note: The returned {@link TensorBuffer} is always a {@link DataType#FLOAT32} tensor at
    * present, except that the input is a {@link DataType#UINT8} tensor, {@code mean} is set to 0 and
@@ -55,6 +55,14 @@ public class NormalizeOp implements TensorOperator {
     this.stddev = stddev;
   }
 
+  /**
+   * Applies the defined normalization on given tensor and returns the result.
+   *
+   * <p>Note: {@code input} is possibly the same instance with the output.
+   *
+   * @param input input tensor. It may be the same instance with the output.
+   * @return output tensor.
+   */
   @Override
   @NonNull
   public TensorBuffer apply(@NonNull TensorBuffer input) {

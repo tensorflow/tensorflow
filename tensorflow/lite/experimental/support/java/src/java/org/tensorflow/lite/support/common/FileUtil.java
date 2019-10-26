@@ -34,10 +34,13 @@ public class FileUtil {
   /**
    * Loads labels from the label file into a list of strings.
    *
-   * @param context: Application context to access assets.
-   * @param filePath: Asset path of the file.
-   * @return A list of labels defined in the label file.
-   * @throws IOException if an I/O error occurs when loading the tflite model.
+   * <p>A legal label file is the plain text file whose contents are split into lines, and each line
+   * is an individual value. The file should be in assets of the context.
+   *
+   * @param context The context holds assets.
+   * @param filePath The path of the label file, relative with assets directory.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
    */
   @NonNull
   public static List<String> loadLabels(@NonNull Context context, @NonNull String filePath)
@@ -58,8 +61,8 @@ public class FileUtil {
   /**
    * Loads a file from the asset folder through memory mapping.
    *
-   * @param context: Application context to access assets.
-   * @param filePath: Asset path of the file.
+   * @param context Application context to access assets.
+   * @param filePath Asset path of the file.
    * @return the loaded memory mapped file.
    * @throws IOException if an I/O error occurs when loading the tflite model.
    */

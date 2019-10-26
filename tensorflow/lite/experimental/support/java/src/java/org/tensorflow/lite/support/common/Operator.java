@@ -24,7 +24,7 @@ public interface Operator<T> {
   /**
    * Applies an operation on a T object, returning a T object.
    *
-   * Note: The returned object could probably be the same one with given input, and given input
+   * <p>Note: The returned object could probably be the same one with given input, and given input
    * could probably be changed.
    */
   T apply(T x);

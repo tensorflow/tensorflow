@@ -17,6 +17,7 @@ package org.tensorflow.lite.support.image.ops;
 
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
 
@@ -39,8 +40,18 @@ public class Rot90Op implements ImageOperator {
     numRotation = k % 4;
   }
 
+  /**
+   * Applies the defined rotation on given image and returns the result.
+   *
+   * <p>Note: the content of input {@code image} will change, and {@code image} is the same instance
+   * with the output.
+   *
+   * @param image input image.
+   * @return output image.
+   */
+  @NonNull
   @Override
-  public TensorImage apply(TensorImage image) {
+  public TensorImage apply(@NonNull TensorImage image) {
     Bitmap input = image.getBitmap();
     if (numRotation == 0) {
       return image;

@@ -32,7 +32,9 @@ public class TensorOperatorWrapper implements ImageOperator {
   private final TensorOperator tensorOp;
 
   /**
-   * Wraps a {@link TensorOperator} object as an {@link ImageOperator}.
+   * Wraps a {@link TensorOperator} object as an {@link ImageOperator}, so that the {@link
+   * TensorOperator} could handle {@link TensorImage} objects by handling its underlying {@link
+   * org.tensorflow.lite.support.tensorbuffer.TensorBuffer}.
    *
    * @param op The created operator.
    */

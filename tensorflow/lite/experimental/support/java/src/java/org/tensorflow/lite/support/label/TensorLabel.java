@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.support.label;
 
+import android.content.Context;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -25,7 +26,34 @@ import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.common.SupportPrecondtions;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
-/** Represents the Labeled Tensor. */
+/**
+ * TensorLabel is an util wrapper for TensorBuffers with meaningful labels on an axis.
+ *
+ * <p>For example, an image classification model may have an output tensor with shape as {1, 10},
+ * where 1 is the batch size and 10 is the number of categories. In fact, on the 2nd axis, we could
+ * label each sub-tensor with the name or description of each corresponding category. {@link
+ * TensorLabel} could help converting the plain Tensor in {@link TensorBuffer} into a map from
+ * predefined labels to sub-tensors. In this case, if provided 10 labels for the 2nd axis, {@link
+ * TensorLabel} could convert the original {1, 10} Tensor to a 10 element map, each value of which
+ * is Tensor in shape {} (scalar). Usage example:
+ *
+ * <pre>
+ *   TensorBuffer outputTensor = ...;
+ *   {@literal List<String>} labels = FileUtil.loadLabels(context, labelFilePath);
+ *   // labels the first axis with size greater than one
+ *   TensorLabel labeled = new TensorLabel(labels, outputTensor);
+ *   // If each sub-tensor has effectively size 1, we can directly get a float value
+ *   {@literal Map<String, Float>} probabilities = labeled.getMapWithFloatValue();
+ *   // Or get sub-tensors, when each sub-tensor has elements more than 1
+ *   {@literal Map<String, TensorBuffer>} subTensors = labeled.getMapWithTensorBuffer();
+ * </pre>
+ *
+ * <p>Note: currently we only support tensor-to-map conversion for the first label with size greater
+ * than 1.
+ *
+ * @see org.tensorflow.lite.support.common.FileUtil#loadLabels(Context, String) to load labels from
+ *     a label file (plain text file whose each line is a label) in assets simply.
+ */
 public class TensorLabel {
   private final Map<Integer, List<String>> axisLabels;
   private final TensorBuffer tensorBuffer;
