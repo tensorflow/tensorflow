@@ -27,12 +27,15 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBufferFloat;
  */
 public class NormalizeOp implements TensorOperator {
 
-  // TODO(136750944): Support normalization on multiple channels differently.
-  private final float mean;
-  private final float stddev;
+  // mean.length should always be equal to stddev.length and always >= 1.
+  private final float[] mean;
+  private final float[] stddev;
+  private final int numChannels;
+  private final boolean isIdentityOp;
 
   /**
-   * Initializes a NormalizeOp. When called, it creates a new {@link TensorBuffer}, which satisfies:
+   * Initializes a NormalizeOp. When being called, it creates a new {@link TensorBuffer}, which
+   * satisfies:
    *
    * <pre>
    *   output = (input - mean) / stddev
@@ -50,9 +53,48 @@ public class NormalizeOp implements TensorOperator {
    * @throws IllegalArgumentException if {@code stddev} is zero.
    */
   public NormalizeOp(float mean, float stddev) {
-    SupportPrecondtions.checkArgument(stddev != 0, "Stddev cannot be zero.");
-    this.mean = mean;
-    this.stddev = stddev;
+    this(new float[] {mean}, new float[] {stddev});
+  }
+
+  /**
+   * Initializes a NormalizeOp. When being called, it creates a new {@link TensorBuffer}, which
+   * satisfies:
+   *
+   * <pre>
+   *   // Pseudo code. [...][i] means a certain element whose channel id is i.
+   *   output[...][i] = (input[...][i] - mean[i]) / stddev[i]
+   * </pre>
+   *
+   * <p>Note: If all values in {@code mean} are set to 0 and all {@code stddev} are set to 1, no
+   * computation will happen, and original input will be directly returned in execution.
+   *
+   * <p>Note: The returned {@link TensorBuffer} is always a {@link DataType#FLOAT32} tensor at
+   * present, except that the input is a {@link DataType#UINT8} tensor, all {@code mean} are set to
+   * 0 and all {@code stddev} are set to 1.
+   *
+   * @param mean the mean values to be subtracted first for each channel.
+   * @param stddev the standard deviation values to divide then for each channel.
+   * @throws IllegalArgumentException if any {@code stddev} is zero, or {@code mean} has different
+   *     number of elements with {@code stddev}, or any of them is empty.
+   */
+  public NormalizeOp(@NonNull float[] mean, @NonNull float[] stddev) {
+    SupportPrecondtions.checkNotNull(mean, "Mean cannot be null");
+    SupportPrecondtions.checkNotNull(stddev, "Stddev cannot be null");
+    SupportPrecondtions.checkArgument(
+        mean.length == stddev.length,
+        "Per channel normalization requires same number of means and stddevs");
+    SupportPrecondtions.checkArgument(mean.length > 0, "Means and stddevs are empty.");
+    this.mean = mean.clone();
+    this.stddev = stddev.clone();
+    boolean allMeansAreZeroAndAllDevsAre1 = true;
+    this.numChannels = mean.length;
+    for (int i = 0; i < numChannels; i++) {
+      SupportPrecondtions.checkArgument(this.stddev[i] != 0, "Stddev cannot be zero.");
+      if (this.stddev[i] != 1 || this.mean[i] != 0) {
+        allMeansAreZeroAndAllDevsAre1 = false;
+      }
+    }
+    this.isIdentityOp = allMeansAreZeroAndAllDevsAre1;
   }
 
   /**
@@ -66,14 +108,19 @@ public class NormalizeOp implements TensorOperator {
   @Override
   @NonNull
   public TensorBuffer apply(@NonNull TensorBuffer input) {
-    if (mean == 0 && stddev == 1) {
+    if (isIdentityOp) {
       return input;
     }
-    // TODO(136750944): Eliminate the array copy here.
     int[] shape = input.getShape();
+    SupportPrecondtions.checkArgument(
+        numChannels == 1 || (shape.length != 0 && shape[shape.length - 1] == numChannels),
+        "Number of means (stddevs) is not same with number of channels (size of last axis).");
+    // TODO(136750944): Eliminate the array copy here.
     float[] values = input.getFloatArray();
+    int j = 0;
     for (int i = 0; i < values.length; i++) {
-      values[i] = (values[i] - mean) / stddev;
+      values[i] = (values[i] - mean[j]) / stddev[j];
+      j = (j + 1) % numChannels;
     }
     TensorBuffer output;
     if (input.isDynamic()) {
