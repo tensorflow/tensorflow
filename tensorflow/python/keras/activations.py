@@ -201,7 +201,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   array([ 0.,  0.,  0.,  5., 10.], dtype=float32)
   >>> tf.keras.activations.relu(foo, alpha=0.5).numpy()
   array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
-  >>> tf.keras.activaions.relu(foo, max_value=5).numpy()
+  >>> tf.keras.activations.relu(foo, max_value=5).numpy()
   array([0., 0., 0., 5., 5.], dtype=float32)
   >>> tf.keras.activations.relu(foo, threshold=5).numpy()
   array([-0., -0.,  0.,  0., 10.], dtype=float32)
