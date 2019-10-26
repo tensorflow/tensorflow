@@ -83,3 +83,20 @@ module attributes {gpu.kernel_module} {
     std.return
   }
 }
+
+// -----
+
+module attributes {gpu.kernel_module} {
+  // CHECK: llvm.func @__nv_expf(!llvm.float) -> !llvm.float
+  // CHECK: llvm.func @__nv_exp(!llvm.double) -> !llvm.double
+  // CHECK-LABEL: func @gpu_exp
+  func @gpu_exp(%arg_f32 : f32, %arg_f64 : f64) {
+    %exp_f32 = std.exp %arg_f32 : f32
+    // CHECK: llvm.call @__nv_expf(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result_f32 = std.exp %exp_f32 : f32
+    // CHECK: llvm.call @__nv_expf(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result64 = std.exp %arg_f64 : f64
+    // CHECK: llvm.call @__nv_exp(%{{.*}}) : (!llvm.double) -> !llvm.double
+    std.return
+  }
+}

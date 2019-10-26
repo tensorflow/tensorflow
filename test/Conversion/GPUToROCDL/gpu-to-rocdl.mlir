@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -lower-gpu-ops-to-rocdl-ops | FileCheck %s
+// RUN: mlir-opt %s -lower-gpu-ops-to-rocdl-ops -split-input-file | FileCheck %s
 
 module attributes {gpu.kernel_module} {
   // CHECK-LABEL: func @gpu_index_ops()
@@ -32,6 +32,23 @@ module attributes {gpu.kernel_module} {
     // CHECK: rocdl.grid.dim.z : !llvm.i32
     %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
+    std.return
+  }
+}
+
+// -----
+
+module attributes {gpu.kernel_module} {
+  // CHECK: llvm.func @_ocml_exp_f32(!llvm.float) -> !llvm.float
+  // CHECK: llvm.func @_ocml_exp_f64(!llvm.double) -> !llvm.double
+  // CHECK-LABEL: func @gpu_exp
+  func @gpu_exp(%arg_f32 : f32, %arg_f64 : f64) {
+    %exp_f32 = std.exp %arg_f32 : f32
+    // CHECK: llvm.call @_ocml_exp_f32(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result_f32 = std.exp %exp_f32 : f32
+    // CHECK: llvm.call @_ocml_exp_f32(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result64 = std.exp %arg_f64 : f64
+    // CHECK: llvm.call @_ocml_exp_f64(%{{.*}}) : (!llvm.double) -> !llvm.double
     std.return
   }
 }
