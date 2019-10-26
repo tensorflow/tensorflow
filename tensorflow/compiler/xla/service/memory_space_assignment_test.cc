@@ -34,6 +34,15 @@ class MemorySpaceAssignmentTest : public HloTestBase {
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
       int64 max_prefetch_interval = 10) {
+    InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+        /*min_overlap_count=*/2, max_prefetch_interval);
+    return AssignMemorySpace(module, max_outstanding_async_copies,
+                             &prefetch_interval_picker);
+  }
+
+  std::unique_ptr<PresetAssignments> AssignMemorySpace(
+      HloModule* module, int64 max_outstanding_async_copies,
+      PrefetchIntervalPicker* prefetch_interval_picker) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -54,8 +63,7 @@ class MemorySpaceAssignmentTest : public HloTestBase {
     std::unique_ptr<PresetAssignments> preset_assignments =
         MemorySpaceAssignment::Run(
             module, kAlternateMemorySpace,
-            /*max_size_in_bytes=*/128,
-            /*min_prefetch_interval=*/2, max_prefetch_interval,
+            /*max_size_in_bytes=*/128, prefetch_interval_picker,
             /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
             is_allowed_in_alternate_mem, max_outstanding_async_copies)
             .ValueOrDie();
