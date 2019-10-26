@@ -314,6 +314,10 @@ class TimeDistributed(Wrapper):
     if inner_mask is not None:
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
+    #Reshape inputs because that's what call() does
+    #and we aren't saving the shape in an dict anymore
+    inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+    inputs = array_ops.reshape(inputs, inner_input_shape)
     output_mask = self.layer.compute_mask(inputs, inner_mask)
     if output_mask is None:
       if mask is None:
