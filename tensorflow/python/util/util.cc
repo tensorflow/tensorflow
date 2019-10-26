@@ -231,6 +231,16 @@ int IsMappingViewHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is considered an object proxy
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsObjectProxy(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "ObjectProxy");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an instance of attrs-decorated class.
 // Returns 0 otherwise.
 int IsAttrsHelper(PyObject* o) {
@@ -681,6 +691,18 @@ bool AssertSameStructureHelper(
   if (!is_seq1) return true;
 
   if (check_types) {
+    // Treat wrapped tuples as tuples.
+    tensorflow::Safe_PyObjectPtr o1_wrapped;
+    if (IsObjectProxy(o1)) {
+      o1_wrapped.reset(PyObject_GetAttrString(o1, "__wrapped__"));
+      o1 = o1_wrapped.get();
+    }
+    tensorflow::Safe_PyObjectPtr o2_wrapped;
+    if (IsObjectProxy(o2)) {
+      o2_wrapped.reset(PyObject_GetAttrString(o2, "__wrapped__"));
+      o2 = o2_wrapped.get();
+    }
+
     const PyTypeObject* type1 = o1->ob_type;
     const PyTypeObject* type2 = o2->ob_type;
 
@@ -852,6 +874,15 @@ bool IsResourceVariable(PyObject* o) {
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 
+bool IsTuple(PyObject* o) {
+  tensorflow::Safe_PyObjectPtr wrapped;
+  if (IsObjectProxy(o)) {
+    wrapped.reset(PyObject_GetAttrString(o, "__wrapped__"));
+    o = wrapped.get();
+  }
+  return PyTuple_Check(o);
+}
+
 // Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
 // and while we're at it give them consistent behavior by making sure the
 // returned value is a list.
@@ -910,6 +941,15 @@ PyObject* FlattenForData(PyObject* nested) {
 }
 
 PyObject* IsNamedtuple(PyObject* o, bool strict) {
+  // Some low-level CPython calls do not work with wrapt.ObjectProxy, so they
+  // require some unwrapping if we want to treat them like the objects they're
+  // wrapping.
+  tensorflow::Safe_PyObjectPtr o_wrapped;
+  if (IsObjectProxy(o)) {
+    o_wrapped.reset(PyObject_GetAttrString(o, "__wrapped__"));
+    o = o_wrapped.get();
+  }
+
   // Must be subclass of tuple
   if (!PyTuple_Check(o)) {
     Py_RETURN_FALSE;

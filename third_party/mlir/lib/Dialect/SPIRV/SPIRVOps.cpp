@@ -544,6 +544,41 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
   return success();
 }
 
+namespace {
+
+// Combine chained `spirv::AccessChainOp` operations into one
+// `spirv::AccessChainOp` operation.
+struct CombineChainedAccessChain
+    : public OpRewritePattern<spirv::AccessChainOp> {
+  using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::AccessChainOp accessChainOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentAccessChainOp = dyn_cast_or_null<spirv::AccessChainOp>(
+        accessChainOp.base_ptr()->getDefiningOp());
+
+    if (!parentAccessChainOp) {
+      return matchFailure();
+    }
+
+    // Combine indices.
+    SmallVector<Value *, 4> indices(parentAccessChainOp.indices());
+    indices.append(accessChainOp.indices().begin(),
+                   accessChainOp.indices().end());
+
+    rewriter.replaceOpWithNewOp<spirv::AccessChainOp>(
+        accessChainOp, parentAccessChainOp.base_ptr(), indices);
+
+    return matchSuccess();
+  }
+};
+} // namespace
+
+void spirv::AccessChainOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<CombineChainedAccessChain>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // spv._address_of
 //===----------------------------------------------------------------------===//
@@ -1976,7 +2011,8 @@ namespace {
 //                       | merge block |
 //                       +-------------+
 //
-struct SelectionOpCanonicalizer : public OpRewritePattern<spirv::SelectionOp> {
+struct ConvertSelectionOpToSelect
+    : public OpRewritePattern<spirv::SelectionOp> {
   using OpRewritePattern<spirv::SelectionOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(spirv::SelectionOp selectionOp,
@@ -2071,7 +2107,7 @@ private:
   }
 };
 
-PatternMatchResult SelectionOpCanonicalizer::canCanonicalizeSelection(
+PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
     Block *trueBlock, Block *falseBlock, Block *mergeBlock) const {
   // Each block must consists of 2 operations.
   if ((std::distance(trueBlock->begin(), trueBlock->end()) != 2) ||
@@ -2110,7 +2146,7 @@ PatternMatchResult SelectionOpCanonicalizer::canCanonicalizeSelection(
 
 void spirv::SelectionOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<SelectionOpCanonicalizer>(context);
+  results.insert<ConvertSelectionOpToSelect>(context);
 }
 
 //===----------------------------------------------------------------------===//

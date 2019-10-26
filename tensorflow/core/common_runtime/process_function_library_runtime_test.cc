@@ -197,6 +197,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       return status;
     }
+    bool is_cross_process = false;
+    TF_CHECK_OK(pflr->IsCrossProcess(handle, &is_cross_process));
+    EXPECT_FALSE(is_cross_process);
 
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
@@ -437,6 +440,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
   TF_CHECK_OK(Instantiate("FindDevice",
                           {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
                           instantiate_opts, &h));
+  bool is_cross_process = false;
+  TF_CHECK_OK(proc_flr_->IsCrossProcess(h, &is_cross_process));
+  EXPECT_TRUE(is_cross_process);
   EXPECT_EQ(0, proc_flr_->GetHandleOnDevice(
                    "/job:b/replica:0/task:0/device:CPU:0", h));
   TF_CHECK_OK(Instantiate("FindDevice",

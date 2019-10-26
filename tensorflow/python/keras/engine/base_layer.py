@@ -2103,8 +2103,7 @@ class Layer(module.Module):
         except AttributeError:
           pass
         else:
-          self._dtype_policy = policy.with_input_dtype(self._dtype_policy,
-                                                       dtype)
+          self._dtype_policy = policy.Policy(dtype)
       input_shapes = None
       if all(hasattr(x, 'shape') for x in input_list):
         input_shapes = nest.map_structure(lambda x: x.shape, inputs)
@@ -2500,6 +2499,9 @@ class TensorFlowOpLayer(Layer):
   def _make_node_def(self, graph):
     node_def = node_def_pb2.NodeDef()
     node_def.CopyFrom(self.node_def)
+    # Used in TPUReplicateContext to indicate whether this node has been cloned
+    # and to not add TPU attributes.
+    node_def.attr['_cloned'].b = True
     node_def.name = graph.unique_name(node_def.name)
     return node_def
 

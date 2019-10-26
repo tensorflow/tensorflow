@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -230,10 +231,15 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
         else:
           # Treat any value not originating from a `keras.Input` as
           # a constant. Variables cannot be supported.
-          if (distribution_strategy_context.in_cross_replica_context() and
-              not ops.executing_eagerly_outside_functions()):
+          ds_with_session = (
+              distribution_strategy_context.in_cross_replica_context() and
+              not ops.executing_eagerly_outside_functions())
+          using_xla = control_flow_util.GraphOrParentsInXlaContext(
+              ops.get_default_graph())
+          if ds_with_session or using_xla:
             # In Legacy Graph mode, evaluating here makes Session be
-            # configured improperly.
+            # configured improperly. The downside of this is that saving
+            # via `get_config` breaks, but SavedModel still works.
             constants[i] = op_input
           else:
             with ops.init_scope():

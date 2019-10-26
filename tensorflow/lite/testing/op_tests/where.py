@@ -42,11 +42,11 @@ def make_where_tests(options):
 
   def build_graph(parameters):
     """Build the where op testing graph."""
-    input_value1 = tf.placeholder(
+    input_value1 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input2",
         shape=parameters["input_shape_set"][0])
-    input_value2 = tf.placeholder(
+    input_value2 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input3",
         shape=parameters["input_shape_set"][1])

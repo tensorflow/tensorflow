@@ -235,9 +235,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
         [actual.graph_op_creation.op_name for actual in actuals])
     self.assertEqual(graph_op_names, ["Op0", "Op1", "Op2"])
 
-  def testWriteExecutionEventsWithCyclicBuffer(self):
+  def testWriteExecutionEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
-    num_execution_events = debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE * 2
+    num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       execution = debug_event_pb2.Execution()
       execution.op_type = "OpType%d" % i
@@ -253,16 +253,16 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
     actuals = ReadDebugEvents(execution_paths[0])
     self.assertEqual(
-        len(actuals), debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE)
-    for i in range(debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE):
+        len(actuals), debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
+    for i in range(debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE):
       self.assertEqual(
           actuals[i].execution.op_type,
-          "OpType%d" % (i + debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE))
+          "OpType%d" % (i + debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE))
 
-  def testWriteExecutionEventsWithoutCyclicBufferBehavior(self):
-    # A cyclic buffer size of 0 abolishes the cyclic buffer behavior.
+  def testWriteExecutionEventsWithoutCircularBufferBehavior(self):
+    # A circular buffer size of 0 abolishes the circular buffer behavior.
     writer = debug_events_writer.DebugEventsWriter(self.dump_root, 0)
-    num_execution_events = debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE * 2
+    num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       execution = debug_event_pb2.Execution()
       execution.op_type = "OpType%d" % i
@@ -276,9 +276,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     for i in range(num_execution_events):
       self.assertEqual(actuals[i].execution.op_type, "OpType%d" % i)
 
-  def testWriteGraphExecutionTraceEventsWithCyclicBuffer(self):
+  def testWriteGraphExecutionTraceEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
-    num_execution_events = debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE * 2
+    num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       trace = debug_event_pb2.GraphExecutionTrace()
       trace.op_name = "Op%d" % i
@@ -295,17 +295,17 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     writer.FlushExecutionFiles()
     actuals = ReadDebugEvents(trace_paths[0])
     self.assertEqual(
-        len(actuals), debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE)
+        len(actuals), debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
 
-    for i in range(debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE):
+    for i in range(debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE):
       self.assertEqual(
           actuals[i].graph_execution_trace.op_name,
-          "Op%d" % (i + debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE))
+          "Op%d" % (i + debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE))
 
-  def testWriteGraphExecutionTraceEventsWithoutCyclicBufferBehavior(self):
-    # A cyclic buffer size of 0 abolishes the cyclic buffer behavior.
+  def testWriteGraphExecutionTraceEventsWithoutCircularBufferBehavior(self):
+    # A circular buffer size of 0 abolishes the circular buffer behavior.
     writer = debug_events_writer.DebugEventsWriter(self.dump_root, 0)
-    num_execution_events = debug_events_writer.DEFAULT_CYCLIC_BUFFER_SIZE * 2
+    num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       trace = debug_event_pb2.GraphExecutionTrace()
       trace.op_name = "Op%d" % i
@@ -321,9 +321,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       self.assertEqual(actuals[i].graph_execution_trace.op_name, "Op%d" % i)
 
   def testConcurrentWritesToExecutionFiles(self):
-    cyclic_buffer_size = 5
+    circular_buffer_size = 5
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
-                                                   cyclic_buffer_size)
+                                                   circular_buffer_size)
 
     execution_state = {"counter": 0, "lock": threading.Lock()}
 
@@ -344,7 +344,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       writer.WriteGraphExecutionTrace(trace)
 
     threads = []
-    for i in range(cyclic_buffer_size * 4):
+    for i in range(circular_buffer_size * 4):
       if i % 2 == 0:
         target = WriteExecution
       else:
@@ -361,7 +361,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(execution_paths), 1)
     actuals = ReadDebugEvents(execution_paths[0])
     op_types = sorted([actual.execution.op_type for actual in actuals])
-    self.assertEqual(len(op_types), cyclic_buffer_size)
+    self.assertEqual(len(op_types), circular_buffer_size)
     self.assertEqual(len(op_types), len(set(op_types)))
 
     # Verify the content of the .execution file.
@@ -371,7 +371,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     actuals = ReadDebugEvents(traces_paths[0])
     op_names = sorted(
         [actual.graph_execution_trace.op_name for actual in actuals])
-    self.assertEqual(len(op_names), cyclic_buffer_size)
+    self.assertEqual(len(op_names), circular_buffer_size)
     self.assertEqual(len(op_names), len(set(op_names)))
 
 

@@ -686,7 +686,7 @@ Status InsertUnpadsForModuleOutputs(
         // This is a dynamic output, add unpad operation.
         auto unpad = module->entry_computation()->AddInstruction(
             HloInstruction::CreateCustomCall(root->shape(), unpad_operands,
-                                             "Unpad", "0"));
+                                             "Unpad", "0-0"));
         module->entry_computation()->set_root_instruction(unpad);
       }
     }

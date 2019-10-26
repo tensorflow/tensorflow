@@ -395,7 +395,10 @@ class DebugNumericSummaryOp : public BaseDebugOp {
 class DebugIdentityV2Op : public OpKernel {
  public:
   explicit DebugIdentityV2Op(OpKernelConstruction* context)
-      : OpKernel(context), output_slot_(-1), tensor_debug_mode_(0) {
+      : OpKernel(context),
+        device_name_(context->device()->name()),
+        output_slot_(-1),
+        tensor_debug_mode_(0) {
     std::vector<string> debug_urls;
     OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls));
     for (const string& debug_url : debug_urls) {
@@ -420,9 +423,9 @@ class DebugIdentityV2Op : public OpKernel {
     for (const string& dump_root : dump_roots_) {
       tfdbg::DebugEventsWriter* debug_events_writer =
           tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
-      debug_events_writer->WriteGraphExecutionTrace(tfdbg_context_id_, op_name_,
-                                                    output_slot_,
-                                                    tensor_debug_mode_, tensor);
+      debug_events_writer->WriteGraphExecutionTrace(
+          tfdbg_context_id_, device_name_, op_name_, output_slot_,
+          tensor_debug_mode_, tensor);
     }
     context->set_output(0, tensor);
   }
@@ -430,6 +433,7 @@ class DebugIdentityV2Op : public OpKernel {
  private:
   std::vector<string> dump_roots_;
   string tfdbg_context_id_;
+  string device_name_;
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;

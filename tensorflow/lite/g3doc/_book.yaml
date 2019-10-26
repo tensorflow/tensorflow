@@ -110,14 +110,9 @@ upper_tabs:
       contents:
       - title: "Overview"
         path: /lite/models/
-      - heading: "Image classification"
-      - title: "Overview"
+      - heading: "Vision"
+      - title: "Image classification"
         path: /lite/models/image_classification/overview
-      - title: "Android"
-        path: /lite/models/image_classification/android
-      - title: "iOS"
-        path: /lite/models/image_classification/ios
-      - heading: "Other techniques"
       - title: "Object detection"
         path: /lite/models/object_detection/overview
       - title: "Pose estimation"
@@ -126,6 +121,7 @@ upper_tabs:
         path: /lite/models/segmentation/overview
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
+      - heading: "Text"
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
 

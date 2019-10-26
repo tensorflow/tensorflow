@@ -49,6 +49,16 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self._num_records = 10
     self.test_filenames = self._createFiles()
 
+  def getAllDatasetElements(self, dataset):
+    actual = []
+    next_fn = self.getNext(dataset)
+    while True:
+      try:
+        actual.append(self.evaluate(next_fn()))
+      except errors.OutOfRangeError:
+        break
+    return actual
+
   def assertDatasetProducesWithShuffle(self, dataset, expected, batch,
                                        num_examples, shuffle):
     if shuffle:
@@ -233,6 +243,42 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for f in (3, 8)
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.times(combinations.combine(
+              sharding_policy=[distribute_options.AutoShardPolicy.DATA,
+                               distribute_options.AutoShardPolicy.FILE]),
+                             combinations.combine(shuffle=[True, False]))))
+  def testReplicateAndShardProduceDisjointData(self, shuffle, sharding_policy):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames,
+                                             shuffle=shuffle)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+
+    graph_def = dataset._as_serialized_graph(
+        strip_device_assignment=True,
+        external_state_policy=
+        dataset.options().experimental_external_state_policy)
+
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = sharding_policy
+
+    ds1 = distribute._RemoteDataset(graph_def, "/device:CPU:0",
+                                    dataset.element_spec)
+    ds2 = distribute._RemoteDataset(graph_def, "/device:CPU:0",
+                                    dataset.element_spec)
+
+    ds1 = ds1.with_options(options)
+    ds2 = ds2.with_options(options)
+
+    ds1 = distribute._AutoShardDataset(ds1, 2, 0)
+    ds2 = distribute._AutoShardDataset(ds2, 2, 1)
+
+    elems1 = set(self.getAllDatasetElements(ds1))
+    elems2 = set(self.getAllDatasetElements(ds2))
+
+    self.assertEmpty(elems1.intersection(elems2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testWorkersGreaterThanNumFilesWithDataSharding(self):

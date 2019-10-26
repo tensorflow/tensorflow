@@ -176,12 +176,6 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
                     << (gr->group.group_size - gr->device_set.size());
           }
         }
-      } else {
-        // Repeated device in a group.  This may be because of control flow or
-        // it may be a group configuration error.
-        LOG(WARNING) << "Collective op " << cp->name
-                     << " got duplicate CompleteGroup calls for group "
-                     << cp->group.group_key << " and device " << device;
       }
     }
 

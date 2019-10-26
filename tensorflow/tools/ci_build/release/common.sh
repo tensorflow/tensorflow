@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=0.26.1
+LATEST_BAZEL_VERSION=0.29.1
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -124,16 +124,16 @@ function install_pip_deps {
 
   # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
-  ${SUDO_CMD}${PIP_CMD} install keras_applications==1.0.8 --no-deps
-  ${SUDO_CMD}${PIP_CMD} install keras_preprocessing==1.0.2 --no-deps
-  ${SUDO_CMD}${PIP_CMD} install gast==0.2.2
-  ${SUDO_CMD}${PIP_CMD} install h5py==2.8.0
-  ${SUDO_CMD}${PIP_CMD} install six==1.12.0
-  ${SUDO_CMD}${PIP_CMD} install grpcio
-  ${SUDO_CMD}${PIP_CMD} install portpicker
-  ${SUDO_CMD}${PIP_CMD} install scipy
-  ${SUDO_CMD}${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD}${PIP_CMD} install --upgrade tb-nightly
+  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
+  ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
+  ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
+  ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
+  ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
+  ${SUDO_CMD} ${PIP_CMD} install grpcio
+  ${SUDO_CMD} ${PIP_CMD} install portpicker
+  ${SUDO_CMD} ${PIP_CMD} install scipy
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -156,7 +156,7 @@ function install_ubuntu_16_pip_deps {
   # LINT.IfChange(ubuntu_16_pip_installations)
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_applications==1.0.8 --no-deps --user
-  "${PIP_CMD}" install keras_preprocessing==1.0.2 --no-deps --user
+  "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.14.5 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
   "${PIP_CMD}" install gast==0.2.2 --user
@@ -190,18 +190,18 @@ function install_macos_pip_deps {
     shift
   done
 
-  # TODO(amitpatankar): Re-implement --user installations.
-  "${PIP_CMD}" install --upgrade setuptools==39.1.0
-  "${PIP_CMD}" install keras_applications==1.0.8 --no-deps
-  "${PIP_CMD}" install keras_preprocessing==1.0.2 --no-deps
-  "${PIP_CMD}" install --upgrade mock portpicker scipy grpcio
-  "${PIP_CMD}" install six==1.12.0
-  "${PIP_CMD}" install scikit-learn==0.20.3
-  "${PIP_CMD}" install numpy==1.14.5
-  "${PIP_CMD}" install gast==0.2.2
-  "${PIP_CMD}" install h5py==2.8.0
-  "${PIP_CMD}" install --upgrade grpcio
-  "${PIP_CMD}" install --upgrade tb-nightly
+  # TODO(aselle): Change all these to be --user instead of sudo.
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
+  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
+  ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
+  ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
+  ${SUDO_CMD} ${PIP_CMD} install numpy==1.14.5
+  ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
+  ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   "${PIP_CMD}" install --upgrade attrs
   "${PIP_CMD}" install --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --upgrade "future>=0.17.1"

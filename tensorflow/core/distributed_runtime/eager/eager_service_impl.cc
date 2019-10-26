@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -169,10 +170,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   }
   {
     mutex_lock l(contexts_mu_);
-    if (contexts_.find(request->context_id()) != contexts_.end()) {
-      return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                     "Context id: <", request->context_id(),
-                                     "> already exists.");
+    auto context_it = contexts_.find(request->context_id());
+    if (context_it != contexts_.end()) {
+      if (request->context_view_id() <
+          context_it->second->Context()->GetContextViewId()) {
+        return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                       "Context id: <", request->context_id(),
+                                       "> already exists.");
+      } else {
+        // For existing context with a stale context_view_id, close the old one
+        // and recreate with new view id. This is likely due to the worker
+        // disconnected and then reconnected after one or more cluster updates.
+        context_it->second->Unref();
+        contexts_.erase(context_it);
+      }
     }
     contexts_.emplace(request->context_id(),
                       new ServerContext(ctx, request->keep_alive_secs(), env_));
@@ -317,8 +328,14 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         "built with the same version. Please make sure the operation or "
         "function is registered in the binary running in this process.");
   }
-  op.reset(new tensorflow::EagerOperation(
-      eager_context, name, is_function, types, eager_executor, operation.id()));
+  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
+      absl::nullopt;
+  if (operation.is_component_function()) {
+    remote_func_params = {operation.id(), operation.func_step_id()};
+  }
+  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
+                                          types, eager_executor,
+                                          remote_func_params));
 
   TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
@@ -390,8 +407,10 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       s = context->Context()->Executor().AddOrExecute(std::move(node));
     } else if (item.has_send_tensor()) {
       s = SendTensor(item.send_tensor(), context->Context());
-    } else {
+    } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
+    } else {
+      s = CleanupFunction(item.cleanup_function());
     }
 
     if (!s.ok()) {
@@ -440,8 +459,16 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
     // Swallow the error here.
     return Status::OK();
   }
-
   core::ScopedUnref context_unref(context);
+
+  if (request->context_view_id() < context->Context()->GetContextViewId()) {
+    // Swallow the error here.
+    LOG(INFO) << "Ignoring CloseContext request with a stale context_view_id "
+              << request->context_view_id() << "  for context_id "
+              << request->context_id() << ". The current context_view_id is "
+              << context->Context()->GetContextViewId() << ".";
+    return Status::OK();
+  }
 
   mutex_lock l(contexts_mu_);
   contexts_.erase(request->context_id());
@@ -461,6 +488,12 @@ Status EagerServiceImpl::RegisterFunction(
   return eager_context->AddFunctionDef(
       register_function.function_def(),
       register_function.is_component_function());
+}
+
+Status EagerServiceImpl::CleanupFunction(
+    const CleanupFunctionOp& cleanup_function) {
+  env_->rendezvous_mgr->Cleanup(cleanup_function.step_id());
+  return Status::OK();
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,

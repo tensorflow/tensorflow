@@ -139,26 +139,25 @@ class NcclComm {
   absl::optional<ncclComm_t> comm_;
 };
 
-absl::optional<ncclRedOp_t> MatchAllReduceComputation(
-    const HloComputation* computation) {
-  if (absl::optional<ReductionKind> kind =
-          MatchReductionComputation(computation)) {
-    switch (*kind) {
-      case ReductionKind::SUM:
-        return ncclSum;
-      case ReductionKind::PRODUCT:
-        return ncclProd;
-      case ReductionKind::MIN:
-        return ncclMin;
-      case ReductionKind::MAX:
-        return ncclMax;
-    }
+ncclRedOp_t ReductionKindToNccl(ReductionKind kind) {
+  switch (kind) {
+    case ReductionKind::SUM:
+      return ncclSum;
+    case ReductionKind::PRODUCT:
+      return ncclProd;
+    case ReductionKind::MIN:
+      return ncclMin;
+    case ReductionKind::MAX:
+      return ncclMax;
   }
-  return absl::nullopt;
 }
 
-absl::optional<ncclDataType_t> MatchNcclDataType(const HloInstruction* crs) {
-  switch (crs->operand(0)->shape().element_type()) {
+PrimitiveType AllReducePrimitiveType(const HloInstruction* instr) {
+  return instr->operand(0)->shape().element_type();
+}
+
+absl::optional<ncclDataType_t> DatatypeToNccl(PrimitiveType element_type) {
+  switch (element_type) {
     case S8:
       return ncclInt8;
     case U8:
@@ -181,7 +180,6 @@ absl::optional<ncclDataType_t> MatchNcclDataType(const HloInstruction* crs) {
       return absl::nullopt;
   }
 }
-
 
 // Key for looking up a particular NCCL clique.  This is just a set of unique
 // device ordinals (i.e. GPU IDs).
@@ -323,44 +321,14 @@ RefcountingHashMap<NcclCliqueKey, NcclClique>& GlobalNcclCliqueMap() {
   return m;
 }
 
-// Encapsulates parameters to Rendezvous::SubmitParticipant.
-struct ParticipantData {
-  explicit ParticipantData(RendezvousKey rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
-
-  int64 element_count;
-  int64 device_ordinal;
-  RendezvousKey rendezvous_key;
-
-  // TODO(b/125951860): We should vet that we're buffer allocating such that
-  // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
-  // on how well the NCCL in-place implementation performs vs the out-of-place
-  // implementation).
-  se::DeviceMemoryBase source_data;
-  se::DeviceMemoryBase destination_data;
-  se::Stream* stream;
-
-  const HloInstruction* instr;
-
-  int num_participants() const { return rendezvous_key.num_participants(); }
-
-  string ToString() const {
-    return absl::StrFormat(
-        "ParticipantData{element_count=%d, rendezvous_key=%s, "
-        "device_ordinal=%d, stream=%p}",
-        element_count, rendezvous_key.ToString(), device_ordinal, stream);
-  }
-};
-
-class RendezvousNcclAllReduce
-    : public Rendezvous<ParticipantData, std::shared_ptr<NcclClique>> {
+class RendezvousNcclAllReduce : public Rendezvous<std::shared_ptr<NcclClique>> {
  public:
   explicit RendezvousNcclAllReduce(const RendezvousKey& k)
-      : Rendezvous<ParticipantData, std::shared_ptr<NcclClique>>(k) {}
+      : Rendezvous<std::shared_ptr<NcclClique>>(k) {}
 
  protected:
   StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>> SubmitParticipantImpl(
-      ParticipantData participant) override;
+      AllReduceParticipantData participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
                    bool is_primary) override;
@@ -383,7 +351,8 @@ GlobalRendezvousMap() {
 }
 
 StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>>
-RendezvousNcclAllReduce::SubmitParticipantImpl(ParticipantData participant) {
+RendezvousNcclAllReduce::SubmitParticipantImpl(
+    AllReduceParticipantData participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
   // additional responsibilities for setup/teardown.
@@ -430,11 +399,9 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(ParticipantData participant) {
 
   VLOG(3) << "Performing all reduce from device ordinal: "
           << participant.device_ordinal;
-  absl::optional<ncclRedOp_t> computation =
-      MatchAllReduceComputation(participant.instr->to_apply());
-  CHECK(computation.has_value());
+  ncclRedOp_t computation = ReductionKindToNccl(participant.reduction_kind);
   absl::optional<ncclDataType_t> allreduce_datatype =
-      MatchNcclDataType(participant.instr);
+      DatatypeToNccl(participant.primitive_type);
   CHECK(allreduce_datatype.has_value());
 
   se::StreamExecutor* executor = participant.stream->parent();
@@ -453,7 +420,7 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(ParticipantData participant) {
   XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                          /*count=*/participant.element_count,
                                          /*datatype=*/*allreduce_datatype,
-                                         /*op=*/*computation,
+                                         /*op=*/computation,
                                          /*comm=*/comm,
                                          /*stream=*/*cu_stream));
 
@@ -484,8 +451,9 @@ struct NcclAllReduceThunk::AuxData {
 };
 
 /*static*/ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
-  return MatchAllReduceComputation(crs->to_apply()).has_value() &&
-         MatchNcclDataType(crs).has_value() && crs->IsCrossReplicaAllReduce() &&
+  return MatchReductionComputation(crs->to_apply()).has_value() &&
+         DatatypeToNccl(AllReducePrimitiveType(crs)).has_value() &&
+         crs->IsCrossReplicaAllReduce() &&
          crs->operand_count() == 1;  // One array to reduce.
 }
 
@@ -523,12 +491,12 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(
       std::vector<int64> participating_replicas,
-      GetParticipatingReplicas(device_ordinal, instr, replica_count_,
-                               *params.device_assn));
+      GetParticipatingReplicas(device_ordinal, instr->replica_groups(),
+                               replica_count_, *params.device_assn));
 
   // Find or create the rendezvous for this collective operation.
-  RendezvousKey rendezvous_key(params.run_id, participating_replicas,
-                               hlo_instruction());
+  RendezvousKey rendezvous_key = RendezvousKey::FromInstruction(
+      params.run_id, participating_replicas, hlo_instruction());
   std::shared_ptr<RendezvousNcclAllReduce> rendezvous =
       GlobalRendezvousMap()[rendezvous_key];
 
@@ -537,7 +505,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
           << ", participating replicas: "
           << absl::StrJoin(participating_replicas, ", ");
 
-  ParticipantData participant(rendezvous_key);
+  AllReduceParticipantData participant(rendezvous_key);
   participant.element_count = element_count_;
   participant.device_ordinal = device_ordinal;
   participant.source_data =
@@ -545,7 +513,11 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   participant.destination_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
   participant.stream = params.stream;
-  participant.instr = instr;
+  auto reduction_kind =
+      MatchReductionComputation(hlo_instruction()->to_apply());
+  CHECK(reduction_kind.has_value());
+  participant.reduction_kind = *reduction_kind;
+  participant.primitive_type = AllReducePrimitiveType(hlo_instruction());
 
   // Do the operation.
   StatusOr<std::pair<std::shared_ptr<NcclClique>,

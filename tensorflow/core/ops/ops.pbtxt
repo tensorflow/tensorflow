@@ -7471,6 +7471,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "compilation_failure_closes_chips"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {

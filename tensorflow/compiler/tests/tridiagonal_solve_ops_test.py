@@ -351,7 +351,7 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
     self._test(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs, 2 * _sample_rhs]),
-        expected=np.array([_sample_result, 2 * _sample_result]),
+        expected=np.array([_sample_result, 2 * _sample_result]).T,
         transpose_rhs=True)
 
   # testConjugateRhs is skipped as complex type is not yet supported.

@@ -167,7 +167,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
-        ":mlir_passthrough_op",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -228,11 +227,13 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
+        ":tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",

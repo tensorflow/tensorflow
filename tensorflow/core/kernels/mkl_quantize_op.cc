@@ -35,8 +35,18 @@ using mkldnn::reorder;
 using mkldnn::stream;
 
 namespace {
-enum { QUANTIZE_MODE_SCALED };
 enum {
+  QUANTIZE_MODE_MIN_COMBINED,
+  QUANTIZE_MODE_MIN_FIRST,
+  QUANTIZE_MODE_SCALED,
+};
+enum {
+  // Round half away from zero: if the fraction of y is exactly 0.5, then
+  // round(y) = y + 0.5 if y > 0
+  // round(y) = y - 0.5 if y < 0
+  // E.g., -5.5 gets rounded to -6, -5.4 goes to -5,
+  // 5.4 goes to 5, and 5.5 goes to 6.
+  ROUND_HALF_AWAY_FROM_ZERO,
   // Round half to even: if the fraction of y is exactly 0.5, then round(y) is
   // the nearest even integer to y.
   // E.g., 23.5 gets rounded to 24, 24.5 gets rounded to 24, while -23.5 becomes
@@ -57,14 +67,43 @@ class MklQuantizeV2Op : public OpKernel {
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
-    OP_REQUIRES(ctx, (mode_string == "SCALED"),
-                errors::InvalidArgument("mode must be scaled"));
-    mode_ = QUANTIZE_MODE_SCALED;
+    OP_REQUIRES(ctx,
+                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
+                 mode_string == "SCALED"),
+                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
+                                        " 'MIN_FIRST', or 'SCALED', is '" +
+                                        mode_string + "'"));
+    if (mode_string == "MIN_COMBINED") {
+      mode_ = QUANTIZE_MODE_MIN_COMBINED;
+    } else if (mode_string == "MIN_FIRST") {
+      mode_ = QUANTIZE_MODE_MIN_FIRST;
+    } else if (mode_string == "SCALED") {
+      mode_ = QUANTIZE_MODE_SCALED;
+    }
+
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
-    OP_REQUIRES(ctx, (round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("Round mode must be half to even"));
-    round_mode_ = ROUND_HALF_TO_EVEN;
+    OP_REQUIRES(ctx,
+                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+                 round_mode_string == "HALF_TO_EVEN"),
+                errors::InvalidArgument("Round mode string must be "
+                                        "'HALF_AWAY_FROM_ZERO' or "
+                                        "'HALF_TO_EVEN', is '" +
+                                        round_mode_string + "'"));
+    if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
+      round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
+    } else if (round_mode_string == "HALF_TO_EVEN") {
+      OP_REQUIRES(ctx, mode_string == "SCALED",
+                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
+                                          "only supported for mode 'SCALED', "
+                                          "but mode is '" +
+                                          mode_string + "'."));
+      round_mode_ = ROUND_HALF_TO_EVEN;
+    }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("ensure_minimum_range", &ensure_minimum_range_));
   }
 
   ~MklQuantizeV2Op() {}
@@ -88,8 +127,8 @@ class MklQuantizeV2Op : public OpKernel {
     // represented when we promote the quantized value to a higher
     // intermediate bit depth, since that's a common requirement.
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),
-                                                  fabsf(input_max_range))) /
-                          100.0f;
+                                                  fabsf(input_max_range))) *
+                          ensure_minimum_range_;
     max_range = std::max(input_max_range, min_range + epsilon);
     // Clamping the max_range to zero since max_range can also be negative.
     max_range = std::max(0.0f, max_range);
@@ -209,8 +248,11 @@ class MklQuantizeV2Op : public OpKernel {
   }
 
  private:
+  float ensure_minimum_range_;
   int mode_;
   int round_mode_;
+  int axis_;
+  bool narrow_range_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
