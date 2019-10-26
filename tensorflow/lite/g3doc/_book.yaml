@@ -123,8 +123,12 @@ upper_tabs:
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
       - heading: "Text"
+      - title: "Question and answer"
+        path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
+      - title: "Text classification"
+        path: /lite/models/text_classification/overview
 
     - name: "Python API"
       skip_translation: true
