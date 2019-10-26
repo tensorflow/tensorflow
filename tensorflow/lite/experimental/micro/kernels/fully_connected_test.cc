@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <time.h>
 #include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -163,10 +162,7 @@ void TestFullyConnectedQuantized(
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  clock_t t = clock();
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  clock_t elaps = clock() - t;
-  printf("TOTAL: %ld\n", elaps);
   if (registration->free) {
     registration->free(&context, user_data);
   }

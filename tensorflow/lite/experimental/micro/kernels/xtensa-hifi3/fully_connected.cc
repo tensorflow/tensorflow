@@ -29,31 +29,16 @@ namespace tflite {
 namespace xtensa {
 namespace hifi3 {
 
-/* inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier, */
-/*                                            int shift) { */
-/*   using gemmlowp::RoundingDivideByPOT; */
-/*   using gemmlowp::SaturatingRoundingDoublingHighMul; */
-/*   int left_shift = shift > 0 ? shift : 0; */
-/*   int right_shift = shift > 0 ? 0 : -shift; */
-/*   return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul( */
-/*                                  x * (1 << left_shift), quantized_multiplier), */
-/*                              right_shift); */
-/* } */
-
 template <typename T>
-inline void OptDotProdWithOffsets(
-    const int32 input_offset, const int32 filter_offset,
-    const int32 output_offset, const int32 output_multiplier,
-    const int output_shift, const int32 output_activation_min,
-    const int32 output_activation_max, const int filter_dim_count,
+inline void OptIntDotProdWithOffsets(
+    const int32 x_offset, const int32 y_offset, const int32 output_offset,
+    const int32 output_multiplier, const int output_shift,
+    const int32 output_activation_min, const int32 output_activation_max,
     const int batches, const int output_depth, const int accum_depth,
-    const T* input_data, const T* filter_data, const int32* bias_data,
-    T* output_data) {
-  ae_int32x2 offsets_input = AE_MOVDA32X2(input_offset, input_offset);
-  ae_int32x2 offsets_filter = AE_MOVDA32X2(filter_offset, filter_offset);
+    const T* x_data, const T* y_data, const int32* bias_data, T* output_data) {
+  ae_int32x2 offsets_x = AE_MOVDA32X2(x_offset, x_offset);
+  ae_int32x2 offsets_y = AE_MOVDA32X2(y_offset, y_offset);
 
-  /* ae_int32x2 inputs_32x2; */
-  /* ae_int32x2 filters_32x2; */
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       int acc = 0;
@@ -61,27 +46,25 @@ inline void OptDotProdWithOffsets(
       int num_iters = (accum_depth) / 2;
       int extra = accum_depth % 2;
 
-      const T* in_ptr = input_data + (b * accum_depth);
-      const T* filter_ptr = filter_data + (out_c * accum_depth);
+      const T* x_ptr = x_data + (b * accum_depth);
+      const T* y_ptr = y_data + (out_c * accum_depth);
 
       for (int d = 0; d < num_iters; d++) {
-        ae_int32x2 inputs_32x2 = AE_MOVDA32X2(*in_ptr++, *in_ptr++);
-        ae_int32x2 filters_32x2 = AE_MOVDA32X2(*filter_ptr++, *filter_ptr++);
+        ae_int32x2 x_32x2 = AE_MOVDA32X2(*x_ptr++, *x_ptr++);
+        ae_int32x2 y_32x2 = AE_MOVDA32X2(*y_ptr++, *y_ptr++);
 
-        ae_int32x2 input_offsets_sum = AE_ADD32(offsets_input, inputs_32x2);
-        ae_int32x2 filter_offsets_sum = AE_ADD32(offsets_filter, filters_32x2);
+        ae_int32x2 x_offsets_sum = AE_ADD32(offsets_x, x_32x2);
+        ae_int32x2 y_offsets_sum = AE_ADD32(offsets_y, y_32x2);
 
-        ae_int32x2 input_filter_sums =
-            AE_MULP32X2(input_offsets_sum, filter_offsets_sum);
-        acc +=
-            AE_MOVAD32_H(input_filter_sums) + AE_MOVAD32_L(input_filter_sums);
+        ae_int32x2 x_y_sums = AE_MULP32X2(x_offsets_sum, y_offsets_sum);
+        acc += AE_MOVAD32_H(x_y_sums) + AE_MOVAD32_L(x_y_sums);
       }
 
       for (int d = 0; d < extra; d++) {
         // Fallback and handle odd tensor lengths:
-        int32 input_val = input_data[b * accum_depth + d];
-        int32 filter_val = filter_data[out_c * accum_depth + d];
-        acc += (filter_val + filter_offset) * (input_val + input_offset);
+        int32 x_val = x_data[b * accum_depth + d];
+        int32 y_val = y_data[out_c * accum_depth + d];
+        acc += (x_val + x_offset) * (y_val + y_offset);
       }
 
       if (bias_data) {
@@ -89,7 +72,7 @@ inline void OptDotProdWithOffsets(
       }
 
       // TODO(kreeger): The MultiplyByQuantizedMultiplier() method should be
-      // optimized as well:
+      // optimized as well (fallsback to gemmlowp):
       acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
@@ -123,11 +106,11 @@ inline void FullyConnected(
   TFLITE_DCHECK_LE(output_depth, filter_shape.Dims(filter_dim_count - 2));
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-  OptDotProdWithOffsets<int8_t>(
+  OptIntDotProdWithOffsets<int8_t>(
       input_offset, filter_offset, output_offset, output_multiplier,
-      output_shift, output_activation_min, output_activation_max,
-      filter_dim_count, batches, output_depth, accum_depth, input_data,
-      filter_data, bias_data, output_data);
+      output_shift, output_activation_min, output_activation_max, batches,
+      output_depth, accum_depth, input_data, filter_data, bias_data,
+      output_data);
 }
 
 // Uint8 optimized:
@@ -160,11 +143,11 @@ inline void FullyConnected(
                                        output_shape, output_dim_count - 1);
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-  OptDotProdWithOffsets<uint8_t>(
+  OptIntDotProdWithOffsets<uint8_t>(
       input_offset, filter_offset, output_offset, output_multiplier,
-      output_shift, output_activation_min, output_activation_max,
-      filter_dim_count, batches, output_depth, accum_depth, input_data,
-      filter_data, bias_data, output_data);
+      output_shift, output_activation_min, output_activation_max, batches,
+      output_depth, accum_depth, input_data, filter_data, bias_data,
+      output_data);
 }
 
 }  // namespace hifi3
