@@ -76,7 +76,7 @@ inline void OptDotProdWithOffsets(
       }
 
       for (int d = 0; d < extra; d++) {
-        // Handle odd tensor lengths:
+        // Fallback and handle odd tensor lengths:
         int32 input_val = input_data[b * accum_depth + d];
         int32 filter_val = filter_data[out_c * accum_depth + d];
         acc += (filter_val + filter_offset) * (input_val + input_offset);
