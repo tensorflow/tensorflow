@@ -24,6 +24,7 @@ import threading
 import warnings
 
 import numpy as np
+import wrapt
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -370,7 +371,10 @@ class _ListFetchMapper(_FetchMapper):
     Args:
       fetches: List, tuple, or namedtuple of fetches.
     """
-    self._fetch_type = type(fetches)
+    if isinstance(fetches, wrapt.ObjectProxy):
+      self._fetch_type = type(fetches.__wrapped__)
+    else:
+      self._fetch_type = type(fetches)
     self._mappers = [_FetchMapper.for_fetch(fetch) for fetch in fetches]
     self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
 

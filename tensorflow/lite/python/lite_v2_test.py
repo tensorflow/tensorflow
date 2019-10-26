@@ -708,6 +708,29 @@ class ControlFlowTest(TestModels):
     expected_value = model.predict(input_data)
     np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
 
+  @test_util.run_v2_only
+  def testKerasBidirectionalRNN(self):
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Bidirectional(
+            recurrent_v2.LSTM(units=10, return_sequences=True),
+            input_shape=(10, 10)))
+    model.add(keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
+    model.add(keras.layers.Dense(5))
+    model.add(keras.layers.Activation('softmax'))
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
+
 
 class GrapplerTest(TestModels):
 

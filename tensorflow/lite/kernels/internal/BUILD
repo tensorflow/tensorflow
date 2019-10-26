@@ -229,6 +229,7 @@ cc_library(
         ":round",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
@@ -271,6 +272,7 @@ cc_library(
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         ":types",
         ":legacy_types",
         ":legacy_reference_base",
@@ -346,6 +348,28 @@ cc_test(
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "transpose_utils",
+    srcs = [
+        "transpose_utils.cc",
+    ],
+    hdrs = [
+        "transpose_utils.h",
+    ],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_test(
+    name = "transpose_utils_test",
+    srcs = ["transpose_utils_test.cc"],
+    deps = [
+        ":transpose_utils",
+        "@com_google_googletest//:gtest",
     ],
 )
 

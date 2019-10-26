@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/direct_session.h"
 
+#include <algorithm>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -856,14 +857,11 @@ Status DirectSession::Run(const RunOptions& run_options,
     // output_names[i] == output_names[j].
     std::vector<int> first_indices;
     if (!unique_outputs) {
-      first_indices.resize(output_names.size());
-      for (int i = 0; i < output_names.size(); ++i) {
-        for (int j = 0; j <= i; ++j) {
-          if (output_names[i] == output_names[j]) {
-            first_indices[i] = j;
-            break;
-          }
-        }
+      first_indices.reserve(output_names.size());
+      for (const auto& name : output_names) {
+        first_indices.push_back(
+            std::find(output_names.begin(), output_names.end(), name) -
+            output_names.begin());
       }
     }
     outputs->clear();

@@ -491,6 +491,8 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
           }
           chunk->action_count = ++action_counter_;
           chunk->step_id = pending_step_id;
+          int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+          size_history_[slot] = stats_.bytes_in_use;
         }
 #endif
 
@@ -664,6 +666,8 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 #ifdef TENSORFLOW_MEM_DEBUG
   if (ShouldRecordOpName()) {
     c->action_count = ++action_counter_;
+    int slot = c->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    size_history_[slot] = stats_.bytes_in_use;
   }
 #endif
 }
@@ -996,6 +1000,15 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   MemoryDump md;
   md.set_allocator_name(Name());
 
+  // Record the general stats
+  MemAllocatorStats* mas = md.mutable_stats();
+  mas->set_num_allocs(stats_.num_allocs);
+  mas->set_bytes_in_use(stats_.bytes_in_use);
+  mas->set_peak_bytes_in_use(stats_.peak_bytes_in_use);
+  mas->set_largest_alloc_size(stats_.largest_alloc_size);
+  double frag_m_sum = 0.0;
+  int64 free_bytes = 0;
+
   // Record summary data for every bin.
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
@@ -1030,9 +1043,28 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       if (timing_counter_) {
         mc->set_freed_at_count(c->in_use() ? 0 : c->freed_at_count);
       }
+      if (!c->in_use()) {
+        free_bytes += c->size;
+        frag_m_sum += pow(c->size, 1.1);
+      }
       h = c->next;
     }
   }
+  mas->set_fragmentation_metric(
+      1.0 - (frag_m_sum / pow(static_cast<double>(free_bytes), 1.1)));
+
+#ifdef TENSORFLOW_MEM_DEBUG
+  // Record the recent size history
+  int history_len = static_cast<int>(std::min(
+      action_counter_, static_cast<long long>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+  for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
+    SnapShot* ss = md.add_snap_shot();
+    ss->set_action_count(i);
+    int slot = i % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    ss->set_size(size_history_[slot]);
+  }
+#endif
+
   return md;
 }
 

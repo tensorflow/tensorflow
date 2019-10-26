@@ -94,6 +94,15 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
     return status;
   }
 
+  // Inline execution in sync mode.
+  if (!Async()) {
+    status = this->status();
+    if (status.ok()) {
+      status = RunItem(std::move(item));
+    }
+    return status;
+  }
+
   // If we are unable to add the node to the queue, we must call Abort. However,
   // we want to do that outside of the scope of the lock since the Abort may
   // try to call EagerExecutor::Add()
@@ -108,7 +117,7 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
           StateStringLocked(), "'");
     } else {
       status = status_;
-      if (status.ok() && Async()) {
+      if (status.ok()) {
         node_queue_.push(std::move(item));
         // If there were no previous nodes pending, wake the run thread to
         // start processing requests again.
@@ -121,17 +130,9 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
     }
   }
 
-  if (status.ok()) {
-    // Inline execution in sync mode.
-    DCHECK(!Async());
-    RunItem(std::move(item));
-    status = this->status();
-    return status;
-  } else {
-    // Node needs to be aborted since it was not added to the queue
-    item->node->Abort(status);
-    return status;
-  }
+  // Node needs to be aborted since it was not added to the queue
+  item->node->Abort(status);
+  return status;
 }
 
 tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {
@@ -174,7 +175,7 @@ tensorflow::Status EagerExecutor::status() const {
   return status_;
 }
 
-void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
+void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                              const Status& status) {
   DVLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
            << " with status: " << status.ToString();
@@ -275,36 +276,40 @@ void EagerExecutor::Run() {
       curr_item.reset(node_queue_.front().get());
       curr_item->Ref();
     }
-    RunItem(std::move(curr_item));
+    Status status = RunItem(std::move(curr_item));
+    if (!status.ok()) {
+      VLOG(1) << "Failed to run item: " << status;
+    }
   }
 }
 
-void EagerExecutor::RunItem(core::RefCountPtr<NodeItem> item) {
+Status EagerExecutor::RunItem(core::RefCountPtr<NodeItem> item) {
   DVLOG(3) << "Running Node: [id " << item->id << "] "
            << item->node->DebugString();
   AsyncEagerNode* async_node = item->node->AsAsync();
   if (async_node == nullptr) {
-    core::RefCountPtr<NodeItem> new_ref(item.get());
-    new_ref->Ref();
     tensorflow::Status status = item->node->Run();
-    NodeDone(std::move(new_ref), status);
+    NodeDone(item, status);
+    return status;
   } else {
     auto* new_ref = item.get();
     new_ref->Ref();
     async_node->RunAsync([this, new_ref](const Status& status) {
       core::RefCountPtr<NodeItem> new_item(new_ref);
-      NodeDone(std::move(new_item), status);
+      NodeDone(new_item, status);
     });
-  }
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  if (item->state == NodeState::kPENDING) {
-    item->state = NodeState::kSCHEDULED;
-    if (!node_queue_.empty() && item.get() == node_queue_.front().get()) {
-      node_queue_.pop();
+
+    tensorflow::mutex_lock l(node_queue_mutex_);
+    if (item->state == NodeState::kPENDING) {
+      item->state = NodeState::kSCHEDULED;
+      if (!node_queue_.empty() && item.get() == node_queue_.front().get()) {
+        node_queue_.pop();
+      }
+      DVLOG(3) << "Add Node: [id " << item->id << "] to unfinished map.";
+      unfinished_nodes_.emplace_hint(unfinished_nodes_.end(), item->id,
+                                     std::move(item));
     }
-    DVLOG(3) << "Add Node: [id " << item->id << "] to unfinished map.";
-    unfinished_nodes_.emplace_hint(unfinished_nodes_.end(), item->id,
-                                   std::move(item));
+    return status_;
   }
 }
 

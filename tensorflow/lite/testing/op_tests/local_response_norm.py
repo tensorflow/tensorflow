@@ -38,7 +38,7 @@ def make_local_response_norm_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.nn.local_response_normalization(
         input_tensor,

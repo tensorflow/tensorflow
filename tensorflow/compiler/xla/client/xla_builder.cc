@@ -2024,8 +2024,13 @@ XlaOp XlaBuilder::CrossReplicaSum(
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
     const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
     auto b = CreateSubBuilder("sum");
-    Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
-        b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
+    auto x = b->Parameter(/*parameter_number=*/0, scalar_shape, "x");
+    auto y = b->Parameter(/*parameter_number=*/1, scalar_shape, "y");
+    if (shape.element_type() == PRED) {
+      Or(x, y);
+    } else {
+      Add(x, y);
+    }
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
     return AllReduce(operand, computation, replica_groups,
                      /*channel_id=*/absl::nullopt);

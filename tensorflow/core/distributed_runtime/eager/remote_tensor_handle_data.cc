@@ -58,8 +58,11 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
     if (!status.ok()) {
-      LOG_EVERY_N_SEC(ERROR, 60) << "Unable to destroy remote tensor handles: "
-                                 << status.error_message();
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << "Unable to destroy remote tensor handles. If you are "
+             "running a tf.function, it usually indicates some op in "
+             "the graph gets an error: "
+          << status.error_message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -69,8 +72,10 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
       Status status =
           ctx->Executor().AddOrExecute(absl::WrapUnique(released_node));
       if (!status.ok()) {
-        LOG_EVERY_N_SEC(ERROR, 60)
-            << "Unable to destroy remote tensor handles: "
+        LOG_EVERY_N_SEC(WARNING, 60)
+            << "Unable to destroy remote tensor handles. If you are "
+               "running a tf.function, it usually indicates some op in "
+               "the graph gets an error: "
             << status.error_message();
       }
     });

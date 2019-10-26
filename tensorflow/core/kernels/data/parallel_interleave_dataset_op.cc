@@ -761,7 +761,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // Process until the results queue is full or we reach end of input.
       while (true) {
         auto result = std::make_shared<Result>();
-        bool end_of_input;
+        bool end_of_input = false;
         result->status = iterator->GetNext(ctx_.get(), &result->return_values,
                                            &end_of_input);
         if (end_of_input) {

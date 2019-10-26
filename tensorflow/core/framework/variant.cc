@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Variant::~Variant() { clear(); }
+Variant::~Variant() { ResetMemory(); }
 
 bool Variant::Decode(VariantTensorData data) {
   if (!is_empty()) {

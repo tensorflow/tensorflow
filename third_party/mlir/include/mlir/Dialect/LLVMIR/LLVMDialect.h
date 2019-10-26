@@ -66,6 +66,7 @@ public:
 
   /// Utilities to identify types.
   bool isFloatTy() { return getUnderlyingType()->isFloatTy(); }
+  bool isDoubleTy() { return getUnderlyingType()->isDoubleTy(); }
   bool isIntegerTy() { return getUnderlyingType()->isIntegerTy(); }
   bool isIntegerTy(unsigned bitwidth) {
     return getUnderlyingType()->isIntegerTy(bitwidth);

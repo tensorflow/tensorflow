@@ -44,7 +44,7 @@ def make_identity_tests(options):
     input_count = (2 if parameters["op_to_use"] == "identity_n_with_2_inputs"
                    else 1)
     input_tensors = [
-        tf.placeholder(
+        tf.compat.v1.placeholder(
             dtype=tf.float32, name="input", shape=parameters["input_shape"])
         for _ in range(input_count)
     ]

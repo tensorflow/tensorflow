@@ -282,15 +282,15 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   switch (ToTensorStorageType(def.object_def.object_type,
                               def.object_def.data_layout)) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       break;
     case TensorStorageType::TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h * dims.d());
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       region[2] = static_cast<size_t>(dims.d());
       break;

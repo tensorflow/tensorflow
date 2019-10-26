@@ -1181,7 +1181,12 @@ def TFL_InputOp : Op<TFL_Dialect, "pseudo_input", [SameOperandsAndResultType]> {
   let results = (outs AnyTensor:$output);
 }
 
-def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect]> {
+def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
+    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>]> {
   let summary = "L2 Normalize Operator";
 
   let description = [{

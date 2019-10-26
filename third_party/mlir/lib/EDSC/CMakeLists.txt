@@ -29,6 +29,7 @@ add_llvm_library(MLIREDSCInterface
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/EDSC
   )
+add_dependencies(MLIREDSCInterface MLIRIR)
 add_dependencies(MLIREDSC MLIRReferenceImplementationTestGen)
 target_link_libraries(MLIREDSC
   PUBLIC

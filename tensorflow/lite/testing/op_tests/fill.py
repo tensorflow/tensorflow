@@ -36,11 +36,11 @@ def make_fill_tests(options):
 
   def build_graph(parameters):
     """Build the fill op testing graph."""
-    input1 = tf.placeholder(
+    input1 = tf.compat.v1.placeholder(
         dtype=parameters["dims_dtype"],
         name="dims",
         shape=parameters["dims_shape"])
-    input2 = tf.placeholder(
+    input2 = tf.compat.v1.placeholder(
         dtype=parameters["value_dtype"], name="value", shape=[])
     out = tf.fill(input1, input2)
     return [input1, input2], [out]

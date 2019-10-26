@@ -312,6 +312,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));
@@ -379,6 +380,7 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));
@@ -473,6 +475,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
 
     CloseContextRequest close_context_request;
     close_context_request.set_context_id(context_id_);
+    close_context_request.set_context_view_id(0);
     CloseContextResponse close_context_response;
     TF_ASSERT_OK(eager_service_impl_.CloseContext(&close_context_request,
                                                   &close_context_response));
@@ -504,6 +507,9 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   FunctionLibraryRuntime::Handle handle;
   TF_ASSERT_OK(eager_pflr_->Instantiate(
       fdef_.signature().name(), AttrSlice(&fdef_.attr()), options, &handle));
+  bool is_cross_process = false;
+  TF_CHECK_OK(eager_pflr_->IsCrossProcess(handle, &is_cross_process));
+  EXPECT_TRUE(is_cross_process);
 
   // Run MatMulFunction on remote_device.
   FunctionLibraryRuntime::Options opts;
@@ -546,10 +552,12 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   EagerContext* ctx = nullptr;
   TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
+  const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
       flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, nullptr, nullptr,
       local_device, fdef_.signature().name(),
-      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); }));
+      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+      []() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
@@ -570,8 +578,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
         return Status::OK();
       });
   std::vector<Tensor> outputs;
-  const int64 op_id = 2;
-  TF_ASSERT_OK(kernel->Run(inputs, &outputs, nullptr, op_id));
+
+  TF_ASSERT_OK(kernel->Run(inputs, &outputs, nullptr, absl::nullopt));
 
   CheckOutputsAndClose(op_id);
 }
@@ -635,6 +643,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));

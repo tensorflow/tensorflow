@@ -291,7 +291,7 @@ class DistributedIterator(object):
         with ops.device(worker):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
-              self._iterators[i].get_next_as_list_deprecated(new_name))
+              self._iterators[i].get_next_as_list_static_shapes(new_name))
       return values.regroup(self._input_workers.device_map, replicas)
 
     out_of_range_replicas = []
@@ -875,20 +875,30 @@ class _SingleWorkerDatasetIterator(object):
     with ops.device(self._worker):
       return self._iterator.get_next(device)
 
-  # TODO(rxsang): Rename this, as deletion is not slated. This method is more
-  # performant in the cases where it can be used.
-  def get_next_as_list_deprecated(self, name=None):
-    """Get next element from the underlying iterator."""
+  def get_next_as_list_static_shapes(self, name=None):
+    """Get next element from the underlying iterator.
+
+    Runs the iterator get_next() within a device scope. Since this doesn't use
+    get_next_as_optional(), is is considerably faster than get_next_as_list()
+    (but can only be used when the shapes are static).
+
+    Args:
+      name: not used.
+
+    Returns:
+      A list consisting of the next data from each device.
+    """
     del name
     with ops.device(self._worker):
-      data_list = self._iterator.get_next()
-      return data_list
+      return self._iterator.get_next()
 
   def get_next_as_list(self, name=None):
     """Get next element from underlying iterator.
 
     If there is no data left, a list of dummy tensors with possible batch
-    dimensions set to 0 will be returned.
+    dimensions set to 0 will be returned. Use of get_next_as_optional() and
+    extra logic adds overhead compared to get_next_as_list_static_shapes(), but
+    allows us to handle non-static shapes.
 
     Args:
       name: not used.
@@ -969,7 +979,7 @@ class _SingleWorkerCallableIterator(object):
     with ops.device(self._worker):
       return self._fn()
 
-  def get_next_as_list_deprecated(self, name=None):
+  def get_next_as_list_static_shapes(self, name=None):
     """Get next element from the callable."""
     del name
     with ops.device(self._worker):

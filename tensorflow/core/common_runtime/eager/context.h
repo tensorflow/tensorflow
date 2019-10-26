@@ -243,8 +243,8 @@ class EagerContext : public core::RefCounted {
 
   // TODO(apassos) remove the need for this
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
-  std::unique_ptr<tensorflow::DynamicDeviceMgr> ReleaseRemoteDeviceMgr() {
-    return std::move(remote_device_manager_);
+  tensorflow::DynamicDeviceMgr* GetOwnedRemoteDeviceMgr() {
+    return remote_device_manager_.get();
   }
 
   // TODO(apassos) clean up RunMetadata storage.
@@ -303,7 +303,6 @@ class EagerContext : public core::RefCounted {
   Status UpdateRemoteMaster(
       WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       const std::vector<string>& add_remote_contexts,
       const std::vector<string>& remove_remote_contexts, uint64 context_id,
       Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
@@ -330,7 +329,7 @@ class EagerContext : public core::RefCounted {
       DistributedFunctionLibraryRuntime* cluster_flr);
 
   Status StoreCollectiveOpsServer(
-      std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+      std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
   // TODO(fishx): Remove the custom deleter once we remove forward declaration.
@@ -461,7 +460,7 @@ class EagerContext : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   void CloseAndClearAllRemoteContexts();
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
-                           uint64 context_id);
+                           uint64 context_id, uint64 context_view_id);
 
   Status SetMasterContextState(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,

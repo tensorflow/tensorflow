@@ -144,20 +144,23 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerOperation* op = function_data->op.get();
 
+  if (!opts.op_id.has_value()) {
+    done(
+        errors::Internal("op_id is not set for remote function: ", op->Name()));
+  }
+
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(function_data->context_id);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
   for (size_t i = 0; i < args->size(); ++i) {
     remote_op->add_inputs()->Swap(&(*args)[i]);
   }
-  // TODO(yujingzhang): add step_id to eager::Operation to make sure that all
-  // component functions use the same step id.
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unqiue op_id generated
   // by the master context.
-  const int64 op_id = opts.op_id.has_value() ? opts.op_id.value()
-                                             : ctx_->RemoteMgr()->NextOpId();
-  remote_op->set_id(op_id);
+  remote_op->set_id(opts.op_id.value());
+  remote_op->set_is_component_function(true);
+  remote_op->set_func_step_id(opts.step_id);
   remote_op->set_name(op->Name());
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
@@ -182,7 +185,31 @@ void EagerClusterFunctionLibraryRuntime::Run(
 void EagerClusterFunctionLibraryRuntime::CleanUp(
     uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {
-  done(Status::OK());
+  FunctionData* function_data = nullptr;
+  {
+    mutex_lock l(mu_);
+    DCHECK_LE(handle, function_data_.size());
+    function_data = &function_data_[handle];
+  }
+
+  EagerClient* eager_client = function_data->eager_client;
+  if (eager_client == nullptr) {
+    done(errors::Internal("Could not find eager client"));
+    return;
+  }
+
+  eager::EnqueueRequest* request = new eager::EnqueueRequest;
+  EnqueueResponse* response = new EnqueueResponse;
+  request->set_context_id(function_data->context_id);
+  CleanupFunctionOp* cleanup_function =
+      request->add_queue()->mutable_cleanup_function();
+  cleanup_function->set_step_id(step_id);
+  eager_client->StreamingEnqueueAsync(
+      request, response, [request, response, done](const Status& status) {
+        done(status);
+        delete request;
+        delete response;
+      });
 }
 
 }  // namespace eager

@@ -215,21 +215,27 @@ bool EagerContext::MirrorTensors() const {
 #if !defined(IS_MOBILE_PLATFORM)
 void EagerContext::CloseAndClearAllRemoteContexts() {
   uint64 context_id;
+  uint64 context_view_id;
   {
     mutex_lock l(remote_state_mu_);
     if (!is_master_) return;
     context_id = context_id_;
+    context_view_id = context_view_id_;
     context_id_ = kInvalidContextId;
+    // Forget the current view id and reset to the starting value 0.
+    context_view_id_ = 0;
   }
-  CloseRemoteContexts(remote_contexts_, context_id);
+  CloseRemoteContexts(remote_contexts_, context_id, context_view_id);
   remote_contexts_.clear();
 }
 
 void EagerContext::CloseRemoteContexts(
-    const std::vector<string>& remote_contexts, uint64 context_id) {
+    const std::vector<string>& remote_contexts, uint64 context_id,
+    uint64 context_view_id) {
   // Close all remote contexts.
   eager::CloseContextRequest request;
   request.set_context_id(context_id);
+  request.set_context_view_id(context_view_id);
   // Setting context_id to a new value can avoid us issuing DestroyTensorHandle
   // request to closed remote workers.
   std::vector<eager::CloseContextResponse> responses(remote_contexts.size());
@@ -675,8 +681,10 @@ uint64 EagerContext::GetContextViewId() {
   return context_view_id_;
 }
 
+// Set collective ops related state in the context. Passing nullptr to
+// `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.reset(nullptr);
   unowned_collective_executor_mgr_ = rpc_collective_executor_mgr;
@@ -705,13 +713,16 @@ Status EagerContext::StoreCollectiveOpsServer(
       config ? config->graph_options().optimizer_options() : OptimizerOptions(),
       thread_pool_.get()));
 
-  // Memory leak!
-  if (server_ != nullptr) {
-    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "Servers don't support clean shutdown.";
-    server_.release();
+  if (new_server != nullptr) {
+    // Memory leak!
+    if (server_ != nullptr) {
+      LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                      "Servers don't support clean shutdown.";
+      server_.release();
+    }
+    server_ = std::move(new_server);
   }
-  server_ = std::move(server);
+  DCHECK(server_ != nullptr);
 
   return Status::OK();
 }
@@ -747,7 +758,6 @@ Status EagerContext::InitializeRemoteMaster(
 Status EagerContext::UpdateRemoteMaster(
     WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& add_remote_contexts,
     const std::vector<string>& remove_remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
@@ -763,13 +773,12 @@ Status EagerContext::UpdateRemoteMaster(
   }
 
   if (!remove_remote_contexts.empty()) {
-    // N.B. remove_remote_contexts include both removed and replaced workers. It
-    // is safe to send CloseContextRequest to them using the old copy of eager
-    // client cache (i.e., `remote_eager_workers_`) because the replaced workers
-    // will be resolved to the old eager clients. Thus, it correctly closes
-    // contexts on workers that are replaced by new ones. It must be called
-    // before overwriting `remote_eager_workers_` in current master context.
-    CloseRemoteContexts(remove_remote_contexts, context_id);
+    // N.B. remove_remote_contexts include both removed and replaced workers.
+    // In the case where a worker is replaced by one that resolves to the same
+    // `hostname:port`, it is safe to close context with the current view id,
+    // since the newly created context on the remote worker will be holding
+    // a larger view id and ignores this request.
+    CloseRemoteContexts(remove_remote_contexts, context_id, GetContextViewId());
     for (const string& remote_context : remove_remote_contexts) {
       remote_contexts_.erase(
           std::remove(remote_contexts_.begin(), remote_contexts_.end(),
@@ -784,10 +793,10 @@ Status EagerContext::UpdateRemoteMaster(
   }
   std::vector<const FunctionDef*> function_defs = ListRegisteredFunctions();
   TF_RETURN_IF_ERROR(SetMasterContextState(
-      nullptr, worker_env, std::move(worker_session),
-      std::move(remote_eager_workers), std::move(remote_device_manager),
+      /*server=*/nullptr, worker_env, std::move(worker_session),
+      std::move(remote_eager_workers), /*remote_device_manager=*/nullptr,
       context_id, GetContextViewId() + 1, r, local_device_mgr, keep_alive_secs,
-      cluster_flr, nullptr));
+      cluster_flr, /*remote_mgr=*/nullptr));
 
   // Register existing functions to the newly added remote workers. Note that
   // this should happen only after updating `remote_contexts_` because new
@@ -803,8 +812,9 @@ Status EagerContext::UpdateRemoteMaster(
 }
 
 // Set distributed execution related fields in the master context. Passing
-// nullptr to `server` will update the existing GRPC server in context (instead
-// of resetting with a new server).
+// nullptr to `server` / `remote_device_mgr` will only update the existing GRPC
+// server / remote device manager in the master context (instead of resetting
+// with new ones).
 Status EagerContext::SetMasterContextState(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
@@ -848,7 +858,10 @@ Status EagerContext::SetMasterContextState(
   worker_session_ = worker_session;
   remote_eager_workers_ = std::move(remote_eager_workers);
 
-  remote_device_manager_ = std::move(remote_device_manager);
+  if (remote_device_manager != nullptr) {
+    remote_device_manager_ = std::move(remote_device_manager);
+  }
+  DCHECK(remote_device_manager_ != nullptr);
 
   InitDeviceMapAndAsync();
 

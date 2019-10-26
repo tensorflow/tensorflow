@@ -92,7 +92,9 @@ def _tpu_system_device_name(job):
 
 
 @tf_export(v1=["tpu.initialize_system"])
-def initialize_system(embedding_config=None, job=None):
+def initialize_system(embedding_config=None,
+                      job=None,
+                      compilation_failure_closes_chips=True):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
@@ -103,6 +105,8 @@ def initialize_system(embedding_config=None, job=None):
       contains the TPU devices that will be initialized. If job=None it is
       assumed there is only one job in the TensorFlow flock, and an error will
       be returned if this assumption does not hold.
+    compilation_failure_closes_chips: Set the configuration whether
+      we want to close TPU chips when there is a compilation failure.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -110,7 +114,9 @@ def initialize_system(embedding_config=None, job=None):
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
+    return tpu_ops.configure_distributed_tpu(
+        embedding_config=config_string,
+        compilation_failure_closes_chips=compilation_failure_closes_chips)
 
 
 def initialize_system_for_tpu_embedding(embedding_config, job=None):
@@ -486,8 +492,13 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    if _TPU_REPLICATE_ATTR in op.node_def.attr:
-      raise ValueError("TPU computations cannot be nested")
+
+    # TensorFlowOpLayer may clone nodes that are in tpu.rewrite()s. It'll add
+    # the "_cloned" attribute and we should continue in that case.
+    if (_TPU_REPLICATE_ATTR in op.node_def.attr and
+        "_cloned" not in op.node_def.attr):
+      raise ValueError("TPU computations cannot be nested on op (%s)" %
+                       op)
     op._set_attr_with_buf(
         _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
     if self._outside_compilation_cluster:
@@ -818,13 +829,19 @@ def _pad_all_input(inputs, padded_shapes):
         paddings = []
         for i, s in enumerate(padded_shape.dims):
           if need_padding[idx][i]:
+            # The minimum padded dimension size is 2 as XLA doesn't support size
+            # 1 dynamic size.
+            minimum_dynamic_dim_size = 2
             if s.value:
               # Pad to the given maximum value.
-              padding = [0, s.value - input_shape_tensor[i]]
+              max_dim_size = max(s.value, minimum_dynamic_dim_size)
             else:
               # If maximum value is not given, then pad to the maximum dimension
               # among all the cores.
-              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
+              max_dim_size = math_ops.maximum(maximum_shapes[idx][i],
+                                              minimum_dynamic_dim_size)
+            # Pad to the given maximum value.
+            padding = [0, max_dim_size - input_shape_tensor[i]]
           else:
             padding = [0, 0]
           paddings.append(padding)

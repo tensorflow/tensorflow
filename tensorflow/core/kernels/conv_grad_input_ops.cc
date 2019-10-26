@@ -217,7 +217,7 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   }
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Computes backprop input using Eigen::SpatialConvolutionBackwardInput on GPU
 // for int32 inputs.
 template <>
@@ -234,7 +234,7 @@ struct LaunchConv2DBackpropInputOp<GPUDevice, int32> {
              explicit_paddings, in_backprop, data_format);
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, class T>

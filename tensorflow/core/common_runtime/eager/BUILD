@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -92,8 +93,10 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":eager_executor",
+        ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -351,6 +354,21 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_eager_op_rewrite_test",
+    srcs = ["mkl_eager_op_rewrite_test.cc"],
+    tags = [
+        "nomac",
+    ],
+    deps = [
+        ":execute",
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

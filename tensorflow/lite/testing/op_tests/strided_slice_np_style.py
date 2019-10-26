@@ -68,7 +68,7 @@ def make_strided_slice_np_style_tests(options):
 
   def build_graph(parameters):
     """Build a simple graph with np style strided_slice."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["dtype"], shape=parameters["shape"])
     out = input_value.__getitem__(parameters["spec"])
     return [input_value], [out]

@@ -37,14 +37,18 @@ For each example, we provide a guide that explains how it works.
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">View
 Android example</a>
 
-Read the [Android example guide](android.md) to learn how the app works.
+Read the
+[Android example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### iOS
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios.md">View
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">View
 iOS example</a>
 
-Read the [iOS example guide](ios.md) to learn how the app works.
+Read the
+[iOS example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### Screenshot
 
@@ -265,7 +269,7 @@ The architecture of a model impacts its performance, accuracy, and size. All of
 our hosted models are trained on the same data, meaning you can use the provided
 statistics to compare them and choose which is optimal for your application.
 
-Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="android.md">Android</a> and <a href="ios.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
+Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
 
 ## Customize model
 

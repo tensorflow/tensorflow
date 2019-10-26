@@ -1872,7 +1872,6 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
-  VLOG(5) << "Inlined function definition: " << DebugString(fbody->fdef);
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
@@ -2031,8 +2030,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = input_identity("input", inputs[i], i);
-    VLOG(4) << "    [index " << i << "] " << n->name()
-            << " (input: " << inputs[i].name() << ")";
+    VLOG(4) << "    [index " << i << "] "
+            << fbody->fdef.signature().input_arg(i).name() << " as "
+            << n->name() << " (input: " << inputs[i].name()
+            << ", requested_device: " << n->requested_device() << ")";
 
     if (input_control_node) {
       g->AddControlEdge(input_control_node, n, kDoNotCheckDuplicates);
@@ -2066,6 +2067,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   //
   // If `keep_node_fetchable` is `true` we always add an output control node, to
   // guarantee that executing a fetchable node will execute all side-effects.
+  VLOG(4) << "Add output Identity nodes for each function output argument:";
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
@@ -2079,6 +2081,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     CHECK(data.node != nullptr);
     Node* n = output_identity("output", data, i);
     outputs[i] = n;
+    VLOG(4) << "    [index " << i << "] "
+            << fbody->fdef.signature().output_arg(i).name() << " as "
+            << n->name() << " (ret: " << data.node->name() << ":" << data.index
+            << ", requested_device: " << n->requested_device() << ")";
     for (const Edge* e : ret->in_edges()) {
       if (e->IsControlEdge()) {
         g->AddControlEdge(e->src(), n, kDoNotCheckDuplicates);
@@ -2098,13 +2104,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   if (has_control_outputs || keep_caller_node) {
     output_control_node = no_op("output_control_node");
+    VLOG(4) << "Add output control node: " << output_control_node->name();
     if (options.output_control_src == OutputControlSrc::kDataOutputs) {
       for (Node* n : outputs) {
+        VLOG(4) << "    [data output] add control edge from: " << n->name();
         g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     } else {
       for (Node* fbody_node : fbody->control_ret_nodes) {
         Node* n = node_map[fbody_node->id()];
+        VLOG(4) << "    [control output] add control edge from: " << n->name();
         g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     }
@@ -2118,10 +2127,14 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // always have input_control_node when we need it.
   if (output_control_node && output_control_node->in_edges().empty()) {
     if (input_control_node) {
+      VLOG(4)
+          << "Add add a control edge between input and output control nodes: "
+          << input_control_node->name() << " to "
+          << output_control_node->name();
       g->AddControlEdge(input_control_node, output_control_node,
                         kDoNotCheckDuplicates);
     } else {
-      VLOG(3) << "Function inlining potentially dropped execution frame "
+      VLOG(4) << "Function inlining potentially dropped execution frame "
                  "information from outgoing control edges.";
     }
   }

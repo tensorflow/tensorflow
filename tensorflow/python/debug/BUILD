@@ -32,6 +32,7 @@ py_library(
         ":debug_graphs",
         ":debug_utils",
         ":dumping_callback",
+        ":dumping_callback_test_lib",
         ":grpc_debug_server",
         ":grpc_debug_test_server",
         ":hooks",
@@ -89,6 +90,18 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "dumping_callback_test_lib",
+    srcs = ["lib/dumping_callback_test_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":check_numerics_callback",
+        ":debug_events_reader",
+        ":dumping_callback",
         "//third_party/py/numpy",
     ],
 )
@@ -697,6 +710,7 @@ cuda_py_test(
         ":debug_events_reader",
         ":debug_events_writer",
         ":dumping_callback",
+        ":dumping_callback_test_lib",
         "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -1362,6 +1376,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )

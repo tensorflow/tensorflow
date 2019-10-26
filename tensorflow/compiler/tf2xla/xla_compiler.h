@@ -179,6 +179,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;

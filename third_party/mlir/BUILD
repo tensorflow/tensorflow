@@ -611,11 +611,16 @@ filegroup(
 
 cc_library(
     name = "GPUCommonTransforms",
-    hdrs = ["lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h"],
+    hdrs = [
+        "lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h",
+        "lib/Conversion/GPUCommon/OpToFuncCallLowering.h",
+    ],
     deps = [
         ":GPUDialect",
+        ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":StandardOps",
         "@llvm//:support",
     ],
 )
@@ -1520,11 +1525,9 @@ cc_library(
     name = "ExecutionEngine",
     srcs = [
         "lib/ExecutionEngine/ExecutionEngine.cpp",
-        "lib/ExecutionEngine/MemRefUtils.cpp",
     ],
     hdrs = [
         "include/mlir/ExecutionEngine/ExecutionEngine.h",
-        "include/mlir/ExecutionEngine/MemRefUtils.h",
     ],
     includes = ["include"],
     deps = [

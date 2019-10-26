@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/init_main.h"

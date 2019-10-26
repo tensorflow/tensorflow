@@ -30,6 +30,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -122,6 +123,14 @@ cc_library(
     hdrs = ["stringpiece.h"],
     deps = [
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
+    name = "threadpool",
+    hdrs = ["threadpool.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
     ],
 )
 

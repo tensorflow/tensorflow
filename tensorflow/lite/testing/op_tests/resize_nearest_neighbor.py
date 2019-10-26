@@ -35,7 +35,7 @@ def make_resize_nearest_neighbor_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
