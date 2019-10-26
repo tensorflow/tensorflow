@@ -145,8 +145,12 @@ class Conv(Layer):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    input_channel = self._get_input_channel(input_shape)
-    kernel_shape = self.kernel_size + (input_channel, self.filters)
+    channel_axis = self._get_channel_axis()
+    if input_shape.dims[channel_axis].value is None:
+      raise ValueError('The channel dimension of the inputs '
+                       'should be defined. Found `None`.')
+    input_dim = int(input_shape[channel_axis])
+    kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = self.add_weight(
         name='kernel',
@@ -167,51 +171,19 @@ class Conv(Layer):
           dtype=self.dtype)
     else:
       self.bias = None
-    channel_axis = self._get_channel_axis()
     self.input_spec = InputSpec(ndim=self.rank + 2,
-                                axes={channel_axis: input_channel})
-
-    self._build_conv_op_input_shape = input_shape
-    self._build_input_channel = input_channel
-    self._padding_op = self._get_padding_op()
-    self._conv_op_data_format = conv_utils.convert_data_format(
-        self.data_format, self.rank + 2)
+                                axes={channel_axis: input_dim})
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=self._padding_op,
-        data_format=self._conv_op_data_format)
+        padding=self._get_padding_op(),
+        data_format=conv_utils.convert_data_format(self.data_format,
+                                                   self.rank + 2))
     self.built = True
 
   def call(self, inputs):
-    # Check if the input_shape in call() is different from that in build().
-    # If they are different, recreate the _convolution_op to avoid the stateful
-    # behavior.
-    call_input_shape = inputs.get_shape()
-    call_input_channel = self._get_input_channel(call_input_shape)
-    if call_input_channel != self._build_input_channel:
-      raise ValueError(
-          'Expected input data with {} channels (in format {}), but got inputs '
-          'with shape: {}'.format(self._build_input_channel, self.data_format,
-                                  call_input_shape))
-    recreate_conv_op = (
-        call_input_shape[1:] != self._build_conv_op_input_shape[1:])
-
-    if recreate_conv_op:
-      self._convolution_op = nn_ops.Convolution(
-          call_input_shape,
-          filter_shape=self.kernel.shape,
-          dilation_rate=self.dilation_rate,
-          strides=self.strides,
-          padding=self._padding_op,
-          data_format=self._conv_op_data_format)
-
-    # Apply causal padding to inputs for Conv1D.
-    if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
-
     outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
@@ -294,13 +266,6 @@ class Conv(Layer):
       return 1
     else:
       return -1
-
-  def _get_input_channel(self, input_shape):
-    channel_axis = self._get_channel_axis()
-    if input_shape.dims[channel_axis].value is None:
-      raise ValueError('The channel dimension of the inputs '
-                       'should be defined. Found `None`.')
-    return int(input_shape[channel_axis])
 
   def _get_padding_op(self):
     if self.padding == 'causal':
@@ -420,6 +385,11 @@ class Conv1D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+
+  def call(self, inputs):
+    if self.padding == 'causal':
+      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+    return super(Conv1D, self).call(inputs)
 
 
 @keras_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
