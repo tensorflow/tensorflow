@@ -24,16 +24,16 @@ namespace mlir {
 namespace TFTPU {
 
 void createTPUBridge(OpPassManager &pm) {
-  OpPassManager &bridge = pm.nest<FuncOp>();
+  OpPassManager &func_pm = pm.nest<FuncOp>();
+  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  func_pm.addPass(createCanonicalizerPass());
+  func_pm.addPass(CreateTPUClusterFormationPass());
+  func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
+  func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
 
-  bridge.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  bridge.addPass(createCanonicalizerPass());
-  bridge.addPass(CreateTPUClusterFormationPass());
-  bridge.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
-  bridge.addPass(TFDevice::CreateResourceOpLiftingPass());
-  bridge.addPass(TFDevice::CreateClusterOutliningPass());
-  bridge.addPass(CreateTPURewritePass());
-  bridge.addPass(createCanonicalizerPass());
+  pm.addPass(TFDevice::CreateClusterOutliningPass());
+  pm.addPass(CreateTPURewritePass());
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module) {
