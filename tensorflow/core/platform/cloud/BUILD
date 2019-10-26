@@ -1,24 +1,33 @@
 # Description:
 # Cloud file system implementation.
 
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_cc_test",
     "tf_copts",
-    "if_windows",
+)
+
+package(
+    default_visibility = [
+        ":dependency_whitelist",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "dependency_whitelist",
+    packages = [
+        "//learning/brain/tfrc/...",
+        "//learning/brain/tfrc/tpu_gcs_file_system/...",
+        "//tensorflow/...",
+    ],
 )
 
 cc_library(
     name = "expiring_lru_cache",
     hdrs = ["expiring_lru_cache.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:lib"],
 )
 
@@ -26,7 +35,6 @@ cc_library(
     name = "file_block_cache",
     hdrs = ["file_block_cache.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:lib"],
 )
 
@@ -47,7 +55,6 @@ cc_library(
     srcs = ["gcs_dns_cache.cc"],
     hdrs = ["gcs_dns_cache.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
@@ -59,7 +66,6 @@ cc_library(
     srcs = ["gcs_throttle.cc"],
     hdrs = ["gcs_throttle.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:lib",
     ],
@@ -95,10 +101,41 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_file_system_disabled",
+    srcs = ["gcs_file_system.cc"],
+    hdrs = ["gcs_file_system.h"],
+    copts = tf_copts() + [
+        "-DTPU_GCS_FS",
+        "-DPLATFORM_CLOUD_TPU",
+    ],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compute_engine_metadata_client",
+        ":compute_engine_zone_provider",
+        ":curl_http_request",
+        ":expiring_lru_cache",
+        ":file_block_cache",
+        ":gcs_dns_cache",
+        ":gcs_throttle",
+        ":google_auth_provider",
+        ":http_request",
+        ":ram_file_block_cache",
+        ":retrying_file_system",
+        ":retrying_utils",
+        ":time_util",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "http_request",
     hdrs = ["http_request.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
@@ -110,7 +147,6 @@ cc_library(
     srcs = ["curl_http_request.cc"],
     hdrs = ["curl_http_request.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
@@ -126,7 +162,6 @@ cc_library(
         "http_request_fake.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         "//tensorflow/core:lib",
@@ -144,7 +179,6 @@ cc_library(
         "google_auth_provider.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
@@ -165,7 +199,6 @@ cc_library(
         "compute_engine_metadata_client.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         ":http_request",
@@ -185,7 +218,6 @@ cc_library(
         "zone_provider.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":compute_engine_metadata_client",
         "//tensorflow/core:lib",
@@ -198,7 +230,6 @@ cc_library(
     testonly = 1,
     hdrs = ["now_seconds_env.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -214,7 +245,6 @@ cc_library(
         "oauth_client.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         ":http_request",

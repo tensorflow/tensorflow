@@ -58,11 +58,11 @@ class XlaDeviceContext : public DeviceContext {
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
       xla::LocalClient* client,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
+      thread::ThreadPool* thread_pool, bool use_fast_mem = false);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor,
-                             StatusCallback done) const override;
+                             Tensor* device_tensor, StatusCallback done,
+                             bool sync_dst_compute) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
@@ -71,7 +71,7 @@ class XlaDeviceContext : public DeviceContext {
                               StatusCallback done) const override;
 
   xla::LocalClient* client() const { return client_; }
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const override { return stream_.get(); }
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
@@ -112,6 +112,9 @@ class XlaDeviceContext : public DeviceContext {
 
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;
+
+  // Whether uses TPU fast mem or not.
+  bool use_fast_mem_;
 
   absl::Mutex mu_;
   int next_stream_ GUARDED_BY(mu_) = 0;

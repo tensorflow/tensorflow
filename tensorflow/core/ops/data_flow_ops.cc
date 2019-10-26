@@ -93,7 +93,7 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
   bool all_indices_constant = true;
-  int32 max_index = 0;
+  int32 max_index = -1;
   ShapeHandle extra_shape = c->UnknownShape();
   for (int i = 0; i < num_partitions; ++i) {
     const Tensor* indices_t = c->input_tensor(i);
@@ -451,6 +451,61 @@ REGISTER_OP("AccumulatorTakeGradient")
     })
     .Attr("dtype: numbertype");
 
+// -----------------V2 accumulators that use resource -------------------------
+
+REGISTER_OP("ResourceAccumulatorNumAccumulated")
+    .Input("handle: resource")
+    .Output("num_accumulated: int32")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ResourceAccumulatorSetGlobalStep")
+    .Input("handle: resource")
+    .Input("new_global_step: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    });
+
+REGISTER_OP("ResourceConditionalAccumulator")
+    .Output("handle: resource")
+    .Attr("dtype: numbertype")
+    .Attr("shape: shape")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("reduction_type: { 'MEAN', 'SUM' } = 'MEAN' ")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("ResourceAccumulatorApplyGradient")
+    .Input("handle: resource")
+    .Input("local_step: int64")
+    .Input("gradient: dtype")
+    .Attr("dtype: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    });
+
+REGISTER_OP("ResourceAccumulatorTakeGradient")
+    .Input("handle: resource")
+    .Input("num_required: int32")
+    .Output("average: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // Shape of output is the shape of the accumulator referenced
+      // by 'handle', but which is not available here, so we lose
+      // shape information.
+      return shape_inference::UnknownShape(c);
+    })
+    .Attr("dtype: numbertype");
+
+// TODO(nponomareva): change these all to use resources.
 REGISTER_OP("SparseConditionalAccumulator")
     .Output("handle: Ref(string)")
     .Attr("dtype: numbertype")

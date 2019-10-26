@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
@@ -22,10 +23,21 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+static mutex* get_dataset_op_registry_lock() {
+  static mutex dataset_op_registry_lock(LINKER_INITIALIZED);
+  return &dataset_op_registry_lock;
+}
+
+static std::unordered_set<string>* get_dataset_op_registry() {
+  static std::unordered_set<string>* names = new std::unordered_set<string>;
+  return names;
+}
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
@@ -47,6 +59,14 @@ class DatasetVariantWrapper {
       : dataset_(other.dataset_) {
     if (dataset_) dataset_->Ref();
   }
+
+  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
+    if (&other == this) return *this;
+    std::swap(dataset_, other.dataset_);
+    return *this;
+  }
+
+  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
 
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
@@ -73,7 +93,7 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* const dataset_;  // Owns one reference.
+  DatasetBase* dataset_;  // Owns one reference.
 };
 
 const char kWrappedDatasetVariantTypeName[] =
@@ -254,9 +274,6 @@ Status GraphDefBuilderWrapper::AddFunction(
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(function_name, lib_def));
-  }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
@@ -359,29 +376,10 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
-}
-
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -400,6 +398,26 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  RecordStart(ctx, /*stop_output=*/true);
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
+    LOG(ERROR) << s;
+  }
+  return s;
+}
+
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset = nullptr;
   MakeDataset(ctx, &dataset);
@@ -408,6 +426,18 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
+}
+
+// static
+bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
+  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
+    return true;
+  }
+
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")));
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
@@ -476,6 +506,42 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+// static
+void DatasetOpRegistry::Register(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  get_dataset_op_registry()->insert(op_name);
+}
+
+// static
+bool DatasetOpRegistry::IsRegistered(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  std::unordered_set<string>* op_names = get_dataset_op_registry();
+  return op_names->find(op_name) != op_names->end();
+}
+
+namespace {
+class RunnerImpl : public Runner {
+ public:
+  void Run(const std::function<void()>& f) override {
+    f();
+
+    // NOTE: We invoke a virtual function to prevent `f` being tail-called, and
+    // thus ensure that this function remains on the stack until after `f`
+    // returns.
+    PreventTailCall();
+  }
+
+ private:
+  virtual void PreventTailCall() {}
+};
+}  // namespace
+
+/* static */
+Runner* Runner::get() {
+  static Runner* singleton = new RunnerImpl;
+  return singleton;
 }
 
 }  // namespace data

@@ -32,7 +32,7 @@ BUILD_ARCHS="x86_64 armv7 armv7s arm64"
 while getopts "a:p" opt_name; do
   case "$opt_name" in
     a) BUILD_ARCHS="${OPTARG}";;
-    p) profiling_args='-DGEMMLOWP_PROFILING,-DTFLITE_PROFILING_ENABLED';;
+    p) profiling_args='-DGEMMLOWP_PROFILING';;
     *) usage;;
   esac
 done

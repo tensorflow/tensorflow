@@ -295,7 +295,6 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   // deep copy).
   std::vector<HloInstruction*> param_users = param->users();
 
-  ShapeIndex current_index;
   TF_ASSIGN_OR_RETURN(auto pair,
                       DeepCopyAndAddControlEdges(param, root, indices_to_copy));
 
@@ -638,19 +637,6 @@ class CopyRemover {
     DCHECK(src != nullptr);
     DCHECK(dest != nullptr);
 
-    auto is_live_range_before = [this](const ValueNode& a, const ValueNode& b) {
-      VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
-      if (LiveRangeBefore(a, b)) {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is before " << b.value->ToShortString();
-        return true;
-      } else {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is not before " << b.value->ToShortString();
-        return false;
-      }
-    };
-
     VLOG(3) << copy->name() << " copies value " << src->value->ToShortString();
     VLOG(3) << "Source buffer values: " << ValueListToString(src);
     VLOG(3) << "Dest buffer values: " << ValueListToString(dest);
@@ -716,7 +702,7 @@ class CopyRemover {
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
         // Live range of 'from' value (s_x) must be before 'next_dest' (d_1);
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
           return false;
         }
       }
@@ -726,7 +712,7 @@ class CopyRemover {
         // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
         ValueNode* last_dest = dest->prev;
         DCHECK(IsTail(*last_dest));
-        if (!is_live_range_before(*last_dest, *next_src)) {
+        if (!LiveRangeBefore(*last_dest, *next_src)) {
           return false;
         }
       }
@@ -755,13 +741,13 @@ class CopyRemover {
       DCHECK(prev_dest != nullptr);
       ValueNode* first_src = src->next;
       DCHECK(IsHead(*first_src));
-      if (!is_live_range_before(*prev_dest, *first_src)) {
+      if (!LiveRangeBefore(*prev_dest, *first_src)) {
         // Live range of value d_{y-1} is not before s_0.
         return false;
       }
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
           // Live range of value s_n is not before d_{y+1}.
           return false;
         }
@@ -830,19 +816,30 @@ class CopyRemover {
   // We cannot use LiveRangeStrictlyBefore because HloValue::uses() is not
   // updated as copies are removed.
   bool LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
-    if (a.uses.empty()) {
-      VLOG(2) << "Empty uses for " << *a.value;
-      return ordering_.IsDefinedBefore(*a.value, *b.value);
-    }
-    for (const HloUse* use : a.uses) {
-      VLOG(2) << "Checking use " << *use << " against " << *b.value;
-      if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
-        VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
-        return false;
+    VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
+    bool is_live_range_before = [&] {
+      if (a.uses.empty()) {
+        VLOG(2) << "Empty uses for " << *a.value;
+        return ordering_.IsDefinedBefore(*a.value, *b.value);
       }
-      VLOG(2) << "Use " << *use << " is before " << *b.value;
+      for (const HloUse* use : a.uses) {
+        VLOG(3) << "Checking use " << *use << " against " << *b.value;
+        if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
+          VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
+          return false;
+        }
+        VLOG(3) << "Use " << *use << " is before " << *b.value;
+      }
+      return true;
+    }();
+    if (is_live_range_before) {
+      VLOG(2) << "  Live range of " << a.value->ToShortString() << " is before "
+              << b.value->ToShortString();
+    } else {
+      VLOG(2) << "  Live range of " << a.value->ToShortString()
+              << " is not before " << b.value->ToShortString();
     }
-    return true;
+    return is_live_range_before;
   }
 
   // Returns whether 'node' is the last node in its list.
@@ -964,7 +961,7 @@ class CopyRemover {
 // instructions which have update-in-place semantics.
 Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
@@ -989,7 +986,7 @@ Status CopyInsertion::AddSpecialCaseCopies(HloModule* module) {
 Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
                                            HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
@@ -1088,18 +1085,10 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
-                                                    HloModule* module) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
-  return Status::OK();
-}
-
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   CopyRemover copy_remover(*module, *alias_analysis, ordering);
   if (VLOG_IS_ON(3)) {
@@ -1180,10 +1169,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  DependencyHloOrdering dep_ordering(module);
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
-
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
+  TF_RETURN_IF_ERROR(
+      RemoveUnnecessaryCopies(DependencyHloOrdering(module), module));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
 
@@ -1193,8 +1180,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
-  TF_DCHECK_OK(
-      VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
 
   if (VLOG_IS_ON(1)) {
     int64 num_total_copies = 0;
@@ -1211,80 +1196,4 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   return true;
 }
-
-namespace {
-
-bool IsWhileBody(const HloComputation* computation,
-                 const CallGraph& call_graph) {
-  const CallGraphNode& node = call_graph.GetNode(computation);
-
-  if (node.context() == CallContext::kSequential &&
-      !node.caller_callsites().empty()) {
-    // Callgraph should be flattened so sequential context computations can
-    // have at most one caller.
-    CHECK_EQ(node.caller_callsites().size(), 1);
-    const HloInstruction* calling_instruction =
-        node.caller_callsites()[0].instruction();
-    if (calling_instruction->opcode() == HloOpcode::kWhile &&
-        calling_instruction->while_body() == node.computation()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
-/* static */ StatusOr<bool> CopyInsertion::AddCopiesForBufferAssignment(
-    HloModule* module) {
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(*module));
-
-  bool changed = false;
-
-  // If a buffer live out of a computation is a constant, a parameter, or not
-  // defined in the computation, then copy it to account for the limited
-  // computation-scoped analysis in buffer assignment. An exception to this rule
-  // is the while body which is handled properly without copies.
-  for (HloComputation* computation : module->computations()) {
-    if (computation == module->entry_computation() ||
-        IsWhileBody(computation, *call_graph)) {
-      continue;
-    }
-
-    HloInstruction* root = computation->root_instruction();
-    ShapeTree<bool> indices_to_copy(root->shape(), /*init_value=*/false);
-    bool copy_root = false;
-    for (const auto& pair : dataflow->GetInstructionValueSet(root)) {
-      const ShapeIndex& index = pair.first;
-      const HloValueSet& value_set = pair.second;
-      for (const HloValue* value : value_set.values()) {
-        HloInstruction* def = value->defining_instruction();
-        if (def->parent() != computation ||
-            def->opcode() == HloOpcode::kConstant ||
-            def->opcode() == HloOpcode::kParameter) {
-          *indices_to_copy.mutable_element(index) = true;
-          copy_root = true;
-        }
-      }
-    }
-    if (copy_root) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * root_copy,
-          computation->DeepCopyInstruction(root, &indices_to_copy));
-      computation->set_root_instruction(root_copy);
-      changed = true;
-    }
-  }
-
-  TupleSimplifier tuple_simplifier;
-  HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
-                      tuple_simplifier.Run(module));
-  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
-
-  return changed || tuple_simplifier_changed || dce_changed;
-}
-
 }  // namespace xla

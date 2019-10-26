@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 
@@ -27,32 +28,47 @@ inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
-                                    int index) {
-  return &context->tensors[node->inputs->data[index]];
+inline const TfLiteTensor* GetInput(TfLiteContext* context,
+                                    const TfLiteNode* node, int index) {
+  return &context
+              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
 }
-inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
-                                      int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
+                                      const TfLiteNode* node, int index) {
+  TfLiteTensor* tensor =
+      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
   return (tensor->is_variable) ? tensor : nullptr;
 }
-inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
+inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  return &context->tensors[node->outputs->data[index]];
+  return &context
+              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
 }
-inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
-                                  int index) {
-  return &context->tensors[node->temporaries->data[index]];
+inline TfLiteTensor* GetTemporary(TfLiteContext* context,
+                                  const TfLiteNode* node, int index) {
+  return &context->tensors[flatbuffers::EndianScalar(
+      node->temporaries->data[index])];
+}
+inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
+                                            const TfLiteNode* node, int index) {
+  return &context->tensors[node->intermediates->data[index]];
 }
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+inline int NumIntermediates(const TfLiteNode* node) {
+  return node->intermediates->size;
+}
 
-inline int64_t NumElements(const TfLiteTensor* t) {
+inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
-  for (int i = 0; i < NumDimensions(t); ++i) {
-    count *= SizeOfDimension(t, i);
+  for (int i = 0; i < dims->size; ++i) {
+    count *= dims->data[i];
   }
   return count;
+}
+
+inline int64_t NumElements(const TfLiteTensor* t) {
+  return NumElements(t->dims);
 }
 
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
@@ -60,7 +76,8 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   int index) {
   const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
   if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
+    return &context
+                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
   }
   return nullptr;
 }
@@ -98,10 +115,6 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
     int32_t* per_channel_multiplier, int* per_channel_shift);
-
-// QuantizedMultiplier with the guard that shift will not be smaller than -31.
-void GuardedQuantizeMultiplier(double effective_output_scale,
-                               int32_t* significand, int* shift);
 
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an

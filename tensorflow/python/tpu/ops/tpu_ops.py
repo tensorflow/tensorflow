@@ -28,6 +28,7 @@ from tensorflow.python.ops.gen_tpu_ops import *
 # pylint: enable=wildcard-import,unused-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _create_default_group_assignment():
@@ -89,6 +90,7 @@ def _all_to_all_grad(op, grad):
   ]
 
 
+@tf_export(v1=["tpu.cross_replica_sum"])
 def cross_replica_sum(x, group_assignment=None, name=None):
   """Sum the input tensor across replicas according to group_assignment.
 
@@ -208,8 +210,9 @@ def infeed_dequeue(dtype, shape, name=None):
   """
   if dtype not in _SUPPORTED_INFEED_DTYPES:
     raise TypeError(
-        "{} is not a supported TPU infeed type. Supported types are: "
-        "{}".format(dtype, list(_SUPPORTED_INFEED_DTYPES)))
+        "Operation '{}' has type {} which is not a supported TPU infeed type. "
+        "Supported types are: {}".format(name, dtype,
+                                         list(_SUPPORTED_INFEED_DTYPES)))
 
   return gen_tpu_ops.infeed_dequeue(dtype, shape, name=name)
 

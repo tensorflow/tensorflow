@@ -143,7 +143,9 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
-      if (instruction->operand_count() == 0) {
+      if (instruction->operand_count() == 0 &&
+          instruction->opcode() != HloOpcode::kPartitionId &&
+          instruction->opcode() != HloOpcode::kReplicaId) {
         continue;
       }
       // Skip instructions which have side effects.

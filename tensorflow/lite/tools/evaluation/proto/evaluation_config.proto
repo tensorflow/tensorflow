@@ -19,6 +19,10 @@ package tflite.evaluation;
 
 import "tensorflow/lite/tools/evaluation/proto/evaluation_stages.proto";
 
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
 // Contains parameters that define how an EvaluationStage will be executed.
 // This would typically be validated only once during initialization, so should
 // not contain any variables that change with each run.

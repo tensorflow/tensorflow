@@ -22,32 +22,42 @@ namespace tflite {
 namespace optimize {
 namespace operator_property {
 
-struct OperatorProperty {
-  // Per axis.
-  bool per_axis;
+struct TensorProperty {
+  // per_axis also implies symmetric currently.
+  bool per_axis = false;
   // TODO(jianlijianli): remove dimension index and read it from tensor instead.
-  int per_axis_index;
-
-  // Op has arbitrary number of inputs, such as concat.
-  bool arbitrary_inputs;
-  // Input and weight indexes. Unable to separate the two because of ops such as
-  // ADD.
-  std::vector<int> input_indexes;
-
-  // Output indexes
-  std::vector<int> output_indexes;
-
-  // Bias indexes.
-  std::vector<int> biases;
+  int per_axis_index = 0;
+  bool symmetric = false;
 
   // Constraints.
-  bool restrict_same_input_output_scale;
-  bool restriction_on_output;
-  std::pair<float, float> restricted_value_on_output;
+  bool restriction = false;
+  // scale/zero_point hardcoded.
+  std::pair<float, int> restricted_value = {0.0, 0};
 };
 
-TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
-                                 OperatorProperty* property);
+struct OperatorProperty {
+  // Is a quantized operations currently supported.
+  bool quantizable = true;
+
+  // Op has arbitrary number of inputs, such as concat.
+  bool arbitrary_inputs = false;
+  // Op has arbitrary number of outputs, such as slice.
+  bool arbitrary_outputs = false;
+  // Input indexes -> input tensor property.
+  std::vector<std::pair<int, TensorProperty>> inputs = {};
+  // Output indexes -> output tensor property.
+  std::vector<std::pair<int, TensorProperty>> outputs = {};
+  // Bias indexes.
+  std::vector<int> biases = {};
+
+  // Force output to reuse the same scale and zero point of input.
+  bool restrict_same_input_output_scale = false;
+
+  // Op version.
+  int version = 1;
+};
+
+OperatorProperty GetOperatorProperty(const BuiltinOperator& op);
 
 }  // namespace operator_property
 }  // namespace optimize

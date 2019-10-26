@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
+import wrapt
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util.compat import collections_abc
 
 
 def get_json_type(obj):
@@ -63,7 +63,10 @@ def get_json_type(obj):
   if isinstance(obj, tensor_shape.TensorShape):
     return obj.as_list()
 
-  if isinstance(obj, collections.Mapping):
+  if isinstance(obj, collections_abc.Mapping):
     return dict(obj)
+
+  if isinstance(obj, wrapt.ObjectProxy):
+    return obj.__wrapped__
 
   raise TypeError('Not JSON Serializable:', obj)

@@ -168,7 +168,8 @@ Status CpuCastOp::Prepare() {
   return work_ == nullptr ? Unimplemented() : Status::OK();
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 class GpuCastOp : public CastOpBase {
  public:
   explicit GpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
@@ -222,7 +223,8 @@ class GpuCastOp : public CastOpBase {
 
 REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_CAST_GPU(srctype, dsttype)                    \
   REGISTER_KERNEL_BUILDER(Name("Cast")                         \
                               .TypeConstraint<srctype>("SrcT") \
@@ -300,11 +302,6 @@ CURRY_TYPES2(REGISTER_CAST_SYCL, double);
 // HostCast differs from Cast in that its input and output are in host memory.
 REGISTER_KERNEL_BUILDER(Name("_HostCast").Device(DEVICE_CPU), CpuCastOp);
 REGISTER_KERNEL_BUILDER(
-    Name("_HostCast").Device(DEVICE_GPU).HostMemory("x").HostMemory("y"),
+    Name("_HostCast").Device(DEVICE_DEFAULT).HostMemory("x").HostMemory("y"),
     CpuCastOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("_HostCast").Device(DEVICE_SYCL).HostMemory("x").HostMemory("y"),
-    CpuCastOp);
-#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow

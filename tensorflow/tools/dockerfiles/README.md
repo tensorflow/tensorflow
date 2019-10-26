@@ -2,15 +2,12 @@
 
 This directory houses TensorFlow's Dockerfiles and the infrastructure used to
 create and deploy them to
-[Docker Hub](https://hub.docker.com/r/tensorflow/tensorflow).
+[TensorFlow's Docker Hub](https://hub.docker.com/r/tensorflow/tensorflow).
 
 **DO NOT EDIT THE DOCKERFILES/ DIRECTORY MANUALLY!** The files within are
 maintained by `assembler.py`, which builds Dockerfiles from the files in
 `partials/` and the rules in `spec.yml`. See
 [the Contributing section](#contributing) for more information.
-
-These Dockerfiles are planned to replace the Dockerfiles used to generate
-[TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow).
 
 ## Building
 

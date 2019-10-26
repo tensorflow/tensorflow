@@ -66,6 +66,8 @@ _UNSUPPORTED_OPS = set([
 def compile(computation, inputs=None):  # pylint: disable=redefined-builtin
   """Builds an operator that compiles and runs `computation` with XLA.
 
+  NOTE: In eager mode, `computation` will have `@tf.function` semantics.
+
   Args:
     computation: A Python function that builds a computation to apply to the
       input. If the function takes n inputs, 'inputs' should be a list of n
@@ -221,7 +223,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
       for index in xrange(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
-        if real_x != x:
+        if real_x is not x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
     if external_control_inputs:

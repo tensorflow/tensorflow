@@ -22,8 +22,13 @@ static const struct hwloc_component* hwloc_static_components[] = {
     &hwloc_xml_component,
     &hwloc_synthetic_component,
     &hwloc_xml_nolibxml_component,
+#ifdef __Linux__
     &hwloc_linux_component,
     &hwloc_linuxio_component,
+#endif
+#ifdef __FreeBSD__
+    &hwloc_freebsd_component,
+#endif
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_IX86) || \
     defined(_M_X64)
     &hwloc_x86_component,

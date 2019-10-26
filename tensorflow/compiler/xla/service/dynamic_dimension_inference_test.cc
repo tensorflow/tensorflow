@@ -61,6 +61,26 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
+  HloComputation* GetAddTuple() {
+    auto embedded_builder = HloComputation::Builder("add");
+    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+    auto lhs_1 =
+        embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(F32, {}), "lhs.1"));
+    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        2, ShapeUtil::MakeShape(F32, {}), "rhs"));
+    auto rhs_1 =
+        embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+            3, ShapeUtil::MakeShape(F32, {}), "rhs.1"));
+    auto add = embedded_builder.AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
+    auto add_1 = embedded_builder.AddInstruction(HloInstruction::CreateBinary(
+        lhs->shape(), HloOpcode::kAdd, lhs_1, rhs_1));
+    embedded_builder.AddInstruction(HloInstruction::CreateTuple({add, add_1}));
+    return module_->AddEmbeddedComputation(embedded_builder.Build());
+  }
+
   HloComputation* GetGe() {
     auto embedded_builder = HloComputation::Builder("ge");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -74,7 +94,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(U32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
 TEST_F(DynamicDimensionInferenceTest, ParamTest) {
@@ -239,6 +259,47 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), nullptr);
 }
 
+TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
+  // Handle variadic reduce where output is a tuple.
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {1, 2});
+
+  auto data_param_dynamic = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "data_param"));
+  auto data_param_static = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, input_shape, "data_param.2"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, scalar_shape_, "size_param"));
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 2}));
+
+  auto dynamic_negate = builder.AddInstruction(HloInstruction::CreateUnary(
+      input_shape, HloOpcode::kNegate, data_param_dynamic));
+
+  auto static_negate = builder.AddInstruction(HloInstruction::CreateUnary(
+      input_shape, HloOpcode::kNegate, data_param_static));
+
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+
+  auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeTupleShape({reduce_shape, reduce_shape}),
+      {dynamic_negate, static_negate}, {init, init}, {1}, GetAddTuple()));
+
+  module_->AddEntryComputation(builder.Build());
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 1), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 0), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 0), nullptr);
+}
+
 TEST_F(DynamicDimensionInferenceTest, DotTest) {
   auto builder = HloComputation::Builder(TestName());
   constexpr int xdim = 3;
@@ -281,6 +342,45 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
+  auto builder = HloComputation::Builder(TestName());
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto output_shape = ShapeUtil::MakeShape(F32, {4, 2, 128, 128});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, lhs_shape, "A"));
+  auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, rhs_shape, "B"));
+  auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, scalar_shape_, "size_param"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(3);
+  dot_dnums.add_rhs_contracting_dimensions(3);
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_batch_dimensions(2);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(2);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(output_shape, a_param, b_param, dot_dnums,
+                                HloTestBase::DefaultPrecisionConfig(2)));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding for batch dimension.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 2), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 3), nullptr);
 }
 
 TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
@@ -405,6 +505,32 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 5), nullptr);
 }
 
+TEST_F(DynamicDimensionInferenceTest, ReshapeInferredDimensionTest) {
+  // Test the ability to trace inferred dimension when output is bigger than
+  // input.
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {4, 5});
+  auto output_shape = ShapeUtil::MakeShape(F32, {1, 4, 5});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, scalar_shape_, "size_param"));
+
+  auto* reshape = builder.AddInstruction(HloInstruction::CreateReshape(
+      output_shape, a_param, /*inferred_dimension=*/0));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
+}
+
 TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   // Test the ability to trace dimension combining.
   auto builder = HloComputation::Builder(TestName());
@@ -429,9 +555,6 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   SCOPED_TRACE(module_->ToString());
   Status status = RunInference();
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
-  const Literal& multiplier =
-      inference_->GetDynamicSize(reshape, {}, 0)->operand(1)->literal();
-  LiteralTestUtil::ExpectR0Equal<uint32>(10, multiplier);
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
@@ -442,7 +565,7 @@ ENTRY main {
   operand = s32[20,10]{1,0} parameter(0)
   indices = s32[32,20] parameter(1)
   dynamic_size = s32[] parameter(2)
-  ROOT gather = f32[32,10,10]{2,1,0} gather(%operand, %indices),
+  ROOT gather = s32[32,20,10]{2,1,0} gather(%operand, %indices),
                  offset_dims={2},
                  collapsed_slice_dims={0},
                  start_index_map={0},
@@ -451,7 +574,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{1, {}, 0}));
@@ -460,31 +583,6 @@ ENTRY main {
   EXPECT_EQ(inference_->GetDynamicSize(
                 module_->entry_computation()->root_instruction(), {}, 0),
             module_->entry_computation()->parameter_instruction(2));
-}
-
-TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
-  // Test the ability to trace unmodified reshape dimensions.
-  auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6});
-  auto output_shape = ShapeUtil::MakeShape(F32, {6, 4, 1, 5, 2, 3});
-
-  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, input_shape, "A"));
-
-  builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, scalar_shape_, "size_param"));
-
-  builder.AddInstruction(HloInstruction::CreateReshape(output_shape, a_param));
-
-  module_->AddEntryComputation(builder.Build());
-
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
-
-  SCOPED_TRACE(module_->ToString());
-  Status status = RunInference();
-  EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
@@ -708,6 +806,34 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
 }
 
+TEST_F(DynamicDimensionInferenceTest, ConcateTest) {
+  // Concat two data params.
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param_1"));
+  auto data_param_2 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {5, 8}), "data_param_2"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, scalar_shape_, "size_param"));
+
+  auto* concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
+      ShapeUtil::MakeShape(F32, {5, 15}), {data_param, data_param_2}, 1));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(concat, {}, 0), size_param);
+}
+
 TEST_F(DynamicDimensionInferenceTest, SliceTest) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -741,7 +867,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -758,6 +884,78 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), size_param);
 }
 
+TEST_F(DynamicDimensionInferenceTest, SortTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  auto compare_builder = HloComputation::Builder("condition");
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param1"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {}), "param2"));
+  compare_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  HloComputation* compare =
+      module_->AddEmbeddedComputation(compare_builder.Build());
+
+  auto* sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeShape(F32, {5, 7}), 1, {data_param}, compare,
+      /*is_stable=*/false));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(sort, {}, 0), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto shape = ShapeUtil::MakeShape(F32, {5, 7});
+
+  auto data_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  auto compare_builder = HloComputation::Builder("condition");
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param1"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {}), "param2"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F32, {}), "param3"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(F32, {}), "param4"));
+  compare_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  HloComputation* compare =
+      module_->AddEmbeddedComputation(compare_builder.Build());
+
+  auto* sort = builder.AddInstruction(
+      HloInstruction::CreateSort(ShapeUtil::MakeTupleShape({shape, shape}), 1,
+                                 {data_param, data_param}, compare,
+                                 /*is_stable=*/false));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(sort, {0}, 0), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(sort, {1}, 0), size_param);
+}
+
 TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   // Slicing out a single element from a dynamic dimension terminates the
   // dynamic dimension.
@@ -771,7 +969,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(

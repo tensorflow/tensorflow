@@ -19,8 +19,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -91,67 +95,9 @@ TEST(CreateCycleDetectionGraph, ReachingEnterExit) {
   EXPECT_FALSE(ok);
 }
 
-void CheckPickDeviceResult(absl::string_view expected_result,
-                           bool allow_mixing_unknown_and_cpu,
-                           absl::Span<const absl::string_view> inputs) {
-  std::vector<string> inputs_string;
-  absl::c_transform(inputs, std::back_inserter(inputs_string),
-                    [](absl::string_view sv) { return string(sv); });
-  string result;
-  TF_ASSERT_OK(
-      PickDeviceForXla(inputs_string, allow_mixing_unknown_and_cpu, &result))
-      << "inputs = [" << absl::StrJoin(inputs, ", ")
-      << "], allow_mixing_unknown_and_cpu=" << allow_mixing_unknown_and_cpu
-      << ", expected_result=" << expected_result;
-  EXPECT_EQ(result, expected_result);
-}
-
-void CheckPickDeviceHasError(bool allow_mixing_unknown_and_cpu,
-                             absl::Span<const absl::string_view> inputs) {
-  std::vector<string> inputs_string;
-  absl::c_transform(inputs, std::back_inserter(inputs_string),
-                    [](absl::string_view sv) { return string(sv); });
-  string result;
-  EXPECT_FALSE(
-      PickDeviceForXla(inputs_string, allow_mixing_unknown_and_cpu, &result)
-          .ok());
-}
-
 const char* kCPU0 = "/job:localhost/replica:0/task:0/device:CPU:0";
 const char* kGPU0 = "/job:localhost/replica:0/task:0/device:GPU:0";
-const char* kXPU0 = "/job:localhost/replica:0/task:0/device:XPU:0";
-
-const char* kCPU1 = "/job:localhost/replica:0/task:0/device:CPU:1";
 const char* kGPU1 = "/job:localhost/replica:0/task:0/device:GPU:1";
-const char* kXPU1 = "/job:localhost/replica:0/task:0/device:XPU:1";
-
-TEST(PickDeviceForXla, UniqueDevice) {
-  CheckPickDeviceResult(kGPU0, false, {kGPU0, kGPU0});
-}
-
-TEST(PickDeviceForXla, DeviceOrder) {
-  CheckPickDeviceResult(kGPU0, false, {kGPU0, kCPU0});
-  CheckPickDeviceResult(kXPU0, true, {kXPU0, kCPU0});
-}
-
-TEST(PickDeviceForXla, MultipleUnknownDevices) {
-  CheckPickDeviceHasError(false, {kXPU0, kXPU1});
-}
-
-TEST(PickDeviceForXla, GpuAndUnknown) {
-  CheckPickDeviceHasError(false, {kGPU0, kXPU1});
-}
-
-TEST(PickDeviceForXla, UnknownAndCpu) {
-  CheckPickDeviceHasError(false, {kXPU0, kCPU1});
-}
-
-TEST(PickDeviceForXla, MultipleDevicesOfSameType) {
-  CheckPickDeviceHasError(false, {kCPU0, kCPU1});
-  CheckPickDeviceHasError(false, {kGPU0, kGPU1});
-  CheckPickDeviceHasError(false, {kXPU0, kXPU1});
-  CheckPickDeviceHasError(false, {kCPU0, kCPU1, kGPU0});
-}
 
 TEST(IsSingleGpuGraph, ReturnsTrue) {
   Scope root = Scope::NewRootScope().WithAssignedDevice(kGPU0).ExitOnError();
@@ -187,6 +133,156 @@ TEST(IsSingleGpuGraph, ReturnsFalseForMultiGpuGraph) {
   FixupSourceAndSinkEdges(root.graph());
 
   EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
+}
+
+xla::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
+    const Scope& scope, FunctionLibraryDefinition* flib_def = nullptr) {
+  FunctionDefLibrary flib;
+  FunctionLibraryDefinition flib_def_local(OpRegistry::Global(), flib);
+  if (flib_def == nullptr) {
+    flib_def = &flib_def_local;
+  }
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
+
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(
+          nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
+          flib_def, OptimizerOptions{}));
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+
+  TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> nodes_related_to_ref_vars,
+                      GetNodesRelatedToRefVariables(*graph, lib_runtime));
+
+  std::vector<string> names;
+  absl::c_transform(nodes_related_to_ref_vars, std::back_inserter(names),
+                    [](Node* n) { return n->name(); });
+  absl::c_sort(names);
+  return names;
+}
+
+void CreateSubgraphTouchingRefVar(const Scope& s) {
+  Output variable =
+      ops::Variable(s.WithOpName("variable"), PartialTensorShape{}, DT_FLOAT);
+  Output read = ops::Identity(s.WithOpName("read_ref_var"), variable);
+  Output neg = ops::Negate(s.WithOpName("negate_ref"), read);
+  Output add = ops::Add(s.WithOpName("add_ref"), neg, neg);
+
+  Output constant =
+      ops::Const(s.WithOpName("constant_ref"), Input::Initializer(0.0));
+  s.graph()->AddControlEdge(constant.node(), variable.node());
+}
+
+void CreateSubgraphNotTouchingRefVar(const Scope& s) {
+  Output constant =
+      ops::Const(s.WithOpName("constant_normal"), Input::Initializer(0.0));
+  Output neg = ops::Negate(s.WithOpName("negate_normal"), constant);
+  Output add = ops::Add(s.WithOpName("add_normal"), neg, neg);
+}
+
+void CreateSubgraphCallingFunctionWithRefVar(const Scope& s) {
+  NameAttrList ref_float_function;
+  ref_float_function.set_name("RefFloatFn");
+  ops::PartitionedCall call(s.WithOpName("RefFloat"), {absl::Span<Input>{}},
+                            {DT_FLOAT}, ref_float_function);
+  Output constant =
+      ops::Const(s.WithOpName("constant_ref_pco"), Input::Initializer(0.0));
+  s.graph()->AddControlEdge(call.operation.node(), constant.node());
+}
+
+void CreateSubgraphCallingFunctionWithoutRefVar(const Scope& s) {
+  NameAttrList regular_float_function;
+  regular_float_function.set_name("RegularFloatFn");
+  ops::PartitionedCall call(s.WithOpName("RegularFloat"), {absl::Span<Input>{}},
+                            {DT_FLOAT}, regular_float_function);
+  Output constant =
+      ops::Const(s.WithOpName("constant_normal_pco"), Input::Initializer(0.0));
+  s.graph()->AddControlEdge(call.operation.node(), constant.node());
+}
+
+void AddRefFunctionFunctionDef(FunctionDefLibrary* fdef_lib) {
+  FunctionDef make_ref_float = FunctionDefHelper::Define(
+      "RefFloatFn", {}, {"r:float"}, {},
+      {{{"var"},
+        "VariableV2",
+        {},
+        {{"dtype", DT_FLOAT}, {"shape", TensorShape({})}}},
+       {{"r"}, "Identity", {"var"}, {{"T", DT_FLOAT}}}});
+  *fdef_lib->add_function() = make_ref_float;
+}
+
+void AddRegularFunctionFunctionDef(FunctionDefLibrary* fdef_lib) {
+  Tensor seven(DT_FLOAT, {});
+  seven.scalar<float>()() = 7;
+  FunctionDef make_regular_float = FunctionDefHelper::Define(
+      "RegularFloatFn", {}, {"r:float"}, {},
+      {{{"r"}, "Const", {}, {{"dtype", DT_FLOAT}, {"value", seven}}}});
+  *fdef_lib->add_function() = make_regular_float;
+}
+
+TEST(NodesRelatedToRefVariables, Basic) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  FunctionDefLibrary fdef_lib;
+
+  CreateSubgraphTouchingRefVar(root);
+  CreateSubgraphNotTouchingRefVar(root);
+
+  AddRefFunctionFunctionDef(&fdef_lib);
+  CreateSubgraphCallingFunctionWithRefVar(root);
+
+  AddRegularFunctionFunctionDef(&fdef_lib);
+  CreateSubgraphCallingFunctionWithoutRefVar(root);
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<string> names,
+                          GetNodesRelatedToRefVarsSorted(root, &flib_def));
+
+  std::vector<string> expected({
+      "RefFloat",
+      "add_ref",
+      "constant_ref",
+      "constant_ref_pco",
+      "negate_ref",
+      "read_ref_var",
+      "variable",
+  });
+
+  EXPECT_EQ(names, expected);
+}
+
+Status MakeLoop(Scope s, Output init_value, absl::string_view loop_name) {
+  s = s.NewSubScope(std::string(loop_name));
+  ops::internal::Enter enter(s.WithOpName("init_value"), init_value, loop_name);
+  ops::Merge merge(s.WithOpName("merge"), {init_value, init_value});
+  Output next_iteration =
+      ops::NextIteration(s.WithOpName("next_itr"), merge.output);
+  return s.graph()->UpdateEdge(next_iteration.node(), 0, merge.output.node(),
+                               1);
+}
+
+TEST(NodesRelatedToRefVariables, Cycles) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output variable = ops::Variable(root.WithOpName("variable"),
+                                  PartialTensorShape{}, DT_FLOAT);
+  TF_ASSERT_OK(
+      MakeLoop(root, ops::Identity(root.WithOpName("read_ref_var"), variable),
+               "ref_loop"));
+  TF_ASSERT_OK(MakeLoop(
+      root, ops::Const(root.WithOpName("constant"), Input::Initializer(0.0)),
+      "normal_loop"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<string> names,
+                          GetNodesRelatedToRefVarsSorted(root));
+  std::vector<string> expected({"read_ref_var", "ref_loop/init_value",
+                                "ref_loop/merge", "ref_loop/next_itr",
+                                "variable"});
+
+  EXPECT_EQ(names, expected);
 }
 }  // namespace
 }  // namespace tensorflow

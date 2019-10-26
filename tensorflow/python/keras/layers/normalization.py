@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -26,6 +27,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
@@ -40,11 +42,26 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 class BatchNormalizationBase(Layer):
-  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
+  r"""Normalize and scale inputs or activations. (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
   close to 0 and the activation standard deviation close to 1.
+
+  Batch normalization differs from other layers in several key aspects:
+
+  1) Adding BatchNormalization with `training=True` to a model causes the
+  result of one example to depend on the contents of all other examples in a
+  minibatch. Be careful when padding batches or masking examples, as these can
+  change the minibatch statistics and affect other examples.
+
+  2) Updates to the weights (moving statistics) are based on the forward pass
+  of a model rather than the result of gradient computations.
+
+  3) When performing inference using a model containing batch normalization, it
+  is generally (though not always) desirable to use accumulated statistics
+  rather than mini-batch statistics. This is acomplished by passing
+  `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
     axis: Integer, the axis that should be normalized
@@ -98,8 +115,8 @@ class BatchNormalizationBase(Layer):
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
@@ -123,9 +140,31 @@ class BatchNormalizationBase(Layer):
   Output shape:
     Same shape as input.
 
+  {{TRAINABLE_ATTRIBUTE_NOTE}}
+
+  Normalization equations:
+    Consider the intermediate activations \(x\) of a mini-batch of size
+    \(m\):
+
+    We can compute the mean and variance of the batch
+
+    \({\mu_B} = \frac{1}{m} \sum_{i=1}^{m} {x_i}\)
+
+    \({\sigma_B^2} = \frac{1}{m} \sum_{i=1}^{m} ({x_i} - {\mu_B})^2\)
+
+    and then compute a normalized \(x\), including a small factor
+    \({\epsilon}\) for numerical stability.
+
+    \(\hat{x_i} = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}\)
+
+    And finally \(\hat{x}\) is linearly transformed by \({\gamma}\)
+    and \({\beta}\), which are learned parameters:
+
+    \({y_i} = {\gamma * \hat{x_i} + \beta}\)
+
   References:
-    - [Batch Normalization: Accelerating Deep Network Training by Reducing
-      Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+  - [Batch Normalization: Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -156,14 +195,14 @@ class BatchNormalizationBase(Layer):
                name=None,
                **kwargs):
     super(BatchNormalizationBase, self).__init__(
-        name=name, trainable=trainable, **kwargs)
+        name=name, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
     elif isinstance(axis, int):
       self.axis = axis
     else:
       raise TypeError('axis must be int or list, type given: %s'
-                      % type(self.axis))
+                      % type(axis))
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -193,6 +232,8 @@ class BatchNormalizationBase(Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
+    self._trainable_var = None
+    self.trainable = trainable
 
     if renorm:
       renorm_clipping = renorm_clipping or {}
@@ -236,12 +277,33 @@ class BatchNormalizationBase(Layer):
       return False
 
   @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    if self._trainable_var is not None:
+      self._trainable_var.update_value(value)
+
+  def _get_trainable_var(self):
+    if self._trainable_var is None:
+      self._trainable_var = K.freezable_variable(
+          self._trainable, name=self.name + '_trainable')
+    return self._trainable_var
+
+  @property
   def _param_dtype(self):
     # Raise parameters of fp16 batch norm to fp32
     if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
       return dtypes.float32
     else:
       return self.dtype or dtypes.float32
+
+  def _support_zero_size_input(self):
+    return distribution_strategy_context.has_strategy() and getattr(
+        distribution_strategy_context.get_strategy().extended,
+        'experimental_enable_get_next_as_optional', False)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -385,20 +447,40 @@ class BatchNormalizationBase(Layer):
           experimental_autocast=False)
 
       if self.renorm:
+        # In batch renormalization we track the inference moving stddev instead
+        # of the moving variance to more closely align with the paper.
+        def moving_stddev_initializer(*args, **kwargs):
+          return math_ops.sqrt(
+              self.moving_variance_initializer(*args, **kwargs))
+
+        with distribution_strategy_context.get_strategy(
+        ).extended.colocate_vars_with(self.moving_variance):
+          self.moving_stddev = self.add_weight(
+              name='moving_stddev',
+              shape=param_shape,
+              dtype=self._param_dtype,
+              initializer=moving_stddev_initializer,
+              synchronization=tf_variables.VariableSynchronization.ON_READ,
+              trainable=False,
+              aggregation=tf_variables.VariableAggregation.MEAN,
+              experimental_autocast=False)
+
         # Create variables to maintain the moving mean and standard deviation.
         # These are used in training and thus are different from the moving
         # averages above. The renorm variables are colocated with moving_mean
-        # and moving_variance.
+        # and moving_stddev.
         # NOTE: below, the outer `with device` block causes the current device
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
-        def _renorm_variable(name, shape):
+        def _renorm_variable(name,
+                             shape,
+                             initializer=init_ops.zeros_initializer()):
           """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
               dtype=self._param_dtype,
-              initializer=init_ops.zeros_initializer(),
+              initializer=initializer,
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
               aggregation=tf_variables.VariableAggregation.MEAN,
@@ -407,37 +489,46 @@ class BatchNormalizationBase(Layer):
 
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_mean):
-          self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
-          self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
-        # We initialize renorm_stddev to 0, and maintain the (0-initialized)
-        # renorm_stddev_weight. This allows us to (1) mix the average
-        # stddev with the minibatch stddev early in training, and (2) compute
-        # the unbiased average stddev by dividing renorm_stddev by the weight.
+          self.renorm_mean = _renorm_variable('renorm_mean', param_shape,
+                                              self.moving_mean_initializer)
         with distribution_strategy_context.get_strategy(
-        ).extended.colocate_vars_with(self.moving_variance):
-          self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
-          self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
-                                                       ())
+        ).extended.colocate_vars_with(self.moving_stddev):
+          self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape,
+                                                moving_stddev_initializer)
     finally:
       if partitioner:
         self._scope.set_partitioner(partitioner)
     self.built = True
 
-  def _assign_moving_average(self, variable, value, momentum):
-    with ops.name_scope(None, 'AssignMovingAvg',
-                        [variable, value, momentum]) as scope:
+  def _assign_moving_average(self, variable, value, momentum, inputs_size):
+    with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (
             variable - math_ops.cast(value, variable.dtype)) * decay
+        if inputs_size is not None:
+          update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                         K.zeros_like(update_delta))
         return state_ops.assign_sub(variable, update_delta, name=scope)
+
+  def _assign_new_value(self, variable, value):
+    with K.name_scope('AssignNewValue') as scope:
+      with ops.colocate_with(variable):
+        return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
+
+    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
+    # code as well.
+    if self._support_zero_size_input():
+      inputs_size = array_ops.size(inputs)
+    else:
+      inputs_size = None
 
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
@@ -477,44 +568,45 @@ class BatchNormalizationBase(Layer):
     else:
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
+      def mean_update():
+        return self._assign_moving_average(self.moving_mean, mean, momentum,
+                                           inputs_size)
 
-        def mean_update():
-          return strategy.extended.update(self.moving_mean,
-                                          self._assign_moving_average,
-                                          (mean, self.momentum))
-
-        def variance_update():
-          return strategy.extended.update(self.moving_variance,
-                                          self._assign_moving_average,
-                                          (variance, self.momentum))
-      else:
-
-        def mean_update():
-          return self._assign_moving_average(self.moving_mean, mean, momentum)
-
-        def variance_update():
+      def variance_update():
+        """Update self.moving_variance with the most recent data point."""
+        if self.renorm:
+          # We apply epsilon as part of the moving_stddev to mirror the training
+          # code path.
+          moving_stddev = self._assign_moving_average(
+              self.moving_stddev, math_ops.sqrt(variance + self.epsilon),
+              momentum, inputs_size)
+          return self._assign_new_value(
+              self.moving_variance,
+              # Apply relu in case floating point rounding causes it to go
+              # negative.
+              K.relu(moving_stddev * moving_stddev - self.epsilon))
+        else:
           return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum)
+                                             momentum, inputs_size)
 
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     return output
 
-  def _renorm_correction_and_moments(self, mean, variance, training):
+  def _renorm_correction_and_moments(self, mean, variance, training,
+                                     inputs_size):
     """Returns the correction and update values for renorm."""
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
     # initialized with this batch's moments.
-    mixed_renorm_mean = (self.renorm_mean +
-                         (1. - self.renorm_mean_weight) * mean)
-    mixed_renorm_stddev = (self.renorm_stddev +
-                           (1. - self.renorm_stddev_weight) * stddev)
+    renorm_mean = self.renorm_mean
+    # Avoid divide by zero early on in training.
+    renorm_stddev = math_ops.maximum(self.renorm_stddev,
+                                     math_ops.sqrt(self.epsilon))
     # Compute the corrections for batch renorm.
-    r = stddev / mixed_renorm_stddev
-    d = (mean - mixed_renorm_mean) / mixed_renorm_stddev
+    r = stddev / renorm_stddev
+    d = (mean - renorm_mean) / renorm_stddev
     # Ensure the corrections use pre-update moving averages.
     with ops.control_dependencies([r, d]):
       mean = array_ops.identity(mean)
@@ -534,47 +626,57 @@ class BatchNormalizationBase(Layer):
                             lambda: d,
                             lambda: array_ops.zeros_like(d))
 
-    def _update_renorm_variable(var, weight, value):
+    def _update_renorm_variable(var, value, inputs_size):
       """Updates a moving average and weight, returns the unbiased value."""
       value = array_ops.identity(value)
       def _do_update():
-        """Updates the var and weight, returns their updated ratio."""
-        # Update the variables without zero debiasing. The debiasing will be
-        # accomplished by dividing the exponential moving average by the weight.
-        # For example, after a single update, the moving average would be
-        # (1-decay) * value. and the weight will be 1-decay, with their ratio
-        # giving the value.
-        # Make sure the weight is not updated until before r and d computation.
-        with ops.control_dependencies([value]):
-          weight_value = array_ops.constant(1., dtype=weight.dtype)
-        new_var = self._assign_moving_average(var, value, self.renorm_momentum)
-        new_weight = self._assign_moving_average(weight, weight_value,
-                                                 self.renorm_momentum)
-        # TODO(yuefengz): the updates to var and weighted can not be batched
-        # together if we fetch their updated values here. Consider calculating
-        # new values and delaying the updates.
-        return new_var / new_weight
+        """Updates the var, returns the updated value."""
+        new_var = self._assign_moving_average(var, value, self.renorm_momentum,
+                                              inputs_size)
+        return new_var
 
       def _fake_update():
         return array_ops.identity(var)
       return tf_utils.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
-    new_mean = _update_renorm_variable(self.renorm_mean,
-                                       self.renorm_mean_weight, mean)
-    new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                         self.renorm_stddev_weight, stddev)
-    # Make sqrt(moving_variance + epsilon) = new_stddev.
-    new_variance = math_ops.square(new_stddev) - self.epsilon
+    update_new_mean = _update_renorm_variable(self.renorm_mean, mean,
+                                              inputs_size)
+    update_new_stddev = _update_renorm_variable(self.renorm_stddev, stddev,
+                                                inputs_size)
 
-    return (r, d, new_mean, new_variance)
+    # Update the inference mode moving averages with the batch value.
+    with ops.control_dependencies([update_new_mean, update_new_stddev]):
+      out_mean = array_ops.identity(mean)
+      out_variance = array_ops.identity(variance)
+
+    return (r, d, out_mean, out_variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims):
-    return nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
+    # code as well.
+    if self._support_zero_size_input():
+      inputs_size = array_ops.size(inputs)
+      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
+      variance = array_ops.where(inputs_size > 0, variance,
+                                 K.zeros_like(variance))
+    return mean, variance
 
-  def call(self, inputs, training=None):
+  def _get_training_value(self, training=None):
     if training is None:
       training = K.learning_phase()
+    if self._USE_V2_BEHAVIOR:
+      if isinstance(training, int):
+        training = bool(training)
+      if base_layer_utils.is_in_keras_graph():
+        training = math_ops.logical_and(training, self._get_trainable_var())
+      else:
+        training = math_ops.logical_and(training, self.trainable)
+    return training
+
+  def call(self, inputs, training=None):
+    training = self._get_training_value(training)
 
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
@@ -626,7 +728,9 @@ class BatchNormalizationBase(Layer):
 
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = tf_utils.constant_value(training)
-    if training_value is not False:
+    if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
+      mean, variance = self.moving_mean, self.moving_variance
+    else:
       if self.adjustment:
         adj_scale, adj_bias = self.adjustment(array_ops.shape(inputs))
         # Adjust only during training.
@@ -651,10 +755,11 @@ class BatchNormalizationBase(Layer):
 
       mean = tf_utils.smart_cond(training,
                                  lambda: mean,
-                                 lambda: moving_mean)
-      variance = tf_utils.smart_cond(training,
-                                     lambda: variance,
-                                     lambda: moving_variance)
+                                 lambda: ops.convert_to_tensor(moving_mean))
+      variance = tf_utils.smart_cond(
+          training,
+          lambda: variance,
+          lambda: ops.convert_to_tensor(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
@@ -667,9 +772,13 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
+      if self._support_zero_size_input():
+        inputs_size = array_ops.size(inputs)
+      else:
+        inputs_size = None
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            new_mean, new_variance, training)
+            new_mean, new_variance, training, inputs_size)
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
@@ -677,46 +786,40 @@ class BatchNormalizationBase(Layer):
         d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
         scale, offset = _compose_transforms(r, d, scale, offset)
 
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
+      def _do_update(var, value):
+        """Compute the updates for mean and variance."""
+        return self._assign_moving_average(var, value, self.momentum,
+                                           inputs_size)
 
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return strategy.extended.update(
-              var, self._assign_moving_average, (value, self.momentum),
-              group=False)
-        # We need to unwrap the moving_mean or moving_variance in the case of
-        # training being false to match the output of true_fn and false_fn
-        # in the smart cond.
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: strategy.unwrap(self.moving_mean)
-          return tf_utils.smart_cond(training, true_branch, false_branch)
+      def mean_update():
+        true_branch = lambda: _do_update(self.moving_mean, new_mean)
+        false_branch = lambda: self.moving_mean
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
-        def variance_update():
-          return tf_utils.smart_cond(
-              training, lambda: _do_update(self.moving_variance, new_variance),
-              lambda: strategy.unwrap(self.moving_variance))
-      else:
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return self._assign_moving_average(var, value, self.momentum)
+      def variance_update():
+        """Update the moving variance."""
 
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: self.moving_mean
-          return tf_utils.smart_cond(training, true_branch, false_branch)
+        def true_branch_renorm():
+          # We apply epsilon as part of the moving_stddev to mirror the training
+          # code path.
+          moving_stddev = _do_update(self.moving_stddev,
+                                     math_ops.sqrt(new_variance + self.epsilon))
+          return self._assign_new_value(
+              self.moving_variance,
+              # Apply relu in case floating point rounding causes it to go
+              # negative.
+              K.relu(moving_stddev * moving_stddev - self.epsilon))
 
-        def variance_update():
+        if self.renorm:
+          true_branch = true_branch_renorm
+        else:
           true_branch = lambda: _do_update(self.moving_variance, new_variance)
-          false_branch = lambda: self.moving_variance
-          return tf_utils.smart_cond(training, true_branch, false_branch)
 
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
+        false_branch = lambda: self.moving_variance
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
-    else:
-      mean, variance = self.moving_mean, self.moving_variance
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     mean = math_ops.cast(mean, inputs.dtype)
     variance = math_ops.cast(variance, inputs.dtype)
@@ -778,27 +881,27 @@ class BatchNormalizationBase(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_base_docstring(old, new):
+def replace_in_base_docstring(replacements):
   string = BatchNormalizationBase.__doc__
-  if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationBase'
-                     ' docstring: "{}"'.format(old))
-  return string.replace(old, new)
+  for old, new in replacements:
+    assert old in string
+    string = string.replace(old, new)
+  return string
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
 class BatchNormalization(BatchNormalizationBase):
 
-  __doc__ = _replace_in_base_docstring(
-      '''
+  __doc__ = replace_in_base_docstring(
+      [('''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
       implementation if possible. If False, do not used the fused
       implementation.''',
-
-      '''
+        '''
     fused: if `None` or `True`, use a faster, fused implementation if possible.
-      If `False`, use the system recommended implementation.''')
+      If `False`, use the system recommended implementation.'''),
+       ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '')])
 
   _USE_V2_BEHAVIOR = False
 
@@ -879,6 +982,31 @@ class LayerNormalization(Layer):
 
     self.supports_masking = True
 
+    # Indicates whether a faster fused implementation can be used. This will be
+    # set to True or False in build()"
+    self._fused = None
+
+  def _fused_can_be_used(self, ndims):
+    """Return false if fused implementation cannot be used.
+
+    Check if the axis is contiguous and can be collapsed into the last axis.
+    The self.axis is assumed to have no duplicates.
+    """
+    axis = sorted(self.axis)
+    can_use_fused = False
+
+    if axis[-1] == ndims - 1 and axis[-1] - axis[0] == len(axis) - 1:
+      can_use_fused = True
+
+    # fused_batch_norm will silently raise epsilon to be at least 1.001e-5, so
+    # we cannot used the fused version if epsilon is below that value. Also, the
+    # variable dtype must be float32, as fused_batch_norm only supports float32
+    # variables.
+    if self.epsilon < 1.001e-5 or self.dtype != 'float32':
+      can_use_fused = False
+
+    return can_use_fused
+
   def build(self, input_shape):
     ndims = len(input_shape)
     if ndims is None:
@@ -887,6 +1015,8 @@ class LayerNormalization(Layer):
     # Convert axis to list and resolve negatives
     if isinstance(self.axis, int):
       self.axis = [self.axis]
+    elif isinstance(self.axis, tuple):
+      self.axis = list(self.axis)
     for idx, x in enumerate(self.axis):
       if x < 0:
         self.axis[idx] = ndims + x
@@ -923,13 +1053,14 @@ class LayerNormalization(Layer):
     else:
       self.beta = None
 
+    self._fused = self._fused_can_be_used(ndims)
+
+    self.built = True
+
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
-
-    # Calculate the moments on the last axis (layer activations).
-    mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
     # Broadcasting only necessary for norm where the axis is not just
     # the last dimension
@@ -941,16 +1072,66 @@ class LayerNormalization(Layer):
           self.axis != [ndims - 1]):
         return array_ops.reshape(v, broadcast_shape)
       return v
-    scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
-    # Compute layer normalization using the batch_normalization function.
-    outputs = nn.batch_normalization(
-        inputs,
-        mean,
-        variance,
-        offset=offset,
-        scale=scale,
-        variance_epsilon=self.epsilon)
+    if not self._fused:
+      # Calculate the moments on the last axis (layer activations).
+      mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
+
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+      # Compute layer normalization using the batch_normalization function.
+      outputs = nn.batch_normalization(
+          inputs,
+          mean,
+          variance,
+          offset=offset,
+          scale=scale,
+          variance_epsilon=self.epsilon)
+    else:
+      # Collapse dims before self.axis, and dims in self.axis
+      pre_dim, in_dim = (1, 1)
+      axis = sorted(self.axis)
+      tensor_shape = array_ops.shape(inputs)
+      for dim in range(0, ndims):
+        dim_tensor = tensor_shape[dim]
+        if dim < axis[0]:
+          pre_dim = pre_dim * dim_tensor
+        else:
+          assert dim in axis
+          in_dim = in_dim * dim_tensor
+
+      squeezed_shape = [1, pre_dim, in_dim, 1]
+      # This fused operation requires reshaped inputs to be NCHW.
+      data_format = 'NCHW'
+
+      inputs = array_ops.reshape(inputs, squeezed_shape)
+
+      def _set_const_tensor(val, dtype, shape):
+        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
+
+      # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
+      # we cannot pass them as the scale and offset parameters. Therefore, we
+      # create two constant tensors in correct shapes for fused_batch_norm and
+      # later contuct a separate calculation on the scale and offset.
+      scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
+      offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
+
+      # Compute layer normalization using the fused_batch_norm function.
+      outputs, _, _ = nn.fused_batch_norm(
+          inputs,
+          scale=scale,
+          offset=offset,
+          epsilon=self.epsilon,
+          data_format=data_format)
+
+      outputs = array_ops.reshape(outputs, tensor_shape)
+
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+      if scale is not None:
+        outputs = outputs * scale
+      if offset is not None:
+        outputs = outputs + offset
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)

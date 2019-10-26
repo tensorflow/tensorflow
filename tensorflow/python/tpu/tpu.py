@@ -19,28 +19,37 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+from absl import logging
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
+ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
@@ -69,6 +78,7 @@ _UNCONNECTED_OPS_TO_PRUNE = set(["Placeholder", "VarHandleOp"])
 _MAX_WARNING_LINES = 5
 
 _TPU_REPLICATE_ATTR = "_tpu_replicate"
+_POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
 
@@ -81,7 +91,10 @@ def _tpu_system_device_name(job):
     return "/job:%s/device:TPU_SYSTEM:0" % job
 
 
-def initialize_system(embedding_config=None, job=None):
+@tf_export(v1=["tpu.initialize_system"])
+def initialize_system(embedding_config=None,
+                      job=None,
+                      compilation_failure_closes_chips=True):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
@@ -92,6 +105,8 @@ def initialize_system(embedding_config=None, job=None):
       contains the TPU devices that will be initialized. If job=None it is
       assumed there is only one job in the TensorFlow flock, and an error will
       be returned if this assumption does not hold.
+    compilation_failure_closes_chips: Set the configuration whether
+      we want to close TPU chips when there is a compilation failure.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -99,16 +114,53 @@ def initialize_system(embedding_config=None, job=None):
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
+    return tpu_ops.configure_distributed_tpu(
+        embedding_config=config_string,
+        compilation_failure_closes_chips=compilation_failure_closes_chips)
 
 
+def initialize_system_for_tpu_embedding(embedding_config, job=None):
+  """Initializes a distributed TPU Embedding system for use with TensorFlow.
+
+  The following two are equivalent:
+  1. initialize_system() with embedding_config.
+  2. initialize_system() without embedding_config, then
+     initialize_system_for_tpu_embedding().
+  initialize_system() should not be called with embedding_config if
+  initialize_system_for_tpu_embedding() is meant to be called later.
+
+  Args:
+    embedding_config: a `TPUEmbeddingConfiguration` proto describing the desired
+      configuration of the hardware embedding lookup tables.
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be initialized. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
+
+  Returns:
+    A no-op.
+  """
+  config_string = embedding_config.SerializeToString()
+  with ops.device(_tpu_system_device_name(job)):
+    return tpu_ops.configure_tpu_embedding(config=config_string)
+
+
+@tf_export(v1=["tpu.shutdown_system"])
 def shutdown_system(job=None):
-  """Shuts down a running a distributed TPU system."""
+  """Shuts down a running a distributed TPU system.
+
+  Args:
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be shutdown. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
+  """
   with ops.device(_tpu_system_device_name(job)):
     shutdown_distributed_tpu = tpu_ops.shutdown_distributed_tpu()
   return shutdown_distributed_tpu
 
 
+@tf_export(v1=["tpu.core"])
 def core(num):
   """Returns the device name for a core in a replicated TPU computation.
 
@@ -119,6 +171,38 @@ def core(num):
     A device name, suitable for passing to `tf.device()`.
   """
   return "device:TPU_REPLICATED_CORE:{}".format(num)
+
+
+def _enclosing_tpu_context_and_graph():
+  """Returns the TPUReplicateContext and its associated graph."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, TPUReplicateContext):
+        return context_, graph
+      context_ = context_.outer_context
+    graph = getattr(graph, "outer_graph", None)
+  raise ValueError("get_replicated_var_handle() called without "
+                   "TPUReplicateContext. This shouldn't happen. Please file "
+                   "a bug.")
+
+
+def is_tpu_strategy(strategy):
+  is_tpu_strat = lambda k: k.__name__.startswith("TPUStrategy")
+  clz = strategy.__class__
+  return is_tpu_strat(clz) or any(map(is_tpu_strat, clz.__bases__))
+
+
+def _enclosing_tpu_device_assignment():
+  if not distribution_strategy_context.has_strategy():
+    return None
+  strategy = distribution_strategy_context.get_strategy()
+  if not is_tpu_strategy(strategy):
+    return None
+  return strategy.extended._device_assignment  # pylint: disable=protected-access
 
 
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
@@ -135,6 +219,16 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   `with ops.control_dependencies(None)` to build the variable's definition
   outside the replicated computation.
   """
+
+  class _TFBufferWrapper(object):
+    """An internal class to help manage the TF_Buffer lifetime."""
+
+    def __init__(self, buf_string):
+      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
+          compat.as_bytes(buf_string))
+
+    def __del__(self):
+      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
@@ -160,11 +254,17 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._host_compute_core = []
     self._name = name
     self._name_as_bytes = compat.as_bytes(name)
+    self._tpu_relicate_attr_buf = self._TFBufferWrapper(
+        attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
     self._unsupported_ops = []
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_):
+  def get_replicated_var_handle(self,
+                                name,
+                                vars_,
+                                device_map=None,
+                                is_mirrored=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -173,13 +273,32 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     Args:
       name: The common name of the variable.
       vars_: The replicated TPU variables.
+      device_map: The DeviceMap used to create the variables if it is a
+        TPUMirroredVariable.
+      is_mirrored: Whether the variables are mirrored, which guarantees the
+        values in each replica are always the same.
 
     Returns:
       The handle of the TPU replicated input node.
     """
+    device_assignment = _enclosing_tpu_device_assignment()
+    # We don't need to put device assignment as part of the replicated_vars key
+    # because each TPUReplicateContext will only have one device assignment.
     handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
+
+    replicated_vars = []
+    if device_assignment is not None and device_map is not None:
+      job_name = pydev.DeviceSpec.from_string(device_map.all_devices[0]).job
+      for replica_id in range(device_assignment.num_replicas):
+        tpu_device = device_assignment.tpu_device(
+            replica=replica_id, logical_core=0, job=job_name)
+        tpu_device = device_util.canonicalize(tpu_device)
+        replica = device_map.replica_for_device(tpu_device)
+        replicated_vars.append(vars_[replica])
+    else:
+      replicated_vars = vars_
 
     # Builds a TPUReplicatedInput node for the variable, if one does not already
     # exist. The TPUReplicatedInput node must belong to the enclosing
@@ -188,14 +307,16 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     # so the TPUReplicatedInput nodes go inside the TPUReplicateContext scope
     # instead.
 
-    # pylint: disable=protected-access
-    graph = ops.get_default_graph()
-    saved_context = graph._get_control_flow_context()
-    graph._set_control_flow_context(self.outer_context)
-    handle = tpu_ops.tpu_replicated_input(
-        [v.handle for v in vars_], name=name + "/handle")
-    graph._set_control_flow_context(saved_context)
-    # pylint: enable=protected-access
+    _, graph = _enclosing_tpu_context_and_graph()
+    with graph.as_default():
+      # pylint: disable=protected-access
+      saved_context = graph._get_control_flow_context()
+      graph._set_control_flow_context(self.outer_context)
+      handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
+                                            name=name + "/handle",
+                                            is_mirrored_variable=is_mirrored)
+      graph._set_control_flow_context(saved_context)
+      # pylint: enable=protected-access
     self._replicated_vars[name] = handle
     return handle
 
@@ -371,10 +492,15 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    if _TPU_REPLICATE_ATTR in op.node_def.attr:
-      raise ValueError("TPU computations cannot be nested")
-    op._set_attr(_TPU_REPLICATE_ATTR,
-                 attr_value_pb2.AttrValue(s=self._name_as_bytes))
+
+    # TensorFlowOpLayer may clone nodes that are in tpu.rewrite()s. It'll add
+    # the "_cloned" attribute and we should continue in that case.
+    if (_TPU_REPLICATE_ATTR in op.node_def.attr and
+        "_cloned" not in op.node_def.attr):
+      raise ValueError("TPU computations cannot be nested on op (%s)" %
+                       op)
+    op._set_attr_with_buf(
+        _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -401,7 +527,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       for index in xrange(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
-        if real_x != x:
+        if real_x is not x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
     if external_control_inputs:
@@ -472,6 +598,38 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._pivot
 
 
+class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
+  """The context for outside compilation in Tensorflow 2.0.
+
+  Every op added in this context will be assigned an _xla_outside_compilation
+  attribute.
+  """
+
+  def __init__(self, name):
+    control_flow_ops.ControlFlowContext.__init__(self)
+    self._name = name
+
+  def AddOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def AddInnerOp(self, op):
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+    # pylint: disable=protected-access
+    op._set_attr("_xla_outside_compilation",
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    raise NotImplementedError("to_control_flow_context_def not implemented")
+
+
+@tf_export(v1=["tpu.outside_compilation"])
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
 
@@ -486,6 +644,25 @@ def outside_compilation(computation, *args, **kwargs):
   """
   args = [] if args is None else args
   graph = ops.get_default_graph()
+
+  # If we are in TF 2 functions (control flow V2 functions, or tf.function()),
+  # we need to attach _xla_outside_compilation attribute directly because we are
+  # not in TPUReplicateContext.
+  if isinstance(graph, func_graph.FuncGraph):
+    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    # pylint: disable=protected-access
+    outside_compilation_name = str(tpu_context._outside_compilation_counter)
+    tpu_context._outside_compilation_counter = (
+        tpu_context._outside_compilation_counter + 1)
+    # pylint: enable=protected-access
+
+    outside_compilation_context = OutsideCompilationV2Context(
+        outside_compilation_name)
+    outside_compilation_context.Enter()
+    args = [] if args is None else args
+    retval = computation(*args, **kwargs)
+    outside_compilation_context.Exit()
+    return retval
 
   # If we are in a TPUReplicateContext, signal that we are now
   # outside_compilation
@@ -514,6 +691,7 @@ def outside_compilation(computation, *args, **kwargs):
   return retval
 
 
+@tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
@@ -528,7 +706,7 @@ def replicate(computation,
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
       have the same number of inputs. Each input can be a nested structure
       containing values that are convertible to tensors. Note that passing an
-      N-dimension list of compatible values will result in a N-dimention list of
+      N-dimension list of compatible values will result in a N-dimension list of
       scalar tensors rather than a single Rank-N tensors. If you need different
       behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
@@ -542,12 +720,11 @@ def replicate(computation,
     name: (Deprecated) Does nothing.
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. The structure of `maximum_shapes` needs to be the same as
+      `inputs[0]`.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -591,12 +768,33 @@ def _pad_all_input(inputs, padded_shapes):
     The padded inputs and a PaddingMap list which maps the padded input
     dimension to the real shape argument index.
   """
+  # maximum_static_shapes[idx][i] indicates the maximum static size of ith
+  # dimension of the idx input among all the replicas.
+  maximum_static_shapes = []
+  # need_padding[idx][i] indicates whether the ith dimension of the idx input
+  # needs padding.
+  need_padding = []
   input_shape_tensors = []
   for core_idx, inputs_per_core in enumerate(inputs):
     for idx, input_tensor in enumerate(inputs_per_core):
+      input_shape = input_tensor.get_shape().as_list()
       if core_idx == 0:
         input_shape_tensors.append([])
-      input_shape_tensors[idx].append(array_ops.shape(input_tensor))
+        maximum_static_shapes.append(input_shape)
+        need_padding.append(np.full_like(input_shape, False, dtype=bool))
+      else:
+        for i, s in enumerate(input_shape):
+          if not s or s != maximum_static_shapes[idx][i]:
+            need_padding[idx][i] = True
+        maximum_static_shapes[idx] = max(input_shape,
+                                         maximum_static_shapes[idx])
+
+      # Append _POST_DEVICE_REWRITE_ATTR attributes to the real shape ops.
+      real_input_shape = array_ops.shape(input_tensor)
+      real_input_shape.op._set_attr(  # pylint: disable=protected-access
+          _POST_DEVICE_REWRITE_ATTR,
+          attr_value_pb2.AttrValue(b=True))
+      input_shape_tensors[idx].append(real_input_shape)
 
   maximum_shapes = []
   for shapes_per_input in input_shape_tensors:
@@ -612,20 +810,12 @@ def _pad_all_input(inputs, padded_shapes):
     real_shape_idx = len(inputs_per_core) - 1
     for idx, input_tensor in enumerate(inputs_per_core):
       input_shape_tensor = input_shape_tensors[idx][core_idx]
-      input_shape = input_tensor.get_shape()
+      input_shape = input_tensor.get_shape().as_list()
       padded_shape = padded_shapes[idx]
 
-      # The static shape of inputs should be compatible with the given padded
-      # shapes.
-      input_shape.assert_is_compatible_with(padded_shape)
-
-      if input_shape.is_fully_defined():
-        # Do nothing if the shape of the whole tensor is already static.
-        padded_inputs[core_idx].append(input_tensor)
-      else:
-        # Only pad the non static shape dimension.
+      if any(need_padding[idx]):
         for i, s in enumerate(input_shape):
-          if s.value is None:
+          if need_padding[idx][i]:
             if core_idx == 0:
               real_shape_idx += 1
               padding_map = dynamic_padding.PaddingMap()
@@ -634,25 +824,47 @@ def _pad_all_input(inputs, padded_shapes):
               padding_map.padding_arg_index = real_shape_idx
               padding_maps.append(padding_map)
             real_shapes[core_idx].append(
-                math_ops.cast(input_shape_tensor[i], dtypes.uint32))
+                math_ops.cast(input_shape_tensor[i], dtypes.int32))
 
         paddings = []
-        for i, s in enumerate(padded_shape):
-          if input_shape[i].value:
-            # Don't pad if input shape is already static.
-            padding = [0, 0]
-          else:
+        for i, s in enumerate(padded_shape.dims):
+          if need_padding[idx][i]:
+            # The minimum padded dimension size is 2 as XLA doesn't support size
+            # 1 dynamic size.
+            minimum_dynamic_dim_size = 2
             if s.value:
               # Pad to the given maximum value.
-              padding = [0, s.value - input_shape_tensor[i]]
+              max_dim_size = max(s.value, minimum_dynamic_dim_size)
             else:
               # If maximum value is not given, then pad to the maximum dimension
               # among all the cores.
-              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
+              max_dim_size = math_ops.maximum(maximum_shapes[idx][i],
+                                              minimum_dynamic_dim_size)
+            # Pad to the given maximum value.
+            padding = [0, max_dim_size - input_shape_tensor[i]]
+          else:
+            padding = [0, 0]
           paddings.append(padding)
 
-        padded_input = array_ops.pad(input_tensor, paddings)
+        if input_tensor.get_shape().is_fully_defined():
+          # TODO(rxsang): This is a hack to make sure padded_input has dynamic
+          # shapes, so any tf.size/tf.shape op performed on it won't be constant
+          # folded. Do we have better ways to do it?
+          padded_input = control_flow_ops.cond(
+              array_ops.constant(True),
+              lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
+              lambda: input_tensor)
+        else:
+          padded_input = array_ops.pad(input_tensor, paddings)
+
+        # Append _POST_DEVICE_REWRITE_ATTR attributes to all padded inputs.
+        padded_input.op._set_attr(  # pylint: disable=protected-access
+            _POST_DEVICE_REWRITE_ATTR,
+            attr_value_pb2.AttrValue(b=True))
+
         padded_inputs[core_idx].append(padded_input)
+      else:
+        padded_inputs[core_idx].append(input_tensor)
 
   num_replicas = len(padded_inputs)
   for i in range(num_replicas):
@@ -682,7 +894,7 @@ def split_compile_and_replicate(computation,
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
       have the same number of inputs. Each input can be a nested structure
       containing values that are convertible to tensors. Note that passing an
-      N-dimension list of compatible values will result in a N-dimention list of
+      N-dimension list of compatible values will result in a N-dimension list of
       scalar tensors rather than a single Rank-N tensors. If you need different
       behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
@@ -699,12 +911,11 @@ def split_compile_and_replicate(computation,
       placed on GPU if one is available, and on CPU if not).
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. The structure of `maximum_shapes` needs to be the same as
+      `inputs[0]`.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -740,6 +951,9 @@ def split_compile_and_replicate(computation,
       metadata_kwargs["computation_shape"] = [
           device_assignment.num_cores_per_replica
       ]
+
+  # This entry is used for enabling automatic outside compilation.
+  metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -825,10 +1039,23 @@ def split_compile_and_replicate(computation,
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    flat_replicated_inputs.append(
-        tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
+    if api_compat.forward_compatible(2019, 9, 19):
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i),
+                                       index=i))
+    else:
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
-  cluster_name = graph.unique_name("cluster")
+  if isinstance(graph, func_graph.FuncGraph):
+    # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
+    # object. If both outside graph and this function have a TPU cluster,
+    # they will have the same cluster name and it will cause problems (because
+    # we lower functional ops in Tensorflow 2.0). Append function name to
+    # 'cluster_name' to avoid cluster name collision.
+    cluster_name = graph.unique_name("cluster_" + graph.name)
+  else:
+    cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
@@ -997,7 +1224,7 @@ def _postprocess_flat_outputs(outputs):
   if outputs is None:
     outputs = tuple()
   # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections.Sequence):
+  if not isinstance(outputs, collections_abc.Sequence):
     outputs = (outputs,)
 
   # Append `no_op` here so that fetching any return value of this function
@@ -1235,6 +1462,7 @@ def split_compile_and_shard(computation,
   return compile_op, results
 
 
+@tf_export(v1=["tpu.shard"])
 def shard(computation,
           inputs=None,
           num_shards=1,
@@ -1315,6 +1543,7 @@ def shard(computation,
       name=name)[1]
 
 
+@tf_export(v1=["tpu.batch_parallel"])
 def batch_parallel(computation,
                    inputs=None,
                    num_shards=1,
@@ -1371,6 +1600,7 @@ def batch_parallel(computation,
       name=name)
 
 
+@tf_export(v1=["tpu.rewrite"])
 def rewrite(computation,
             inputs=None,
             infeed_queue=None,
@@ -1436,16 +1666,20 @@ _BLACKLISTED_INFERENCE_OPS = set([
 
 
 def under_tpu_inference_context():
-  """Check if it is currently under `tpu.rewrite_for_inference()`."""
+  """Check if it is currently under `_TPUInferenceContext`."""
   graph = ops.get_default_graph()
-
-  context = graph._get_control_flow_context()  # pylint: disable=protected-access
-  while context:
-    if isinstance(context, _TPUInferenceContext):
-      return True
-    context = context.outer_context
-
-  return False
+  while graph:
+    context = graph._get_control_flow_context()  # pylint: disable=protected-access
+    while context:
+      if isinstance(context, _TPUInferenceContext):
+        return True
+      context = context.outer_context
+    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
+    elif isinstance(graph, func_graph.FuncGraph):
+      graph = graph.outer_graph
+    else:
+      return False
 
 
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
@@ -1491,13 +1725,14 @@ def validate_inference_rewrite_for_variables(graph):
 
      The rewrite_for_inference() method is supposed to append GuaranteeConstOps
      after ReadVariableOps, but this mechanism works only if you are using
-     tf.get_variable() to create and access variables in your tpu computation.
-     This validation method can be called immediately after calling
+     tf.compat.v1.get_variable() to create and access variables in your tpu
+     computation. This validation method can be called immediately after calling
      tpu.rewrite_for_inference() to check whether GuaranteeConstOps where added
      to the graph.
 
      Typical usages:
-       tpu.validate_inference_rewrite_for_variables(tf.get_default_graph())
+       tpu.validate_inference_rewrite_for_variables(
+           tf.compat.v1.get_default_graph())
 
        tpu.validate_inference_rewrite_for_variables(sess.graph)
 
@@ -1524,11 +1759,11 @@ def rewrite_for_inference(computation,
      Other than 'rewriting' the computation to run on a TPU, if using variables
      in your computation, it moves the ReadVariableOps outside the TPU
      computation, and adds GuaranteeConst ops just after the ReadVariableOps.
-     This mechanism works only if you are using tf.get_variable() to create and
-     access variables in your tpu computation. You can validate whether this
-     worked, by calling validate_inference_rewrite_for_variables() method
-     immediately after this method to check whether GuaranteeConstOps where
-     added to the graph.
+     This mechanism works only if you are using tf.compat.v1.get_variable() to
+     create and access variables in your tpu computation. You can validate
+     whether this worked, by calling validate_inference_rewrite_for_variables()
+     method immediately after this method to check whether GuaranteeConstOps
+     where added to the graph.
 
   Args:
     computation: A Python function that builds a computation to apply to the
@@ -1595,7 +1830,11 @@ def prune_unconnected_ops_from_xla(prune_graph):
       removing the tpu_replicate attribute.
   """
   # Scan over the top level graph and all function graphs.
-  for graph in [prune_graph] + list(prune_graph._functions.values()):  # pylint: disable=protected-access
+  for graph in [prune_graph] + [
+      f for f in prune_graph._functions.values()  # pylint: disable=protected-access
+  ]:
+    if not isinstance(graph, ops.Graph):
+      continue
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue

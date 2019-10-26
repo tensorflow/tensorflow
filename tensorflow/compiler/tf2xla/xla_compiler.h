@@ -116,6 +116,9 @@ class XlaCompiler {
 
       // Argument is an XLA token.
       kToken,
+
+      // Argument is a TensorList.
+      kTensorList,
     };
 
     Kind kind = kInvalid;
@@ -150,6 +153,9 @@ class XlaCompiler {
     // For a kResource, has this resource been initialized?
     bool initialized = false;
 
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
+
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
     int64 max_array_size = -1;
@@ -173,6 +179,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;
@@ -226,6 +233,9 @@ class XlaCompiler {
     // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
     // the index of the input that contains the resource.
     int input_index;
+
+    // Whether this output is a TensorList.
+    bool is_tensor_list = false;
   };
 
   // Describes a variable write side effect of the computation.
@@ -280,7 +290,8 @@ class XlaCompiler {
     std::shared_ptr<xla::XlaComputation> computation;
   };
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType)>
+  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                  bool)>
       ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
@@ -305,6 +316,12 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
+    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
+    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
+    // function accepting the input, min, max, num_bits, and narrow_range values
+    // as runtime arguments.
+    bool custom_fake_quant_op_calls = false;
+
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
@@ -327,12 +344,20 @@ class XlaCompiler {
     // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
-    xla::DeviceMemoryAllocator* device_allocator = nullptr;
+    se::DeviceMemoryAllocator* device_allocator = nullptr;
+
+    // Alias input and output buffers for parameters that are passed-through XLA
+    // modules without being changed.
+    bool alias_passthrough_params = false;
   };
 
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
+
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
@@ -434,7 +459,7 @@ class XlaCompiler {
                         const std::vector<XlaCompiler::Argument>& args,
                         bool use_tuple_arg, xla::XlaBuilder* builder,
                         XlaContext* context,
-                        const std::map<int, int>& arg_cores,
+                        const std::map<int, xla::OpSharding>& arg_shardings,
                         std::vector<XlaExpression>* arg_expressions,
                         std::vector<int>* input_to_args,
                         std::vector<xla::Shape>* input_shapes,
@@ -457,7 +482,7 @@ class XlaCompiler {
   int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
-  DeviceMgr device_mgr_;
+  StaticDeviceMgr device_mgr_;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
@@ -30,7 +28,11 @@ from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.platform import test
 
 
-class LivenessTest(test.TestCase):
+global_a = 7
+global_b = 17
+
+
+class LivenessAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn, future_features=())
@@ -60,6 +62,9 @@ class LivenessTest(test.TestCase):
     if not isinstance(expected, tuple):
       expected = (expected,)
     self.assertSetEqual(live_in_strs, set(expected))
+
+
+class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
 
   def test_live_out_try_block(self):
 
@@ -378,10 +383,7 @@ class LivenessTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    if six.PY2:
-      self.assertHasLiveIn(fn_body[0], ('all', 'x', 'y'))
-    else:
-      self.assertHasLiveIn(fn_body[0], ('all', 'y'))
+    self.assertHasLiveIn(fn_body[0], ('all', 'y'))
 
   def test_live_in_list_comprehension(self):
 
@@ -392,10 +394,17 @@ class LivenessTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    if six.PY2:
-      self.assertHasLiveIn(fn_body[0], ('x', 'y'))
-    else:
-      self.assertHasLiveIn(fn_body[0], ('y',))
+    self.assertHasLiveIn(fn_body[0], ('y',))
+
+  def test_live_in_list_comprehension_expression(self):
+
+    def test_fn(y, s):
+      s += foo([x for x in y])  # pylint:disable=undefined-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('y', 'foo', 's'))
 
   def test_live_in_set_comprehension(self):
 
@@ -406,10 +415,7 @@ class LivenessTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    if six.PY2:
-      self.assertHasLiveIn(fn_body[0], ('x', 'y'))
-    else:
-      self.assertHasLiveIn(fn_body[0], ('y',))
+    self.assertHasLiveIn(fn_body[0], ('y',))
 
   def test_live_in_dict_comprehension(self):
 
@@ -420,10 +426,23 @@ class LivenessTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    if six.PY2:
-      self.assertHasLiveIn(fn_body[0], ('k', 'v', 'y'))
-    else:
-      self.assertHasLiveIn(fn_body[0], ('y',))
+    self.assertHasLiveIn(fn_body[0], ('y',))
+
+  def test_global_symbol(self):
+
+    def test_fn(c):
+      global global_a
+      global global_b
+      if global_a:
+        global_b = c
+      else:
+        global_b = c
+      return global_b
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+    self.assertHasLiveOut(fn_body[2], ('global_b',))
+    self.assertHasLiveIn(fn_body[2], ('global_a', 'c'))
 
 
 if __name__ == '__main__':

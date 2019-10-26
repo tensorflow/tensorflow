@@ -90,10 +90,10 @@ class OptionalVariant {
   string DebugString() const {
     if (values_) {
       return strings::StrCat("OptionalVariant<", "values: (",
-                             str_util::Join(*values_, ", ",
-                                            [](string* s, const Tensor& elem) {
-                                              *s = elem.DebugString();
-                                            }),
+                             absl::StrJoin(*values_, ", ",
+                                           [](string* s, const Tensor& elem) {
+                                             *s = elem.DebugString();
+                                           }),
                              ")>");
     } else {
       return strings::StrCat("OptionalVariant<None>");

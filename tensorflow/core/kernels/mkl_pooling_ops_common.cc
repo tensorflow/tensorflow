@@ -16,16 +16,15 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
+
 #include <limits>
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
-
 using mkldnn::pooling_avg;
 using mkldnn::pooling_avg_exclude_padding;
 using mkldnn::pooling_avg_include_padding;
@@ -220,8 +219,6 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 template class MklPoolingBwdPrimitive<float>;
 template class MklPoolingBwdPrimitive<bfloat16>;
 
-#endif  // !INTEL_MKL_ML_ONLY
-
 // Initialization for TensorFlow format
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -249,22 +246,6 @@ void MklPoolParameters::Init(OpKernelContext* context,
   Init(context, ksize, stride, padding, data_format);
 }
 
-#ifdef INTEL_MKL_ML_ONLY
-// Initialization for MKL format
-void MklPoolParameters::Init(OpKernelContext* context,
-                             const std::vector<int32>& ksize,
-                             const std::vector<int32>& stride, Padding padding,
-                             TensorFormat data_format,
-                             const MklShape* mklInputShape) {
-  // Get the input sizes
-  depth = mklInputShape->GetSizes()[2];
-  tensor_in_cols = mklInputShape->GetSizes()[0];
-  tensor_in_rows = mklInputShape->GetSizes()[1];
-  tensor_in_batch = mklInputShape->GetSizes()[3];
-
-  Init(context, ksize, stride, padding, data_format);
-}
-#else
 // Initialization for MKL format
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -289,7 +270,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
 
   Init(context, ksize, stride, padding, data_format);
 }
-#endif  // INTEL_MKL_ML_ONLY
+
 // Common Initialization for TensorFlow and MKL formats
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -357,7 +338,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 tensor_in_cols, window_cols, col_stride,
                                 padding, &out_width, &pad_left, &pad_right));
-#ifndef INTEL_MKL_ML_ONLY
+
     // TF can work with int64, but mkldnn only supports int32
     // Fail if the depth, height or width are greater than MAX_INT
     // We check depth only for 3D pooling case
@@ -375,7 +356,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES(context,
                 FastBoundsCheck(out_width, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("output width is too large"));
-#endif
+
     out_depth = depth;  // output will have the same depth as the input
   } else {              // we are pooling in the depth dimension
     // Our current version of depthwise max pooling does not support

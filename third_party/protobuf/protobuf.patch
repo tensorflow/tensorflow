@@ -1,0 +1,31 @@
+diff --git a/BUILD b/BUILD
+index 2fb26050..c2744d5b 100644
+--- a/BUILD
++++ b/BUILD
+@@ -19,7 +19,7 @@ config_setting(
+ # ZLIB configuration
+ ################################################################################
+ 
+-ZLIB_DEPS = ["@zlib//:zlib"]
++ZLIB_DEPS = ["@zlib_archive//:zlib"]
+ 
+ ################################################################################
+ # Protobuf Runtime Library
+@@ -209,6 +209,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+     deps = [":protobuf_lite"] + PROTOBUF_DEPS,
+ )
+@@ -219,7 +220,7 @@ cc_library(
+ # TODO(keveman): Remove this target once the support gets added to Bazel.
+ cc_library(
+     name = "protobuf_headers",
+-    hdrs = glob(["src/**/*.h"]),
++    hdrs = glob(["src/**/*.h", "src/**/*.inc"]),
+     includes = ["src/"],
+     visibility = ["//visibility:public"],
+ )
+ 

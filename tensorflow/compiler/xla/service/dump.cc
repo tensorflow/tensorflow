@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dump.h"
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -47,20 +49,25 @@ struct CanonicalDebugOptions {
     // function we treat this struct's members as write-only, and read only from
     // `opts`.
 
-    // If dump_to is empty, default to dumping to stdout.
-    if (opts.xla_dump_to().empty()) {
-      dump_to = "-";
-    }
-
     // Did the user specifiy an explicit format for dumping?
-    bool output_format_specified =
+    bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_as_url() || opts.xla_dump_hlo_snapshots();
+        opts.xla_dump_hlo_snapshots();
+    bool output_format_specified =
+        output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 
     // If we haven't specified an output format, default to dumping as text.
     if (!output_format_specified) {
       dump_as_text = true;
+    }
+
+    // If dump_to is empty, default to dumping to stdout, so long as some dump
+    // format other than dump-as-url was specified.  If the user only specified
+    // --xla_dump_hlo_as_url, then don't dump to stdout, that is likely noise
+    // they don't want.
+    if (opts.xla_dump_to().empty() && output_format_other_than_url_specified) {
+      dump_to = "-";
     }
 
     // If we specified a regular expression restricting which modules to dump,
@@ -130,15 +137,15 @@ struct CanonicalDebugOptions {
   bool dump_snapshots;
 };
 
-string FilenameFor(const HloModule& module, string_view suffix) {
-  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
-}
-
 void DumpToFileInDirImpl(string_view filename, string_view contents,
                          const CanonicalDebugOptions& opts) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
                << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+    return;
+  }
+
+  if (opts.dump_to.empty()) {
     return;
   }
 
@@ -190,6 +197,10 @@ void DumpHloModuleImpl(const HloModule& module,
   if (opts.dump_as_text) {
     DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"), module.ToString(),
                                 opts);
+    if (buffer_assn) {
+      DumpToFileInDirOrStdoutImpl(StrCat(filename, "-buffer-assignment.txt"),
+                                  buffer_assn->ToString(), opts);
+    }
   }
 
   if (opts.dump_as_proto) {
@@ -249,6 +260,10 @@ static auto& module_id_to_step_number GUARDED_BY(mu) =
 
 }  // namespace
 
+string FilenameFor(const HloModule& module, string_view suffix) {
+  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
+}
+
 void DumpToFileInDir(const HloModule& module, string_view suffix,
                      string_view contents) {
   DumpToFileInDirImpl(FilenameFor(module, suffix), contents,
@@ -260,6 +275,28 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view suffix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpExecutionOptions(const ExecutionOptions& execution_options,
+                          const DebugOptions& debug_options) {
+  CanonicalDebugOptions opts(debug_options);
+  tensorflow::Env* env = tensorflow::Env::Default();
+  const string& dir = opts.dump_to;
+  if (env->IsDirectory(dir).ok()) {
+    string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    Status status;
+    if (opts.dump_as_text) {
+      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
+                                          execution_options);
+    } else {
+      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                            execution_options);
+    }
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
+                 << status;
+    }
+  }
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {

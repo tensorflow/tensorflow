@@ -38,6 +38,7 @@ class GPUcudaMallocAllocator : public Allocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
+  absl::optional<AllocatorStats> GetStats() override;
 
  private:
   Allocator* base_allocator_ = nullptr;  // owned

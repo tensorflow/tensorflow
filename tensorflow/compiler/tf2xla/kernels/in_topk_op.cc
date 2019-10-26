@@ -81,20 +81,21 @@ class InTopKOp : public XlaOpKernel {
         xla::CreateScalarAddComputation(xla::F32, xla_builder), {1});
 
     // Calculate in each row of `predictions`, how many values are larger than
-    // the value of target class. Then return the result whether the count <= k,
+    // the value of target class. Then return the result whether the count < k,
     // which indicates the target is in topk.
-    xla::XlaOp ge_r2 = xla::Ge(predictions_r2, targets_values_r1, {0});
+    xla::XlaOp gt_r2 = xla::Gt(predictions_r2, targets_values_r1, {0});
     xla::XlaOp zero_r0 = xla::Zero(xla_builder, xla::S32);
     xla::XlaOp zero_r2 = xla::Broadcast(zero_r0, predictions_shape.dim_sizes());
     xla::XlaOp one_r0 = xla::One(xla_builder, xla::S32);
     xla::XlaOp one_r2 = xla::Broadcast(one_r0, predictions_shape.dim_sizes());
-    xla::XlaOp one_hot_r2 = xla::Select(ge_r2, one_r2, zero_r2);
-    xla::XlaOp num_ge_r1 = xla::Reduce(
+    xla::XlaOp one_hot_r2 = xla::Select(gt_r2, one_r2, zero_r2);
+    xla::XlaOp num_gt_r1 = xla::Reduce(
         one_hot_r2, zero_r0,
         xla::CreateScalarAddComputation(xla::S32, xla_builder), {1});
 
     xla::XlaOp result =
-        xla::Le(num_ge_r1, xla::ConstantR0<int32>(xla_builder, k));
+        xla::And(xla::Lt(num_gt_r1, xla::ConstantR0<int32>(xla_builder, k)),
+                 xla::IsFinite(targets_values_r1));
 
     context->SetOutput(0, result);
   }

@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,9 @@ import argparse
 import os
 import sys
 
+import six
+from six.moves import zip
+
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
@@ -32,13 +36,13 @@ from tensorflow.python.platform import app
 
 def _parse_array(values, type_fn=str):
   if values is not None:
-    return [type_fn(val) for val in values.split(",") if val]
+    return [type_fn(val) for val in six.ensure_str(values).split(",") if val]
   return None
 
 
 def _parse_set(values):
   if values is not None:
-    return set([item for item in values.split(",") if item])
+    return set([item for item in six.ensure_str(values).split(",") if item])
   return None
 
 
@@ -81,9 +85,9 @@ def _get_toco_converter(flags):
   if flags.input_shapes:
     input_shapes_list = [
         _parse_array(shape, type_fn=int)
-        for shape in flags.input_shapes.split(":")
+        for shape in six.ensure_str(flags.input_shapes).split(":")
     ]
-    input_shapes = dict(zip(input_arrays, input_shapes_list))
+    input_shapes = dict(list(zip(input_arrays, input_shapes_list)))
   output_arrays = _parse_array(flags.output_arrays)
 
   converter_kwargs = {
@@ -152,7 +156,7 @@ def _convert_tf1_model(flags):
                        "--std_dev_values and --mean_values with multiple input "
                        "tensors in order to map between names and "
                        "values.".format(",".join(input_arrays)))
-    converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
+    converter.quantized_input_stats = dict(list(zip(input_arrays, quant_stats)))
   if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
                                                  not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
@@ -170,29 +174,38 @@ def _convert_tf1_model(flags):
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
-    converter.target_ops = set()
-    for option in flags.target_ops.split(","):
+    converter.target_spec.supported_ops = set()
+    for option in six.ensure_str(flags.target_ops).split(","):
       if option not in ops_set_options:
         raise ValueError("Invalid value for --target_ops. Options: "
                          "{0}".format(",".join(ops_set_options)))
-      converter.target_ops.add(lite.OpsSet(option))
+      converter.target_spec.supported_ops.add(lite.OpsSet(option))
 
   if flags.post_training_quantize:
-    converter.post_training_quantize = flags.post_training_quantize
+    converter.optimizations = [lite.Optimize.DEFAULT]
     if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       print("--post_training_quantize quantizes a graph of inference_type "
             "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
       converter.inference_type = lite_constants.FLOAT
+
+  if flags.quantize_to_float16:
+    converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    if not flags.post_training_quantize:
+      print("--quantize_to_float16 will only take effect with the "
+            "--post_training_quantize flag enabled.")
 
   if flags.dump_graphviz_dir:
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
 
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
+
   # Convert model.
   output_data = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(output_data)
+    f.write(six.ensure_binary(output_data))
 
 
 def _convert_tf2_model(flags):
@@ -205,21 +218,19 @@ def _convert_tf2_model(flags):
     ValueError: Unsupported file format.
   """
   # Load the model.
-  if os.path.isdir(flags.input_file):
-    converter = lite.TFLiteConverterV2.from_saved_model(flags.input_file)
-  elif (flags.input_file.endswith(".h5") or
-        flags.input_file.endswith(".keras") or
-        flags.input_file.endswith(".hdf5")):
-    model = keras.models.load_model(flags.input_file)
+  if flags.saved_model_dir:
+    converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
+  elif flags.keras_model_file:
+    model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-  else:
-    raise ValueError("File format of '{}' is not supported.".format(
-        flags.input_file))
+
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
 
   # Convert the model.
   tflite_model = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(tflite_model)
+    f.write(six.ensure_binary(tflite_model))
 
 
 def _check_tf1_flags(flags, unparsed):
@@ -238,7 +249,7 @@ def _check_tf1_flags(flags, unparsed):
 
   # Check unparsed flags for common mistakes based on previous TOCO.
   def _get_message_unparsed(flag, orig_flag, new_flag):
-    if flag.startswith(orig_flag):
+    if six.ensure_str(flag).startswith(orig_flag):
       return "\n  Use {0} instead of {1}".format(new_flag, orig_flag)
     return ""
 
@@ -285,18 +296,26 @@ def _check_tf1_flags(flags, unparsed):
                      "--dump_graphviz_dir")
 
 
-def _get_tf1_parser():
-  """Returns ArgumentParser for tflite_convert for TensorFlow 1.X."""
-  parser = argparse.ArgumentParser(
-      description=("Command line tool to run TensorFlow Lite Converter."))
+def _check_tf2_flags(flags):
+  """Checks the parsed and unparsed flags to ensure they are valid in 2.X.
 
-  # Output file flag.
-  parser.add_argument(
-      "--output_file",
-      type=str,
-      help="Full filepath of the output file.",
-      required=True)
+  Args:
+    flags: argparse.Namespace object containing TFLite flags.
 
+  Raises:
+    ValueError: Invalid flags.
+  """
+  if not flags.keras_model_file and not flags.saved_model_dir:
+    raise ValueError("one of the arguments --saved_model_dir "
+                     "--keras_model_file is required")
+
+
+def _get_tf1_flags(parser):
+  """Returns ArgumentParser for tflite_convert for TensorFlow 1.X.
+
+  Args:
+    parser: ArgumentParser
+  """
   # Input file flags.
   input_file_group = parser.add_mutually_exclusive_group(required=True)
   input_file_group.add_argument(
@@ -395,7 +414,13 @@ def _get_tf1_parser():
           "Boolean indicating whether to quantize the weights of the "
           "converted float model. Model size will be reduced and there will "
           "be latency improvements (at the cost of accuracy). (default False)"))
-
+  parser.add_argument(
+      "--quantize_to_float16",
+      dest="quantize_to_float16",
+      action="store_true",
+      help=("Boolean indicating whether to quantize weights to fp16 instead of "
+            "the default int8 when post-training quantization "
+            "(--post_training_quantize) is enabled. (default False)"))
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",
@@ -454,11 +479,39 @@ def _get_tf1_parser():
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
-  return parser
 
 
-def _get_tf2_parser():
-  """Returns ArgumentParser for tflite_convert for TensorFlow 2.0."""
+def _get_tf2_flags(parser):
+  """Returns ArgumentParser for tflite_convert for TensorFlow 2.0.
+
+  Args:
+    parser: ArgumentParser
+  """
+  # Input file flags.
+  input_file_group = parser.add_mutually_exclusive_group()
+  input_file_group.add_argument(
+      "--saved_model_dir",
+      type=str,
+      help="Full path of the directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
+
+  # Enables 1.X converter in 2.X.
+  parser.add_argument(
+      "--enable_v1_converter",
+      action="store_true",
+      help=("Enables the TensorFlow V1 converter in 2.0"))
+
+
+def _get_parser(use_v2_converter):
+  """Returns an ArgumentParser for tflite_convert.
+
+  Args:
+    use_v2_converter: Indicates which converter to return.
+  Return: ArgumentParser.
+  """
   parser = argparse.ArgumentParser(
       description=("Command line tool to run TensorFlow Lite Converter."))
 
@@ -468,34 +521,50 @@ def _get_tf2_parser():
       type=str,
       help="Full filepath of the output file.",
       required=True)
+
+  if use_v2_converter:
+    _get_tf2_flags(parser)
+  else:
+    _get_tf1_flags(parser)
+
+  # Enable MLIR-TFLite converter.
   parser.add_argument(
-      "--input_file",
-      type=str,
-      help=("Full filepath of input model file. Accepted formats are "
-            "SavedModel and tf.Keras HDF5 model file"),
-      required=True)
+      "--experimental_new_converter",
+      action="store_true",
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "conversion instead of TOCO conversion."))
   return parser
 
 
 def run_main(_):
   """Main in toco_convert.py."""
-  if tf2.enabled():
-    parser = _get_tf2_parser()
-  else:
-    parser = _get_tf1_parser()
-
+  use_v2_converter = tf2.enabled()
+  parser = _get_parser(use_v2_converter)
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
 
-  if tf2.enabled():
+  # If the user is running TensorFlow 2.X but has passed in enable_v1_converter
+  # then parse the flags again with the 1.X converter flags.
+  if tf2.enabled() and tflite_flags.enable_v1_converter:
+    use_v2_converter = False
+    parser = _get_parser(use_v2_converter)
+    tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
+
+  # Checks if the flags are valid.
+  try:
+    if use_v2_converter:
+      _check_tf2_flags(tflite_flags)
+    else:
+      _check_tf1_flags(tflite_flags, unparsed)
+  except ValueError as e:
+    parser.print_usage()
+    file_name = os.path.basename(sys.argv[0])
+    sys.stderr.write("{0}: error: {1}\n".format(file_name, str(e)))
+    sys.exit(1)
+
+  # Convert the model according to the user provided flag.
+  if use_v2_converter:
     _convert_tf2_model(tflite_flags)
   else:
-    try:
-      _check_tf1_flags(tflite_flags, unparsed)
-    except ValueError as e:
-      parser.print_usage()
-      file_name = os.path.basename(sys.argv[0])
-      sys.stderr.write("{0}: error: {1}\n".format(file_name, str(e)))
-      sys.exit(1)
     _convert_tf1_model(tflite_flags)
 
 

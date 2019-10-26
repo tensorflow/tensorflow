@@ -356,7 +356,6 @@ TEST(QuantizedPoolingOpTest, AveragePoolPaddingValidStride1) {
               ElementsAreArray(ArrayFloatNear({2.75, 5.0, 5.75})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({44, 80, 92}));
 }
-
 // Send in a white image, expect a white pixel.
 TEST(QuantizedPoolingOpTest, AveragePoolImageSize16) {
   int image_size = 16;
@@ -399,7 +398,6 @@ TEST(QuantizedPoolingOpTest, AveragePoolLargeDepth) {
                   ReplicateDepthRamp(output_image_plane, depth, 1.f / 512.f),
                   1. / 32.f)));
 }
-
 // Test quantized AveragePool with int8 input and output. The input is the same
 // as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
 // identical to uint8 test and quantized output is identical to uint8 test with
@@ -423,7 +421,6 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePool) {
               ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({44 - 128, 92 - 128}));
 }
-
 // Test quantized AveragePool with int8 input and output. The input is the same
 // as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
 // identical to uint8 test and quantized output is identical to uint8 test with
@@ -479,7 +476,6 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu1) {
               ElementsAreArray(ArrayFloatNear({-1.0, -0.75}, 0.0040)));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({120 - 128, 122 - 128}));
 }
-
 // Test quantized AveragePool with int8 input and output. The input is the same
 // as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
 // identical to uint8 test and quantized output is identical to uint8 test with
@@ -558,8 +554,8 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolPaddingValidStride1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({44 - 128, 80 - 128, 92 - 128}));
 }
 
-// Send in a white image, expect something other than a white pixel, due to
-// overflow.
+// This is not accelerated because the filter window is too large
+// Send in a white image and expect a white pixel.
 TEST(QuantizedPoolingOpTest, AveragePoolImageSize17) {
   int image_size = 17;
   QuantizedPoolingOpModel m(
@@ -573,10 +569,7 @@ TEST(QuantizedPoolingOpTest, AveragePoolImageSize17) {
   m.SetInput(input);
   m.Invoke();
 
-  // Ordinarily we would see '255' here. However, the optimized version of
-  // AveragePool uses a uint16 accumulator which causes it to overflow for
-  // images this large.
-  EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(28));
+  EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(255));
 }
 
 TEST(FloatPoolingOpTest, MaxPool) {
@@ -1072,7 +1065,8 @@ TEST(FloatPoolingOpTest, L2PoolPaddingSameSlide1) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
-                  {3.5, 6.0, 6.5, 5.70088, 2.54951, 7.2111, 8.63134, 7.0})));
+                  {3.5, 6.0, 6.5, 5.70088, 2.54951, 7.2111, 8.63134, 7.0},
+                  /*max_abs_error=*/1e-4)));
 }
 
 TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {
@@ -1091,9 +1085,3 @@ TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

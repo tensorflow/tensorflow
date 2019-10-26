@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <initializer_list>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -28,6 +30,12 @@ enum class PaddingType : uint8 { kNone, kSame, kValid };
 struct PaddingValues {
   int16 width;
   int16 height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16 width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16 height_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -258,9 +266,7 @@ class RuntimeShape {
     int buffer_size = 1;
     const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }
@@ -449,6 +455,25 @@ inline int FlatSize(const Dims<N>& dims) {
 TFLITE_DEPRECATED("Prefer FlatSize.")
 inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  return size_1;
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0,
+                                const RuntimeShape& check_shape_1) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  const int size_3 = check_shape_1.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  TFLITE_CHECK_EQ(size_2, size_3);
+  return size_1;
 }
 
 // Flat size calculation, checking that dimensions match with one or more other
@@ -867,6 +892,27 @@ struct LocalResponseNormalizationParams {
   double beta;
 };
 
+struct HardSwishParams {
+  // zero_point of the input activations.
+  int16_t input_zero_point;
+  // zero_point of the output activations.
+  int16_t output_zero_point;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // "relu-ish scale", which 3.0/32768.
+  // See the implementation of HardSwishPrepare.
+  int16_t reluish_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int reluish_multiplier_exponent;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // output scale.
+  // See the implementation of HardSwishPrepare.
+  int16_t output_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int output_multiplier_exponent;
+};
+
 struct LogisticParams {
   // uint8 inference params.
   int32 input_zero_point;
@@ -959,6 +1005,9 @@ struct SoftmaxParams {
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
   int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
 };
 
 struct SpaceToBatchParams {
@@ -1016,6 +1065,11 @@ struct UnpackParams {
 
 struct LeakyReluParams {
   float alpha;
+  int32 input_offset;
+  int32 alpha_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
 };
 
 template <typename P>

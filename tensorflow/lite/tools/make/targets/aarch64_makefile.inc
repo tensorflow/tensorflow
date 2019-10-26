@@ -21,7 +21,8 @@ ifeq ($(TARGET),aarch64)
     -Wl,--no-export-dynamic \
     -Wl,--exclude-libs,ALL \
     -Wl,--gc-sections \
-    -Wl,--as-needed
+    -Wl,--as-needed \
+    -lrt
 
        
   LIBS := \

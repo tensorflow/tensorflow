@@ -12,16 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define EIGEN_USE_GPU
+#endif
 
 #include "tensorflow/c/kernels.h"
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
-#include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -227,4 +234,219 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
+TEST(TestKernel, TestTypeConstraint) {
+  const char* kernel_name = "SomeKernelName";
+  const char* op_name = "TypeOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("T: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+  TF_Status* status = TF_NewStatus();
+  TF_KernelBuilder_TypeConstraint(builder, "T", TF_DataType::TF_INT32, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  KernelList list;
+  list.ParseFromArray(buf->data, buf->length);
+  const auto expected_str = R"str(kernel {
+  op: "TypeOp"
+  device_type: "FakeDeviceName1"
+  constraint {
+    name: "T"
+    allowed_values {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+}
+)str";
+  ASSERT_EQ(expected_str, list.DebugString());
+
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TF_DeleteKernelBuilder(builder);
+  ASSERT_TRUE(delete_called);
+}
+
+TEST(TestKernel, TestHostMemory) {
+  const char* kernel_name = "SomeKernelName";
+  const char* op_name = "HostMemoryOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("T: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+  TF_KernelBuilder_HostMemory(builder, "input2");
+  TF_KernelBuilder_HostMemory(builder, "output1");
+  TF_Status* status = TF_NewStatus();
+  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  KernelList list;
+  list.ParseFromArray(buf->data, buf->length);
+  const auto expected_str = R"str(kernel {
+  op: "HostMemoryOp"
+  device_type: "FakeDeviceName1"
+  host_memory_arg: "input2"
+  host_memory_arg: "output1"
+}
+)str";
+  ASSERT_EQ(expected_str, list.DebugString());
+
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TF_DeleteKernelBuilder(builder);
+  ASSERT_TRUE(delete_called);
+}
+
+class DeviceKernelOpTest : public OpsTestBase {
+ protected:
+  void SetupOp(const char* op_name, const char* kernel_name,
+               void (*compute_func)(void*, TF_OpKernelContext*)) {
+    TF_KernelBuilder* builder = TF_NewKernelBuilder(
+        op_name, device_name_, nullptr, compute_func, nullptr);
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder(kernel_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_DeleteStatus(status);
+
+#if GOOGLE_CUDA
+    std::unique_ptr<Device> device(
+        DeviceFactory::NewDevice(device_name_, {}, "/job:a/replica:0/task:0"));
+    OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
+#endif
+    TF_ASSERT_OK(NodeDefBuilder(op_name, op_name).Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+
+#if GOOGLE_CUDA
+  const char* device_name_ = tensorflow::DEVICE_GPU;
+#else
+  const char* device_name_ = tensorflow::DEVICE_CPU;
+#endif
+};
+
+REGISTER_OP("AllocateOutputOp1").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateOutputSizeOne) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    // Allocate output
+    TF_Status* s = TF_NewStatus();
+    int64_t dim = 1;
+    size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT);
+    TF_Tensor* output = TF_AllocateOutput(
+        /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
+        /*num_dims=*/1, /*len=*/tensor_size_bytes, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
+    EXPECT_EQ(1, TF_NumDims(output));
+    EXPECT_EQ(1, TF_Dim(output, 0));
+
+    // Set output to 3
+    float* data = reinterpret_cast<float*>(TF_TensorData(output));
+    float value = 3.0f;
+#if GOOGLE_CUDA
+    OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
+    cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, &value,
+                                                  tensor_size_bytes);
+#else
+    *data = value;
+#endif
+
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateOutputOp1", "AllocateOutput1", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [1] values: 3>",
+            output->DebugString(100));
+}
+
+REGISTER_OP("AllocateOutputOp0").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateEmptyOutput) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    // Allocate empty output
+    int64_t dim = 0;
+    TF_Tensor* output = TF_AllocateOutput(
+        /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
+        /*num_dims=*/1, /*len=*/0, s);
+
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
+    EXPECT_EQ(1, TF_NumDims(output));
+    EXPECT_EQ(0, TF_Dim(output, 0));
+
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateOutputOp0", "AllocateOutput0", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [0] values: >",
+            output->DebugString(100));
+}
+
+REGISTER_OP("AllocateOutputOp2x3").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateOutputSize2x3) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    // Allocate 2x3 output
+    int64_t dim[2] = {2, 3};
+    size_t tensor_size_bytes = 6 * TF_DataTypeSize(TF_FLOAT);
+    TF_Tensor* output = TF_AllocateOutput(
+        /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/dim,
+        /*num_dims=*/2, /*len=*/tensor_size_bytes, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
+    EXPECT_EQ(2, TF_NumDims(output));
+    EXPECT_EQ(2, TF_Dim(output, 0));
+    EXPECT_EQ(3, TF_Dim(output, 1));
+
+    // Set output to [1 2 3 4 5 6]
+    void* data = TF_TensorData(output);
+    float value[6] = {1, 2, 3, 4, 5, 6};
+#if GOOGLE_CUDA
+    OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
+    cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, value,
+                                                  tensor_size_bytes);
+#else
+    memcpy(data, value, tensor_size_bytes);
+#endif
+
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateOutputOp2x3", "AllocateOutput2x3", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [2,3] values: [1 2 3][4 5 6]>",
+            output->DebugString(100));
+}
 }  // namespace tensorflow

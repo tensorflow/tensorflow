@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         rsync \
         software-properties-common \
+	sudo \
         unzip \
         zip \
         zlib1g-dev \

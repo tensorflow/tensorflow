@@ -62,11 +62,12 @@ class _SavedModelBuilder(object):
   with the shared set of variables and assets.
 
   Typical usage for the `SavedModelBuilder`:
+
   ```python
   ...
-  builder = tf.saved_model.Builder(export_dir)
+  builder = tf.compat.v1.saved_model.Builder(export_dir)
 
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     ...
     builder.add_meta_graph_and_variables(sess,
                                     ["foo-tag"],
@@ -74,7 +75,7 @@ class _SavedModelBuilder(object):
                                     assets_list=foo_assets)
   ...
 
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     ...
     builder.add_meta_graph(["bar-tag", "baz-tag"])
   ...
@@ -154,14 +155,14 @@ class _SavedModelBuilder(object):
   def _validate_tensor_info(self, tensor_info):
     """Validates the `TensorInfo` proto.
 
-    Checks if the `encoding` (`name` or `coo_sparse`) and `dtype` fields exist
-    and are non-empty.
+    Checks if the `encoding` (`name` or `coo_sparse` or `type_spec`) and
+    `dtype` fields exist and are non-empty.
 
     Args:
       tensor_info: `TensorInfo` protocol buffer to validate.
 
     Raises:
-      AssertionError: If the `name` or `dtype` fields of the supplied
+      AssertionError: If the `encoding` or `dtype` fields of the supplied
           `TensorInfo` proto are not populated.
     """
     if tensor_info is None:
@@ -174,7 +175,10 @@ class _SavedModelBuilder(object):
           "All TensorInfo protos used in the SignatureDefs must have one of "
           "the 'encoding' fields (e.g., name or coo_sparse) set: %s"
           % tensor_info)
-    if tensor_info.dtype is types_pb2.DT_INVALID:
+    if tensor_info.WhichOneof("encoding") == "composite_tensor":
+      for component in tensor_info.composite_tensor.components:
+        self._validate_tensor_info(component)
+    elif tensor_info.dtype == types_pb2.DT_INVALID:
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the dtype "
           "field set: %s" % tensor_info)
@@ -252,8 +256,8 @@ class _SavedModelBuilder(object):
       train_op: Op or group of opts that trains the model when run. This will
         not be run automatically when the graph is loaded, instead saved in
         a SignatureDef accessible through the exported MetaGraph.
-      saver: An instance of tf.train.Saver that will be used to export the
-        metagraph. If None, a sharded Saver that restores all variables will
+      saver: An instance of tf.compat.v1.train.Saver that will be used to export
+        the metagraph. If None, a sharded Saver that restores all variables will
         be used.
 
     Raises:
@@ -332,7 +336,7 @@ class _SavedModelBuilder(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      saver: An instance of tf.train.Saver that will be used to export the
+      saver: An instance of tf.compat.v1.train.Saver that will be used to export the
         metagraph and save variables. If None, a sharded Saver that restores
         all variables will be used.
 
@@ -395,7 +399,12 @@ class _SavedModelBuilder(object):
     in serialized format.
 
     Args:
-      as_text: Writes the SavedModel protocol buffer in text format to disk.
+      as_text: Writes the SavedModel protocol buffer in text format to
+        disk. Protocol buffers in text format are useful for debugging, but
+        parsing fails when it encounters an unknown field and so is not forward
+        compatible. This means changes to TensorFlow may prevent deployment of
+        new text format SavedModels to existing serving binaries. Do not deploy
+        `as_text` SavedModels to production.
 
     Returns:
       The path to which the SavedModel protocol buffer was written.
@@ -441,7 +450,7 @@ class SavedModelBuilder(_SavedModelBuilder):
     Args:
       assets_collection_to_add: The collection where the asset paths are setup.
     """
-    # Add assets to the collection with key `constants.ASSETS_KEY`, in the
+    # Add assets to the collection with key `saved_model.ASSETS_KEY`, in the
     # graph.
     asset_filename_map = _maybe_save_assets(_add_asset_to_collection,
                                             assets_collection_to_add)

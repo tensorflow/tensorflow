@@ -70,10 +70,10 @@ Status RetryingUtils::CallWithRetries(
                               config.max_delay_time_us) +
                      random_micros;
     }
-    LOG(INFO) << "The operation failed and will be automatically retried in "
-              << (delay_micros / 1000000.0) << " seconds (attempt "
-              << (retries + 1) << " out of " << config.max_retries
-              << "), caused by: " << status.ToString();
+    VLOG(1) << "The operation failed and will be automatically retried in "
+            << (delay_micros / 1000000.0) << " seconds (attempt "
+            << (retries + 1) << " out of " << config.max_retries
+            << "), caused by: " << status.ToString();
     sleep_usec(delay_micros);
     retries++;
   }

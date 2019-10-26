@@ -43,12 +43,9 @@ namespace llvm_ir {
 // are supported.
 class IrArray {
  public:
-  // A multidimensional index into an IrArray. The index for dimension zero is
-  // first in the vector. This is the reverse order of the notation used for
-  // describing the dimensions of an array. That is, for a [4 x 3 x 2] array
-  // dimension zero has size 2, dimension one has size 3, and dimension two has
-  // size 4. Thus the index {1, 2, 3} indexes the last element of this [4 x 3 x
-  // 2] array.
+  // A multidimensional index into an IrArray. All the runtime indices
+  // (multidim) and dimensions (Shape::dimensions(), absl::Span<const int64>)
+  // are major-first.
   //
   // This may also keep a linear index and the layout and dimensions it was
   // emitted for; if the shape where this `Index` is used matches, the linear

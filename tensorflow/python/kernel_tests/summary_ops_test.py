@@ -570,6 +570,34 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     with summary_ops.summary_scope('with/slash') as (tag, _):
       self.assertEqual('with/slash', tag)
 
+  def testAllV2SummaryOps(self):
+    logdir = self.get_temp_dir()
+    def define_ops():
+      result = []
+      # TF 2.0 summary ops
+      result.append(summary_ops.write('write', 1, step=0))
+      result.append(summary_ops.write_raw_pb(b'', step=0, name='raw_pb'))
+      # TF 1.x tf.contrib.summary ops
+      result.append(summary_ops.generic('tensor', 1, step=1))
+      result.append(summary_ops.scalar('scalar', 2.0, step=1))
+      result.append(summary_ops.histogram('histogram', [1.0], step=1))
+      result.append(summary_ops.image('image', [[[[1.0]]]], step=1))
+      result.append(summary_ops.audio('audio', [[1.0]], 1.0, 1, step=1))
+      return result
+    with context.graph_mode():
+      ops_without_writer = define_ops()
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with summary_ops.record_if(True):
+          ops_recording_on = define_ops()
+        with summary_ops.record_if(False):
+          ops_recording_off = define_ops()
+      # We should be collecting all ops defined with a default writer present,
+      # regardless of whether recording was set on or off, but not those defined
+      # without a writer at all.
+      del ops_without_writer
+      expected_ops = ops_recording_on + ops_recording_off
+      self.assertCountEqual(expected_ops, summary_ops.all_v2_summary_ops())
+
 
 class SummaryWriterTest(test_util.TensorFlowTestCase):
 
@@ -646,7 +674,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         summary_ops.flush()
     finally:
       # Ensure we clean up no matter how the test executes.
-      context.context().summary_writer_resource = None
+      summary_ops._summary_state.writer = None  # pylint: disable=protected-access
 
   def testCreate_immediateAsDefault_retainsReference(self):
     logdir = self.get_temp_dir()
@@ -737,7 +765,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(
           logdir, max_queue=1, flush_millis=999999).as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         self.assertEqual(1, get_total())
@@ -769,7 +797,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
           logdir, max_queue=999999, flush_millis=999999)
       with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         summary_ops.write('tag', 1, step=0)

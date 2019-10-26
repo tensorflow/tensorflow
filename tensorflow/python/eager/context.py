@@ -19,16 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import copy
 import random
-import six
 import threading
+from absl import logging
+import numpy as np
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
+from tensorflow.python.eager import executor
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -55,8 +58,16 @@ DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
 DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
+
 SYNC = 0
 ASYNC = 1
+
+MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
+MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
+
+_python_eager_context_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/eager_context_create_counter",
+    "Counter for number of eager contexts created in Python.")
 
 
 class _EagerTensorCache(object):
@@ -133,25 +144,19 @@ class FunctionCallOptions(object):
                        "proto or None. got: {}".format(type(config)))
 
 
-class _ThreadLocalData(threading.local):
-  """Thread local storage for the eager context."""
+# Map from context_id (an int) to _TensorCaches.
+# Dicts are thread safe in CPython.
+# TODO(iga): Remove this once TensorCaches are moved to C++.
+_tensor_caches_map = {}
+
+
+class _TensorCaches(threading.local):
+  """Thread local tensor caches."""
 
   def __init__(self):
-    super(_ThreadLocalData, self).__init__()
-    self.device_spec = _starting_device_spec
-    self.device_name = ""
-    self.mode = default_execution_mode
-    self.is_eager = default_execution_mode == EAGER_MODE
-    self.scope_name = ""
-    self.summary_writer = None
-    self.summary_recording = None
-    self.summary_recording_distribution_strategy = True
-    self.summary_step = None
-    self.scalar_cache = {}
+    super(_TensorCaches, self).__init__()
     self._ones_rank_cache = None
     self._zeros_cache = None
-    self.execution_mode = SYNC
-    self.function_call_options = None
 
   @property
   def ones_rank_cache(self):
@@ -164,6 +169,21 @@ class _ThreadLocalData(threading.local):
     if not self._zeros_cache:
       self._zeros_cache = _EagerTensorCache()
     return self._zeros_cache
+
+
+class _ThreadLocalData(threading.local):
+  """Thread local storage for the eager context."""
+
+  def __init__(self):
+    super(_ThreadLocalData, self).__init__()
+    self.device_spec = _starting_device_spec
+    self.device_name = ""
+    self.is_eager = default_execution_mode == EAGER_MODE
+    self.scope_name = ""
+    self.function_call_options = None
+    self.executor = None
+    self.op_callbacks = []
+    self.invoking_op_callbacks = False
 
 
 ContextSwitch = collections.namedtuple(
@@ -234,7 +254,13 @@ class LogicalDevice(
 @tf_export("config.experimental.VirtualDeviceConfiguration")
 class VirtualDeviceConfiguration(
     collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for virtual devices for a PhysicalDevice.
+  """Configuration class for a `LogicalDevice`.
+
+  The class specifies the parameters for a `LogicalDevice` used during runtime
+  initialization. Not all fields are valid for all device types.
+
+  See `tf.config.experimental.get_virtual_device_configuration` and
+  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
@@ -264,6 +290,35 @@ class PhysicalDevice(
     device_type: String declaring the type of device such as "CPU" or "GPU".
   """
   pass
+
+
+class _AtomicCounter(object):
+  """A simple atomic counter."""
+
+  def __init__(self):
+    self._value = 0
+    self._lock = threading.Lock()
+
+  def increment_and_get(self):
+    with self._lock:
+      self._value += 1
+      return self._value
+
+
+_context_id_counter = _AtomicCounter()
+
+
+class _TensorCacheDeleter(object):
+  """Deletes tensor caches for a given context."""
+
+  def __init__(self, context_id):
+    self._context_id = context_id
+
+  def __del__(self):
+    if _tensor_caches_map is None:
+      return
+    if self._context_id in _tensor_caches_map:
+      del _tensor_caches_map[self._context_id]
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -316,26 +371,38 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
+    # This _id is used only to index the tensor caches.
+    # TODO(iga): Remove this when tensor caches are moved to C++.
+    self._id = _context_id_counter.increment_and_get()
+    self._tensor_cache_deleter = _TensorCacheDeleter(self._id)
+    _tensor_caches_map[self._id] = _TensorCaches()
+
     self._config = config
     self._thread_local_data = _ThreadLocalData()
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
-    self._post_execution_callbacks = []
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._initialized = False
     if device_policy is None:
       device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
+    self._mirroring_policy = None
     if execution_mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
       execution_mode = SYNC
-    self._execution_mode = execution_mode
+    self._default_is_async = execution_mode == ASYNC
     self._server_def = server_def
     self._collective_ops_server_def = None
+    self._collective_leader = None
+    self._collective_scoped_allocator_enabled_ops = None
+    self._collective_use_nccl_communication = None
+    self._collective_device_filters = None
 
+    self._device_lock = threading.Lock()
     self._physical_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
@@ -347,14 +414,23 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._enable_mlir_bridge = None
     self._optimizer_experimental_options = {}
 
+    _python_eager_context_create_counter.get_cell().increase_by(1)
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
-    self._rng = random.Random(self._seed)
+    # `random.Random(seed)` needs `seed` to be hashable, while values of type
+    # e.g. `np.int64` or `np.ndarray` are not. We use `int(...)` to convert them
+    # to int.
+    try:
+      hash(seed)
+    except TypeError:
+      seed = int(np.array(seed))
+    self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
@@ -371,7 +447,7 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
-  def _initialize_devices(self):
+  def _initialize_logical_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
     self._logical_devices = []
@@ -395,8 +471,10 @@ class Context(object):
 
   def ensure_initialized(self):
     """Initialize handle and devices if not already done so."""
+    if self._initialized:
+      return
     with self._initialize_lock:
-      if self._context_handle is not None:
+      if self._initialized:
         return
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
@@ -406,9 +484,12 @@ class Context(object):
         if self._device_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
               opts, self._device_policy)
-        if self._execution_mode == ASYNC:
+        if self._mirroring_policy is not None:
+          pywrap_tensorflow.TFE_ContextOptionsSetMirroringPolicy(
+              opts, self._mirroring_policy)
+        if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
+        context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       assert not (self._server_def and self._collective_ops_server_def), (
@@ -416,19 +497,21 @@ class Context(object):
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle, 600,
                                                   server_def_str)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
-        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+        pywrap_tensorflow.TFE_EnableCollectiveOps(context_handle,
                                                   server_def_str)
 
-      self._initialize_devices()
+      self._context_handle = context_handle
+      self._initialize_logical_devices()
+      self._initialized = True
 
   def _clear_caches(self):
-    self.scalar_cache().clear()
     self.ones_rank_cache().flush()
     self.zeros_cache().flush()
+    pywrap_tensorflow.TFE_ClearScalarCache()
 
   def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
@@ -458,16 +541,42 @@ class Context(object):
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
                                                 keep_alive_secs, server_def_str)
+      self._initialize_logical_devices()
 
-      # Clear all the caches in case there are remote tensors in them.
-      self._clear_caches()
+    # Clear all the caches in case there are remote tensors in them.
+    self._clear_caches()
 
-      self._initialize_devices()
+  def update_server_def(self, server_def, keep_alive_secs=600):
+    """Update a server_def on the context.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up. As
+        long as the client is still alive, the server state for the context will
+        be kept alive. If the client is killed (or there is some failure), the
+        server will clean up its context keep_alive_secs after the final RPC it
+        receives.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+
+    self._server_def = server_def
+
+    if self._context_handle:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_ContextUpdateServerDef(self._context_handle,
+                                                   keep_alive_secs,
+                                                   server_def_str)
+      self._initialize_logical_devices()
+
+    self._clear_caches()
 
   def enable_collective_ops(self, server_def):
-    """Enable collective ops with an appropriate server_def.
-
-    If previously enabled, this cannot be re-enabled.
+    """Enable distributed collective ops with an appropriate server_def.
 
     Args:
       server_def: A tensorflow::ServerDef proto. Enables execution on remote
@@ -475,18 +584,61 @@ class Context(object):
 
     Raises:
       ValueError: if server_def is None.
+      RuntimeError: if this method is not called at program startup.
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._collective_ops_server_def = server_def
-    else:
-      server_def_str = server_def.SerializeToString()
-      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
-                                                server_def_str)
 
-      self._clear_caches()
-      self._initialize_devices()
+    # TODO(b/129298253): Allow creating datasets/tensors before enabling
+    # collective ops.
+    if self._context_handle is not None:
+      logging.warning("Enabling collective ops after program startup may cause "
+                      "error when accessing previously created tensors.")
+
+    self._collective_ops_server_def = server_def
+
+  def configure_collective_ops(
+      self,
+      collective_leader="",
+      scoped_allocator_enabled_ops=("CollectiveReduce",),
+      use_nccl_communication=False,
+      device_filters=None):
+    """Configure collective ops.
+
+      Collective group leader is necessary for collective ops to run, other
+      configurations are mainly for the purpose of performance.
+
+    Args:
+      collective_leader: a device string for collective leader, e.g.
+        "/job:worker/replica:0/task:0"; empty string means local execution of
+          collective ops.
+      scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
+        allocator to run with.
+      use_nccl_communication: whether to use nccl communication for collective
+        ops.
+      device_filters: a tuple or a list of device strings. If set, corresponding
+        task can only see the devices filtered by these device filters.
+
+    Raises:
+      RuntimeError: if this method is not called at program startup.
+    """
+    if self._collective_leader is not None:
+      if (self._collective_leader != collective_leader or
+          self._collective_scoped_allocator_enabled_ops !=
+          scoped_allocator_enabled_ops or
+          self._collective_use_nccl_communication != use_nccl_communication or
+          self._collective_device_filters != device_filters):
+        raise ValueError("Collective ops are already configured.")
+      else:
+        return
+
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be configured at program startup")
+
+    self._collective_leader = collective_leader
+    self._collective_scoped_allocator_enabled_ops = scoped_allocator_enabled_ops
+    self._collective_use_nccl_communication = use_nccl_communication
+    self._collective_device_filters = device_filters
 
   @property
   def _handle(self):
@@ -516,9 +668,7 @@ class Context(object):
   def _mode(self, mode):
     """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._thread_local_data
-    old_mode = ctx.mode
     old_is_eager = ctx.is_eager
-    ctx.mode = mode
     ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
@@ -529,7 +679,6 @@ class Context(object):
       yield
     finally:
       ctx.is_eager = old_is_eager
-      ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
@@ -537,17 +686,13 @@ class Context(object):
     """Returns True if current thread has eager executing enabled."""
     return self._thread_local_data.is_eager
 
-  def scalar_cache(self):
-    """Per-device cache for scalars."""
-    return self._thread_local_data.scalar_cache
-
   def ones_rank_cache(self):
     """Per-device cache for scalars."""
-    return self._thread_local_data.ones_rank_cache
+    return _tensor_caches_map[self._id].ones_rank_cache
 
   def zeros_cache(self):
     """Per-device cache for scalars."""
-    return self._thread_local_data.zeros_cache
+    return _tensor_caches_map[self._id].zeros_cache
 
   @property
   def scope_name(self):
@@ -558,46 +703,6 @@ class Context(object):
   def scope_name(self, s):
     """Sets scope name for the current thread."""
     self._thread_local_data.scope_name = s
-
-  @property
-  def summary_writer(self):
-    """Returns default summary writer for the current thread."""
-    return self._thread_local_data.summary_writer
-
-  @summary_writer.setter
-  def summary_writer(self, writer):
-    """Sets default summary writer for the current thread."""
-    self._thread_local_data.summary_writer = writer
-
-  @property
-  def summary_recording(self):
-    """Returns summary recording condition."""
-    return self._thread_local_data.summary_recording
-
-  @summary_recording.setter
-  def summary_recording(self, condition):
-    """Sets summary recording condition."""
-    self._thread_local_data.summary_recording = condition
-
-  @property
-  def summary_recording_distribution_strategy(self):
-    """Returns summary recording condition for distribution strategy."""
-    return self._thread_local_data.summary_recording_distribution_strategy
-
-  @summary_recording_distribution_strategy.setter
-  def summary_recording_distribution_strategy(self, condition):
-    """Sets summary recording condition for distribution strategy."""
-    self._thread_local_data.summary_recording_distribution_strategy = condition
-
-  @property
-  def summary_step(self):
-    """Returns summary step variable."""
-    return self._thread_local_data.summary_step
-
-  @summary_step.setter
-  def summary_step(self, step):
-    """Sets summary step variable."""
-    self._thread_local_data.summary_step = step
 
   @property
   def device_name(self):
@@ -626,24 +731,21 @@ class Context(object):
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
+    if isinstance(name, LogicalDevice):
+      name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
 
+  # TODO(fishx): remove this property.
   @property
   def execution_mode(self):
     """Gets execution mode for current thread."""
-    # Only get the execution mode from the context if it has already been
-    # initialized
-    if self._context_handle is None:
-      return self._execution_mode
-
-    mode = self._thread_local_data.execution_mode
-    if mode is None:
-      mode = self._execution_mode
-    return mode
+    return ASYNC if self.is_async() else SYNC
 
   @execution_mode.setter
   def execution_mode(self, mode):
@@ -651,22 +753,46 @@ class Context(object):
     if mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+
     if mode is None:
       mode = SYNC
 
-    if self._thread_local_data.execution_mode != mode:
-      self._thread_local_data.execution_mode = mode
-
+    enable_async = (mode == ASYNC)
+    if self.is_async() != enable_async:
       # Only set the execution mode if the context has already been initialized
       if self._context_handle is not None:
-        pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._context_handle,
-                                                       mode == ASYNC)
+        self.executor.wait()
+        executor_new = executor.new_executor(enable_async)
+        self._thread_local_data.executor = executor_new
+        pywrap_tensorflow.TFE_ContextSetExecutorForThread(
+            self._context_handle, executor_new.handle())
       else:
-        self._execution_mode = mode
+        self._default_is_async = enable_async
+
+  def is_async(self):
+    if self._context_handle is not None:
+      return self.executor.is_async()
+    else:
+      return self._default_is_async
+
+  @property
+  def executor(self):
+    ensure_initialized()
+    return executor.Executor(
+        pywrap_tensorflow.TFE_ContextGetExecutorForThread(self._context_handle))
+
+  @executor.setter
+  def executor(self, e):
+    ensure_initialized()
+    pywrap_tensorflow.TFE_ContextSetExecutorForThread(self._context_handle,
+                                                      e.handle())
 
   @property
   def config(self):
     """Return the ConfigProto with all runtime deltas applied."""
+    # Ensure physical devices have been discovered and config has been imported
+    self._initialize_physical_devices()
+
     config = config_pb2.ConfigProto()
     if self._config is not None:
       config.CopyFrom(self._config)
@@ -687,6 +813,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._enable_mlir_bridge is not None:
+      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -720,6 +849,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -728,7 +858,7 @@ class Context(object):
     # Compute device counts
     config.device_count["CPU"] = 0
     config.device_count["GPU"] = 0
-    for dev in self.list_physical_devices():
+    for dev in self._physical_devices:
       if dev not in self._visible_device_list:
         continue
 
@@ -742,6 +872,23 @@ class Context(object):
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
 
+    # Configure collective ops
+    if self._collective_leader:
+      config.experimental.collective_group_leader = self._collective_leader
+    if self._collective_scoped_allocator_enabled_ops:
+      rewrite_options = config.graph_options.rewrite_options
+      rewrite_options.scoped_allocator_optimization = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      del rewrite_options.scoped_allocator_opts.enable_op[:]
+      for op in self._collective_scoped_allocator_enabled_ops:
+        rewrite_options.scoped_allocator_opts.enable_op.append(op)
+    if self._collective_use_nccl_communication:
+      config.experimental.collective_nccl = True
+    if self._collective_device_filters:
+      del config.device_filters[:]
+      for f in self._collective_device_filters:
+        config.device_filters.append(f)
+
     return config
 
   def _compute_gpu_options(self):
@@ -749,12 +896,15 @@ class Context(object):
     visible_device_list = []
     virtual_devices = []
     gpu_index = -1
+    memory_growths = set()
     for dev in self.list_physical_devices("GPU"):
       gpu_index += 1
 
       if dev not in self._visible_device_list:
         continue
 
+      growth = self._memory_growth_map[dev]
+      memory_growths.add(growth)
       visible_device_list.append(str(gpu_index))
 
       if self._virtual_device_map:
@@ -769,8 +919,7 @@ class Context(object):
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
-    if not virtual_devices and self._memory_growth_map:
-      memory_growths = set(self._memory_growth_map.values())
+    if not virtual_devices and memory_growths:
       if len(memory_growths) > 1:
         raise ValueError("Memory growth cannot differ between GPU devices")
       allow_growth = memory_growths.pop()
@@ -807,14 +956,6 @@ class Context(object):
     """Returns function call options for current thread."""
     self._thread_local_data.function_call_options = options
 
-  def async_wait(self):
-    """Waits for ops dispatched in ASYNC mode to finish."""
-    pywrap_tensorflow.TFE_ContextAsyncWait(self._handle)
-
-  def async_clear_error(self):
-    """Clears errors raised during ASYNC execution."""
-    pywrap_tensorflow.TFE_ContextAsyncClearError(self._handle)
-
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
     self.ensure_initialized()
@@ -846,45 +987,92 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def remove_function(self, name):
+    """Remove a function from the context.
+
+    Once removed, the function cannot be executed anymore.
+
+    Args:
+      name: function signature name.
+    """
+    self.ensure_initialized()
+    pywrap_tensorflow.TFE_ContextRemoveFunction(self._handle, name)
+
   def has_function(self, name):
     """Check if a function `name` is registered."""
     self.ensure_initialized()
     return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
-  def add_post_execution_callback(self, callback):
-    """Add a post-execution callback to the context.
+  def add_op_callback(self, callback):
+    """Add a post-op callback to the context.
 
-    A post-execution callback is invoked immediately after an eager operation or
-    function has finished execution, providing access to the op's type, name
-    input and output tensors. Multiple execution callbacks can be added, in
-    which case the callbacks will be invoked in the order in which they are
-    added.
+    A post-op callback is invoked immediately after an eager operation or
+    function has finished execution or after a op has been added to a graph,
+    providing access to the op's type, name input and output tensors. Multiple
+    op callbacks can be added, in which case the callbacks will be invoked in
+    the order in which they are added.
 
     Args:
       callback: a callable of the signature
-      `f(op_type, op_name, attrs, inputs, outputs)`.
-      `op_type` is the type of the operation that was just executed (e.g.,
-        `MatMul`).
-      `op_name` is the name of the operation that has was just executed. This
-        name is set by the client who created the operation and can be `None` if
-        it is unset.
-      `attrs` contains the attributes of the operation as a `tuple` of
-        alternating attribute names and attribute values.
-      `inputs` is the `list` of input `Tensor`(s) to the op.
-      `outputs` is the `list` of output `Tensor`(s) from the op.
-       Return value(s) from the callback are ignored.
+        `f(op_type, inputs, attrs, outputs, op_name=None, graph=None)`.
+        See doc strings in `op_callbacks.py` for details on the function
+        signature and its semantics.
     """
-    # TODO(cais): (b/64674139) Allow access to function-internal operations.
-    self._post_execution_callbacks.append(callback)
+    if callback not in self._thread_local_data.op_callbacks:
+      self._thread_local_data.op_callbacks.append(callback)
 
-  def clear_post_execution_callbacks(self):
-    """Clear all post-execution callbacks added to the context."""
-    del self._post_execution_callbacks[:]
+  def remove_op_callback(self, callback):
+    """Remove an already-registered op callback.
+
+    Args:
+      callback: The op callback to be removed.
+
+    Raises:
+      KeyError: If `callback` is not already registered.
+    """
+    if callback not in self._thread_local_data.op_callbacks:
+      raise KeyError(
+          "The specified op callback has not been registered, "
+          "and hence cannot be removed.")
+    del self._thread_local_data.op_callbacks[
+        self._thread_local_data.op_callbacks.index(callback)]
 
   @property
-  def post_execution_callbacks(self):
-    """Get the list of post-execution callbacks added to the context."""
-    return self._post_execution_callbacks
+  def op_callbacks(self):
+    return self._thread_local_data.op_callbacks
+
+  @property
+  def invoking_op_callbacks(self):
+    return self._thread_local_data.invoking_op_callbacks
+
+  @invoking_op_callbacks.setter
+  def invoking_op_callbacks(self, value):
+    self._thread_local_data.invoking_op_callbacks = value
+
+  def _initialize_physical_devices(self):
+    """Get local devices visible to the system."""
+    # We lazy initialize self._physical_devices since we do not want to do this
+    # the constructor since the backend may not be initialized yet.
+    with self._device_lock:
+      if self._physical_devices is not None:
+        return
+
+      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
+      self._physical_devices = [
+          PhysicalDevice(name=d.decode(),
+                         device_type=d.decode().split(":")[1]) for d in devs]
+      # Construct the visible device list from all physical devices but ignore
+      # XLA devices
+      self._visible_device_list = [
+          d for d in self._physical_devices
+          if not d.device_type.startswith("XLA")
+      ]
+      self._memory_growth_map = {
+          d: None for d in self._physical_devices if d.device_type == "GPU"
+      }
+
+    # Import device settings that may have been passed into the constructor
+    self._import_config()
 
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.
@@ -899,34 +1087,12 @@ class Context(object):
     Returns:
       List of PhysicalDevice objects.
     """
-    # We lazy initialize self._physical_devices since we do not want to do this
-    # the constructor since the backend may not be initialized yet.
-    if self._physical_devices is None:
-      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
-      self._physical_devices = [
-          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
-          for d in devs
-      ]
-      # Construct the visible device list from all physical devices but ignore
-      # XLA devices
-      self._visible_device_list = [
-          d for d in self._physical_devices
-          if not d.device_type.startswith("XLA")
-      ]
-      self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
-      }
+    self._initialize_physical_devices()
 
-      # Import device settings that may have been passed into the constructor
-      self._import_config()
+    if device_type is None:
+      return list(self._physical_devices)
 
-    if device_type is not None:
-      return [
-          d for d in self._physical_devices
-          if device_type is None or device_type == d.device_type
-      ]
-
-    return self._physical_devices
+    return [d for d in self._physical_devices if d.device_type == device_type]
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -948,40 +1114,54 @@ class Context(object):
         self.set_virtual_device_configuration(
             cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
 
+    # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
+
+    # If there are no GPUs detected, simply ignore all the GPU options passed in
+    # rather than doing any validation checks.
+    if not gpus:
+      return
+
     gpu_count = self._config.device_count.get("GPU", None)
-    if gpu_count == 0:
-      self.set_visible_devices([], "GPU")
-    elif gpu_count is not None:
-      # TODO(gjn): Handle importing existing virtual GPU configuration
-      self.set_visible_devices(gpus[:gpu_count], "GPU")
+
+    visible_gpus = []
+    # TODO(gjn): Handle importing existing virtual GPU configuration
+    visible_indices = self._config.gpu_options.visible_device_list
+    if visible_indices:
+      for index in visible_indices.split(","):
+        if int(index) >= len(gpus):
+          raise ValueError("Invalid visible device index: %s" % index)
+        visible_gpus.append(gpus[int(index)])
+    else:
+      visible_gpus = gpus
+
+    if gpu_count is not None:
+      visible_gpus = visible_gpus[:gpu_count]
+
+    self.set_visible_devices(visible_gpus, "GPU")
 
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
     self.ensure_initialized()
+    if device_type is None:
+      return list(self._logical_devices)
 
-    devices = []
-    for dev in self._logical_devices:
-      if device_type is not None and device_type != dev.device_type:
-        continue
-
-      devices.append(dev)
-
-    return devices
+    return [d for d in self._logical_devices if d.device_type == device_type]
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
+    self._initialize_physical_devices()
+
     if device_type is None:
-      return self._visible_device_list
-    else:
-      return [
-          d for d in self._visible_device_list if d.device_type == device_type
-      ]
+      return list(self._visible_device_list)
+
+    return [
+        d for d in self._visible_device_list if d.device_type == device_type
+    ]
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
-    if self._context_handle is not None:
-      raise RuntimeError("Visible devices must be set at program startup")
+    self._initialize_physical_devices()
 
     if not isinstance(devices, list):
       devices = [devices]
@@ -992,17 +1172,27 @@ class Context(object):
       if device_type is not None and d.device_type != device_type:
         raise ValueError("Unrecognized device: %s" % repr(d))
 
-    if device_type is None:
-      self._visible_device_list = []
-    else:
-      self._visible_device_list = [
+    visible_device_list = []
+    if device_type is not None:
+      visible_device_list = [
           d for d in self._visible_device_list if d.device_type != device_type
       ]
 
-    self._visible_device_list += devices
+    visible_device_list += devices
+
+    if self._visible_device_list == visible_device_list:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Visible devices cannot be modified after being initialized")
+
+    self._visible_device_list = visible_device_list
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1010,8 +1200,7 @@ class Context(object):
 
   def set_memory_growth(self, dev, enable):
     """Set if memory growth should be enabled for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Memory growth must be set at program startup")
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1020,10 +1209,22 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
+    if dev.device_type != "GPU":
+      raise ValueError("Cannot set memory growth on non-GPU devices")
+
+    if self._memory_growth_map.get(dev) == enable:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Physical devices cannot be modified after being initialized")
+
     self._memory_growth_map[dev] = enable
 
   def get_virtual_device_configuration(self, dev):
     """Get the virtual device configuration for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1031,8 +1232,7 @@ class Context(object):
 
   def set_virtual_device_configuration(self, dev, virtual_devices):
     """Set the virtual device configuration for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Virtual devices must be set at program startup")
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1046,12 +1246,29 @@ class Context(object):
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
           raise ValueError(
-              "Setting memory limit is required for GPU virtual devices is")
+              "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
-                       dev.device_type())
+                       dev.device_type)
+
+    if self._virtual_device_map.get(dev) == virtual_devices:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
+
+  @property
+  def enable_mlir_bridge(self):
+    return self._enable_mlir_bridge
+
+  @enable_mlir_bridge.setter
+  def enable_mlir_bridge(self, enabled):
+    self._enable_mlir_bridge = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def optimizer_jit(self):
@@ -1095,6 +1312,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1118,9 +1336,12 @@ class Context(object):
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
+    if self._intra_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Intra op parallelism must be set at program startup")
+          "Intra op parallelism cannot be modified after initialization.")
 
     self._intra_op_parallelism_threads = num_threads
 
@@ -1130,9 +1351,12 @@ class Context(object):
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
+    if self._inter_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Inter op parallelism must be set at program startup")
+          "Inter op parallelism cannot be modified after initialization.")
 
     self._inter_op_parallelism_threads = num_threads
 
@@ -1152,6 +1376,9 @@ class Context(object):
 
   @log_device_placement.setter
   def log_device_placement(self, enabled):
+    if self._log_device_placement == enabled:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
           "Device placement logging must be set at program startup")
@@ -1180,6 +1407,27 @@ class Context(object):
         pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
 
+  @property
+  def mirroring_policy(self):
+    # Only get the policy from the context if it has already been initialized
+    if self._context_handle is not None:
+      return pywrap_tensorflow.TFE_ContextGetMirroringPolicy(self._handle)
+
+    return self._mirroring_policy
+
+  @mirroring_policy.setter
+  def mirroring_policy(self, policy):
+    if policy is None:
+      policy = MIRRORING_NONE
+
+    if self._mirroring_policy != policy:
+      self._mirroring_policy = policy
+
+      # Only set the policy if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetThreadLocalMirroringPolicy(
+            self._handle, self._mirroring_policy)
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -1205,7 +1453,7 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
-    """Disables graph collections of executed functions."""
+    """Disables graph collection of executed functions."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
@@ -1239,9 +1487,6 @@ class Context(object):
 
   def end_step(self):
     pywrap_tensorflow.TFE_ContextEndStep(self._handle)
-
-_context = None
-_context_lock = threading.Lock()
 
 
 class _EagerDeviceContext(object):
@@ -1296,11 +1541,27 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-def _create_context():
+# Do not set directly. Use _set_context.
+_context = None
+_context_lock = threading.Lock()
+
+
+def _set_context_locked(ctx):
   global _context
+  pywrap_tensorflow.TFE_Py_SetEagerContext(ctx)
+  _context = ctx
+
+
+def _set_context(ctx):
+  with _context_lock:
+    _set_context_locked(ctx)
+
+
+def _create_context():
   with _context_lock:
     if _context is None:
-      _context = Context()
+      ctx = Context()
+      _set_context_locked(ctx)
 
 
 def context():
@@ -1335,18 +1596,129 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
-@tf_export("executing_eagerly")
+@tf_export("executing_eagerly", v1=[])
 def executing_eagerly():
-  """Returns True if the current thread has eager execution enabled.
+  """Checks whether the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via `tf.enable_eager_execution`,
-  but may also be enabled within the context of a Python function via
-  tf.contrib.eager.py_func.
+  Eager execution is enabled by default and this API returns `True`
+  in most of cases. However, this API might return `False` in the following use
+  cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function` after
+
+  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
   """
-  if context_safe() is None:
+  ctx = context_safe()
+  if ctx is None:
     return default_execution_mode == EAGER_MODE
 
-  return context().executing_eagerly()
+  return ctx.executing_eagerly()
+
+
+@tf_export(v1=["executing_eagerly"])
+def executing_eagerly_v1():
+  """Checks whether the current thread has eager execution enabled.
+
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
+
+  When eager execution is enabled, returns `True` in most cases. However,
+  this API might return `False` in the following use cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  >>> tf.compat.v1.enable_eager_execution()
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function`
+  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
+  """
+  return executing_eagerly()
 
 
 def in_eager_mode():
@@ -1385,19 +1757,6 @@ def eager_mode():
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
 
 
-# TODO(agarwal): get rid of this and use ops.name_scope instead.
-@contextlib.contextmanager
-def namescope(name):
-  """ContextManager for creating hierarchical name scopes."""
-  ctx = context()
-  old_name = ctx.scope_name
-  ctx.scope_name = "%s/%s" % (old_name, name) if old_name else name
-  try:
-    yield
-  finally:
-    ctx.scope_name = old_name
-
-
 def scope_name():
   """Name of the current scope."""
   return context().scope_name
@@ -1411,7 +1770,7 @@ def device(name):
   with tf.device('gpu:0'):
     with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
-    x = tf.truncated_normal(shape, tf.float32)
+    x = tf.random.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
   operation runs on GPU 0.
@@ -1470,21 +1829,57 @@ def device_policy(policy):
     ctx.device_policy = old_policy
 
 
+@tf_contextlib.contextmanager
+def mirroring_policy(policy):
+  """Context manager for setting mirroring policy for current thread."""
+  ctx = context()
+  old_policy = ctx.mirroring_policy
+  try:
+    ctx.mirroring_policy = policy
+    yield
+  finally:
+    ctx.mirroring_policy = old_policy
+
+
 def set_execution_mode(mode):
   """Sets execution mode for the current thread."""
   context().execution_mode = mode
 
 
+# TODO(fishx): remove this method.
 @tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
   ctx = context()
-  old_mode = ctx.execution_mode
+  executor_new = executor.new_executor(mode == ASYNC)
+  executor_old = ctx.executor
   try:
-    ctx.execution_mode = mode
+    executor_old.wait()
+    ctx.executor = executor_new
     yield
   finally:
-    ctx.execution_mode = old_mode
+    ctx.executor = executor_old
+    executor_new.wait()
+
+
+@tf_contextlib.contextmanager
+def executor_scope(e):
+  """Context manager for changing executor for current thread.
+
+  Args:
+    e: A Executor to execute eager ops under this scope. Setting it to None will
+      switch back to use the default executor for the context.
+
+  Yields:
+    Context manager for setting the executor for current thread.
+  """
+  ctx = context()
+  executor_old = ctx.executor
+  try:
+    ctx.executor = e
+    yield
+  finally:
+    ctx.executor = executor_old
 
 
 @tf_export("experimental.function_executor_type")
@@ -1510,14 +1905,19 @@ def function_executor_type(executor_type):
     context().function_call_options = old_options
 
 
+def is_async():
+  """Returns true if current thread is in async mode."""
+  return context().is_async()
+
+
 def async_wait():
   """Waits for ops dispatched in ASYNC mode to finish."""
-  return context().async_wait()
+  return context().executor.wait()
 
 
 def async_clear_error():
   """Clears errors raised during ASYNC execution mode."""
-  return context().async_clear_error()
+  return context().executor.clear_error()
 
 
 def num_gpus():
@@ -1544,16 +1944,16 @@ def disable_run_metadata():
 
 
 def enable_graph_collection():
-  """Enables tracing of op execution via RunMetadata.
+  """Enables graph collection of executed functions.
 
-  To retrieve the accumulated metadata call context.export_run_metadata()
-  and to stop tracing call context.disable_run_metadata().
+  To retrieve the accumulated graphs call context.export_run_metadata()
+  and to stop collecting graphs call context.disable_graph_collection().
   """
   context().enable_graph_collection()
 
 
 def disable_graph_collection():
-  """Disables tracing of op execution via RunMetadata."""
+  """Disables graph collection of executed functions."""
   context().disable_graph_collection()
 
 
@@ -1573,9 +1973,18 @@ def set_server_def(server_def):
   context().set_server_def(server_def)
 
 
+def update_server_def(server_def):
+  context().update_server_def(server_def)
+
+
 def add_function(fdef):
   """Add a function definition to the context."""
   context().add_function(fdef)
+
+
+def remove_function(name):
+  """Remove a function from the context."""
+  context().remove_function(name)
 
 
 # Not every user creates a Context via context.context()

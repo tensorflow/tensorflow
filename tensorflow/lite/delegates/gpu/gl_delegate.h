@@ -25,11 +25,11 @@ limitations under the License.
 #define TFL_CAPI_EXPORT
 #else
 #if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
+#ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
 #else
 #define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
+#endif  // TFL_COMPILE_LIBRARY
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
 #endif  // _WIN32
@@ -39,6 +39,7 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// LINT.IfChange
 enum TfLiteGlObjectType {
   TFLITE_GL_OBJECT_TYPE_FASTEST = 0,
   TFLITE_GL_OBJECT_TYPE_TEXTURE = 1,
@@ -46,8 +47,11 @@ enum TfLiteGlObjectType {
 };
 
 // Shader compilation options.
+// Always use TfLiteGlCompileOptionsDefault() method to create new instance
+// of TfLiteGlCompileOptions, otherwise every new added option may break
+// inference.
 // TODO(impjdi): Unify with opengl::CompilationOptions.
-struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
+typedef struct {
   // When set to zero, computations are carried out in 32-bit floating point.
   // Otherwise, the GPU may quantify tensors, downcast values, process in FP16
   // (recommended).
@@ -68,12 +72,33 @@ struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
   // Otherwise, enables dynamic batching and input/output tensor can have a
   // batch size greater than 1.
   int32_t dynamic_batch_enabled;
-};
 
-struct TFL_CAPI_EXPORT TfLiteGpuDelegateOptions {
+  // Parameters will be inlined into a shader. This in turn will generated more
+  // unique shaders where each will need to be compiled.
+  int32_t inline_parameters;
+} TfLiteGlCompileOptions;
+
+// Populates TfLiteGlCompileOptions as follows:
+//   precision_loss_allowed = 0;
+//   preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
+//   dynamic_batch_enabled = 0;
+//   inline_parameters = 0;
+TFL_CAPI_EXPORT TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault();
+
+// Always use TfLiteGpuDelegateOptionsDefault() method to create new instance
+// of TfLiteGpuDelegateOptions, otherwise every new added option may break
+// inference.
+typedef struct {
   const uint8_t* metadata;  // Internal.
   TfLiteGlCompileOptions compile_options;
-};
+} TfLiteGpuDelegateOptions;
+
+// Populates TfLiteGlCompileOptions as follows:
+//   metadata = nullptr;
+//   compile_options = TfLiteGlCompileOptionsDefault();
+TFL_CAPI_EXPORT TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault();
+
+// LINT.ThenChange(//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu/GpuDelegate.java)
 
 // Creates a new delegate instance that need to be destroyed with
 // TfLiteGpuDelegateDelete when delegate is no longer used by TFLite.
@@ -88,7 +113,7 @@ TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options);
 
 // Destroys a delegate created with `TfLiteGpuDelegateCreate` call.
-void TfLiteGpuDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void TfLiteGpuDelegateDelete(TfLiteDelegate* delegate);
 
 // Binds GL shader storage object to an input or an output tensor in the
 // initialized delegate.  Bound buffer should have sufficient storage to

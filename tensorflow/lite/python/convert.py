@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,29 +20,24 @@ from __future__ import division
 from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
-
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
 
+import six
+from six.moves import map
+
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
+from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
-# Lazy load since some of the performance benchmark skylark rules
-# break dependencies.
-_toco_python = LazyLoader(
-    "tensorflow_wrap_toco", globals(),
-    "tensorflow.lite.toco.python."
-    "tensorflow_wrap_toco")
-del LazyLoader
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -62,7 +58,7 @@ def _try_convert_to_unicode(output):
 
   if isinstance(output, bytes):
     try:
-      return output.decode()
+      return six.ensure_text(output)
     except UnicodeDecodeError:
       pass
   return output
@@ -81,6 +77,11 @@ class OpsSet(enum.Enum):
   # WARNING: Experimental interface, subject to change.
   SELECT_TF_OPS = "SELECT_TF_OPS"
 
+  # Convert model using only TensorFlow Lite quantized int8 operations.
+  # Specifying this will throw an error for operations that do not yet have
+  # quantized implementations.
+  TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
+
   def __str__(self):
     return self.value
 
@@ -95,11 +96,15 @@ class ConverterError(Exception):
   pass
 
 
-def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
+def toco_convert_protos(model_flags_str,
+                        toco_flags_str,
+                        input_data_str,
+                        debug_info_str=None,
+                        enable_mlir_converter=False):
   """Convert `input_data_str` according to model and toco parameters.
 
   Unless you know what you are doing consider using
-  the more friendly `tf.lite.toco_convert`.
+  the more friendly `tf.compat.v1.lite.toco_convert`.
 
   Args:
     model_flags_str: Serialized proto describing model properties, see
@@ -107,6 +112,10 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     toco_flags_str: Serialized proto describing conversion properties, see
       `toco/toco_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
+    debug_info_str: Serialized `GraphDebugInfo` proto describing logging
+      information. (default None)
+    enable_mlir_converter: Enables MLIR-based conversion instead of the default
+      TOCO conversion. (default False)
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
@@ -119,11 +128,13 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # switch this on.
   if not _toco_from_proto_bin:
     try:
-      model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                           input_data_str)
+      model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
+                                                 toco_flags_str, input_data_str,
+                                                 debug_info_str,
+                                                 enable_mlir_converter)
       return model_str
     except Exception as e:
-      raise ConverterError("TOCO failed: %s" % e)
+      raise ConverterError(str(e))
 
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
@@ -134,16 +145,29 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     # Build all input files
     with _tempfile.NamedTemporaryFile(delete=False) as fp_toco, \
              _tempfile.NamedTemporaryFile(delete=False) as fp_model, \
-             _tempfile.NamedTemporaryFile(delete=False) as fp_input:
+             _tempfile.NamedTemporaryFile(delete=False) as fp_input, \
+             _tempfile.NamedTemporaryFile(delete=False) as fp_debug:
       toco_filename = fp_toco.name
       input_filename = fp_input.name
       model_filename = fp_model.name
+      debug_filename = fp_debug.name
+
       fp_model.write(model_flags_str)
       fp_toco.write(toco_flags_str)
-      fp_input.write(input_data_str)
-      fp_model.flush()
-      fp_toco.flush()
-      fp_input.flush()
+      fp_input.write(six.ensure_binary(input_data_str))
+      debug_info_str = debug_info_str if debug_info_str else ""
+      # if debug_info_str contains a "string value", then the call to
+      # fp_debug.write(debug_info_str) will fail with the following error
+      #
+      # TypeError: a bytes-like object is required, not 'str'
+      #
+      # Some of the subtests within the "convert_test" unit-test fail
+      # with the error shown above. So watch out for that scenario and
+      # convert debug_info_str to bytes where needed
+      if not isinstance(debug_info_str, bytes):
+        fp_debug.write(debug_info_str.encode("utf-8"))
+      else:
+        fp_debug.write(debug_info_str)
 
     # Reserve an output file
     with _tempfile.NamedTemporaryFile(delete=False) as fp:
@@ -151,9 +175,15 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
 
     # Run
     cmd = [
-        _toco_from_proto_bin, model_filename, toco_filename, input_filename,
-        output_filename
+        _toco_from_proto_bin,
+        model_filename,
+        toco_filename,
+        input_filename,
+        output_filename,
+        "--debug_proto_file={}".format(debug_filename),
     ]
+    if enable_mlir_converter:
+      cmd.append("--enable_mlir_converter")
     cmdline = " ".join(cmd)
     is_windows = _platform.system() == "Windows"
     proc = _subprocess.Popen(
@@ -170,8 +200,7 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     else:
       stdout = _try_convert_to_unicode(stdout)
       stderr = _try_convert_to_unicode(stderr)
-      raise ConverterError(
-          "TOCO failed. See console for info.\n%s\n%s\n" % (stdout, stderr))
+      raise ConverterError("See console for info.\n%s\n%s\n" % (stdout, stderr))
   finally:
     # Must manually cleanup files.
     for filename in [
@@ -196,10 +225,12 @@ def build_toco_convert_protos(input_tensors,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
+                              quantize_to_float16=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
                               target_ops=None,
-                              allow_nonexistent_arrays=False):
+                              allow_nonexistent_arrays=False,
+                              debug_info=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -211,9 +242,9 @@ def build_toco_convert_protos(input_tensors,
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
       Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
+      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays in the case of quantization.
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     input_shapes: Input array shape. It needs to be a list of the same length
@@ -248,6 +279,8 @@ def build_toco_convert_protos(input_tensors,
       of the converted float model. Model size will be reduced and there will be
       latency improvements (at the cost of accuracy).
       (default False)
+    quantize_to_float16: Boolean indicating whether to convert float buffers
+        to float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
@@ -259,10 +292,12 @@ def build_toco_convert_protos(input_tensors,
       (default set([OpsSet.TFLITE_BUILTINS]))
     allow_nonexistent_arrays: Allow specifying array names that don't exist
       or are unused in the final graph. (default False)
+    debug_info: `GraphDebugInfo` proto containing the stack traces for the
+      original nodes referred by the converted graph.
 
   Returns:
-    model_flags, toco_flags: two protocol buffers describing the conversion
-    process.
+    model_flags, toco_flags, debug_info: three protocol buffers describing the
+      conversion process and debug information.
 
   Raises:
     ValueError:
@@ -284,6 +319,7 @@ def build_toco_convert_protos(input_tensors,
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
   toco.post_training_quantize = post_training_quantize
+  toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
@@ -314,18 +350,18 @@ def build_toco_convert_protos(input_tensors,
       shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
 
-  return model, toco
+  return model, toco, debug_info
 
 
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
-                           *args, **kwargs):
+                           enable_mlir_converter, *args, **kwargs):
   """"Convert a model using TOCO.
 
   This function is used to convert GraphDefs that cannot be loaded into
@@ -342,6 +378,8 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
       (default None)
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -352,7 +390,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors=[], output_tensors=[], *args, **kwargs)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
@@ -365,19 +403,21 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for name in output_arrays:
     model_flags.output_arrays.append(name)
 
-  data = toco_convert_protos(model_flags.SerializeToString(),
-                             toco_flags.SerializeToString(),
-                             input_data.SerializeToString())
+  data = toco_convert_protos(
+      model_flags.SerializeToString(),
+      toco_flags.SerializeToString(),
+      input_data.SerializeToString(),
+      enable_mlir_converter=enable_mlir_converter)
   return data
 
 
-def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
-                      **kwargs):
+def toco_convert_impl(input_data, input_tensors, output_tensors,
+                      enable_mlir_converter, *args, **kwargs):
   """"Convert a model using TOCO.
 
   Typically this function is used to convert from TensorFlow GraphDef to TFLite.
@@ -389,6 +429,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -399,11 +441,15 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, debug_info = build_toco_convert_protos(
       input_tensors, output_tensors, *args, **kwargs)
-  data = toco_convert_protos(model_flags.SerializeToString(),
-                             toco_flags.SerializeToString(),
-                             input_data.SerializeToString())
+  debug_info_str = debug_info.SerializeToString() if debug_info else None
+  data = toco_convert_protos(
+      model_flags.SerializeToString(),
+      toco_flags.SerializeToString(),
+      input_data.SerializeToString(),
+      debug_info_str=debug_info_str,
+      enable_mlir_converter=enable_mlir_converter)
   return data
 
 
@@ -432,5 +478,6 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  return toco_convert_impl(input_data, input_tensors, output_tensors, *args,
-                           **kwargs)
+  enable_mlir_converter = kwargs.get("enable_mlir_converter", False)
+  return toco_convert_impl(input_data, input_tensors, output_tensors,
+                           enable_mlir_converter, *args, **kwargs)

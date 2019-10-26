@@ -172,8 +172,8 @@ StringPiece GetNodeNamePrefix(const Node* node) {
 }
 
 void FillStringTensor(Tensor* dst, const Tensor& src) {
-  auto dst_flat = dst->flat<string>();
-  auto src_flat = src.flat<string>();
+  auto dst_flat = dst->flat<tstring>();
+  auto src_flat = src.flat<tstring>();
   for (int i = 0; i < src.NumElements(); i++) {
     dst_flat(i) = src_flat(i);
   }
@@ -220,8 +220,8 @@ Status ConnectVariablesToSaveOp(Graph* graph, Node* save_op,
   FillStringTensor(&new_shape_and_slices, shape_and_slices);
   for (int i = 0; i < var_size; i++) {
     Node* var = added_variables[i];
-    new_tensor_names.flat<string>()(tn_size + i) = var->name();
-    new_shape_and_slices.flat<string>()(tn_size + i) = "";
+    new_tensor_names.flat<tstring>()(tn_size + i) = var->name();
+    new_shape_and_slices.flat<tstring>()(tn_size + i) = "";
     var_nodeouts.emplace_back(var);
   }
   save_op_builder = save_op_builder.Input(var_nodeouts);
@@ -275,7 +275,7 @@ Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
     // Construct the tensor_names input with the variable name.
     Node* tensor_names;
     Tensor tensor_names_val(DT_STRING, TensorShape({1}));
-    tensor_names_val.flat<string>()(0) = var->name();
+    tensor_names_val.flat<tstring>()(0) = var->name();
     TF_RETURN_IF_ERROR(NodeBuilder(tensor_names_op_name, "Const")
                            .Attr("dtype", DT_STRING)
                            .Attr("value", tensor_names_val)
@@ -284,7 +284,7 @@ Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
     // Construct the shape_and_slices input with empty string.
     Node* shape_and_slices;
     Tensor shape_and_slices_val(DT_STRING, TensorShape({1}));
-    shape_and_slices_val.flat<string>()(0) = "";
+    shape_and_slices_val.flat<tstring>()(0) = "";
     TF_RETURN_IF_ERROR(NodeBuilder(shape_and_slices_op_name, "Const")
                            .Attr("dtype", DT_STRING)
                            .Attr("value", shape_and_slices_val)

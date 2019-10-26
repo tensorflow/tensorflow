@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CONTEXT_H_
 #define TENSORFLOW_CORE_PLATFORM_CONTEXT_H_
 
+#include "tensorflow/core/platform/platform.h"
+
 namespace tensorflow {
 
 enum class ContextKind {

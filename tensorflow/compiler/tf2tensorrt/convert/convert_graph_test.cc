@@ -50,81 +50,6 @@ void ExpectStatus(Status status, error::Code code = error::OK,
   }
 }
 
-TEST(TrtCandidateSelector, Basics) {
-  // Create a graph containing both TRT-compatible and TRT-incompatible nodes
-  // and use it to test TrtCandidateSelector::IsTensorRTCandidate().
-  const std::vector<int32> input_shape_array{2, 2};
-  TensorShape input_shape;
-  TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_shape_array, &input_shape));
-
-  Scope s = Scope::NewRootScope();
-  ops::Placeholder::Attrs feed_attrs;
-  TF_EXPECT_OK(
-      TensorShapeUtils::MakeShape(input_shape_array, &feed_attrs.shape_));
-
-  // Compatible input.
-  auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT, feed_attrs);
-  auto const_1 = ops::Const(s.WithOpName("const_1"), 1.0f, input_shape);
-
-  // Compatible MatMul.
-  auto matmul = ops::MatMul(s.WithOpName("matmul"), feed, const_1);
-
-  // Incompatible MatMul.
-  ops::MatMul::Attrs matmul_attrs;
-  matmul_attrs.transpose_a_ = true;
-  auto incompatible_matmul = ops::MatMul(s.WithOpName("incompatible_matmul"),
-                                         feed, const_1, matmul_attrs);
-
-  // Unsupported op.
-  auto unsupported_op = ops::Erf(s.WithOpName("sin"), feed);
-
-  // Incompatible input.
-  auto incompatible_feed = ops::Placeholder(s.WithOpName("feed"), DT_DOUBLE);
-  auto const_2 = ops::Const(s.WithOpName("const_2"), 1.0, input_shape);
-  // Compatible op with incompatible input.
-  auto matmul_with_incompatible_input =
-      ops::MatMul(s.WithOpName("matmul_with_incompatible_input"),
-                  incompatible_feed, const_2);
-
-  // Quantize ops.
-  auto quantize_attrs = ops::FakeQuantWithMinMaxArgs::Min(-6.0f).Max(6.0f);
-  auto quantize = ops::FakeQuantWithMinMaxArgs(s.WithOpName("quantize"), feed,
-                                               quantize_attrs);
-
-  // Get GrapplerItem and GraphProperties.
-  grappler::GrapplerItem item;
-  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
-  Tensor feed_tensor(DT_FLOAT, input_shape);
-  item.feed.push_back(std::make_pair("feed", feed_tensor));
-  grappler::GraphProperties graph_properties(item);
-  TF_EXPECT_OK(graph_properties.InferStatically(true));
-
-  for (const TrtPrecisionMode precision_mode :
-       {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
-    TrtCandidateSelector selector(graph_properties, precision_mode);
-    TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node()));
-    ExpectStatus(
-        selector.IsTensorRTCandidate(incompatible_matmul.operation.node()),
-        error::INVALID_ARGUMENT,
-        "transpose_a is not supported for TensorRT FullyConnected "
-        "(op: MatMul), at: incompatible_matmul");
-    ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
-                 error::UNIMPLEMENTED, "Op type Erf is not supported");
-    ExpectStatus(
-        selector.IsTensorRTCandidate(
-            matmul_with_incompatible_input.operation.node()),
-        error::INTERNAL,
-        "Failed to convert input with index 0 to a TRT_TensorOrWeights");
-    if (precision_mode == TrtPrecisionMode::INT8) {
-      TF_EXPECT_OK(selector.IsTensorRTCandidate(quantize.operation.node()));
-    } else {
-      ExpectStatus(selector.IsTensorRTCandidate(quantize.operation.node()),
-                   error::UNIMPLEMENTED,
-                   "Op type FakeQuantWithMinMaxArgs is not supported");
-    }
-  }
-}
-
 class FakeCluster : public grappler::Cluster {
  public:
   FakeCluster() : Cluster(0) {}
@@ -239,7 +164,7 @@ class ConvertAfterShapesTest : public ::testing::Test {
     params.output_names = &output_names;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
-    params.minimum_segment_size = 2;
+    params.minimum_segment_size = 1;
     params.graph_properties = &graph_properties;
     params.use_calibration = false;
 

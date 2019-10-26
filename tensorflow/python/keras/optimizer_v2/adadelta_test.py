@@ -62,7 +62,7 @@ class AdadeltaOptimizerTest(test.TestCase):
             adadelta_opt = adadelta.Adadelta(
                 learning_rate=lambda: lr,  # pylint: disable=cell-var-from-loop
                 rho=lambda: rho,  # pylint: disable=cell-var-from-loop
-                epsilon=lambda: epsilon)  # pylint: disable=cell-var-from-loop
+                epsilon=epsilon)  # pylint: disable=cell-var-from-loop
           else:
             adadelta_opt = adadelta.Adadelta(
                 learning_rate=lr, rho=rho, epsilon=epsilon)
@@ -183,12 +183,10 @@ class AdadeltaOptimizerTest(test.TestCase):
 
   def testConstructAdadeltaWithEpsilonValues(self):
     opt = adadelta.Adadelta(epsilon=None)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-7)
+    self.assertEqual(opt.epsilon, 1e-7)
 
     opt = adadelta.Adadelta(epsilon=1e-8)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-8)
+    self.assertEqual(opt.epsilon, 1e-8)
 
 
 if __name__ == "__main__":

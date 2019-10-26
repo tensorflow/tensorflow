@@ -2,32 +2,20 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(default_visibility = [":internal"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files([
-    "LICENSE",
-    "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
-    "leakr_badwords.dic",
-    "leakr_badfiles.dic",
-    "leakr_file_type_recipe.ftrcp",
-])
-
 load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+    "get_compat_files",
+    "get_nested_compat_files",
 )
-load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
     "TENSORFLOW_API_INIT_FILES",  # @unused
@@ -40,19 +28,44 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files([
+    "LICENSE",
+    "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
+])
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # Config setting used when building for products
@@ -94,6 +107,27 @@ config_setting(
         "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "chromiumos_x86_64",
+    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+    values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "chromiumos_arm64",
+    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "chromiumos_armv7",
+    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+    values = {"cpu": "armeabi-v7a"},
     visibility = ["//visibility:public"],
 )
 
@@ -185,6 +219,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -257,18 +297,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
@@ -295,18 +323,6 @@ config_setting(
 config_setting(
     name = "no_xla_deps_in_cuda",
     define_values = {"no_xla_deps_in_cuda": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -345,6 +361,15 @@ config_setting(
     },
 )
 
+# Flag to indicate open source build, .bazelrc always has it set to be true
+config_setting(
+    name = "oss",
+    define_values = {
+        "open_source_build": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "using_cuda_clang_with_dynamic_build",
     define_values = {
@@ -353,11 +378,20 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "build_oss_using_cuda_clang",
+    define_values = {
+        "using_cuda_clang": "true",
+        "open_source_build": "true",
+    },
+)
+
 # Setting to use when loading kernels dynamically
 config_setting(
     name = "dynamic_loaded_kernels",
     define_values = {
         "dynamic_loaded_kernels": "true",
+        "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
 )
@@ -378,16 +412,18 @@ config_setting(
 )
 
 config_setting(
-    name = "using_rocm_hipcc",
+    name = "build_oss_using_cuda_nvcc",
     define_values = {
-        "using_rocm_hipcc": "true",
+        "using_cuda_nvcc": "true",
+        "open_source_build": "true",
     },
 )
 
 config_setting(
-    name = "with_mpi_support",
-    values = {"define": "with_mpi_support=true"},
-    visibility = ["//visibility:public"],
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
 )
 
 config_setting(
@@ -409,6 +445,7 @@ config_setting(
 config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
+    visibility = ["//visibility:public"],
 )
 
 # This flag is defined for select statements that match both
@@ -420,17 +457,25 @@ config_setting(
     values = {"cpu": "x64_windows"},
 )
 
+# This flag enables experimental MLIR support.
+config_setting(
+    name = "with_mlir_support",
+    values = {"define": "with_mlir_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+# DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
+# Instead, please use public APIs or public build rules TF provides.
+# If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
     packages = [
+        "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
+        "//tensorflow_models/official/...",
+        "//third_party/py/autograph/...",
     ],
-)
-
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
 )
 
 filegroup(
@@ -442,8 +487,25 @@ filegroup(
     ),
 )
 
+bzl_library(
+    name = "tensorflow_bzl",
+    srcs = ["tensorflow.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:build_config_root_bzl",
+        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//third_party/mkl:build_defs_bzl",
+        "//third_party/mkl_dnn:build_defs_bzl",
+        "//third_party/ngraph:build_defs_bzl",
+        "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_tensorrt//:build_defs_bzl",
+    ],
+)
+
 cc_library(
     name = "grpc",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc_unsecure"],
         "//conditions:default": ["@grpc"],
@@ -452,6 +514,7 @@ cc_library(
 
 cc_library(
     name = "grpc++",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc++_unsecure"],
         "//conditions:default": ["@grpc//:grpc++"],
@@ -482,12 +545,48 @@ cc_library(
 # global symbol table in order to support op registration. This means that
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
+#
+# DEBUGGING DUPLICATE INITIALIZATION
+# ----------------------------------
+#
+# Having a dynamic library introduces a diamond dependency problem:
+# if a target X is depended on by both libtensorflow_framework.so and the
+# users of libtensorflow_framework.so, the definitions will get duplicated.
+# This causes global initializers which need to be run exactly once (e.g.
+# protobuf registration) to crash, as the initialization is run once from the
+# statically linked in global, and one by the global which comes in from
+# libtensorflow_framework.so.
+# Even worse, global objects which need to be singletons for semantical
+# correctness (e.g. registers) might get dupliacted.
+#
+# In order to avoid these HARD TO DEBUG CRASHES, it is sufficient to follow
+# these rules:
+#  - All globals with non-trivial static constructors or for which a
+#    single identity is required (e.g. registers) need to live in `*_impl`
+#    targets.
+#
+#  - An `*_impl` target has to be (transitively) included into
+#    `libtensorflow_framework.so`.
+#
+#  - A target T1 can depend on `*_impl` target T2 only if:
+#
+#    -> It's a tf_cc_shared_object, and there is no other tf_cc_shared_object
+#       transitively depending on T2.
+#    -> It's an `*_impl` target by itself
+#    -> The dependency is guarded by `if_static`. This is discouraged,
+#       as it diverges dependency topology between static and dynamic TF.
+#
+# TODO(cheshire): write tests to check for rule violations
 tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
+        "//tensorflow:freebsd": [
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            "-lexecinfo",
+        ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],
@@ -551,6 +650,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
 )
 
@@ -694,8 +794,8 @@ genrule(
     mkdir $@
     for f in $(SRCS); do
       d="$${f%/*}"
-      d="$${d#bazel-out*genfiles/}"
-      d="$${d#*external/eigen_archive/}"
+      d="$${d#bazel-out/*/genfiles/}"
+      d="$${d#bazel-out/*/bin/}"
 
       if [[ $${d} == *local_config_* ]]; then
         continue
@@ -707,6 +807,9 @@ genrule(
         if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
           continue
         fi
+
+        d="$${d#*external/farmhash_archive/src}"
+        d="$${d#*external/$${extname}/}"
       fi
 
       mkdir -p "$@/$${d}"
@@ -725,9 +828,19 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from . _api.v2 import:g' $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
+)
+
+genrule(
+    name = "virtual_root_init_gen",
+    srcs = select({
+        "api_version_2": [":virtual_root_template_v2.__init__.py"],
+        "//conditions:default": [":virtual_root_template_v1.__init__.py"],
+    }),
+    outs = ["virtual_root.__init__.py"],
+    cmd = "cp $(SRCS) $(OUTS)",
 )
 
 gen_api_init_files(
@@ -782,7 +895,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
-        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+        "//conditions:default": [],
     }) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
@@ -794,7 +907,9 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"] + [
+    }) + [
+        ":root_init_gen",
+        ":virtual_root_init_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",

@@ -20,10 +20,11 @@ namespace tflite {
 namespace optimize {
 namespace calibration {
 
-LoggingOpResolver::LoggingOpResolver(const BuiltinOpsSet& ops_to_replace,
-                                     const OpResolver& base_resolver,
-                                     KernelEvalFuncPtr logging_eval_fn) {
-  for (const auto& op_and_version : ops_to_replace) {
+LoggingOpResolver::LoggingOpResolver(
+    const BuiltinOpsSet& builtin_ops_to_replace,
+    const CustomOpsSet& custom_ops_to_replace, const OpResolver& base_resolver,
+    KernelEvalFuncPtr logging_eval_fn) {
+  for (const auto& op_and_version : builtin_ops_to_replace) {
     const TfLiteRegistration* base_registration =
         base_resolver.FindOp(op_and_version.first, op_and_version.second);
     BuiltinOperatorKey key = op_and_version;
@@ -32,6 +33,16 @@ LoggingOpResolver::LoggingOpResolver(const BuiltinOpsSet& ops_to_replace,
         absl::make_unique<TfLiteRegistration>(*base_registration);
     logging_registation->invoke = logging_eval_fn;
     builtin_op_registration_map_[key] = std::move(logging_registation);
+  }
+  for (const auto& op_and_version : custom_ops_to_replace) {
+    const TfLiteRegistration* base_registration = base_resolver.FindOp(
+        op_and_version.first.c_str(), op_and_version.second);
+    CustomOperatorKey key = op_and_version;
+    custom_op_evalfn_map_[key] = base_registration->invoke;
+    auto logging_registation =
+        absl::make_unique<TfLiteRegistration>(*base_registration);
+    logging_registation->invoke = logging_eval_fn;
+    custom_op_registration_map_[key] = std::move(logging_registation);
   }
 }
 
@@ -53,9 +64,20 @@ KernelEvalFuncPtr LoggingOpResolver::GetWrappedKernelInvoke(BuiltinOperator op,
 
 const TfLiteRegistration* LoggingOpResolver::FindOp(const char* op,
                                                     int version) const {
-  // TODO(b/121374947): Support custom ops as well.
+  CustomOperatorKey key = {op, version};
+  if (custom_op_registration_map_.find(key) !=
+      custom_op_registration_map_.end()) {
+    return custom_op_registration_map_.at(key).get();
+  }
+
   return nullptr;
 }
+
+KernelEvalFuncPtr LoggingOpResolver::GetWrappedKernelInvoke(const char* op,
+                                                            int version) const {
+  return custom_op_evalfn_map_.at({op, version});
+}
+
 }  // namespace calibration
 }  // namespace optimize
 }  // namespace tflite

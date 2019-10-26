@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -57,6 +58,8 @@ Status GrpcSession::Create(const SessionOptions& options,
         NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
                                &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
+  } else {
+    session->is_local_ = true;
   }
   session->SetRemoteMaster(std::move(master));
   *out_session = std::move(session);
@@ -108,8 +111,7 @@ Status GrpcSession::Handle(string* out_handle) {
   return Status::OK();
 }
 
-Status GrpcSession::CreateImpl(CallOptions* call_options,
-                               const GraphDef& graph) {
+Status GrpcSession::CreateImpl(CallOptions* call_options, GraphDef graph) {
   {
     mutex_lock l(mu_);
     if (!handle_.empty()) {
@@ -118,7 +120,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   }
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
-  *req.mutable_graph_def() = graph;
+  req.mutable_graph_def()->Swap(&graph);
   req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
@@ -130,33 +132,40 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
 }
 
 Status GrpcSession::Create(const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
-  return CreateImpl(&call_options, graph);
+  return Create(GraphDef(graph));
 }
 
 Status GrpcSession::Create(const RunOptions& run_options,
                            const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(run_options.timeout_in_ms());
-  return CreateImpl(&call_options, graph);
+  return Create(run_options, GraphDef(graph));
 }
 
-Status GrpcSession::ExtendImpl(CallOptions* call_options,
-                               const GraphDef& graph) {
+Status GrpcSession::Create(GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return CreateImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::Create(const RunOptions& run_options, GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(run_options.timeout_in_ms());
+  return CreateImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::ExtendImpl(CallOptions* call_options, GraphDef graph) {
   bool handle_is_empty;
   {
     mutex_lock l(mu_);
     handle_is_empty = handle_.empty();
   }
   if (handle_is_empty) {
-    // Session was unitialized, so simply initialize the session with 'graph'.
-    return Create(graph);
+    // Session was uninitialized, so simply initialize the session with 'graph'.
+    return Create(std::move(graph));
   }
   mutex_lock l(mu_);
   ExtendSessionRequest req;
   req.set_session_handle(handle_);
-  *req.mutable_graph_def() = graph;
+  req.mutable_graph_def()->Swap(&graph);
   req.set_current_graph_version(current_graph_version_);
   ExtendSessionResponse resp;
   Status s = master_->ExtendSession(call_options, &req, &resp);
@@ -167,16 +176,24 @@ Status GrpcSession::ExtendImpl(CallOptions* call_options,
 }
 
 Status GrpcSession::Extend(const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
-  return ExtendImpl(&call_options, graph);
+  return Extend(GraphDef(graph));
 }
 
 Status GrpcSession::Extend(const RunOptions& run_options,
                            const GraphDef& graph) {
+  return Extend(run_options, GraphDef(graph));
+}
+
+Status GrpcSession::Extend(GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return ExtendImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::Extend(const RunOptions& run_options, GraphDef&& graph) {
   CallOptions call_options;
   call_options.SetTimeout(run_options.timeout_in_ms());
-  return ExtendImpl(&call_options, graph);
+  return ExtendImpl(&call_options, std::move(graph));
 }
 
 Status GrpcSession::RunHelper(
@@ -313,7 +330,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   for (const string& target : target_nodes) {
     req.add_target(target);
   }
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
   *handle = resp.partial_run_handle();
@@ -410,7 +427,7 @@ Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
   MakeCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   *req.mutable_options() = callable_options;
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   MakeCallableResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
@@ -426,7 +443,7 @@ Status GrpcSession::RunCallable(CallableHandle handle,
   RunCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   req.set_handle(handle);
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   for (const Tensor& feed : feed_tensors) {
     feed.AsProtoTensorContent(req.mutable_feed()->Add());
   }
@@ -459,7 +476,7 @@ Status GrpcSession::ReleaseCallable(CallableHandle handle) {
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return str_util::StartsWith(options.target, kSchemePrefix);
+    return absl::StartsWith(options.target, kSchemePrefix);
   }
 
   Status NewSession(const SessionOptions& options,

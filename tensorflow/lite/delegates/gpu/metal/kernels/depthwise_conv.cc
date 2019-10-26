@@ -264,7 +264,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride1x1(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
@@ -459,7 +459,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 }  // namespace
@@ -468,6 +468,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
     int id, ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
+  int channels_multiplier = attr.weights.shape.o;
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -479,7 +480,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
     struct uniforms {
       int4 stride;
       int4 padding;
-      int4 dillation;
+      int4 dilation;
       int4 size;
       int4 channel_multiplier;
     };
@@ -498,15 +499,49 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 
       for(int ky = 0; ky < kernel_y; ++ky) {
         for(int kx = 0; kx < kernel_x; ++kx) {
-          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dillation.xy -
+          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dilation.xy -
             params.padding.xy;
           const bool outside = coords.x < 0 || coords.y < 0 ||
             coords.x >= params.size.x || coords.y >= params.size.y;
           if (outside) continue;
-
-          const int src_layer = gid.z;
-          const int src_index = (src_layer * params.size.y + coords.y) * params.size.x + coords.x;
-          sum0 += float4(src_buffer[src_index]) * float4(temp[ky * kernel_x + kx]);
+)";
+  if (channels_multiplier == 1) {
+    shader_source += R"(
+        const int src_layer = gid.z;
+        const int src_index = (src_layer * params.size.y + coords.y) * params.size.x + coords.x;
+        const FLT4 src_modified = src_buffer[src_index];
+)";
+  } else if (channels_multiplier == 2) {
+    shader_source += R"(
+        const int src_layer = gid.z / 2;
+        const int src_index = (src_layer * params.size.y + coords.y) * params.size.x + coords.x;
+        const FLT4 src = src_buffer[src_index];
+        const FLT2 t0 = gid.z % 2 == 0 ? src.xy : src.zw;
+        const FLT4 src_modified = FLT4(t0.x, t0.x, t0.y, t0.y);
+)";
+  } else if (channels_multiplier == 4) {
+    shader_source += R"(
+        const int src_layer = gid.z / 4;
+        const int src_index = (src_layer * params.size.y + coords.y) * params.size.x + coords.x;
+        const FLT4 src = src_buffer[src_index];
+        const FLT t0 = src[gid.z % 4];
+        const FLT4 src_modified = FLT4(t0, t0, t0, t0);
+)";
+  } else {
+    shader_source += R"(
+        const int src_layer = gid.z / params.channel_multiplier.x;
+        const int src_index = (src_layer * params.size.y + coords.y) * params.size.x + coords.x;
+        const FLT4 src = src_buffer[src_index];
+        FLT4 src_modified;
+        const int src_layer_offset = (gid.z % params.channel_multiplier.x) * 4;
+        src_modified.x = src[(src_layer_offset + 0) / params.channel_multiplier.x];
+        src_modified.y = src[(src_layer_offset + 1) / params.channel_multiplier.x];
+        src_modified.z = src[(src_layer_offset + 2) / params.channel_multiplier.x];
+        src_modified.w = src[(src_layer_offset + 3) / params.channel_multiplier.x];
+)";
+  }
+  shader_source += R"(
+          sum0 += float4(src_modified * temp[ky * kernel_x + kx]);
         }
       }
       FLT4 res = FLT4(sum0 + float4(biases[gid.z]));
@@ -531,28 +566,14 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
         return out_shape;
       }};
 
-  const int num_output_channels = attr.weights.shape.i * attr.weights.shape.o;
-  BHWC reordered_dims{1, attr.weights.shape.h, attr.weights.shape.w,
-                      num_output_channels};
-  std::vector<float> filters_reordered(GetElementsSizeForPHWC4(reordered_dims),
-                                       0.0f);
-  if (!ConvertToPHWC4(
-           absl::MakeConstSpan(attr.weights.data.data(),
-                               attr.weights.data.size()),
-           reordered_dims,
-           absl::MakeSpan(filters_reordered.data(), filters_reordered.size()))
-           .ok()) {
-    return {};
-  }
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(attr.bias.data)
-                    : VectorFloatToHalf(attr.bias.data);
+  const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
   desc->immutable_buffers = {
-      {"device FLT4* const filters", filters},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(ConvertToPIOHW4(attr.weights),
+                              options.storage_precision)},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
+                                     output_channels_count)},
   };
 
   desc->uniform_buffers = {
@@ -582,7 +603,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
              0,
              0,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -621,12 +642,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {
@@ -688,12 +706,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {

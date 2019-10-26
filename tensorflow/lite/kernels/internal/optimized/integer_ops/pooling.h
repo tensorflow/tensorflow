@@ -18,6 +18,7 @@ limitations under the License.
 #include <assert.h>
 #include <stdint.h>
 #include <sys/types.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -27,8 +28,8 @@ limitations under the License.
 #include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"

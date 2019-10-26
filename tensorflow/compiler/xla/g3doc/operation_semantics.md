@@ -29,34 +29,77 @@ Arguments  | Type    | Semantics
 ---------- | ------- | -------------------------
 `operands` | `XlaOp` | variadic number of tokens
 
+## AllReduce
+
+See also
+[`XlaBuilder::AllReduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Performs a custom computation across replicas.
+
+<b> `AllReduce(operand, computation, replica_group_ids, channel_id)` </b>
+
+| Arguments        | Type                 | Semantics                        |
+| ---------------- | -------------------- | -------------------------------- |
+| `operand`        | `XlaOp`              | Array to reduce across replicas. |
+| `computation`    | `XlaComputation`     | Reduction computation            |
+| `replica_groups` | vector of vectors of | Groups between which the         |
+:                  : `int64`              : reductions are performed         :
+| `channel_id`     | optional `int64`     | Optional channel ID for          |
+:                  :                      : cross-module communication       :
+
+-   `replica_groups` is a list of replica groups between which the reduction is
+    performed (replica id for the current replica can be retrieved using
+    [`ReplicaId`](#replicaid)). `replica_groups` must either be empty (in which
+    case all replicas belong to a single group), or contain the same number of
+    elements as the number of replicas. For example, `replica_groups = {0, 2},
+    {1, 3}` performs reduction between the replicas `0` and `2`, and `1` and
+    `3`.
+-   `channel_id` is used for cross-module communication: only `all-reduce`
+    operations with the same `channel_id` can communicate to each other.
+
+The output shape is the same as the input shape. For example, if there are two
+replicas and the operand has the value `[1.0, 2.5]` and `[3.0, 5.25]`
+respectively on the two replicas, then the output value from this op and
+summation computation will be `[4.0, 7.75]` on both replicas.
+
+Computing the result of `AllReduce` requires having one input from each replica,
+so if one replica executes a `AllReduce` node more times than another, then the
+former replica will wait forever. Since the replicas are all running the same
+program, there are not a lot of ways for that to happen, but it is possible when
+a while loop's condition depends on data from infeed and the data that is infed
+causes the while loop to iterate more times on one replica than another.
+
 ## AllToAll
 
 See also
 [`XlaBuilder::AllToAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Alltoall is a collective operation that sends data from all cores to all cores.
+AllToAll is a collective operation that sends data from all cores to all cores.
 It has two phases:
 
-1.  the scatter phase. On each core, the operand is split into `split_count`
-number of blocks along the `split_dimensions`, and the blocks are scattered
-to all cores, e.g., the ith block is send to the ith core.
-2.  the gather phase. Each core concatenates the received blocks along the
-`concat_dimension`.
+1.  The scatter phase. On each core, the operand is split into `split_count`
+    number of blocks along the `split_dimensions`, and the blocks are scattered
+    to all cores, e.g., the ith block is send to the ith core.
+2.  The gather phase. Each core concatenates the received blocks along the
+    `concat_dimension`.
 
 The participating cores can be configured by:
 
--   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
-all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
-applied within subgroups in the specified order. For example, replica
-groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
-1, 2, 3, and in the gather phase, the received blocks will be concatenated
-in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
-5, 0, and the concatenation order is 4, 5, 0.
+-   `replica_groups`: each ReplicaGroup contains a list of replica id
+    participating in the computation (replica id for the current replica can be
+    retrieved using [`ReplicaId`](#replicaid)). AllToAll will be applied within
+    subgroups in the specified order. For example, `replica_groups = {{1,2,3},
+    {4,5,0}}` means that an AllToAll will be applied within replicas `{1, 2,
+    3}`, and in the gather phase, and the received blocks will be concatenated
+    in the same order of 1, 2, 3. Then, another AllToAll will be applied within
+    replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
+    `replica_groups` is empty, all replicas belong to one group, in the
+    concatenation order of their appearence.
 
 Prerequisites:
 
--   The dimension size of the operand on the split_dimension is divisible by
-split_count.
+-   The dimension size of the operand on the `split_dimension` is divisible by
+`split_count`.
 -   The operand's shape is not tuple.
 
 <b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
@@ -302,6 +345,37 @@ output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
+
+## BroadcastInDim
+
+See also
+[`XlaBuilder::BroadcastInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Expands the size and rank of an array by duplicating the data in the array.
+
+<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+
+| Arguments              | Type                | Semantics                     |
+| ---------------------- | ------------------- | ----------------------------- |
+| `operand`              | `XlaOp`             | The array to duplicate        |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
+
+Similar to Broadcast, but allows adding dimensions anywhere and expanding
+existing dimensions with size 1.
+
+The `operand` is broadcast to the shape described by `out_dim_size`.
+`broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
+target shape, i.e. the i'th dimension of the operand is mapped to the
+broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
+`operand` must have size 1 or be the same size as the dimension in in the output
+shape they are mapped to. The remaining dimensions are filled with dimensions of
+size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
+dimensions to reach the output shape. The semantics are described in detail on
+the [broadcasting page](broadcasting.md).
 
 ## Call
 
@@ -564,8 +638,7 @@ executed depending on the value of `pred`.
 
 | Arguments             | Type                  | Semantics                    |
 | --------------------- | --------------------- | ---------------------------- |
-| `branch_index`        | `XlaOp`               | Scalar of type `PRED` or     |
-:                       :                       : `S32`                        :
+| `branch_index`        | `XlaOp`               | Scalar of type `S32`         |
 | `branch_computations` | sequence of N         | XlaComputations of type $$   |
 :                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
 :                       :                       : T_{N-1} \to S $$             :
@@ -573,9 +646,8 @@ executed depending on the value of `pred`.
 :                       :                       : T_1 , ..., T_{N-1} $$        :
 
 Executes `branch_computations[branch_index]`, and returns the result. If
-`branch_index` is a `PRED`, then the `true` branch is in position 0 and the
-`false` branch is in position 1. If `branch_index` is an `S32` which is < 0
-or >= N, then `branch_computations[N-1]` is executed as the default branch.
+`branch_index` is an `S32` which is < 0 or >= N, then `branch_computations[N-1]`
+is executed as the default branch.
 
 Each `branch_computations[b]` must take in a single argument of type `T_b` and
 will be invoked with `branch_operands[b]` which must be of the same type. The
@@ -780,38 +852,7 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 ## CrossReplicaSum
 
-See also
-[`XlaBuilder::CrossReplicaSum`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
-
-Computes a sum across replicas.
-
-<b> `CrossReplicaSum(operand)` </b>
-
-Arguments | Type    | Semantics
---------- | ------- | -----------------------------
-`operand` | `XlaOp` | Array to sum across replicas.
-| `replica_group_ids`    | `int64` vector | Group ID for each replica.      |
-
-The output shape is the same as the input shape. For example, if there are two
-replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
-respectively on the two replicas, then the output value from this op will be
-`(4.0, 7.75)` on both replicas.
-
-`replica_group_ids` identifies the group ID of each replica. The group ID must
-either be empty (all replicas belong to a single group), or contain the same
-number of elements as the number of replicas. For example, if
-`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
-four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
-each subgroup *must* be identical, so, for example, using:
-`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
-
-Computing the result of CrossReplicaSum requires having one input from each
-replica, so if one replica executes a CrossReplicaSum node more times than
-another, then the former replica will wait forever. Since the replicas are all
-running the same program, there are not a lot of ways for that to happen, but it
-is possible when a while loop's condition depends on data from infeed and the
-data that is infed causes the while loop to iterate more times on one replica
-than another.
+Performs `AllReduce` with a summation computation.
 
 ## CustomCall
 
@@ -897,11 +938,11 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot`    | matrix [m x n]        | matrix-matrix           |
 : matrix [k x n]          :                       : multiplication          :
 
-The operation performs sum of products over the last dimension of `lhs` and the
-one-before-last dimension of `rhs`. These are the "contracted" dimensions. The
-contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
-it can be used to perform dot products between vectors, vector/matrix
-multiplications or matrix/matrix multiplications.
+The operation performs sum of products over the second dimension of `lhs` (or
+the first if it has rank 1) and the first dimension of `rhs`. These are the
+"contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
+the same size. In practice, it can be used to perform dot products between
+vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
 ## DotGeneral
 
@@ -1258,6 +1299,59 @@ Arguments | Type    | Semantics
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
+## Fft
+
+The XLA FFT operation implements the forward and inverse Fourier Transforms for
+real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
+supported, except on TPU, where only a single axis is supported (please file a
+github issue if you require higher order).
+
+See also
+[`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+| Arguments    | Type                | Semantics                |
+| ------------ | ------------------- | ------------------------ |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
+| `fft_type`   | `FftType`           | See the table below.     |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
+
+| `FftType` | Semantics                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
+
+#### Multidimensional FFT
+
+When more than 1 `fft_length` is provided, this is equivalent to applying a
+cascade of FFT operations to each of the innermost axes. Note that for the
+real->complex and complex->real cases, the innermost axis transform is
+(effectively) performed first (RFFT; last for IRFFT), which is why the innermost
+axis is the one which changes size. Other axis transforms will then be
+complex->complex.
+
+#### Implementation details
+
+CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
+
 ## Gather
 
 The XLA gather operation stitches together several slices (each slice at a
@@ -1285,24 +1379,33 @@ For a more intuitive description, see the "Informal Description" section below.
 :                        :                     : detailed description.         :
 | `offset_dims`          | `ArraySlice<int64>` | The set of dimensions in the  |
 :                        :                     : output shape that offset into :
-:                        :                     : a array sliced from operand.  :
+:                        :                     : an array sliced from operand. :
 | `slice_sizes`          | `ArraySlice<int64>` | `slice_sizes[i]` is the       |
 :                        :                     : bounds for the slice on       :
 :                        :                     : dimension `i`.                :
 | `collapsed_slice_dims` | `ArraySlice<int64>` | The set of dimensions in each |
-:                        :                     : \: slice that are collapsed   :
+:                        :                     : slice that are collapsed      :
 :                        :                     : away. These dimensions must   :
 :                        :                     : have size 1.                  :
 | `start_index_map`      | `ArraySlice<int64>` | A map that describes how to   |
 :                        :                     : map indices in                :
 :                        :                     : `start_indices` to legal      :
 :                        :                     : indices into operand.         :
+| `indices_are_sorted`   | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be sorted by    :
+:                        :                     : the caller.                   :
+| `unique_indices`       | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be unique by    :
+:                        :                     : the caller.                   :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
 
-The output is an array of rank `batch_dims.size` + `operand.rank` -
-`collapsed_slice_dims`.size.
+The output is an array of rank `batch_dims.size` + `offset_dims.size`.
+
+The `operand.rank` must equal the sum of `offset_dims.size` and
+`collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
+`operand.rank`.
 
 If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
 `start_indices` to have a trailing `1` dimension (i.e. if `start_indices` was of
@@ -1323,61 +1426,74 @@ accounting for `collapsed_slice_dims` (i.e. we pick
 `adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
 with the bounds at indices `collapsed_slice_dims` removed).
 
-Formally, the operand index `In` corresponding to an output index `Out` is
-computed as follows:
+Formally, the operand index `In` corresponding to a given output index `Out` is
+calculated as follows:
 
-1. Let `G` = { `Out`[`k`] for `k` in `batch_dims` }.  Use `G` to slice out
-vector `S` such that `S`[`i`] = `start_indices`[Combine(`G`, `i`)] where
-Combine(A, b) inserts b at position `index_vector_dim` into A.  Note that
-this is well defined even if `G` is empty -- if `G` is empty then `S` =
-`start_indices`.
+1.  Let `G` = { `Out`[`k`] for `k` in `batch_dims` }. Use `G` to slice out a
+    vector `S` such that `S`[`i`] = `start_indices`[Combine(`G`, `i`)] where
+    Combine(A, b) inserts b at position `index_vector_dim` into A. Note that
+    this is well defined even if `G` is empty -- if `G` is empty then `S` =
+    `start_indices`.
 
-2. Create a starting index, `S`<sub>`in`</sub>, into `operand` using `S` by
-scattering `S` using `start_index_map`.  More precisely:
-1. `S`<sub>`in`</sub>[`start_index_map`[`k`]] = `S`[`k`] if `k` <
-`start_index_map.size`.
-2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+2.  Create a starting index, `S`<sub>`in`</sub>, into `operand` using `S` by
+    scattering `S` using `start_index_map`. More precisely:
 
-3. Create an index `O`<sub>`in`</sub> into `operand` by scattering the indices
-at the offset dimensions in `Out` according to the `collapsed_slice_dims`
-set.  More precisely:
-1. `O`<sub>`in`</sub>[`expand_offset_dims`(`k`)] =
-`Out`[`offset_dims`[`k`]] if `k` < `offset_dims.size`
-(`expand_offset_dims` is defined below).
-2. `O`<sub>`in`</sub>[`_`] = `0` otherwise.
-4. `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
-addition.
+    1.  `S`<sub>`in`</sub>[`start_index_map`[`k`]] = `S`[`k`] if `k` <
+        `start_index_map.size`.
 
-`expand_offset_dims` is the monotonic function with domain [`0`, `offset.size`)
-and range [`0`, `operand.rank`) \ `collapsed_slice_dims`.  So if, e.g.,
+    2.  `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+
+3.  Create an index `O`<sub>`in`</sub> into `operand` by scattering the indices
+    at the offset dimensions in `Out` according to the `collapsed_slice_dims`
+    set. More precisely:
+
+    1.  `O`<sub>`in`</sub>[`remapped_offset_dims`(`k`)] =
+        `Out`[`offset_dims`[`k`]] if `k` < `offset_dims.size`
+        (`remapped_offset_dims` is defined below).
+
+    2.  `O`<sub>`in`</sub>[`_`] = `0` otherwise.
+
+4.  `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+    addition.
+
+`remapped_offset_dims` is a monotonic function with domain [`0`, `offset.size`)
+and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
 `offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
-`2`} then `expand_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
+
+If `unique_indices` is set to true then XLA can assume that all element
+scattered to are unique. So XLA could use non-atomic operations. If
+`unique_indices` is set to true and the indices being scattered to are not
+unique then the semantics is implementation defined.
 
 ### Informal Description and Examples
 
 Informally, every index `Out` in the output array corresponds to an element `E`
 in the operand array, computed as follows:
 
-- We use the batch dimensions in `Out` to look up a starting index from
-`start_indices`.
+-   We use the batch dimensions in `Out` to look up a starting index from
+    `start_indices`.
 
-- We use `start_index_map` to map the starting index (which may have size less
-than operand.rank) to a "full" starting index into operand.
+-   We use `start_index_map` to map the starting index (whose size may be less
+    than operand.rank) to a "full" starting index into the `operand`.
 
-- We dynamic-slice out a slice with size `slice_sizes` using the full starting
-index.
+-   We dynamic-slice out a slice with size `slice_sizes` using the full starting
+    index.
 
-- We reshape the slice by collapsing the `collapsed_slice_dims` dimensions.
-Since all collapsed slice dimensions have to have bound 1 this reshape is
-always legal.
+-   We reshape the slice by collapsing the `collapsed_slice_dims` dimensions.
+    Since all collapsed slice dimensions must have a bound of 1, this reshape is
+    always legal.
 
-- We use the offset dimensions in `Out` to index into this slice to get the
-input element, `E`, corresponding to output index `Out`.
+-   We use the offset dimensions in `Out` to index into this slice to get the
+    input element, `E`, corresponding to output index `Out`.
 
-`index_vector_dim` is set to `start_indices.rank` - `1` in all of the
-examples that follow.  More interesting values for `index_vector_dim` does not
-change the operation fundamentally, but makes the visual representation more
-cumbersome.
+`index_vector_dim` is set to `start_indices.rank` - `1` in all of the examples
+that follow. More interesting values for `index_vector_dim` do not change the
+operation fundamentally, but make the visual representation more cumbersome.
 
 To get an intuition on how all of the above fits together, let's look at an
 example that gathers 5 slices of shape `[8,6]` from a `[16,11]` array.  The
@@ -1399,8 +1515,8 @@ The element in the output array at index
 [`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>] is then the element in the input
 array at index [`X`+`O`<sub>`0`</sub>,`Y`+`O`<sub>`1`</sub>].
 
-`slice_sizes` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
-W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
+`slice_sizes` is `[8,6]`, which decides the range of O<sub>`0`</sub> and
+O<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.
@@ -1444,12 +1560,12 @@ As a final example, we use (2) and (3) to implement `tf.gather_nd`:
 
 `G`<sub>`0`</sub> and `G`<sub>`1`</sub> are used to slice out a starting index
 from the gather indices array as usual, except the starting index has only one
-element, `X`.  Similarly, there is only one output offset index with the value
-`O`<sub>`0`</sub>.  However, before being used as indices into the input array,
+element, `X`. Similarly, there is only one output offset index with the value
+`O`<sub>`0`</sub>. However, before being used as indices into the input array,
 these are expanded in accordance to "Gather Index Mapping" (`start_index_map` in
-the formal description) and "Offset Mapping" (`expand_offset_dims` in the formal
-description) into  [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively, adding up
-to [`X`,`O`<sub>`0`</sub>].  In other words, the output index
+the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
+formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
+adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
 [`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
 the semantics for `tf.gather_nd`.
@@ -1473,6 +1589,48 @@ array shaped.
 | `operand`   | `XlaOp` | n dimensional input array                           |
 | `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
 :             :         : dimension                                           :
+
+## SetDimensionSize
+
+See also
+[`XlaBuilder::SetDimensionSize`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Sets the dynamic size of XlaOp's given dimension. The operand must be
+array shaped.
+
+<b> `SetDimensionSize(operand, size, dimension)` </b>
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array.                          |
+| `size`      | `XlaOp` | int32 representing the runtime dynamic size.        |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension.                                          :
+
+Pass through the operand as result, with dynamic dimension tracked by the
+compiler.
+
+Padded values will be ignored by downstream reduction ops.
+
+```
+let v: f32[10] = f32[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+let five: s32 = 5;
+let six: s32 = 6;
+
+// Setting dynamic dimension size doesn't change the upper bound of the static
+// shape.
+let padded_v_five: f32[10] = set_dimension_size(v, five, /*dimension=*/0);
+let padded_v_six: f32[10] = set_dimension_size(v, six, /*dimension=*/0);
+
+// sum == 1 + 2 + 3 + 4 + 5
+let sum:f32[] = reduce_sum(padded_v_five);
+// product == 1 * 2 * 3 * 4 * 5
+let product:f32[] = reduce_product(padded_v_five);
+
+// Changing padding size will yield different result.
+// sum == 1 + 2 + 3 + 4 + 5 + 6
+let sum':f32[] = reduce_sum(padded_v_six);
+```
 
 ## GetTupleElement
 
@@ -1803,7 +1961,7 @@ compute the max and the argmax of a 1-D array in parallel:
 ```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
-  if value >= argmax:
+  if value >= max:
     return (value, index)
   else:
     return (max, argmax)
@@ -1891,8 +2049,12 @@ window_strides, padding)` </b>
 | `window_dilations`  | `ArraySlice<int64>` | array of integers for window     |
 :                     :                     : dilation values                  :
 | `padding`           | `Padding`           | padding type for window          |
-:                     :                     : (Padding\:\:kSame or             :
-:                     :                     : Padding\:\:kValid)               :
+:                     :                     : (Padding\:\:kSame, which pads so :
+:                     :                     : as to have the same output shape :
+:                     :                     : as input if the stride is 1, or  :
+:                     :                     : Padding\:\:kValid, which uses no :
+:                     :                     : no padding and "stops" the       :
+:                     :                     : window once it no longer fits)   :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are
@@ -1937,6 +2099,17 @@ padding.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:75%" src="./images/ops_reduce_window_stride.png">
 </div>
+
+For a non-trivial padding example, consider computing reduce-window minimum
+(initial value is `MAX_FLOAT`) with dimension `3` and stride `2` over the input
+array `[10000, 1000, 100, 10, 1]`. Padding `kValid` computes minimums over two
+_valid_ windows: `[10000, 1000, 100]` and `[100, 10, 1]`, resulting in the
+output `[100, 1]`. Padding `kSame` first pads the array so that the shape after
+the reduce-window would be the _same_ as input for stride one by adding initial
+elements on both sides, getting `[MAX_VALUE, 10000, 1000, 100, 10, 1,
+MAX_VALUE]`. Running reduce-window over the padded array operates on three
+windows `[MAX_VALUE, 10000, 1000]`, `[1000, 100, 10]`, `[10, 1, MAX_VALUE]`, and
+yields `[1000, 10, 1]`.
 
 The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
@@ -2119,11 +2292,12 @@ Arguments                      | Type                | Semantics
 `operand`                      | `XlaOp`             | Array to be scattered into.
 `scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
 `updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T, T -> T`.
+`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
 `index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
 `scatter_dims_to_operand_dims` | `ArraySlice<int64>` | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`indices_are_sorted`           | `bool`              | Whether the indices are guaranteed to be sorted by the caller.
 
 If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
 `scatter_indices` to have a trailing `1` dimension.
@@ -2159,6 +2333,9 @@ The arguments of scatter should follow these constraints:
 -   `inserted_window_dims` must be in ascending order, not have any repeating
     dimension numbers, and be in the range `[0, operand.rank)`.
 
+-   `operand.rank` must equal the sum of `update_window_dims.size` and
+    `inserted_window_dims.size`.
+
 -   `scatter_dims_to_operand_dims.size` must be equal to
     `scatter_indices`[`index_vector_dim`], and its values must be in the range
     `[0, operand.rank)`.
@@ -2179,7 +2356,7 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     at `update_window_dims` in `U` according to `inserted_window_dims`. More
     formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
-        < `update_window_dims.size`, where `window_dims_to_operand_dims` is the
+        is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
         range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For example, if
         `update_window_dims.size` is `4`, `operand.rank` is `6`, and
@@ -2195,7 +2372,7 @@ In summary, the scatter operation can be defined as follows.
     `operand` array: \
     `output`[`O`] = `operand`[`O`]
 -   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array: \
+    in the `operand` array, if `O` is a valid index for `output`: \
     `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple
@@ -2206,6 +2383,10 @@ Note that the first parameter that is passed into the `update_computation` will
 always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
 
 Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
 the scatter op updates the elements in the input that are extracted by the
@@ -2425,6 +2606,11 @@ arguments to the slice operation.
 :                 :                     : respective `start_indices` value for :
 :                 :                     : the dimension and less than or equal :
 :                 :                     : to the size of the dimension.        :
+| `strides`      | `ArraySlice<int64>` | List of N integers that decides the   |
+:                 :                     : input stride of the slice.  The slice :
+:                 :                     : picks every `strides[d]` element in  :
+:                 :                     : dimension `d`.                       :
+
 
 1-dimensional example:
 
@@ -2453,43 +2639,58 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-There are two versions of the Sort instruction: a single-operand and a
-multi-operand version.
+<b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
-<b>`Sort(operand, dimension)`</b>
+Arguments    | Type                | Semantics
+------------ | ------------------- | --------------------
+`operands`   | `ArraySlice<XlaOp>` | The operands to sort.
+`comparator` | `XlaComputation`    | The comparator computation to use.
+`dimension`  | `int64`             | The dimension along which to sort.
+`is_stable`  | `bool`              | Whether stable sorting should be used.
 
-Arguments   | Type    | Semantics
------------ | ------- | --------------------
-`operand`   | `XlaOp` | The operand to sort.
-`dimension` | `int64` | The dimension along which to sort.
+If only one operand is provided:
 
-Sorts the elements in the operand in ascending order along the provided
-dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
-will sort each column independently, and a `dimension` value of 1 will sort each
-row independently. If the operand's elements have floating point type, and the
-operand contains NaN elements, the order of elements in the output is
-implementation-defined.
+* If the operand is a rank-1 tensor (an array), the result is a sorted array.
+  If you want to sort the array into ascending order, the comparator should
+  perform a less-than comparison. Formally, after the array is sorted, it holds
+  for all index positions `i, j` with `i < j` that either
+  `comparator(value[i], value[j]) = comparator(value[j], value[i]) = false` or
+  `comparator(value[i], value[j]) = true`.
 
-<b>`Sort(keys, values, ... values, dimension)`</b>
+* If the operand has higher rank, the operand is sorted along the provided
+  dimension. For example, for a rank-2 tensor (a matrix), a dimension value of
+  `0` will independently sort every column, and a dimension value of `1` will
+  independently sort each row. If no dimension number is provided, then the last
+  dimension is chosen by default. For the dimension which is sorted, the same
+  sorting order applies as in the rank-1 case.
 
-Sorts both the key and one or more value operands. The keys are sorted as in the
-single-operand version. Each of the values inputs is sorted according to the
-order of the corresponding keys. For example, if the three inputs are `keys =
-[3, 1]`, `values0 = [42, 50]`, `values1 = [-3.0, 1.1]`, then the output of the
-sort is the tuple `{[1, 3], [50, 42], [1.1, -3.0]}`.
+If `n > 1` operands are provided:
 
-The sort is not guaranteed to be stable, that is, if the keys array contains
-duplicates, the order of values corresponding to these keys may not be
-preserved.
+* All `n` operands must be tensors with the same dimensions. The element types
+  of the tensors may be different.
 
-Arguments   | Type                   | Semantics
------------ | ---------------------- | ----------------------------------
-`keys`      | `XlaOp`                | The sort keys.
-`values`    | Sequence of N `XlaOp`s | The values to sort.
-`dimension` | `int64`                | The dimension along which to sort.
+* All operands are sorted together, not individually. Conceptually the operands
+  are treated as a tuple. When checking whether the elements of each operand at
+  index positions `i` and `j` need to be swapped, the comparator is called with
+  `2 * n` scalar parameters, where parameter `2 * k` corresponds to the value at
+  position `i` from the `k-th` operand, and parameter `2 * k + 1` corresponds to
+  the value at position `j` from the `k-th` operand. Usually, the comparator
+  would thus compare parameters `2 * k` and `2 * k + 1` with each other and
+  possibly use other parameter pairs as tie breakers.
 
-The `keys` and each of the `values` inputs must have the same dimensions, but
-may have different element types.
+* The result is a tuple that consists of the operands in sorted order (along
+  the provided dimension, as above). The `i-th` operand of the tuple corresponds
+  to the `i-th` operand of Sort.
+
+For example, if there are three operands `operand0 = [3, 1]`,
+`operand1 = [42, 50]`, `operand2 = [-3.0, 1.1]`, and the comparator compares
+only the values of `operand0` with less-than, then the output of the sort is the
+tuple `([1, 3], [50, 42], [1.1, -3.0])`.
+
+If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
+there are elements which are considered to be equal by the comparator, the
+relative order of the equal values is preserved. By default, `is_stable` is set
+to false.
 
 ## Transpose
 

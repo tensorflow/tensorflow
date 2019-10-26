@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class XlaSortOpTest(xla_test.XLATestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -134,7 +134,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=4)
@@ -152,7 +152,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=6)

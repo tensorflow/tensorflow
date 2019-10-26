@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SHAPE_H_
 
 #include <sys/types.h>
+
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -24,6 +25,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/hash/hash.h"
 
 namespace tflite {
 namespace gpu {
@@ -530,6 +533,15 @@ struct StrongShape : public internal_shape::LayoutTraits<L>::strong_shape_type {
     for (int i = 0; i < StrongShape::size(); ++i) {
       StrongShape::set(source.axis(i), source.get(i));
     }
+  }
+
+  // AbslHash function for using in flat hash containers.
+  template <typename H>
+  friend H AbslHashValue(H hash_state, const StrongShape& strong_shape) {
+    for (size_t i = 0; i < strong_shape.size(); ++i) {
+      hash_state = H::combine(std::move(hash_state), strong_shape.get(i));
+    }
+    return hash_state;
   }
 };
 

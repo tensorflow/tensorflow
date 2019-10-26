@@ -115,7 +115,7 @@ class StatsAggregatorV1(object):
   aggregator = tf.data.experimental.StatsAggregator()
   # ...
   stats_summary = aggregator.get_summary()
-  tf.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
   ```
 
   Note: This interface is experimental and expected to change. In particular,
@@ -125,18 +125,19 @@ class StatsAggregatorV1(object):
 
   def __init__(self):
     """Creates a `StatsAggregator`."""
-    self._resource = ged_ops.experimental_stats_aggregator_handle()
+    self._resource = ged_ops.stats_aggregator_handle()
 
   def get_summary(self):
     """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
 
-    The returned tensor will contain a serialized `tf.summary.Summary` protocol
+    The returned tensor will contain a serialized `tf.compat.v1.summary.Summary`
+    protocol
     buffer, which can be used with the standard TensorBoard logging facilities.
 
     Returns:
       A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
-    return ged_ops.experimental_stats_aggregator_summary(self._resource)
+    return ged_ops.stats_aggregator_summary(self._resource)
 
 
 # TODO(b/116314787): Change this to StatsAggregatorV2 when we have stable

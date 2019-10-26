@@ -18,6 +18,7 @@ package org.tensorflow;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -28,6 +29,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -517,6 +519,25 @@ public class TensorTest {
       t.intValue();
     } catch (NullPointerException e) {
       // The expected exception.
+    }
+  }
+
+  @Test
+  public void eagerTensorIsReleasedAfterSessionIsClosed() {
+    Tensor<Integer> sum;
+    try (EagerSession session = EagerSession.create()) {
+      Output<?> x = TestUtil.constant(session, "Const1", 10);
+      Output<?> y = TestUtil.constant(session, "Const2", 20);
+      sum = TestUtil.<Integer>addN(session, x, y).tensor();
+      assertNotEquals(0L, sum.getNativeHandle());
+      assertEquals(30, sum.intValue());
+    }
+    assertEquals(0L, sum.getNativeHandle());
+    try {
+      sum.intValue();
+      fail();
+    } catch (NullPointerException e) {
+      // expected.
     }
   }
 

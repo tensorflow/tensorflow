@@ -23,6 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
@@ -32,8 +33,9 @@ bool LowerAsMultiDeviceFunction(const Node* n) {
   if (n->IsPartitionedCall()) return true;
 
   bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return s.ok() && match;
+  bool found =
+      TryGetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
+  return found && match;
 }
 
 }  // namespace
@@ -48,7 +50,9 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
   // NOTE(ezhulenev): We explicitly choose not to deal with SymbolicGradient,
   // because it has been deprecated for a long time.
   InlineFunctionBodyOptions inline_options;
-  inline_options.keep_caller_fetchable = keep_caller_fetchable;
+  inline_options.keep_caller_node = keep_caller_fetchable
+                                        ? KeepCallerNode::kFetchable
+                                        : KeepCallerNode::kTargetable;
 
   if (LowerAsMultiDeviceFunction(n)) {
     // Multi-device function calls (PartitionedCall or StatefulPartitionedCall
@@ -56,14 +60,16 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     // belong to different devices. This type of functions was added in
     // Tensorflow 2.0 Eager mode, and it has control outputs to represent
     // side-effects that must always execute (see `control_ret` in FunctionDef).
-    inline_options.override_device = false;
     inline_options.output_control_src = OutputControlSrc::kControlOutputs;
+    inline_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::MultiDevice();
   } else {
     // Native function call (node.type_string() is the function name). These
     // functions are always executed on a single-device, which is the device of
     // the function call node.
-    inline_options.override_device = true;
     inline_options.output_control_src = OutputControlSrc::kDataOutputs;
+    inline_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::SingleDevice();
   }
 
   const FunctionDef* fdef;
@@ -90,7 +96,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
       ValidateInlining(n, fbody.get(), inline_options);
   if (can_inline_function_call.ok()) {
     TF_RETURN_IF_ERROR(
-        InlineFunctionBody(g->flib_def(), g, n, fbody.get(), inline_options));
+        InlineFunctionBody(flib_def, g, n, fbody.get(), inline_options));
   } else {
     VLOG(2) << "Failed to inline function call node: "
             << can_inline_function_call.error_message();

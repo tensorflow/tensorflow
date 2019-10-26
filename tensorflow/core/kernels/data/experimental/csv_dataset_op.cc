@@ -23,6 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -39,9 +40,9 @@ class CSVDatasetOp : public DatasetOpKernel {
         ctx, filenames_tensor->dims() <= 1,
         errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
-    string compression_type;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
-                                                    &compression_type));
+    tstring compression_type;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "compression_type",
+                                                     &compression_type));
 
     OpInputList record_defaults_list;
     OP_REQUIRES_OK(ctx,
@@ -61,15 +62,15 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,
                 errors::InvalidArgument("buffer_size should be positive"));
 
-    string delim;
+    tstring delim;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "field_delim", &delim));
+                   ParseScalarArgument<tstring>(ctx, "field_delim", &delim));
     OP_REQUIRES(ctx, delim.size() == 1,
                 errors::InvalidArgument("field_delim should be only 1 char"));
 
@@ -79,9 +80,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     bool use_quote_delim;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "use_quote_delim",
                                                   &use_quote_delim));
-    string na_value;
+    tstring na_value;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "na_value", &na_value));
+                   ParseScalarArgument<tstring>(ctx, "na_value", &na_value));
 
     std::vector<Tensor> record_defaults;
     record_defaults.reserve(record_defaults_list.size());
@@ -92,7 +93,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     io::ZlibCompressionOptions zlib_compression_options =
@@ -169,6 +170,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -196,7 +199,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           b->AddScalar(options_.input_buffer_size, &buffer_size));
       TF_RETURN_IF_ERROR(b->AddScalar(header_, &header));
 
-      string delim_string(1, delim_);
+      tstring delim_string(1, delim_);
       TF_RETURN_IF_ERROR(b->AddScalar(delim_string, &delim));
       TF_RETURN_IF_ERROR(b->AddScalar(use_quote_delim_, &use_quote_delim));
       TF_RETURN_IF_ERROR(b->AddScalar(na_value_, &na_value));
@@ -416,7 +419,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
                                size_t* start, bool include)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        string temp_buffer;
+        tstring temp_buffer;
 
         buffer_.swap(temp_buffer);
         if (include && pos_ > *start) {
@@ -619,7 +622,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
       }
 
-      Status FillBuffer(string* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status FillBuffer(tstring* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         result->clear();
         ++num_buffer_reads_;
         Status s = input_stream_->ReadNBytes(
@@ -718,10 +721,10 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           case DT_STRING: {
             if (field.empty() || field == dataset()->na_value_) {
-              component.scalar<string>()() =
-                  dataset()->record_defaults_[output_idx].flat<string>()(0);
+              component.scalar<tstring>()() =
+                  dataset()->record_defaults_[output_idx].flat<tstring>()(0);
             } else {
-              component.scalar<string>()() = string(field);
+              component.scalar<tstring>()() = string(field);
             }
             break;
           }
@@ -824,7 +827,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       mutex mu_;
-      string buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
+      tstring buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
       size_t pos_ GUARDED_BY(
           mu_);  // Index into the buffer must be maintained between iters
       size_t num_buffer_reads_ GUARDED_BY(mu_);
@@ -844,9 +847,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     const std::vector<int64> select_cols_;
     const bool use_quote_delim_;
     const char delim_;
-    const string na_value_;
+    const tstring na_value_;
     const bool use_compression_;
-    const string compression_type_;
+    const tstring compression_type_;
     const io::ZlibCompressionOptions options_;
   };  // class Dataset
 
@@ -854,10 +857,11 @@ class CSVDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class CSVDatasetOp
 
-// Register the kernel implementation for CSVDataset.
+REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
                         CSVDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

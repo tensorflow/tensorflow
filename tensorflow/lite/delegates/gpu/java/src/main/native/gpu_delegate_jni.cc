@@ -13,35 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/java/src/main/native/gpu_delegate_jni.h"
+#include <jni.h>
 
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_createDelegate(JNIEnv* env,
-                                                                 jclass clazz) {
-  // Auto-choosing the best performing config for closed release.
-  TfLiteGpuDelegateOptions options;
-  options.metadata = nullptr;
-  options.compile_options.precision_loss_allowed = 1;
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
-  return reinterpret_cast<jlong>(TfLiteGpuDelegateCreate(&options));
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
+    JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
+    jint inference_preference) {
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  options.is_precision_loss_allowed =
+      precision_loss_allowed == JNI_TRUE ? 1 : 0;
+  options.inference_preference = static_cast<int32_t>(inference_preference);
+  return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));
 }
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_deleteDelegate(
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
     JNIEnv* env, jclass clazz, jlong delegate) {
-  TfLiteGpuDelegateDelete(reinterpret_cast<TfLiteDelegate*>(delegate));
+  TfLiteGpuDelegateV2Delete(reinterpret_cast<TfLiteDelegate*>(delegate));
 }
 
-JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_bindGlBufferToTensor(
-    JNIEnv* env, jclass clazz, jlong delegate, jint tensor_index, jint ssbo) {
-  return TfLiteGpuDelegateBindBufferToTensor(
-             reinterpret_cast<TfLiteDelegate*>(delegate),
-             static_cast<GLuint>(ssbo), static_cast<int>(tensor_index))
-             ? JNI_TRUE
-             : JNI_FALSE;
-}
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

@@ -28,13 +28,12 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -47,6 +46,19 @@ from tensorflow.python.util.tf_export import tf_export
 tape_cache = {}
 
 
+def _maybe_copy_to_context_device(tensor, device_name):
+  """Copy an EagerTensor to the current device if it's not on `device_name`."""
+  in_device = tensor.backing_device
+  if device_name == in_device:
+    return tensor
+  else:
+    # Note that EagerTensor._copy bypasses the placer and copies to the context
+    # device, which means e.g. int32 Tensors which would normally be forced onto
+    # the CPU can instead be placed on the GPU. This is necessary so that the
+    # PyFunc kernel always returns Tensors on the device it's executing on.
+    return tensor._copy()  # pylint: disable=protected-access
+
+
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
@@ -56,15 +68,13 @@ class EagerFunc(object):
     Args:
       func: The function to wrap.
       Tout: A list of datatypes for the output; an empty list if the output is
-            None.
+        None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
-
-    context.ensure_initialized()
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -104,21 +114,30 @@ class EagerFunc(object):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
     with context.eager_mode(), backprop.GradientTape() as tape:
+      # Only watch tensors with a floating dtype.
       for tensor in args:
-        tape.watch(tensor)
+        for t in nest.flatten(tensor):
+          if t.dtype.is_floating:
+            tape.watch(t)
       ret = self._func(*args)
-      # Use tf.identity to copy the returned tensors to device if neccesary.
+      # copy the returned tensors to the PyFunc op's device if necessary.
+      device_name = device
+      if device_name is None:
+        # "None" here means "CPU", from the nullptr convention with C++ device
+        # pointers.
+        device_name = "/job:localhost/replica:0/task:0/device:CPU:0"
       with ops.device(device):
         if isinstance(ret, (tuple, list)):
           outputs = [
-              array_ops.identity(self._convert(x, dtype=dtype))
+              _maybe_copy_to_context_device(self._convert(x, dtype=dtype),
+                                            device_name)
               for (x, dtype) in zip(ret, self._out_dtypes)
           ]
         elif ret is None:
           outputs = None
         else:
-          outputs = array_ops.identity(
-              self._convert(ret, dtype=self._out_dtypes[0]))
+          outputs = _maybe_copy_to_context_device(
+              self._convert(ret, dtype=self._out_dtypes[0]), device_name)
     tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
@@ -136,6 +155,13 @@ class FuncRegistry(object):
     # Only store weakrefs to the functions. The strong reference is stored in
     # the graph.
     self._funcs = weakref.WeakValueDictionary()
+
+  @property
+  def _ctx(self):
+    # N.B. This is needed to support calling py_func with GPU tensors,
+    # which must be transferred to CPU if used in any of the NumPy APIs.
+    context.ensure_initialized()
+    return context.context()._handle  # pylint: disable=protected-access
 
   def insert(self, func):
     """Registers `func` and returns a unique token for this entry."""
@@ -229,10 +255,11 @@ class FuncRegistry(object):
       self._unique_id += 1
     return "pyfunc_%d" % uid
 
+
 # Global registry for py functions.
 _py_funcs = FuncRegistry()
 
-pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
+_pywrap_py_func.initialize_py_trampoline(_py_funcs)
 
 
 def _internal_py_func(func,
@@ -243,6 +270,9 @@ def _internal_py_func(func,
                       is_grad_func=False,
                       name=None):
   """See documentation for py_func and eager_py_func."""
+  if not callable(func):
+    raise ValueError("Expected func to be callable, got func of type {}".format(
+        type(func)))
 
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
@@ -277,7 +307,11 @@ def _internal_py_func(func,
 
   if eager:
     result = gen_script_ops.eager_py_func(
-        input=inp, token=token, Tout=Tout, name=name)
+        input=inp,
+        token=token,
+        is_async=context.is_async(),
+        Tout=Tout,
+        name=name)
   else:
     if stateful:
       result = gen_script_ops.py_func(
@@ -326,15 +360,15 @@ def eager_py_func(func, inp, Tout, name=None):
     if tf.abs(x) <= m:
       return x**2
     else:
-      return m**2 * (1 - 2 * tf.log(m) + tf.log(x**2))
+      return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
 
-  x = tf.placeholder(tf.float32)
-  m = tf.placeholder(tf.float32)
+  x = tf.compat.v1.placeholder(tf.float32)
+  m = tf.compat.v1.placeholder(tf.float32)
 
   y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
   dy_dx = tf.gradients(y, x)[0]
 
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     # The session executes `log_huber` eagerly. Given the feed values below,
     # it will take the first branch, so `y` evaluates to 1.0 and
     # `dy_dx` evaluates to 2.0.
@@ -350,15 +384,16 @@ def eager_py_func(func, inp, Tout, name=None):
   For more information on eager execution, see the
   [Eager guide](https://tensorflow.org/guide/eager).
 
-  `tf.py_function` is similar in spirit to `tf.py_func`, but unlike
+  `tf.py_function` is similar in spirit to `tf.compat.v1.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
-  Python function. In particular, while `tf.py_func` only runs on CPUs and
+  Python function. In particular, while `tf.compat.v1.py_func` only runs on CPUs
+  and
   wraps functions that take NumPy arrays as inputs and return NumPy arrays as
   outputs, `tf.py_function` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like `tf.py_func`, `tf.py_function` has the following limitations
+  Like `tf.compat.v1.py_func`, `tf.py_function` has the following limitations
   with respect to serialization and distribution:
 
   * The body of the function (i.e. `func`) will not be serialized in a
@@ -367,17 +402,16 @@ def eager_py_func(func, inp, Tout, name=None):
 
   * The operation must run in the same address space as the Python program
     that calls `tf.py_function()`. If you are using distributed
-    TensorFlow, you must run a `tf.train.Server` in the same process as the
+    TensorFlow, you must run a `tf.distribute.Server` in the same process as the
     program that calls `tf.py_function()` and you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
 
   Args:
-    func: A Python function which accepts a list of `Tensor` objects
-      having element types that match the corresponding `tf.Tensor` objects
-      in `inp` and returns a list of `Tensor` objects (or a single
-      `Tensor`, or `None`) having element types that match the
-      corresponding values in `Tout`.
+    func: A Python function which accepts a list of `Tensor` objects having
+      element types that match the corresponding `tf.Tensor` objects in `inp`
+      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
+      having element types that match the corresponding values in `Tout`.
     inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns; an empty list
@@ -404,43 +438,44 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
   def my_func(x):
     # x will be a numpy array with the contents of the placeholder below
     return np.sinh(x)
-  input = tf.placeholder(tf.float32)
-  y = tf.py_func(my_func, [input], tf.float32)
+  input = tf.compat.v1.placeholder(tf.float32)
+  y = tf.compat.v1.py_func(my_func, [input], tf.float32)
   ```
 
-  **N.B.** The `tf.py_func()` operation has the following known limitations:
+  **N.B.** The `tf.compat.v1.py_func()` operation has the following known
+  limitations:
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `GraphDef`. Therefore, you should not use this function if you need to
     serialize your model and restore it in a different environment.
 
   * The operation must run in the same address space as the Python program
-    that calls `tf.py_func()`. If you are using distributed TensorFlow, you
-    must run a `tf.train.Server` in the same process as the program that calls
-    `tf.py_func()` and you must pin the created operation to a device in that
+    that calls `tf.compat.v1.py_func()`. If you are using distributed
+    TensorFlow, you
+    must run a `tf.distribute.Server` in the same process as the program that
+    calls
+    `tf.compat.v1.py_func()` and you must pin the created operation to a device
+    in that
     server (e.g. using `with tf.device():`).
 
   Args:
     func: A Python function, which accepts `ndarray` objects as arguments and
       returns a list of `ndarray` objects (or a single `ndarray`). This function
       must accept as many arguments as there are tensors in `inp`, and these
-      argument types will match the corresponding `tf.Tensor` objects
-      in `inp`. The returns `ndarray`s must match the number and types defined
-      `Tout`.
+      argument types will match the corresponding `tf.Tensor` objects in `inp`.
+      The returns `ndarray`s must match the number and types defined `Tout`.
       Important Note: Input and output numpy `ndarray`s of `func` are not
-      guaranteed to be copies. In some cases their underlying memory will be
-      shared with the corresponding TensorFlow tensors.
-      In-place modification or storing `func` input or return values in
-      python datastructures without explicit (np.)copy
-      can have non-deterministic consequences.
+        guaranteed to be copies. In some cases their underlying memory will be
+        shared with the corresponding TensorFlow tensors. In-place modification
+        or storing `func` input or return values in python datastructures
+        without explicit (np.)copy can have non-deterministic consequences.
     inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
-    stateful: (Boolean.) If True, the function should be considered stateful.
-      If a function is stateless, when given the same input it will return the
-      same output and have no observable side effects. Optimizations such as
-      common subexpression elimination are only performed on stateless
-      operations.
+    stateful: (Boolean.) If True, the function should be considered stateful. If
+      a function is stateless, when given the same input it will return the same
+      output and have no observable side effects. Optimizations such as common
+      subexpression elimination are only performed on stateless operations.
     name: A name for the operation (optional).
 
   Returns:
@@ -483,11 +518,74 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 @tf_export("numpy_function")
 def numpy_function(func, inp, Tout, name=None):
+  """Wraps a python function and uses it as a TensorFlow op.
+
+  Given a python function `func` wrap this function as an operation in a
+  TensorFlow function. `func` must take numpy arrays as its arguments and
+  return numpy arrays as its outputs.
+
+  The following example creates a TensorFlow graph with `np.sinh()` as an
+  operation in the graph:
+
+  >>> def my_numpy_func(x):
+  ...   # x will be a numpy array with the contents of the input to the
+  ...   # tf.function
+  ...   return np.sinh(x)
+  >>> @tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
+  ... def tf_function(input):
+  ...   y = tf.numpy_function(my_numpy_func, [input], tf.float32)
+  ...   return y * y
+  >>> tf_function(tf.constant(1.))
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.3810978>
+
+  Comparison to `tf.py_function`:
+  `tf.py_function` and `tf.numpy_function` are very similar, except that
+  `tf.numpy_function` takes numpy arrays, and not `tf.Tensor`s. If you want the
+  function to contain `tf.Tensors`, and have any TensorFlow operations executed
+  in the function be differentiable, please use `tf.py_function`.
+
+  Note: The `tf.numpy_function` operation has the following known
+  limitations:
+
+  * The body of the function (i.e. `func`) will not be serialized in a
+    `tf.SavedModel`. Therefore, you should not use this function if you need to
+    serialize your model and restore it in a different environment.
+
+  * The operation must run in the same address space as the Python program
+    that calls `tf.numpy_function()`. If you are using distributed
+    TensorFlow, you must run a `tf.distribute.Server` in the same process as the
+    program that calls `tf.numpy_function`  you must pin the created
+    operation to a device in that server (e.g. using `with tf.device():`).
+
+  * Since the function takes numpy arrays, you cannot take gradients
+    through a numpy_function. If you require something that is differentiable,
+    please consider using tf.py_function.
+
+  Args:
+    func: A Python function, which accepts `numpy.ndarray` objects as arguments
+      and returns a list of `numpy.ndarray` objects (or a single
+      `numpy.ndarray`). This function must accept as many arguments as there are
+      tensors in `inp`, and these argument types will match the corresponding
+      `tf.Tensor` objects in `inp`. The returns `numpy.ndarray`s must match the
+      number and types defined `Tout`.
+      Important Note: Input and output `numpy.ndarray`s of `func` are not
+        guaranteed to be copies. In some cases their underlying memory will be
+        shared with the corresponding TensorFlow tensors. In-place modification
+        or storing `func` input or return values in python datastructures
+        without explicit (np.)copy can have non-deterministic consequences.
+    inp: A list of `tf.Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns.
+    stateful (bool): If True, the function should be considered stateful. If
+      a function is stateless, when given the same input it will return the same
+      output and have no observable side effects. Optimizations such as common
+      subexpression elimination are only performed on stateless operations.
+    name: (Optional) A name for the operation.
+
+  Returns:
+    Single or list of `tf.Tensor` which `func` computes.
+  """
   return py_func_common(func, inp, Tout, stateful=True, name=name)
-
-
-numpy_function.__doc__ = py_func_common.__doc__.replace("py_func",
-                                                        "numpy_function")
 
 
 ops.NotDifferentiable("PyFunc")

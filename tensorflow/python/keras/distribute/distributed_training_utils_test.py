@@ -22,14 +22,12 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import adam as v1_adam
 
 
 class DistributedTrainingUtilsTest(test.TestCase):
 
-  @test.mock.patch.object(logging, 'warning', autospec=True)
-  def test_validate_callbacks_predefined_callbacks(self, mock_warning):
+  def test_validate_callbacks_predefined_callbacks(self):
     supported_predefined_callbacks = [
         callbacks.TensorBoard(),
         callbacks.CSVLogger(filename='./log.csv'),
@@ -54,32 +52,6 @@ class DistributedTrainingUtilsTest(test.TestCase):
           ValueError, 'You must specify a Keras Optimizer V2'):
         distributed_training_utils.validate_callbacks([callback],
                                                       v1_adam.AdamOptimizer())
-
-    self.assertEqual(0, mock_warning.call_count)
-
-  @test.mock.patch.object(logging, 'warning', autospec=True)
-  def test_validate_callbacks_custom_callback(self, mock_warning):
-
-    class CustomCallback(callbacks.Callback):
-      pass
-
-    distributed_training_utils.validate_callbacks([CustomCallback()],
-                                                  adam.Adam())
-
-    self.assertEqual(1, mock_warning.call_count)
-
-    call_args, call_kwargs = mock_warning.call_args
-
-    self.assertEqual(('Your input callback is not one of the predefined '
-                      'Callbacks that supports DistributionStrategy. You '
-                      'might encounter an error if you access one of the '
-                      'model\'s attributes as part of the callback since '
-                      'these attributes are not set. You can access each of '
-                      'the individual distributed models using the '
-                      '`_grouped_model` attribute of your original model.',),
-                     call_args)
-
-    self.assertEqual(0, len(call_kwargs))
 
 
 if __name__ == '__main__':

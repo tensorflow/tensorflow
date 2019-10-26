@@ -30,16 +30,14 @@ string BCast(const tensorflow::BCast::Vec& x, const tensorflow::BCast::Vec& y,
     return "invalid";
   }
   string ret;
-  strings::StrAppend(&ret, "[", str_util::Join(b.x_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.x_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.y_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.y_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.result_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.output_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.grad_x_reduce_idx(), ","),
-                     "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.grad_y_reduce_idx(), ","),
-                     "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_reshape(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_bcast(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_reshape(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_bcast(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_x_reduce_idx(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_y_reduce_idx(), ","), "]");
   return ret;
 }
 

@@ -182,6 +182,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleRng(HloInstruction* rng) override;
+  Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -519,10 +520,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
     // The last read cycle counter in the program.
     llvm::Value* last_read_cycle_end_ = nullptr;
-
-    // An alloca used to hold the output of the aux value returned by the rdtscp
-    // intrinsic.
-    llvm::Value* aux_i8ptr_ = nullptr;
 
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.

@@ -17,152 +17,150 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <queue>
 #include <set>
+#include <type_traits>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 
-struct PoolRecord {
-  PoolRecord(uint32_t size, size_t obj_id)
-      : object_size(size), object_id(obj_id) {}
-
-  // objects in pool are ordered by size
-  bool operator<(const PoolRecord& other) const {
-    return (object_size < other.object_size) ||
-           (object_size == other.object_size && object_id < other.object_id);
-  }
-
-  uint32_t object_size;
-  size_t object_id;
-};
-
-struct QueueRecord {
-  QueueRecord(TaskId task_id, size_t obj_id)
-      : last_task(task_id), object_id(obj_id) {}
-
-  // Objects in queue are ordered by last_task.
-  bool operator<(const QueueRecord& other) const {
-    return (last_task > other.last_task) ||
-           (last_task == other.last_task && object_id > other.object_id);
-  }
-
-  // Last task, where shared object is used.
-  TaskId last_task;
-  size_t object_id;
-};
-
-// Implements memory management with a naive algorithm.
-//
-// The problem of memory management is NP-complete. This implements a
-// naive algorithm that assigns each tensor to a separate object ine memory.
-Status NaiveAssignment(const std::vector<TensorUsageRecord>& usage_records,
-                       ObjectsAssignment* assignment) {
-  assignment->object_sizes.resize(usage_records.size());
-  assignment->object_ids.resize(usage_records.size());
-  for (size_t i = 0; i < usage_records.size(); i++) {
-    auto& record = usage_records[i];
-    assignment->object_ids[i] = i;
-    assignment->object_sizes[i] = record.tensor_size;
-  }
-  return OkStatus();
-}
-
-// Implements memory management with a greedy algorithm.
-//
-// The problem of memory management is NP-complete. This implements a
-// greedy algorithm that approximates an optimal solution with following
-// heuristic:
-//
-//   1. Iterates through all tensor usage records and for every object reference
-//      assigns shared object from the pool. When object reference is used
-//      for the last time, corresponding shared object is returned back to
-//      the pool.
-//
-//   2. Shared object pool grows when there are no free shared object
-//      available.
-//
-//   3. Shared object size may increase when tensor requests larger size.
-Status GreedyAssignment(const std::vector<TensorUsageRecord>& usage_records,
-                        ObjectsAssignment* assignment) {
-  assignment->object_sizes.clear();
-  assignment->object_ids.resize(usage_records.size());
-
-  // Pool of free shared objects is ordered by object size, because we perform
-  // lower_bound search in it.
-  std::set<PoolRecord> pool;
-  // Queue of shared objects in use, ordered by their last_task.
-  std::priority_queue<QueueRecord> objects_in_use;
-  for (size_t i = 0; i < usage_records.size(); i++) {
-    // Pop from the queue and add to the pool all objects that are no longer
-    // in use at the time of execution of the first_task of i-th intermediate
-    // tensor.
-    while (!objects_in_use.empty() &&
-           objects_in_use.top().last_task < usage_records[i].first_task) {
-      auto object_id = objects_in_use.top().object_id;
-      pool.insert({assignment->object_sizes[object_id], object_id});
-      objects_in_use.pop();
-    }
-    uint32_t tensor_size = usage_records[i].tensor_size;
-    if (pool.empty()) {
-      // No free shared object, creating a new one, assign i-th tensor to
-      // it and add to the queue of objects in use.
-      assignment->object_ids[i] = assignment->object_sizes.size();
-      assignment->object_sizes.push_back(tensor_size);
-      objects_in_use.push(
-          {usage_records[i].last_task, assignment->object_ids[i]});
-    } else {
-      auto best_it = pool.end();
-      // Find shared object from pool, that will waste the least possible
-      // amount of memory when reused for current tensor.
-      auto pool_it = pool.lower_bound({tensor_size, 0});
-      uint32_t size_diff = 0;
-      if (pool_it != pool.end()) {
-        // Try smallest shared object from pool with size >= tensor_size.
-        size_diff = pool_it->object_size - tensor_size;
-        best_it = pool_it;
-      }
-      if (pool_it != pool.begin()) {
-        // Try largest shared object from pool with size < tensor_size.
-        pool_it--;
-        if (best_it == pool.end() ||
-            tensor_size - pool_it->object_size < size_diff) {
-          size_diff = tensor_size - pool_it->object_size;
-          best_it = pool_it;
-        }
-      }
-      // best_it can't be equal to pool.end(), because pool is not empty
-      if (best_it == pool.end()) {
-        return InternalError(
-            "No shared object is found in non-empty pool in GreedyAssignment.");
-      }
-      size_t shared_id = best_it->object_id;
-      pool.erase(best_it);
-      assignment->object_ids[i] = shared_id;
-      assignment->object_sizes[shared_id] =
-          std::max(assignment->object_sizes[shared_id], tensor_size);
-      objects_in_use.push(
-          {usage_records[i].last_task, assignment->object_ids[i]});
-    }
-  }
-  return OkStatus();
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
+  return std::accumulate(assignment.object_sizes.begin(),
+                         assignment.object_sizes.end(), static_cast<size_t>(0));
 }
 
 }  // namespace
 
+OffsetsAssignment ObjectsToOffsets(
+    const ObjectsAssignment<size_t>& obj_assignment) {
+  size_t num_tensors = obj_assignment.object_ids.size();
+  size_t num_objects = obj_assignment.object_sizes.size();
+  OffsetsAssignment result = {/*offsets=*/std::vector<size_t>(num_tensors),
+                              /*total_size=*/0};
+  std::vector<size_t> ids_to_offset(num_objects);
+  for (size_t i = 0; i < num_objects; ++i) {
+    ids_to_offset[i] = result.total_size;
+    result.total_size += obj_assignment.object_sizes[i];
+  }
+  for (size_t i = 0; i < num_tensors; ++i) {
+    result.offsets[i] = ids_to_offset[obj_assignment.object_ids[i]];
+  }
+  return result;
+}
+
+Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
+                  ObjectsAssignment<size_t>* assignment) {
+  RETURN_IF_ERROR(
+      GreedyBySizeDistPriorityAssignment(usage_records, assignment));
+  ObjectsAssignment<size_t> assignment_by_breadth;
+  if (GreedyByBreadthAssignment(usage_records, &assignment_by_breadth).ok() &&
+      TotalSize(assignment_by_breadth) < TotalSize(*assignment)) {
+    std::swap(*assignment, assignment_by_breadth);
+  }
+  return OkStatus();
+}
+
+template <>
 Status AssignObjectsToTensors(
-    const std::vector<TensorUsageRecord>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment* assignment) {
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignmentWithHash(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignment(usage_records, assignment,
+                                     reallocation_graph);
+    case MemoryStrategy::GREEDY_BY_BREADTH:
+      return GreedyByBreadthAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_BY_SIZE:
+      return GreedyBySizeDistPriorityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_BEST:
+      return BestGreedy(usage_records, assignment);
+    case MemoryStrategy::MINCOSTFLOW:
+      return MinCostFlowAssignment(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
   }
+  return OkStatus();
+}
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<BHWC>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
+    const UsageGraph* reallocation_graph) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignmentWithHash(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint2>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
+    const UsageGraph* reallocation_graph) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint3>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
+    const UsageGraph* reallocation_graph) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
+Status AssignOffsetsToTensors(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    const UsageGraph* reallocation_graph) {
+  if (strategy == MemoryStrategy::GREEDY_BY_SIZE) {
+    return GreedyBySizeAssignment(usage_records, assignment);
+  }
+  ObjectsAssignment<size_t> objects_assignment;
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      usage_records, strategy, &objects_assignment, reallocation_graph));
+  *assignment = ObjectsToOffsets(objects_assignment);
   return OkStatus();
 }
 

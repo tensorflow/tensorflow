@@ -28,11 +28,19 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
-  def get_model(self, initial_weights=None, distribution=None):
+  def get_model(self,
+                initial_weights=None,
+                distribution=None,
+                experimental_run_tf_function=None,
+                input_shapes=None):
+    del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
       image = keras.layers.Input(shape=(28, 28, 3), name='image')
       c1 = keras.layers.Conv2D(
-          name='conv1', filters=16, kernel_size=(3, 3), strides=(4, 4),
+          name='conv1',
+          filters=16,
+          kernel_size=(3, 3),
+          strides=(4, 4),
           kernel_regularizer=keras.regularizers.l2(1e-4))(
               image)
       if self.with_batch_norm:
@@ -47,18 +55,14 @@ class DistributionStrategyCnnCorrectnessTest(
         model.set_weights(initial_weights)
 
       model.compile(
-          optimizer=gradient_descent.SGD(
-              learning_rate=0.1),
+          optimizer=gradient_descent.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
-          metrics=['sparse_categorical_accuracy'])
+          metrics=['sparse_categorical_accuracy'],
+          experimental_run_tf_function=experimental_run_tf_function)
 
     return model
 
-  def get_data(self,
-               count=keras_correctness_test_base._GLOBAL_BATCH_SIZE
-               * keras_correctness_test_base._EVAL_STEPS,
-               shape=(28, 28, 3),
-               num_classes=10):
+  def _get_data(self, count, shape=(28, 28, 3), num_classes=10):
     centers = np.random.randn(num_classes, *shape)
 
     features = []
@@ -70,22 +74,68 @@ class DistributionStrategyCnnCorrectnessTest(
       labels.append(label)
       features.append(centers[label] + offset)
 
-    x_train = np.asarray(features, dtype=np.float32)
-    y_train = np.asarray(labels, dtype=np.float32).reshape((count, 1))
+    x = np.asarray(features, dtype=np.float32)
+    y = np.asarray(labels, dtype=np.float32).reshape((count, 1))
+    return x, y
+
+  def get_data(self):
+    x_train, y_train = self._get_data(
+        count=keras_correctness_test_base._GLOBAL_BATCH_SIZE *
+        keras_correctness_test_base._EVAL_STEPS)
     x_predict = x_train
     return x_train, y_train, x_predict
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_and_input_config_combinations())
-  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
-    self.run_correctness_test(distribution, use_numpy, use_validation_data)
+  def get_data_with_partial_last_batch_eval(self):
+    x_train, y_train = self._get_data(count=1280)
+    x_eval, y_eval = self._get_data(count=1000)
+    return x_train, y_train, x_eval, y_eval, x_eval
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_and_input_config_combinations())
-  def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
-                                           use_validation_data):
+  @combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data,
+                           experimental_run_tf_function):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              with_batch_norm=True)
+                              experimental_run_tf_function)
+
+  @combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
+                                           use_validation_data,
+                                           experimental_run_tf_function):
+    self.skipTest('Flakily times out, b/134670856')
+    self.run_correctness_test(
+        distribution,
+        use_numpy,
+        use_validation_data,
+        with_batch_norm=True,
+        experimental_run_tf_function=experimental_run_tf_function)
+
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
+      keras_correctness_test_base
+      .strategy_minus_tpu_and_input_config_combinations_eager())
+  def test_cnn_correctness_with_partial_last_batch_eval(self, distribution,
+                                                        use_numpy,
+                                                        use_validation_data):
+    self.run_correctness_test(
+        distribution,
+        use_numpy,
+        use_validation_data,
+        partial_last_batch=True,
+        training_epochs=1)
+
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
+      keras_correctness_test_base
+      .strategy_minus_tpu_and_input_config_combinations_eager())
+  def test_cnn_with_batch_norm_correctness_and_partial_last_batch_eval(
+      self, distribution, use_numpy, use_validation_data):
+    self.run_correctness_test(
+        distribution,
+        use_numpy,
+        use_validation_data,
+        with_batch_norm=True,
+        partial_last_batch=True)
 
 
 if __name__ == '__main__':

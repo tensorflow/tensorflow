@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/client/xrt_client.h"
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xrt/client/xrt_tf_client.h"
@@ -71,8 +72,11 @@ xla::StatusOr<xla::Literal> DeserializeTensorProtoAsLiteral(
 
 }  // namespace
 
-XrtBuffer::XrtBuffer(XrtTensorHandle handle, xla::Shape shape)
-    : handle_(std::move(handle)), shape_(std::move(shape)) {}
+XrtBuffer::XrtBuffer(XrtTensorHandle handle, int xrt_device_ordinal,
+                     xla::Shape shape)
+    : handle_(std::move(handle)),
+      xrt_device_ordinal_(xrt_device_ordinal),
+      shape_(std::move(shape)) {}
 
 XrtBuffer::~XrtBuffer() { Delete(); }
 
@@ -100,7 +104,62 @@ XrtBuffer::~XrtBuffer() { Delete(); }
       "XRTAllocate", {&literal_handle}, /*output_arity=*/1, /*attrs=*/{},
       tf_device_id)[0]);
 
-  return std::make_shared<XrtBuffer>(std::move(buffer_handle), literal.shape());
+  return std::make_shared<XrtBuffer>(std::move(buffer_handle),
+                                     xrt_device_ordinal, literal.shape());
+}
+
+/*static*/ xla::StatusOr<std::shared_ptr<XrtBuffer>> XrtBuffer::MakeTuple(
+    const std::shared_ptr<XrtContext>& context,
+    const std::vector<std::shared_ptr<XrtBuffer>>& elements,
+    int xrt_device_ordinal) {
+  if (elements.empty()) {
+    // XRTMakeTuple cannot construct empty tuples. Construct via a literal
+    // instead.
+    return FromLiteral(context, xrt_device_ordinal,
+                       xla::LiteralUtil::MakeTuple({}));
+  }
+
+  if (xrt_device_ordinal < 0 ||
+      xrt_device_ordinal >= context->tf_device_ids().size()) {
+    return errors::InvalidArgument("Invalid XRT device ordinal ",
+                                   xrt_device_ordinal);
+  }
+  int tf_device_id = context->tf_device_ids().at(xrt_device_ordinal);
+  xrt::XLATupleNode tuple_description;
+  std::vector<xla::Shape> element_shapes;
+  element_shapes.reserve(elements.size());
+  for (int index = 0; index < elements.size(); ++index) {
+    xrt::XLATupleNode* node = tuple_description.add_tuples();
+    node->set_input_index(index);
+    element_shapes.push_back(elements[index]->shape());
+    if (elements[index]->handle().device_id() != tf_device_id) {
+      return errors::InvalidArgument(
+          "All elements of tuple must be on the same device ( ",
+          elements[index]->handle().device_id(), " vs. ", tf_device_id, ")");
+    }
+  }
+  auto proto = absl::make_unique<TensorProto>();
+  proto->set_dtype(DT_STRING);
+  tuple_description.SerializeToString(proto->add_string_val());
+
+  XrtTensorHandle description_handle =
+      context->tf_context()->SendTensor(std::move(proto), tf_device_id,
+                                        /*host_memory=*/true);
+
+  protobuf::Map<string, AttrValue> attrs;
+  attrs["Ninputs"] = MakeAttrValue(elements.size());
+
+  std::vector<const XrtTensorHandle*> args;
+  args.reserve(elements.size() + 1);
+  args.push_back(&description_handle);
+  for (const auto& element : elements) {
+    args.push_back(&element->handle());
+  }
+  XrtTensorHandle buffer_handle = std::move(context->tf_context()->EnqueueOp(
+      "XRTMakeTuple", args, /*output_arity=*/1, attrs, tf_device_id)[0]);
+  return std::make_shared<XrtBuffer>(
+      std::move(buffer_handle), xrt_device_ordinal,
+      xla::ShapeUtil::MakeTupleShape(element_shapes));
 }
 
 xla::StatusOr<xla::Literal> XrtBuffer::ToLiteral() const {
@@ -149,8 +208,8 @@ XrtBuffer::DestructureTuple() {
         handle_.context()->EnqueueOp("XRTSubTuple", {&handle_, &index},
                                      /*output_arity=*/1,
                                      /*attrs=*/{}, handle_.device_id())[0]);
-    output.push_back(
-        std::make_shared<XrtBuffer>(std::move(sub), shape_.tuple_shapes(i)));
+    output.push_back(std::make_shared<XrtBuffer>(
+        std::move(sub), xrt_device_ordinal_, shape_.tuple_shapes(i)));
   }
   return output;
 }
@@ -299,7 +358,8 @@ xla::StatusOr<std::shared_ptr<XrtBuffer>> XrtExecutable::Execute(
   XrtTensorHandle result_handle = std::move(handle_.context()->EnqueueOp(
       "XRTExecute", inputs, /*output_arity=*/1, attrs, tf_device_id)[0]);
 
-  return std::make_shared<XrtBuffer>(std::move(result_handle), shape_.result());
+  return std::make_shared<XrtBuffer>(std::move(result_handle),
+                                     xrt_device_ordinal, shape_.result());
 }
 
 xla::StatusOr<xla::Array2D<std::shared_ptr<XrtBuffer>>>
@@ -409,7 +469,7 @@ XrtExecutable::ExecuteReplicated(
 
       // TODO(phawkins): use a per-core result shape here.
       results(i, j) = std::make_shared<XrtBuffer>(
-          std::move(outputs[output_num]), shape_.result());
+          std::move(outputs[output_num]), xrt_device_ordinal, shape_.result());
       ++output_num;
     }
   }

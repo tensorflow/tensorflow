@@ -68,9 +68,10 @@ class MklReshapeOp : public OpKernel {
     MklDnnShape mkl_shape_input;
     GetMklShape(context, kInputSlotIdx, &mkl_shape_input);
     bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
-    const int64 nelems = input_in_mkl_format
-                             ? mkl_shape_input.GetTfShape().num_elements()
-                             : input_tensor.NumElements();
+    TensorShape input_shape = input_in_mkl_format ? mkl_shape_input.GetTfShape()
+                                                  : input_tensor.shape();
+    const int64 nelems = input_in_mkl_format ? input_shape.num_elements()
+                                             : input_tensor.NumElements();
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, IsLegacyVector(sizes.shape()),
@@ -82,14 +83,17 @@ class MklReshapeOp : public OpKernel {
     TensorShape shape;
     int64 product = 1;
     int unknown_index = -1;
+    bool sizes_has_zero_dim = false;
     switch (sizes.dtype()) {
       case DT_INT32:
-        OP_REQUIRES_OK(context, ValidateSizes<int32>(sizes, &product,
-                                                     &unknown_index, &shape));
+        OP_REQUIRES_OK(context,
+                       ValidateSizes<int32>(sizes, &product, &unknown_index,
+                                            &shape, &sizes_has_zero_dim));
         break;
       case DT_INT64:
-        OP_REQUIRES_OK(context, ValidateSizes<int64>(sizes, &product,
-                                                     &unknown_index, &shape));
+        OP_REQUIRES_OK(context,
+                       ValidateSizes<int64>(sizes, &product, &unknown_index,
+                                            &shape, &sizes_has_zero_dim));
         break;
       default:
         context->CtxFailure(errors::InvalidArgument(
@@ -98,18 +102,28 @@ class MklReshapeOp : public OpKernel {
         return;
     }
     if (unknown_index != -1) {
-      OP_REQUIRES(
-          context, product > 0,
-          errors::InvalidArgument("Reshape cannot infer the missing input size "
-                                  "for an empty tensor unless all specified "
-                                  "input sizes are non-zero"));
-      const int64 missing = nelems / product;
-      OP_REQUIRES(
-          context, product * missing == nelems,
-          errors::InvalidArgument(
-              "Input to reshape is a tensor with ", nelems,
-              " values, but the requested shape requires a multiple of ",
-              product));
+      int64 input_num_elements = 1;
+      bool input_has_zero_dim = false;
+      for (int dim = 0; dim < input_shape.dims(); ++dim) {
+        // For zero dimension, we don't count it into `input_num_elements`
+        // unless `sizes` has no zero dimension, so we are still able to
+        // infer shapes for other dimensions.
+        if (input_shape.dim_size(dim) > 0 || !sizes_has_zero_dim) {
+          input_num_elements *= input_shape.dim_size(dim);
+        } else {
+          input_has_zero_dim = true;
+        }
+      }
+
+      const int64 missing = input_num_elements / product;
+      if (!input_has_zero_dim) {
+        OP_REQUIRES(
+            context, product * missing == input_num_elements,
+            errors::InvalidArgument(
+                "Input to reshape is a tensor with ", input_num_elements,
+                " values, but the requested shape requires a multiple of ",
+                product));
+      }
       shape.set_dim(unknown_index, missing);
     }
     OP_REQUIRES(
@@ -163,7 +177,8 @@ class MklReshapeOp : public OpKernel {
             // shape_from != shape_to), then we just copy input tensor to
             // output tensor with target shape (we cannot forward Mkl layout
             // in such case because shape has changed.)
-            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor)) {
+            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd,
+                                                   output_tensor)) {
             } else {
               OP_REQUIRES(
                   context, output_tensor->CopyFrom(input_tensor, shape_to),
@@ -213,16 +228,16 @@ class MklReshapeOp : public OpKernel {
     }
   }
 
-
  private:
   const int kInputSlotIdx = 0;
   const int kOutputSlotIdx = 0;
 
   template <typename Tshape>
   Status ValidateSizes(const Tensor& sizes, int64* product, int* unknown_index,
-                       TensorShape* shape) {
+                       TensorShape* shape, bool* has_zero_dim) {
     *product = 1;
     *unknown_index = -1;
+    *has_zero_dim = false;
     const int64 num_dims = sizes.NumElements();
     auto Svec = sizes.flat<Tshape>();
     for (int d = 0; d < num_dims; ++d) {
@@ -238,6 +253,12 @@ class MklReshapeOp : public OpKernel {
       } else if (size < 0) {
         return errors::InvalidArgument("Size ", d,
                                        " must be non-negative, not ", size);
+      } else if (size == 0) {
+        // We don't include zero-sized dimension in product, so that we can
+        // still calculate number of elements for non-zero-sized dimensions and
+        // therefore infer their shapes.
+        shape->AddDim(size);
+        *has_zero_dim = true;
       } else {
         shape->AddDim(size);
         (*product) *= size;
@@ -247,22 +268,18 @@ class MklReshapeOp : public OpKernel {
   }
 };
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklReshape")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .HostMemory("shape")                  \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int32>("Tshape")      \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReshapeOp<CPUDevice, T>);              \
-  REGISTER_KERNEL_BUILDER(Name("_MklReshape")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .HostMemory("shape")                  \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int64>("Tshape")      \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReshapeOp<CPUDevice, T>);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklReshape")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .HostMemory("shape")                                 \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint("Tshape", {DT_INT32, DT_INT64})      \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklReshapeOp<CPUDevice, T>);
+
 TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
 

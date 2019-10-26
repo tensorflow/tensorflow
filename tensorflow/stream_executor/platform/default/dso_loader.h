@@ -20,13 +20,13 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 
 #include <vector>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
+#include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
@@ -39,14 +39,29 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCusolverDsoHandle();
+port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+port::StatusOr<void*> GetNvInferDsoHandle();
+port::StatusOr<void*> GetNvInferPluginDsoHandle();
 
 port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetRocfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
+
+// The following method tries to dlopen all necessary GPU libraries for the GPU
+// platform TF is built with (CUDA or ROCm) only when these libraries should be
+// dynamically loaded. Error status is returned when any of the libraries cannot
+// be dlopened.
+port::Status MaybeTryDlopenGPULibraries();
+
+// The following method tries to dlopen all necessary TensorRT libraries when
+// these libraries should be dynamically loaded. Error status is returned when
+// any of the libraries cannot be dlopened.
+port::Status TryDlopenTensorRTLibraries();
 }  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
@@ -58,6 +73,8 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCusolverDsoHandle();
+port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
 

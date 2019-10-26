@@ -184,7 +184,7 @@ void FuseAddWithConvolution2D(const AddAttributes& add_attr,
       const float add_value = add ? add->data[s] : *add_scalar;
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->bias.data[d] += attr->weights.data[index] * add_value;
         }
       }
@@ -206,7 +206,7 @@ void FuseAddWithDepthwiseConvolution2D(const AddAttributes& add_attr,
       const int d = s * attr->weights.shape.o + g;
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({g, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{g, k_y, k_x, s}});
           attr->bias.data[d] += attr->weights.data[index] * add_value;
         }
       }
@@ -225,7 +225,7 @@ void FuseAddWithFullyConnected(const AddAttributes& add_attr,
   for (int d = 0; d < attr->weights.shape.o; ++d) {
     for (int s = 0; s < attr->weights.shape.i; ++s) {
       const float add_value = add ? add->data[s] : *add_scalar;
-      const int index = attr->weights.shape.LinearIndex({d, 0, 0, s});
+      const int index = attr->weights.shape.LinearIndex({{d, 0, 0, s}});
       attr->bias.data[d] += attr->weights.data[index] * add_value;
     }
   }

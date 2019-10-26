@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in activation functions.
-"""
+"""Built-in activation functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,6 +21,7 @@ import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
@@ -42,12 +42,19 @@ _TF_ACTIVATIONS_V2 = {
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """The softmax activation function transforms the outputs so that all values are in
+  """Softmax converts a real vector to a vector of categorical probabilities.
 
-  range (0, 1) and sum to 1. It is often used as the activation for the last
+  The the elements of the output vector are in range (0, 1) and sum to 1.
+
+  Each vector is handled independently. The `axis` argument sets which axis
+  of the input the finction is applied along.
+
+  Softmax is often used as the activation for the last
   layer of a classification network because the result could be interpreted as
-  a probability distribution. The softmax of x is calculated by
-  exp(x)/tf.reduce_sum(exp(x)).
+  a probability distribution.
+
+  The softmax of each vector x is calculated by `exp(x)/tf.reduce_sum(exp(x))`.
+  The input values in are the log-odds of the resulting probability.
 
   Arguments:
       x : Input tensor.
@@ -95,12 +102,40 @@ def elu(x, alpha=1.0):
 def selu(x):
   """Scaled Exponential Linear Unit (SELU).
 
-  SELU is equal to: `scale * elu(x, alpha)`, where alpha and scale
-  are pre-defined constants. The values of `alpha` and `scale` are
+  The Scaled Exponential Linear Unit (SELU) activation function is:
+  `scale * x` if `x > 0` and `scale * alpha * (exp(x) - 1)` if `x < 0`
+  where `alpha` and `scale` are pre-defined constants
+  (`alpha = 1.67326324`
+  and `scale = 1.05070098`).
+  The SELU activation function multiplies  `scale` > 1 with the
+  `[elu](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/activations/elu)`
+  (Exponential Linear Unit (ELU)) to ensure a slope larger than one
+  for positive net inputs.
+
+  The values of `alpha` and `scale` are
   chosen so that the mean and variance of the inputs are preserved
   between two consecutive layers as long as the weights are initialized
-  correctly (see `lecun_normal` initialization) and the number of inputs
-  is "large enough" (see references for more information).
+  correctly (see [`lecun_normal` initialization]
+  (https://www.tensorflow.org/api_docs/python/tf/keras/initializers/lecun_normal))
+  and the number of inputs is "large enough"
+  (see references for more information).
+
+  ![](https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png)
+  (Courtesy: Blog on Towards DataScience at
+  https://towardsdatascience.com/selu-make-fnns-great-again-snn-8d61526802a9)
+
+  Example Usage:
+
+  >>> n_classes = 10  #10-class problem
+  >>> from tensorflow.python.keras.layers import Dense
+  >>> model = tf.keras.Sequential()
+  >>> model.add(Dense(64, kernel_initializer='lecun_normal',
+  ...                 activation='selu', input_shape=(28, 28, 1)))
+  >>> model.add(Dense(32, kernel_initializer='lecun_normal',
+  ...                 activation='selu'))
+  >>> model.add(Dense(16, kernel_initializer='lecun_normal',
+  ...                 activation='selu'))
+  >>> model.add(Dense(n_classes, activation='softmax'))
 
   Arguments:
       x: A tensor or variable to compute the activation function for.
@@ -109,11 +144,14 @@ def selu(x):
       The scaled exponential unit activation: `scale * elu(x, alpha)`.
 
   # Note
-      - To be used together with the initialization "lecun_normal".
-      - To be used together with the dropout variant "AlphaDropout".
+      - To be used together with the initialization "[lecun_normal]
+      (https://www.tensorflow.org/api_docs/python/tf/keras/initializers/lecun_normal)".
+      - To be used together with the dropout variant "[AlphaDropout]
+      (https://www.tensorflow.org/api_docs/python/tf/keras/layers/AlphaDropout)".
 
   References:
-      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+      [Self-Normalizing Neural Networks (Klambauer et al, 2017)]
+      (https://arxiv.org/abs/1706.02515)
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946
@@ -171,39 +209,53 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  """Hyperbolic Tangent activation function.
+  """Hyperbolic tangent activation function.
+
+  For example:
+
+  >>> a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
+  >>> b = tf.keras.activations.tanh(a)
+  >>> b.numpy()
+  array([-0.9950547, -0.7615942,  0.       ,  0.7615942,  0.9950547],
+          dtype=float32)
 
   Arguments:
       x: Input tensor.
 
   Returns:
-      The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
-      exp(-x))/(exp(x) + exp(-x)))`.
+      Tensor of same shape and dtype of input `x`, with tanh activation:
+      `tanh(x) = sinh(x)/cosh(x) = ((exp(x) - exp(-x))/(exp(x) + exp(-x)))`.
   """
   return nn.tanh(x)
 
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
-  """Sigmoid.
+  """Sigmoid activation function.
 
   Applies the sigmoid activation function. The sigmoid function is defined as
   1 divided by (1 + exp(-x)). It's curve is like an "S" and is like a smoothed
   version of the Heaviside (Unit Step Function) function. For small values
   (<-5) the sigmoid returns a value close to zero and for larger values (>5)
   the result of the function gets close to 1.
-  Arguments:
-      x: A tensor or variable.
 
-  Returns:
-      A tensor.
-  Sigmoid activation function.
+  Sigmoid is equivalent to a 2-element Softmax, where the second element is
+  assumed to be zero.
+
+  For example:
+
+  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> b = tf.keras.activations.sigmoid(a)
+  >>> b.numpy()
+  array([0.        , 0.26894143, 0.5       , 0.7310586 , 1.        ],
+         dtype=float32)
 
   Arguments:
       x: Input tensor.
 
   Returns:
-      The sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+      Tensor with the sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+      Tensor will be of same shape and dtype of input `x`.
   """
   return nn.sigmoid(x)
 
@@ -212,11 +264,20 @@ def sigmoid(x):
 def exponential(x):
   """Exponential activation function.
 
+  For example:
+
+  >>> a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
+  >>> b = tf.keras.activations.exponential(a)
+  >>> b.numpy()
+  array([ 0.04978707,  0.36787945,  1.        ,  2.7182817 , 20.085537  ],
+        dtype=float32)
+
   Arguments:
       x: Input tensor.
 
   Returns:
-      The exponential activation: `exp(x)`.
+      Tensor with exponential activation: `exp(x)`. Tensor will be of same
+      shape and dtype of input `x`.
   """
   return math_ops.exp(x)
 
@@ -227,11 +288,19 @@ def hard_sigmoid(x):
 
   Faster to compute than sigmoid activation.
 
+  For example:
+
+  >>> a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
+  >>> b = tf.keras.activations.hard_sigmoid(a)
+  >>> b.numpy()
+  array([0. , 0.3, 0.5, 0.7, 1. ], dtype=float32)
+
   Arguments:
       x: Input tensor.
 
   Returns:
-      Hard sigmoid activation:
+    The hard sigmoid activation:
+
       - `0` if `x < -2.5`
       - `1` if `x > 2.5`
       - `0.2 * x + 0.5` if `-2.5 <= x <= 2.5`.
@@ -243,24 +312,81 @@ def hard_sigmoid(x):
 def linear(x):
   """Linear activation function.
 
+  For example:
+
+  >>> a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
+  >>> b = tf.keras.activations.linear(a)
+  >>> b.numpy()
+  array([-3., -1.,  0.,  1.,  3.], dtype=float32)
+
   Arguments:
       x: Input tensor.
 
   Returns:
-      The linear activation: `x`.
+      the input unmodified.
   """
   return x
 
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
-  if activation.__name__ in _TF_ACTIVATIONS_V2:
+  """Returns name attribute (`__name__`) of function.
+
+  Arguments:
+      activation : Function
+
+  Returns:
+      String denoting the name attribute of the input function
+
+  For example:
+
+  >>> tf.keras.activations.serialize(tf.keras.activations.tanh)
+  'tanh'
+  >>> tf.keras.activations.serialize(tf.keras.activations.sigmoid)
+  'sigmoid'
+  >>> tf.keras.activations.serialize('abcd')
+  Traceback (most recent call last):
+  ...
+  ValueError: ('Cannot serialize', 'abcd')
+
+  Raises:
+      ValueError: The input function is not a valid one.
+  """
+  if (hasattr(activation, '__name__') and
+      activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
-  return activation.__name__
+  return serialize_keras_object(activation)
 
 
 @keras_export('keras.activations.deserialize')
 def deserialize(name, custom_objects=None):
+  """Returns activation function denoted by input string.
+
+  Arguments:
+      x : String
+
+  Returns:
+      Tensorlow Activation function denoted by input string.
+
+  For example:
+  >>> tf.keras.activations.deserialize('linear')
+   <function linear at 0x1239596a8>
+  >>> tf.keras.activations.deserialize('sigmoid')
+   <function sigmoid at 0x123959510>
+  >>> tf.keras.activations.deserialize('abcd')
+  Traceback (most recent call last):
+  ...
+  ValueError: Unknown activation function:abcd
+
+  Args:
+    name: The name of the actiuvation function.
+    custom_objects: A {name:value} dictionary for activations not build into
+      keras.
+
+  Raises:
+      ValueError: `Unknown activation function` if the input string does not
+      denote any defined Tensorflow activation function.
+  """
   return deserialize_keras_object(
       name,
       module_objects=globals(),
@@ -270,6 +396,35 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.activations.get')
 def get(identifier):
+  """Returns function.
+
+  Arguments:
+      identifier: Function or string
+
+  Returns:
+      Activation function denoted by input:
+      - `Linear activation function` if input is `None`.
+      - Function corresponding to the input string or input function.
+
+  For example:
+
+  >>> tf.keras.activations.get('softmax')
+   <function softmax at 0x1222a3d90>
+  >>> tf.keras.activations.get(tf.keras.activations.softmax)
+   <function softmax at 0x1222a3d90>
+  >>> tf.keras.activations.get(None)
+   <function linear at 0x1239596a8>
+  >>> tf.keras.activations.get(abs)
+   <built-in function abs>
+  >>> tf.keras.activations.get('abcd')
+  Traceback (most recent call last):
+  ...
+  ValueError: Unknown activation function:abcd
+
+  Raises:
+      ValueError: Input is an unknown function or string, i.e., the input does
+      not denote any defined function.
+  """
   if identifier is None:
     return linear
   if isinstance(identifier, six.string_types):
@@ -277,6 +432,10 @@ def get(identifier):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier
+  elif isinstance(identifier, dict):
+    return deserialize_keras_object(
+        identifier, printable_module_name='activation')
   else:
-    raise ValueError('Could not interpret '
-                     'activation function identifier:', identifier)
+    raise TypeError(
+        'Could not interpret activation function identifier: {}'.format(
+            repr(identifier)))

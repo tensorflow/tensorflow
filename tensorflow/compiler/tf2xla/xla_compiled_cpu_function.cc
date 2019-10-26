@@ -33,7 +33,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       program_shape_(static_data.program_shape_),
       hlo_profile_printer_data_(static_data.hlo_profile_printer_data_) {
   bool allocate_entry_params =
-      alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS;
+      alloc_mode == AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
   alloc_buffer_table_ = xla::cpu_function_runtime::MallocContiguousBuffers(
       static_data.buffer_infos_, static_data.num_buffers_,

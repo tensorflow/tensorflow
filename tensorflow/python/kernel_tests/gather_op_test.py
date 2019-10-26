@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +35,16 @@ from tensorflow.python.platform import test
 
 _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
+
+# TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
+
+
+def _to_str_elements(values):
+  """Converts the inner list elements to strings."""
+  if isinstance(values, list):
+    return [_to_str_elements(value) for value in values]
+  else:
+    return str(values).encode("utf-8")
 
 
 class GatherTest(test.TestCase, parameterized.TestCase):
@@ -194,6 +205,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
+  @test_util.disable_xla(
+      "Assertion inside an op is not supported in XLA. Instead XLA clamps the "
+      "index to be in bounds and returns the indexed value there (Don't rely "
+      "on this behavior).")
   def testBadIndicesCPU(self):
     with test_util.force_cpu():
       params = [[0, 1, 2], [3, 4, 5]]
@@ -272,7 +287,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
                     [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
 
-      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      # batch_dims=indices.shape.ndims - 1
+      # (equivalent to tf.compat.v1.batch_gather)
       dict(  # 2D indices (1 batch dim)
           batch_dims=1,
           params=[[10, 11, 12, 13], [20, 21, 22, 23]],
@@ -337,6 +353,32 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testBatchDims(self, params, indices, batch_dims, expected=None,
                     axis=None):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(expected, result)
+
+    # Test the gradients shape.
+    if context.executing_eagerly():
+      with backprop.GradientTape() as tape:
+        zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
+        tape.watch(zeros)
+        values = zeros * 2 + zeros
+        result = array_ops.gather(
+            values, indices, axis=axis, batch_dims=batch_dims)
+      gradients = tape.gradient(result, zeros)
+    else:
+      zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
+      values = zeros * 2 + zeros
+      result = array_ops.gather(
+          values, indices, axis=axis, batch_dims=batch_dims)
+      gradients = gradients_impl.gradients(result, [zeros])[0]
+
+    self.assertAllEqual(array_ops.shape(params), array_ops.shape(gradients))
+
+    # Run the same test for strings.
+    params = _to_str_elements(params)
+    expected = _to_str_elements(expected)
+    result = array_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
+
     self.assertAllEqual(expected, result)
 
   @parameterized.parameters([
@@ -433,6 +475,15 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
+    # Run the same test for strings.
+    params = _to_str_elements(params)
+    expected = _to_str_elements(expected.tolist())
+    result = array_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
+
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
   def _batchNumpyGather(self, params, indices, axis, batch_dims):
     """Performs a batch gather by making recursive calls to np.take().
 
@@ -455,40 +506,6 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         self._batchNumpyGather(params[i], indices[i], axis, batch_dims - 1)
         for i in range(params.shape[0])
     ])
-
-  def testSkipEagerErrors(self):
-    if context.executing_eagerly():
-      return
-    with self.assertRaisesRegexp(ValueError, r"tf\.gather does not allow.*"):
-      array_ops.gather(
-          params=[1, 2],
-          batch_dims=1,
-          indices=array_ops.placeholder(dtypes.int32))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testErrors(self):
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 2 must be less than rank\(indices\) = 2"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]], indices=[[1, 2], [3, 4]], batch_dims=2)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than rank\(params\) = 1"):
-      array_ops.gather(
-          params=[1, 2, 3, 4], indices=[[1, 2], [3, 4]], batch_dims=1)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than or equal to axis = 0"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]],
-          indices=[[1, 2], [3, 4]],
-          batch_dims=1,
-          axis=0)
-
-    one = array_ops.ones((), dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, "batch_dims must be an int"):
-      array_ops.gather(params=[[1]], indices=[[1]], batch_dims=one)
 
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherRefVariable(self):

@@ -100,6 +100,10 @@ sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
 
+# Bessel
+bessel_i0e = _unary_op(math_ops.bessel_i0e)
+bessel_i1e = _unary_op(math_ops.bessel_i1e)
+
 # Binary operators
 
 # The main difference between TensorFlow and XLA binary ops is the broadcasting
@@ -306,26 +310,6 @@ dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
 einsum = gen_xla_ops.xla_einsum
 
-
-@ops.RegisterGradient('XlaEinsum')
-def _einsum_grad(op, grad):
-  equation = op.get_attr('equation')
-  inputs, output = equation.split('->')
-  left, right = inputs.split(',')
-
-  return [
-      gen_xla_ops.xla_einsum(
-          grad,
-          op.inputs[1],
-          equation='{},{}->{}'.format(output, right, left),
-          name=None),
-      gen_xla_ops.xla_einsum(
-          grad,
-          op.inputs[0],
-          equation='{},{}->{}'.format(output, left, right),
-          name=None)
-  ]
-
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
 pad = gen_xla_ops.xla_pad
@@ -416,6 +400,15 @@ def slice(x, start_dims, limit_dims, strides):
       for (start, limit, stride) in zip(start_dims, limit_dims, strides)
   ]
   return x[tuple(spec)]
+
+
+sharding = gen_xla_ops.xla_sharding
+
+
+@ops.RegisterGradient("XlaSharding")
+def _sharding_grad(op, grad):
+  del op  # Unused
+  return [grad]
 
 
 sort = gen_xla_ops.xla_sort

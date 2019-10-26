@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -40,15 +41,14 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     // with our temporary buffers.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
-    const std::set<BufferAllocation::Slice> slices =
-        assignment_.GetAllSlices(&hlo, index);
-    if (slices.empty() || slices.size() > 1) {
+    auto unique_slice = assignment_.GetUniqueSlice(&hlo, index);
+    if (!unique_slice.ok()) {
       // Skip HLOs which don't have a buffer assigned or for which the
       // buffer can't be determined statically. We cannot determine their
       // aliasing properties in these cases.
       return;
     }
-    buffer_slice = *slices.begin();
+    buffer_slice = unique_slice.ValueOrDie();
   }
 
   if (module_.config().debug_options().xla_llvm_enable_alias_scope_metadata()) {
@@ -134,15 +134,26 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   // 3. Operands of the given hlo.
   //
   // This set can be increased as we need.
-  std::vector<const LogicalBuffer*> worklist;
+  std::vector<const HloValue*> worklist;
+  absl::flat_hash_set<const HloInstruction*> added_to_worklist;
   auto add_buffers_to_worklist =
-      [&worklist, &assignment](const HloInstruction* instruction) {
+      [&](const HloInstruction* instruction) {
+        // Buffers of parameters cannot be added to the noalias set.
+        if (instruction->opcode() == HloOpcode::kParameter) {
+          return;
+        }
+        if (added_to_worklist.contains(instruction)) {
+          return;
+        }
+        added_to_worklist.insert(instruction);
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&](const Shape& /*shape*/, const ShapeIndex& index) {
-              for (const LogicalBuffer* buffer :
+              for (const HloValue* buffer :
                    assignment.GetSourceBuffers(instruction, index)) {
-                worklist.push_back(buffer);
+                if (assignment.HasAllocation(*buffer)) {
+                  worklist.push_back(buffer);
+                }
               }
             });
       };
@@ -160,12 +171,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   }
 
   std::set<BufferAllocation::Slice> buffers;
-  for (const LogicalBuffer* buffer : worklist) {
-    // Skip buffers which cannot be added to the noalias set.
-    if (!assignment.HasAllocation(*buffer) ||
-        buffer->instruction()->opcode() == HloOpcode::kParameter) {
-      continue;
-    }
+  for (const HloValue* buffer : worklist) {
     const BufferAllocation::Slice noalias_slice =
         assignment.GetAssignedAllocation(*buffer).GetSlice(*buffer);
     // Our buffer must not overlap with the noalias slice.

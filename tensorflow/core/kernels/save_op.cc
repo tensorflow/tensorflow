@@ -62,8 +62,8 @@ class ShardedFilenameOp : public OpKernel {
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<string>()() = strings::Printf(
-        "%s-%05d-of-%05d", ctx->input(0).scalar<string>()().c_str(),
+    out->scalar<tstring>()() = strings::Printf(
+        "%s-%05d-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
         ctx->input(1).scalar<int32>()(), ctx->input(2).scalar<int32>()());
   }
 };
@@ -85,8 +85,8 @@ class ShardedFilespecOp : public OpKernel {
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<string>()() = strings::Printf(
-        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<string>()().c_str(),
+    out->scalar<tstring>()() = strings::Printf(
+        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
         ctx->input(1).scalar<int32>()());
   }
 };

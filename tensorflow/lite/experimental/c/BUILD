@@ -1,18 +1,20 @@
-package(default_visibility = [":experimental"])
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_shared_object",
+    "tflite_copts",
+)
+
+package(
+    default_visibility = [":experimental"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "experimental",
     packages = [
         "//tensorflow/lite/experimental/...",
+        "//third_party/dart/tflite_native/...",  # whitelisted
     ],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-load(
-    "//tensorflow/lite:build_def.bzl",
-    "tflite_cc_shared_object",
-    "tflite_copts",
 )
 
 tflite_cc_shared_object(
@@ -61,7 +63,6 @@ cc_library(
         "c_api_types.h",
     ],
     copts = tflite_copts(),
-    tags = ["swift_module=TensorFlowLiteC"],
     visibility = [
         ":experimental",
     ],

@@ -99,6 +99,47 @@ class DirectivesTest(converter_testing.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unexpected keyword.*'):
       directives_converter._map_args(node, invalid_directive)
 
+  def test_value_verification_does_not_trigger_properties(self):
+
+    self_test = self
+
+    class TestClass(object):
+
+      @property
+      def b(self):
+        self_test.fail('This should never be evaluated')
+
+    tc = TestClass()
+
+    def test_fn():
+      return tc.b + 1
+
+    node, ctx = self.prepare(test_fn, {'tc': tc})
+    node = directives_converter.transform(node, ctx)
+    self.assertIsNotNone(node)
+
+  def test_value_verification_does_not_trigger_getattr(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.getattr_called = False
+
+      def __getattr__(self, _):
+        # Note: seems that any exception raised here is absorbed by hasattr.
+        # So we can't call test.fail or raise.
+        self.getattr_called = True
+
+    tc = TestClass()
+
+    def test_fn():
+      return tc.b + 1
+
+    node, ctx = self.prepare(test_fn, {'tc': tc})
+    node = directives_converter.transform(node, ctx)
+    self.assertIsNotNone(node)
+    self.assertFalse(tc.getattr_called)
+
 
 if __name__ == '__main__':
   test.main()

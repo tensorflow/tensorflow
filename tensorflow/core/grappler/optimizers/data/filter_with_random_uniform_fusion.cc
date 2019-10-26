@@ -269,8 +269,11 @@ void FilterWithRandomUniformFusion::Feedback(Cluster* cluster,
   // Nothing to do for FilterWithRandomUniformFusion
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(FilterWithRandomUniformFusion,
-                            "filter_with_random_uniform_fusion");
+// TODO(b/131229793): The current implementation of the optimization is brittle
+// as it depends on the order of inputs to commutative nodes. Make the
+// optimization robust to the input ordering before re-enabling it.
+// REGISTER_GRAPH_OPTIMIZER_AS(FilterWithRandomUniformFusion,
+//                             "filter_with_random_uniform_fusion");
 
 }  // end namespace grappler
 }  // end namespace tensorflow

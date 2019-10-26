@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -29,7 +30,7 @@ namespace tensorflow {
 // string -> Tensor<string>
 Tensor V(const string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = content;
+  tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
@@ -37,7 +38,7 @@ Tensor V(const string& content) {
 string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
-  return tensor.scalar<string>()();
+  return tensor.scalar<tstring>()();
 }
 
 Rendezvous::ParsedKey MakeKey(const string& s) {
@@ -52,8 +53,12 @@ class DummyWorkerCache : public WorkerCacheInterface {
   void ListWorkers(std::vector<string>* workers) const override {}
   void ListWorkersInJob(const string& job_name,
                         std::vector<string>* workers) const override {}
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     return nullptr;
+  }
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
   }
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {
@@ -71,7 +76,7 @@ class RpcRendezvousMgrTest : public ::testing::Test {
         worker_session_("rpc_session", "/job:mnist/replica:1/task:2",
                         std::unique_ptr<WorkerCacheInterface>(cache_),
                         std::unique_ptr<DeviceMgr>(),
-                        std::unique_ptr<GraphMgr>()),
+                        std::unique_ptr<GraphMgr>(), nullptr),
         rmgr_(&env) {
     env.env = Env::Default();
   }
@@ -136,6 +141,56 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
     TF_ASSERT_OK(rendez->Initialize(&worker_session_));
     EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
   }
+}
+
+TEST_F(RpcRendezvousMgrTest, LocalCancel) {
+  const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
+      "/job:mnist/replica:1/task:2/cpu:0", 7890,
+      "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
+  auto* cm = new CancellationManager();
+  const int64 step_id = 123;
+  RemoteRendezvous* rendez = rmgr_.Find(step_id);
+  core::ScopedUnref unref(rendez);
+  Notification n;
+  SchedClosure([this, cm, &n]() {
+    env.env->SleepForMicroseconds(100 * 1000);
+    cm->StartCancel();
+    n.Notify();
+  });
+  Tensor val(DT_STRING);
+  bool val_dead = false;
+  Rendezvous::Args args;
+  args.cancellation_manager = cm;
+  TF_ASSERT_OK(rendez->Initialize(&worker_session_));
+  EXPECT_TRUE(errors::IsCancelled(rendez->Recv(key, args, &val, &val_dead)));
+  n.WaitForNotification();
+  delete cm;
+}
+
+TEST_F(RpcRendezvousMgrTest, CancelAfterReceived) {
+  const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
+      "/job:mnist/replica:1/task:2/cpu:0", 7890,
+      "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
+  auto* cm = new CancellationManager();
+  const int64 step_id = 123;
+  RemoteRendezvous* rendez = rmgr_.Find(step_id);
+  core::ScopedUnref unref(rendez);
+  Notification n;
+  SchedClosure([this, rendez, key, cm, &n]() {
+    env.env->SleepForMicroseconds(100 * 1000);
+    TF_ASSERT_OK(rendez->Send(key, Rendezvous::Args(), V("peach"), false));
+    cm->StartCancel();
+    n.Notify();
+  });
+  Tensor val(DT_STRING);
+  bool val_dead = false;
+  Rendezvous::Args args;
+  args.cancellation_manager = cm;
+  TF_ASSERT_OK(rendez->Initialize(&worker_session_));
+  TF_ASSERT_OK(rendez->Recv(key, args, &val, &val_dead));
+  EXPECT_EQ(V(val), "peach");
+  n.WaitForNotification();
+  delete cm;
 }
 
 TEST_F(RpcRendezvousMgrTest, CleanupAll) {

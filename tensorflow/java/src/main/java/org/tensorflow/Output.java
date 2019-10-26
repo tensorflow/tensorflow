@@ -48,6 +48,22 @@ public final class Output<T> implements Operand<T> {
     return operation.dtype(index);
   }
 
+  /**
+   * Returns the tensor at this output.
+   *
+   * <p>This operation is only supported on the outputs of an operation executed eagerly. For graph
+   * environments, output tensors must be fetched by running a session, using {@link
+   * Session.Runner#fetch(Output)}.
+   *
+   * @return tensor
+   * @throws IllegalStateException if this output results from a graph
+   * @see EagerSession
+   */
+  @SuppressWarnings("unchecked")
+  public Tensor<T> tensor() {
+    return (Tensor<T>) operation.tensor(index);
+  }
+
   @Override
   public Output<T> asOutput() {
     return this;

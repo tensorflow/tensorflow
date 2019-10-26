@@ -21,13 +21,16 @@ from __future__ import print_function
 import functools
 import operator
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,7 +44,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
 
 
-class VariablesTestCase(test.TestCase):
+class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testDistributeStrategy(self):
@@ -107,6 +110,17 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(
           self.evaluate(rnd) + self.evaluate(dep) + 2.0, self.evaluate(depdep))
 
+  @test_util.run_deprecated_v1
+  def testCyclicInitializer(self):
+    with self.cached_session():
+      cyclic = control_flow_ops.while_loop(
+          cond=lambda i: i < 10,
+          body=lambda i: i + 1,
+          loop_vars=(constant_op.constant(0),))
+      initial_value = variables._try_guard_against_uninitialized_dependencies(
+          "test", cyclic)
+      self.assertIs(initial_value, cyclic)
+
   def testIterable(self):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
       for _ in variables.Variable(0.0):
@@ -152,6 +166,22 @@ class VariablesTestCase(test.TestCase):
 
       self.evaluate(four)
       self.assertAllClose(4.0, self.evaluate(var))
+
+  def testAssignDifferentShapesEagerNotAllowed(self):
+    with context.eager_mode():
+      var = variables.Variable(np.zeros(shape=[1, 1]))
+      with self.assertRaisesRegexp(ValueError,
+                                   "Shapes.*and.*are incompatible"):
+        var.assign(np.zeros(shape=[2, 2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignDifferentShapesAllowed(self):
+    var = variables.Variable(np.zeros(shape=[1, 1]),
+                             shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(np.zeros(shape=[1, 1]), var.read_value())
+    self.evaluate(var.assign(np.zeros(shape=[2, 2])))
+    self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
 
   def testZeroSizeStringAssign(self):
     with self.cached_session() as sess:
@@ -291,7 +321,6 @@ class VariablesTestCase(test.TestCase):
   def testCachingDevice(self):
     with self.cached_session():
       var = variables.Variable(2.0)
-      self.assertEqual(var.device, var.value().device)
       self.assertEqual(var.device, var.initialized_value().device)
 
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
@@ -581,6 +610,22 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v.name, "foo/bar:0")
     with ops.get_default_graph().as_default():
       create_variable()
+
+  @parameterized.parameters(variables.VariableV1, variables.Variable)
+  def testTrainableVariable(self, cls):
+    v1 = cls(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    v3 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=True)
+    self.assertEqual(True, v3.trainable)
+
+    v4 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=False)
+    self.assertEqual(False, v4.trainable)
 
 
 class IsInitializedTest(test.TestCase):

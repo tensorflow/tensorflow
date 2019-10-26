@@ -1,12 +1,11 @@
 # Description: Utilities.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "periodic_function_dynamic",
@@ -71,6 +70,7 @@ cc_library(
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -81,6 +81,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )

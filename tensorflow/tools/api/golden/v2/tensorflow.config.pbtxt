@@ -13,8 +13,16 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "experimental_connect_to_cluster"
+    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\'], "
+  }
+  member_method {
     name: "experimental_connect_to_host"
     argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
+  }
+  member_method {
+    name: "experimental_functions_run_eagerly"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "experimental_list_devices"

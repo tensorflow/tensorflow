@@ -91,6 +91,10 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
 }
 
 bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
+  if (HasRegularOutputs(node, *node_map_)) {
+    // The output values of this node may be needed.
+    return false;
+  }
   if (!fetch_nodes_known_ ||
       nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -115,10 +119,6 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
     return false;
   }
   if (!SafeToRemoveIdentity(node)) {
-    return false;
-  }
-  if (NumNonControlOutputs(node, *node_map_) > 0) {
-    // The output values of this node may be needed.
     return false;
   }
   return true;
@@ -212,7 +212,7 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
   if ((is_identity || is_multi_input_identity_n) && num_cross_in > 0 &&
       num_cross_out > 0 && num_cross_after > 0) {
     // This identity node follows a device crossing, so it might be
-    // following a _Recv node after partioning. Do not remove such nodes,
+    // following a _Recv node after partitioning. Do not remove such nodes,
     // unless they only have consumers on the same device as themselves.
     return false;
   }
@@ -295,6 +295,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     }
     node->set_op("NoOp");
     node->clear_attr();
+    DedupControlInputs(node);
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;
   }

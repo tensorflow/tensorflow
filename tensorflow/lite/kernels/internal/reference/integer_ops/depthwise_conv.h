@@ -27,6 +27,7 @@ inline void DepthwiseConvPerChannel(
     const int32* bias_data, const RuntimeShape& output_shape,
     int8* output_data) {
   // Get parameters.
+  // TODO(b/141565753): Re-introduce ScopedProfilingLabel on Micro.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -36,10 +37,8 @@ inline void DepthwiseConvPerChannel(
   const int depth_multiplier = params.depth_multiplier;
   const int32 input_offset = params.input_offset;
   const int32 output_offset = params.output_offset;
-
-  // Set min and max value of the output.
-  const int32 output_activation_min = std::numeric_limits<int8_t>::min();
-  const int32 output_activation_max = std::numeric_limits<int8_t>::max();
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
 
   // Check dimensions of the tensors.
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);

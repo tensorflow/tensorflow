@@ -1,10 +1,5 @@
 framework module TFLTensorFlowLite {
     umbrella header "TFLTensorFlowLite.h"
 
-    header "TFLInterpreter.h"
-    header "TFLInterpreterOptions.h"
-    header "TFLQuantizationParameters.h"
-    header "TFLTensor.h"
-
     export *
 }

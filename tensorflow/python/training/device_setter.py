@@ -31,7 +31,10 @@ STANDARD_PS_OPS = ("Variable", "VariableV2", "AutoReloadVariable",
                    "MutableHashTable", "MutableHashTableV2",
                    "MutableHashTableOfTensors", "MutableHashTableOfTensorsV2",
                    "MutableDenseHashTable", "MutableDenseHashTableV2",
-                   "VarHandleOp", "BoostedTreesEnsembleResourceHandleOp")
+                   "VarHandleOp", "BoostedTreesEnsembleResourceHandleOp",
+                   "BoostedTreesQuantileStreamResourceHandleOp",
+                   "ResourceConditionalAccumulator",
+                   "DecisionTreeResource")
 
 
 class _RoundRobinStrategy(object):
@@ -131,9 +134,13 @@ class _ReplicaDeviceChooser(object):
 
 
 @tf_export(v1=["train.replica_device_setter"])
-def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
-                          worker_device="/job:worker", merge_devices=True,
-                          cluster=None, ps_ops=None, ps_strategy=None):
+def replica_device_setter(ps_tasks=0,
+                          ps_device="/job:ps",
+                          worker_device="/job:worker",
+                          merge_devices=True,
+                          cluster=None,
+                          ps_ops=None,
+                          ps_strategy=None):
   """Return a `device function` to use when building a Graph for replicas.
 
   Device Functions are used in `with tf.device(device_function):` statement to
@@ -158,7 +165,8 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   cluster_spec = {
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
-  with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
+  with
+  tf.device(tf.compat.v1.train.replica_device_setter(cluster=cluster_spec)):
     # Build your graph
     v1 = tf.Variable(...)  # assigned to /job:ps/task:0
     v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -218,6 +226,6 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
     ps_strategy = _RoundRobinStrategy(ps_tasks)
   if not six.callable(ps_strategy):
     raise TypeError("ps_strategy must be callable")
-  chooser = _ReplicaDeviceChooser(
-      ps_tasks, ps_device, worker_device, merge_devices, ps_ops, ps_strategy)
+  chooser = _ReplicaDeviceChooser(ps_tasks, ps_device, worker_device,
+                                  merge_devices, ps_ops, ps_strategy)
   return chooser.device_function

@@ -35,7 +35,8 @@ class ScopedAllocator {
   struct Field {
     int32 scope_id;
     size_t offset;
-    size_t bytes;
+    size_t bytes_requested;
+    size_t bytes_allocated;
   };
   // Field index that refers to backing tensor, not any aliased field.
   static const int32 kBackingIndex = -1;
@@ -106,7 +107,6 @@ class ScopedAllocatorInstance : public Allocator {
   }
   void DeallocateRaw(void* p) LOCKS_EXCLUDED(mu_) override;
   bool TracksAllocationSizes() const override { return false; }
-  bool ShouldAllocateEmptyTensors() const override { return false; }
   size_t RequestedSize(const void* ptr) const override { return 0; }
   size_t AllocatedSize(const void* ptr) const override { return 0; }
   int64 AllocationId(const void* ptr) const override { return 0; }

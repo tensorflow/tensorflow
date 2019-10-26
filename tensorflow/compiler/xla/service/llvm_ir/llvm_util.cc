@@ -194,7 +194,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
+    case OPAQUE_TYPE:
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
@@ -245,15 +245,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
   return b->CreateGlobalStringPtr(encoded_shape);
 }
 
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  ShapeProto shape_proto;
-  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
-  Shape shape(shape_proto);
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
-}
-
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
@@ -267,12 +258,13 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
                                                llvm::Type* tile_type,
                                                absl::string_view name) {
-  const int kNVPTXSharedMemoryAddrSpace = 3;
+  // Both AMDGPU and NVPTX use the same address space for shared memory.
+  const int kGPUSharedMemoryAddrSpace = 3;
   return new llvm::GlobalVariable(
       *module, tile_type,
       /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
       llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -294,7 +286,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::MaybeAlign(alignment));
   }
   return alloca;
 }
@@ -502,22 +494,17 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
 
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (!module_config.debug_options().xla_cpu_enable_fast_math()) {
+  const auto& options = module_config.debug_options();
+  if (!options.xla_cpu_enable_fast_math()) {
     return flags;
   }
-
   // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
   // AllowContract, and ApproxFunc.
   flags.setFast();
-
-  if (module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-    flags.setNoNaNs(false);
-  }
-
-  if (module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-    flags.setNoInfs(false);
-  }
-
+  flags.setNoNaNs(!options.xla_cpu_fast_math_honor_nans());
+  flags.setNoInfs(!options.xla_cpu_fast_math_honor_infs());
+  flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
+  flags.setApproxFunc(!options.xla_cpu_fast_math_honor_functions());
   return flags;
 }
 
@@ -622,13 +609,14 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     function->addFnAttr("unsafe-fp-math", "true");
     function->addFnAttr("no-signed-zeros-fp-math", "true");
-
     if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
       function->addFnAttr("no-nans-fp-math", "true");
     }
-
     if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
       function->addFnAttr("no-infs-fp-math", "true");
+    }
+    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
+      function->addFnAttr("reciprocal-estimates", "none");
     }
   }
 
@@ -689,34 +677,54 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b) {
-  static const char* kPhiloxRngStateVariableName = "philox_rng_state";
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // AMDGPU uses 1 for global memory address space.
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
+llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
+                                                     llvm::IRBuilder<>* b) {
+  static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kPhiloxRngStateVariableName);
+      module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
+    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+    llvm::Type* state_type = b->getInt128Ty();
+    // Use a non-zero initial value as zero state can cause the result of the
+    // first random number generation not passing the chi-square test. The
+    // values used here are arbitrarily chosen, any non-zero values should be
+    // fine.
     state_ptr = new llvm::GlobalVariable(
         /*M=*/*module,
-        /*Ty=*/b->getInt64Ty(),
+        /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName);
+        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Name=*/kRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }
 
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* builder) {
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForPhiloxRngState(module, builder);
-  llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
-  // If the 64-bit value overflows, we use the wraparound value. This should
-  // be fine in practice as we only add one to the value each time when a RNG is
-  // executed.
+      GetOrCreateVariableForRngState(module, builder);
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old, builder->getInt64(value), "inc_state");
+      state_value_old,
+      llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
+  return state_value_old;
 }
 
 }  // namespace llvm_ir

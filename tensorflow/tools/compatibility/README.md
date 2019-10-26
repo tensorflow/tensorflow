@@ -27,8 +27,13 @@ tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded
 tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded --copyotherfiles False
 ```
 
-*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install 
-after TensorFlow 1.12.
+*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install
+ after TensorFlow 1.12.
+
+You may want to retain revision history, especially when preparing a CL:
+```
+g4 integrate --retroactive coolcode/... coolcode-upgraded/...
+```
 
 ## Report
 
@@ -42,9 +47,9 @@ e.g.:
 Added keyword 'input' to reordered function 'tf.argmax'
 Renamed keyword argument from 'dimension' to 'axis'
 
-    Old:         tf.argmax([[1, 3, 2]], dimension=0))
+    Old:         tf.argmax([[1, 3, 2]], dimension=0)
                                         ~~~~~~~~~~
-    New:         tf.argmax(input=[[1, 3, 2]], axis=0))
+    New:         tf.argmax(input=[[1, 3, 2]], axis=0)
 
 ```
 
@@ -60,8 +65,9 @@ keyword arguments to functions that had their arguments reordered.
 
 - The script assumes that `tensorflow` is imported using `import tensorflow as tf`.
 
-- Note for upgrading to 2.0: Check out [tf2up.ml](http://tf2up.ml) for a convenient tool to upgrade Jupiter
-  notebooks and Python files in a github repository.
+- Note for upgrading to 2.0: Check out [tf2up.ml](http://tf2up.ml) for a
+  convenient tool to upgrade Jupyter notebooks and Python files in a GitHub
+  repository.
 
 - Note for upgrading to 1.0: There are some syntaxes that are not handleable with this script as this
 script was designed to use only standard python packages.

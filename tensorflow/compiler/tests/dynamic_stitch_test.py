@@ -30,7 +30,7 @@ from tensorflow.python.platform import googletest
 class DynamicStitchTest(xla_test.XLATestCase):
 
   def _AssertDynamicStitchResultIs(self, indices, data, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       index_placeholders = [
           array_ops.placeholder(dtypes.as_dtype(arg.dtype)) for arg in indices
       ]

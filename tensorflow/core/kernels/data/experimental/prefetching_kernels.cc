@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class IteratorGetDeviceOp : public OpKernel {
@@ -41,14 +42,17 @@ class IteratorGetDeviceOp : public OpKernel {
     // NOTE(mrry): Since the operation's input is a resource, we must be
     // colocated with it, and so we can simply return the current device's
     // name without looking at the input.
-    device_name_t->scalar<string>()() = ctx->device()->name();
+    device_name_t->scalar<tstring>()() = ctx->device()->name();
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
+                        IteratorGetDeviceOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalIteratorGetDevice").Device(DEVICE_CPU),
     IteratorGetDeviceOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

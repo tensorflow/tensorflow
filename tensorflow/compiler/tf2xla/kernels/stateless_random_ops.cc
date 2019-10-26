@@ -33,6 +33,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+xla::BitGeneratorTy GetBitGeneratorForDevice(
+    absl::string_view device_type_string) {
+  // The Philox algorithm may cause performance regression on other devices.
+  // Turn on the Philox algorithm for the CPU and GPU backends only.
+  if (device_type_string == DEVICE_GPU_XLA_JIT ||
+      device_type_string == DEVICE_CPU_XLA_JIT) {
+    return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/true);
+    };
+  }
+  return xla::ThreeFryBitGenerator;
+}
+
+}  // namespace
+
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
@@ -45,7 +62,8 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   }
 }
 
-xla::XlaOp StatelessRngUniform(xla::XlaOp seeds, const xla::Shape& shape,
+xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
+                               xla::XlaOp seeds, const xla::Shape& shape,
                                xla::XlaOp minval, xla::XlaOp maxval) {
   xla::XlaBuilder* builder = seeds.builder();
 
@@ -58,15 +76,18 @@ xla::XlaOp StatelessRngUniform(xla::XlaOp seeds, const xla::Shape& shape,
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
     case xla::F32:
-      return xla::UniformF32Distribution(key, initial_state,
-                                         xla::ThreeFryBitGenerator, minval,
-                                         maxval, shape)
+    case xla::F64:
+      return xla::UniformFloatingPointDistribution(
+                 key, initial_state,
+                 GetBitGeneratorForDevice(device_type_string), minval, maxval,
+                 shape)
           .value;
     case xla::S32:  // fall through
     case xla::S64:
-      return UniformIntDistribution(key, initial_state,
-                                    xla::ThreeFryBitGenerator, minval, maxval,
-                                    shape)
+      return UniformIntDistribution(
+                 key, initial_state,
+                 GetBitGeneratorForDevice(device_type_string), minval, maxval,
+                 shape)
           .value;
       break;
     default:
@@ -82,7 +103,8 @@ namespace {
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -98,17 +120,22 @@ class StatelessRandomUniformOp : public XlaOpKernel {
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
 
+    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
     xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+    xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
+
     xla::XlaOp uniform = StatelessRngUniform(
-        seed, xla_shape, xla::ConstantR0<float>(builder, 0.0),
-        xla::ConstantR0<float>(builder, 1.0));
+        device_type_string_, seed, xla_shape,
+        xla::ConstantR0WithType(builder, rng_primitive_type, 0.0),
+        xla::ConstantR0WithType(builder, rng_primitive_type, 1.0));
     uniform = MaybeConvertF32ToBF16(uniform, dtype_);
     ctx->SetOutput(0, uniform);
   }
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformOp);
 };
@@ -116,14 +143,15 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomUniform")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformOp);
 
 class StatelessRandomUniformIntOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformIntOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -150,13 +178,15 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRngUniform(seed, xla_shape, minval, maxval);
+    xla::XlaOp uniform = StatelessRngUniform(device_type_string_, seed,
+                                             xla_shape, minval, maxval);
 
     ctx->SetOutput(0, uniform);
   }
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
 };
@@ -171,7 +201,8 @@ REGISTER_XLA_OP(Name("StatelessRandomUniformInt")
 class StatelessRandomNormalOp : public XlaOpKernel {
  public:
   explicit StatelessRandomNormalOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -185,7 +216,9 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
     xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+
+    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
     xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
@@ -195,8 +228,9 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                      ShiftLeft(ConvertElementType(seed1, xla::U64),
                                ConstantR0WithType(builder, xla::U64, 32));
     xla::XlaOp normal =
-        xla::NormalF32Distribution(key, initial_state,
-                                   xla::ThreeFryBitGenerator, xla_shape)
+        xla::NormalFloatingPointDistribution(
+            key, initial_state, GetBitGeneratorForDevice(device_type_string_),
+            xla_shape)
             .value;
     normal = MaybeConvertF32ToBF16(normal, dtype_);
     ctx->SetOutput(0, normal);
@@ -204,6 +238,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomNormalOp);
 };
@@ -211,14 +246,15 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);
 
 class StatelessTruncatedNormalOp : public XlaOpKernel {
  public:
   explicit StatelessTruncatedNormalOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -233,10 +269,11 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
+    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
     xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::XlaOp uniform = StatelessRngUniform(
-        seed, xla_shape,
+        device_type_string_, seed, xla_shape,
         xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
         xla::One(builder, xla_shape.element_type()));
     xla::XlaOp truncated_normal = TruncatedNormal(uniform);
@@ -246,13 +283,14 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
 };
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessTruncatedNormalOp);
 

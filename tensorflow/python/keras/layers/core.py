@@ -26,7 +26,7 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -44,7 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -67,18 +67,30 @@ class Masking(Layer):
   Example:
 
   Consider a Numpy data array `x` of shape `(samples, timesteps, features)`,
-  to be fed to an LSTM layer.
-  You want to mask timestep #3 and #5 because you lack data for
-  these timesteps. You can:
+  to be fed to an LSTM layer. You want to mask timestep #3 and #5 because you
+  lack data for these timesteps. You can:
 
   - Set `x[:, 3, :] = 0.` and `x[:, 5, :] = 0.`
   - Insert a `Masking` layer with `mask_value=0.` before the LSTM layer:
 
   ```python
-  model = Sequential()
-  model.add(Masking(mask_value=0., input_shape=(timesteps, features)))
-  model.add(LSTM(32))
+  samples, timesteps, features = 32, 10, 8
+  inputs = np.random.random([samples, timesteps, features]).astype(np.float32)
+  inputs[:, 3, :] = 0.
+  inputs[:, 5, :] = 0.
+
+  model = tf.keras.models.Sequential()
+  model.add(tf.keras.layers.Masking(mask_value=0.,
+                                    input_shape=(timesteps, features)))
+  model.add(tf.keras.layers.LSTM(32))
+
+  output = model(inputs)
+  # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
+
+  See [the masking and padding
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  for more details.
   """
 
   def __init__(self, mask_value=0., **kwargs):
@@ -143,8 +155,13 @@ class Dropout(Layer):
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
     if self.noise_shape is None:
-      return self.noise_shape
-    return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
+      return None
+
+    concrete_inputs_shape = array_ops.shape(inputs)
+    noise_shape = []
+    for i, value in enumerate(self.noise_shape):
+      noise_shape.append(concrete_inputs_shape[i] if value is None else value)
+    return ops.convert_to_tensor(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -400,7 +417,7 @@ class Reshape(Layer):
 
   # also supports shape inference using `-1` as dimension
   model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, 3, 2, 2)
+  # now: model.output_shape == (None, None, 2, 2)
   ```
   """
 
@@ -576,20 +593,41 @@ class Flatten(Layer):
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(
-        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                 array_ops.shape(inputs)[0], -1))
+    input_shape = inputs.shape
+    if input_shape[1:].is_fully_defined():
+      flattened_dim = tensor_shape.dimension_value(
+          np.prod(input_shape[1:], dtype=int))
+      # Temporary fix for integer overflow issue.
+      if flattened_dim > np.iinfo(np.int32).max:
+        shape_dtype = dtypes.int64
+      else:
+        shape_dtype = dtypes.int32
+      outputs = array_ops.reshape(
+          inputs, constant_op.constant((-1, flattened_dim), dtype=shape_dtype))
+    else:
+      batch_size = tensor_shape.dimension_value(inputs.shape[0])
+      if batch_size:
+        # Temporary fix for integer overflow issue.
+        if batch_size > np.iinfo(np.int32).max:
+          shape_dtype = dtypes.int64
+        else:
+          shape_dtype = dtypes.int32
+        outputs = array_ops.reshape(
+            inputs, constant_op.constant((batch_size, -1), dtype=shape_dtype))
+      else:
+        outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tensor_shape.as_shape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
-    output_shape = [input_shape[0]]
+    else:
+      output_shape = [input_shape[0]]
     if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
+      output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)
@@ -651,13 +689,16 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, subclassing
-  `keras.layers.Layer` is preferred. One reason for this is that
-  when saving a Model, `Lambda` layers are saved by serializing the
-  Python bytecode, whereas subclassed Layers are saved via overriding
-  their `get_config` method and are thus more portable. Models that rely
-  on subclassed Layers are also often easier to visualize and reason
-  about.
+  quick experimentation. For more advanced usecases, follow 
+  [this guide](https://www.tensorflow.org/alpha/guide/keras/custom_layers_and_models) 
+  for subclassing `tf.keras.layers.Layer`. 
+  
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
+  are saved by serializing the Python bytecode, whereas subclassed 
+  Layers can be saved via overriding their `get_config` method. Overriding 
+  `get_config` improves the portability of Models. Models that rely on 
+  subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
 
@@ -717,6 +758,9 @@ class Lambda(Layer):
         output_shape` If a function, it specifies the entire shape as a function
         of the
       input shape: `output_shape = f(input_shape)`
+    mask: Either None (indicating no masking) or a callable with the same
+      signature as the `compute_mask` layer method, or a tensor that will be
+      returned as output mask regardless what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
   Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
@@ -733,6 +777,7 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    self._supports_ragged_inputs = True
     self._output_shape = output_shape
     self._variable_dict = {}
     # These attributes are inherited from `Layer`.
@@ -800,87 +845,66 @@ class Lambda(Layer):
     return self.mask
 
   def get_config(self):
-    module = self.function.__module__
-    if isinstance(self.function, python_types.LambdaType):
-      function = generic_utils.func_dump(self.function)
-      function_type = 'lambda'
-    else:
-      function = self.function.__name__
-      function_type = 'function'
-
-    output_shape_module = None
-    if isinstance(self._output_shape, python_types.LambdaType):
-      output_shape = generic_utils.func_dump(self._output_shape)
-      output_shape_type = 'lambda'
-      output_shape_module = self._output_shape.__module__
-    elif callable(self._output_shape):
-      output_shape = self._output_shape.__name__
-      output_shape_type = 'function'
-      output_shape_module = self._output_shape.__module__
-    else:
-      output_shape = self._output_shape
-      output_shape_type = 'raw'
-
+    function_config = self._serialize_function_to_config(self.function)
+    output_shape_config = self._serialize_function_to_config(self._output_shape,
+                                                             allow_raw=True)
     config = {
-        'function': function,
-        'module': module,
-        'function_type': function_type,
-        'output_shape': output_shape,
-        'output_shape_type': output_shape_type,
-        'output_shape_module': output_shape_module,
-        'arguments': self.arguments
+        'function': function_config[0],
+        'function_type': function_config[1],
+        'module': function_config[2],
+        'output_shape': output_shape_config[0],
+        'output_shape_type': output_shape_config[1],
+        'output_shape_module': output_shape_config[2],
     }
+    if self.mask is not None:
+      mask_config = self._serialize_function_to_config(self.mask)
+      config.update({
+          'mask': mask_config[0],
+          'mask_type': mask_config[1],
+          'mask_module': mask_config[2]
+      })
+    config['arguments'] = self.arguments
+
     base_config = super(Lambda, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  def _serialize_function_to_config(self, inputs, allow_raw=False):
+    if isinstance(inputs, python_types.LambdaType):
+      output = generic_utils.func_dump(inputs)
+      output_type = 'lambda'
+      module = inputs.__module__
+    elif callable(inputs):
+      output = inputs.__name__
+      output_type = 'function'
+      module = inputs.__module__
+    elif allow_raw:
+      output = inputs
+      output_type = 'raw'
+      module = None
+    else:
+      raise ValueError(
+          'Invalid input for serialization, type: %s ' % type(inputs))
+
+    return output, output_type, module
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
     config = config.copy()
-    globs = globals()
-    module = config.pop('module', None)
-    if module in sys.modules:
-      globs.update(sys.modules[module].__dict__)
-    elif module is not None:
-      # Note: we don't know the name of the function if it's a lambda.
-      warnings.warn('{} is not loaded, but a Lambda layer uses it. '
-                    'It may cause errors.'.format(module)
-                    , UserWarning)
-    if custom_objects:
-      globs.update(custom_objects)
-    function_type = config.pop('function_type')
-    if function_type == 'function':
-      # Simple lookup in custom objects
-      function = generic_utils.deserialize_keras_object(
-          config['function'],
-          custom_objects=custom_objects,
-          printable_module_name='function in Lambda layer')
-    elif function_type == 'lambda':
-      # Unsafe deserialization from bytecode
-      function = generic_utils.func_load(config['function'], globs=globs)
-    else:
-      raise TypeError('Unknown function type:', function_type)
+    function = cls._parse_function_from_config(
+        config, custom_objects, 'function', 'module', 'function_type')
 
-    output_shape_module = config.pop('output_shape_module', None)
-    if output_shape_module in sys.modules:
-      globs.update(sys.modules[output_shape_module].__dict__)
-    elif output_shape_module is not None:
-      # Note: we don't know the name of the function if it's a lambda.
-      warnings.warn('{} is not loaded, but a Lambda layer uses it. '
-                    'It may cause errors.'.format(output_shape_module)
-                    , UserWarning)
-    output_shape_type = config.pop('output_shape_type')
-    if output_shape_type == 'function':
-      # Simple lookup in custom objects
-      output_shape = generic_utils.deserialize_keras_object(
-          config['output_shape'],
-          custom_objects=custom_objects,
-          printable_module_name='output_shape function in Lambda layer')
-    elif output_shape_type == 'lambda':
-      # Unsafe deserialization from bytecode
-      output_shape = generic_utils.func_load(config['output_shape'],
-                                             globs=globs)
+    output_shape = cls._parse_function_from_config(
+        config, custom_objects, 'output_shape', 'output_shape_module',
+        'output_shape_type')
+    if 'mask' in config:
+      mask = cls._parse_function_from_config(
+          config, custom_objects, 'mask', 'mask_module', 'mask_type')
     else:
-      output_shape = config['output_shape']
+      mask = None
+
+    config['function'] = function
+    config['output_shape'] = output_shape
+    config['mask'] = mask
 
     # If arguments were numpy array, they have been saved as
     # list. We need to recover the ndarray
@@ -892,9 +916,39 @@ class Lambda(Layer):
             # Overwrite the argument with its numpy translation
             config['arguments'][key] = np.array(arg_dict['value'])
 
-    config['function'] = function
-    config['output_shape'] = output_shape
     return cls(**config)
+
+  @classmethod
+  def _parse_function_from_config(
+      cls, config, custom_objects, func_attr_name, module_attr_name,
+      func_type_attr_name):
+    globs = globals()
+    module = config.pop(module_attr_name, None)
+    if module in sys.modules:
+      globs.update(sys.modules[module].__dict__)
+    elif module is not None:
+      # Note: we don't know the name of the function if it's a lambda.
+      warnings.warn('{} is not loaded, but a Lambda layer uses it. '
+                    'It may cause errors.'.format(module)
+                    , UserWarning)
+    if custom_objects:
+      globs.update(custom_objects)
+    function_type = config.pop(func_type_attr_name)
+    if function_type == 'function':
+      # Simple lookup in custom objects
+      function = generic_utils.deserialize_keras_object(
+          config[func_attr_name],
+          custom_objects=custom_objects,
+          printable_module_name='function in Lambda layer')
+    elif function_type == 'lambda':
+      # Unsafe deserialization from bytecode
+      function = generic_utils.func_load(
+          config[func_attr_name], globs=globs)
+    elif function_type == 'raw':
+      function = config[func_attr_name]
+    else:
+      raise TypeError('Unknown function type:', function_type)
+    return function
 
 
 @keras_export('keras.layers.Dense')
@@ -970,7 +1024,8 @@ class Dense(Layer):
 
     super(Dense, self).__init__(
         activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
-    self.units = int(units)
+
+    self.units = int(units) if not isinstance(units, int) else units
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)
@@ -1017,8 +1072,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs)
-    rank = common_shapes.rank(inputs)
+    rank = len(inputs.shape)
     if rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
@@ -1028,12 +1082,11 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      # Cast the inputs to self.dtype, which is the variable dtype. We do not
-      # cast if `should_cast_variables` is True, as in that case the variable
-      # will be automatically casted to inputs.dtype.
-      if not self._mixed_precision_policy.should_cast_variables:
-        inputs = math_ops.cast(inputs, self.dtype)
-      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
+      inputs = math_ops.cast(inputs, self._compute_dtype)
+      if K.is_sparse(inputs):
+        outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
+      else:
+        outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:

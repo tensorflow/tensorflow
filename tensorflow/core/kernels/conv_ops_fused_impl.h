@@ -57,10 +57,13 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -91,18 +94,20 @@ class LaunchFusedConv2DWithOutputKernel {
  public:
   LaunchFusedConv2DWithOutputKernel(int row_stride, int col_stride,      //
                                     int row_dilation, int col_dilation,  //
-                                    Padding padding)
+                                    Padding padding,
+                                    const std::vector<int64>& explicit_paddings)
       : row_stride_(row_stride),
         col_stride_(col_stride),
         row_dilation_(row_dilation),
         col_dilation_(col_dilation),
-        padding_(padding) {}
+        padding_(padding),
+        explicit_paddings_(explicit_paddings) {}
 
   template <typename OutputKernel>
   void operator()(const OutputKernel& output_kernel, OpKernelContext* ctx,
                   const Tensor& input, const Tensor& filter, Tensor* output) {
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 &&
-        row_stride_ == 1 && col_stride_ == 1) {
+        row_stride_ == 1 && col_stride_ == 1 && padding_ != EXPLICIT) {
       int conv_width = 1;  // Width for the convolution step.
       for (int i = 0; i < 3; ++i) {
         conv_width *= output->dim_size(i);
@@ -135,11 +140,22 @@ class LaunchFusedConv2DWithOutputKernel {
           output_kernel);
 
     } else {
-      functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
-          ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
-          input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride_, col_stride_,
-          row_dilation_, col_dilation_, BrainPadding2EigenPadding(padding_),
-          output_kernel);
+      if (padding_ == EXPLICIT) {
+        functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
+            ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride_,
+            col_stride_, row_dilation_, col_dilation_,
+            static_cast<int>(explicit_paddings_[2]),
+            static_cast<int>(explicit_paddings_[3]),
+            static_cast<int>(explicit_paddings_[4]),
+            static_cast<int>(explicit_paddings_[5]), output_kernel);
+      } else {
+        functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
+            ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride_,
+            col_stride_, row_dilation_, col_dilation_,
+            BrainPadding2EigenPadding(padding_), output_kernel);
+      }
     }
   }
 
@@ -149,6 +165,7 @@ class LaunchFusedConv2DWithOutputKernel {
   int row_dilation_;
   int col_dilation_;
   const Padding padding_;
+  const std::vector<int64>& explicit_paddings_;
 };
 
 template <typename T>
@@ -180,7 +197,8 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     LaunchFusedConv2DWithOutputKernel<T> conv2d(
         dimensions.stride_rows, dimensions.stride_cols,
-        dimensions.dilation_rows, dimensions.dilation_cols, params.padding);
+        dimensions.dilation_rows, dimensions.dilation_cols, params.padding,
+        params.explicit_paddings);
 
     switch (fusion) {
       case FusedComputationType::kUndefined:
@@ -289,6 +307,7 @@ template <typename T, typename ConvLaunch, typename LogFunc>
 Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
                                  const ConvLaunch launch,
                                  OpKernelContext* context, se::Stream* stream,
+                                 se::DeviceMemory<T> output_ptr,
                                  const LogFunc& log,
                                  se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
@@ -307,14 +326,28 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
         "see if a warning log message was printed above.");
   }
 
+  se::TfAllocatorAdapter tf_allocator_adapter(
+      context->device()->GetAllocator({}), stream);
+  se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                    se::GpuAsmOpts());
+  se::DeviceMemory<T> output_ptr_rz(
+      WrapRedzoneBestEffort(&rz_allocator, output_ptr));
+
   std::vector<tensorflow::AutotuneResult> results;
   for (auto profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
+    se::RedzoneAllocator rz_scratch_allocator(
+        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+        /*memory_limit=*/ConvolveScratchSize());
+    se::ScratchAllocator* allocator_used =
+        !RedzoneCheckDisabled()
+            ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+            : static_cast<se::ScratchAllocator*>(&scratch_allocator);
     se::dnn::ProfileResult profile_result;
 
     bool cudnn_launch_status =
-        launch(se::dnn::AlgorithmConfig(profile_algorithm), &scratch_allocator,
-               &profile_result);
+        launch(se::dnn::AlgorithmConfig(profile_algorithm), allocator_used,
+               output_ptr_rz, &profile_result);
 
     if (cudnn_launch_status && profile_result.is_valid()) {
       results.emplace_back();
@@ -322,9 +355,14 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
       result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(
           profile_algorithm.tensor_ops_enabled());
-      result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+      result.set_scratch_bytes(
+          !RedzoneCheckDisabled()
+              ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+              : scratch_allocator.TotalByteSize());
       *result.mutable_run_time() = proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      CheckRedzones(rz_scratch_allocator, &result);
+      CheckRedzones(rz_allocator, &result);
     }
   }
   // Only log on an AutoTuneFusedConv cache miss.
@@ -371,8 +409,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     const int64 patch_cols = filter.dim_size(1);
     const int64 patch_depths = filter.dim_size(2);
 
-    int64 padding_rows = 0;
-    int64 padding_cols = 0;
     const int64 out_batch = GetTensorDim(*output, params.data_format, 'N');
     const int64 out_rows = GetTensorDim(*output, params.data_format, 'H');
     const int64 out_cols = GetTensorDim(*output, params.data_format, 'W');
@@ -387,44 +423,61 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                 errors::InvalidArgument("bias depth must be equal to out depth",
                                         bias.shape().DebugString()));
 
-    if (params.padding == SAME) {
-      // Total padding on rows and cols is
-      // Pr = (R' - 1) * S + (Kr - 1) * Dr + 1 - R
-      // Pc = (C' - 1) * S + (Kc - 1) * Dc + 1 - C
-      // where (R', C') are output dimensions, (R, C) are input dimensions, S
-      // is stride, (Dr, Dc) are dilations, (Kr, Kc) are filter dimensions.
-      // We pad Pr/2 on the left and Pr - Pr/2 on the right, Pc/2 on the top
-      // and Pc - Pc/2 on the bottom.  When Pr or Pc is odd, this means
-      // we pad more on the right and bottom than on the top and left.
-      padding_rows = std::max<int>(
-          0, (out_rows - 1) * dimensions.stride_rows +
-                 (patch_rows - 1) * dimensions.dilation_rows + 1 - in_rows);
-      padding_cols = std::max<int>(
-          0, (out_cols - 1) * dimensions.stride_cols +
-                 (patch_cols - 1) * dimensions.dilation_cols + 1 - in_cols);
-      const bool rows_odd = (padding_rows % 2 != 0);
-      const bool cols_odd = (padding_cols % 2 != 0);
-      if (rows_odd || cols_odd) {
-        Tensor transformed_input;
-        int64 new_in_rows = in_rows + rows_odd;
-        int64 new_in_cols = in_cols + cols_odd;
-        OP_REQUIRES_OK(context,
-                       context->allocate_temp(
-                           DataTypeToEnum<T>::value,
-                           ShapeFromFormat(params.data_format, in_batch,
-                                           new_in_rows, new_in_cols, in_depths),
-                           &transformed_input));
+    const int64 common_padding_rows =
+        std::min(dimensions.pad_rows_before, dimensions.pad_rows_after);
+    const int64 common_padding_cols =
+        std::min(dimensions.pad_cols_before, dimensions.pad_cols_after);
+    if (dimensions.pad_rows_before != dimensions.pad_rows_after ||
+        dimensions.pad_cols_before != dimensions.pad_cols_after) {
+      // cuDNN only supports padding the same amount on the left and right
+      // sides, and on the top and bottom sides. So we manually create a new
+      // padded input tensor such that we can pass it to cuDNN.
 
-        functor::PadInput<GPUDevice, T, int, 4>()(
-            context->eigen_device<GPUDevice>(),
-            To32Bit(input_param.tensor<T, 4>()), {{0, 0}},
-            {{rows_odd, cols_odd}}, To32Bit(transformed_input.tensor<T, 4>()),
-            params.data_format);
-
-        input = transformed_input;
-        in_rows = new_in_rows;
-        in_cols = new_in_cols;
+      // TODO(reedwm): In some cases, we can avoid an allocation even if the two
+      // padding sides are different. For example, if the input is 2x2, the
+      // filter is 1x1, the stride is 2, and the padding is (1, 0, 1, 0), the
+      // result is equivalent to as if the padding is (1, 1, 1, 1). Changing the
+      // padding in such a way would allow us to avoid the allocation.
+      Tensor transformed_input;
+      const int64 padding_rows_diff =
+          std::abs(dimensions.pad_rows_after - dimensions.pad_rows_before);
+      const int64 padding_cols_diff =
+          std::abs(dimensions.pad_cols_after - dimensions.pad_cols_before);
+      const int64 new_in_rows = in_rows + padding_rows_diff;
+      const int64 new_in_cols = in_cols + padding_cols_diff;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(
+                         DataTypeToEnum<T>::value,
+                         ShapeFromFormat(params.data_format, in_batch,
+                                         new_in_rows, new_in_cols, in_depths),
+                         &transformed_input));
+      const int64 input_pad_top =
+          dimensions.pad_rows_before - common_padding_rows;
+      const int64 input_pad_bottom =
+          dimensions.pad_rows_after - common_padding_rows;
+      const int64 input_pad_left =
+          dimensions.pad_cols_before - common_padding_cols;
+      const int64 input_pad_right =
+          dimensions.pad_cols_after - common_padding_cols;
+      bool in_bounds =
+          FastBoundsCheck(input_pad_top, std::numeric_limits<int>::max()) &&
+          FastBoundsCheck(input_pad_bottom, std::numeric_limits<int>::max()) &&
+          FastBoundsCheck(input_pad_left, std::numeric_limits<int>::max()) &&
+          FastBoundsCheck(input_pad_right, std::numeric_limits<int>::max());
+      if (!in_bounds) {
+        context->SetStatus(errors::InvalidArgument("Padding is too large."));
+        return;
       }
+      functor::PadInput<GPUDevice, T, int, 4>()(
+          context->eigen_device<GPUDevice>(),
+          To32Bit(input_param.tensor<T, 4>()),
+          {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
+          {{static_cast<int>(input_pad_bottom),
+            static_cast<int>(input_pad_right)}},
+          To32Bit(transformed_input.tensor<T, 4>()), params.data_format);
+      input = transformed_input;
+      in_rows = new_in_rows;
+      in_cols = new_in_cols;
     }
 
     if (params.data_format == FORMAT_NHWC) {
@@ -447,8 +500,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       }
     }
 
-    CHECK(padding_rows >= 0) << "Negative padding rows";  // Crash OK
-    CHECK(padding_cols >= 0) << "Negative padding cols";  // Crash OK
+    CHECK(common_padding_rows >= 0) << "Negative padding rows";  // Crash OK
+    CHECK(common_padding_rows >= 0) << "Negative padding cols";  // Crash OK
 
     se::dnn::ActivationMode dnn_activation_mode;
     switch (fusion) {
@@ -481,8 +534,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         .set_horizontal_dilation_rate(dimensions.dilation_cols)
         .set_vertical_filter_stride(dimensions.stride_rows)
         .set_horizontal_filter_stride(dimensions.stride_cols)
-        .set_zero_padding_height(padding_rows / 2)
-        .set_zero_padding_width(padding_cols / 2)
+        .set_zero_padding_height(common_padding_rows)
+        .set_zero_padding_width(common_padding_cols)
         .set_group_count(in_depths / patch_depths);
     se::dnn::BatchDescriptor output_desc;
     output_desc.set_count(out_batch)
@@ -533,32 +586,32 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     FusedConvParameters conv_parameters = {
-        {
-            in_batch,                      // batch
-            in_depths,                     // in_depths
-            {{in_rows,                     // in_rows
-              in_cols}},                   // in_cols
-            FORMAT_NCHW,                   // compute_data_format
-            out_depths,                    // out_depths
-            {{patch_rows,                  // filter_rows
-              patch_cols,                  // filter_cols
-              patch_depths}},              // filter_depths
-            {{dimensions.dilation_rows,    // dilation_rows
-              dimensions.dilation_cols}},  // dilation_cols
-            {{dimensions.stride_rows,      // stride_rows
-              dimensions.stride_cols}},    // stride_cols
-            {{padding_rows,                // padding_rows
-              padding_cols}},              // padding_cols
-            dtype,                         // tensor datatype
-            device_id,                     // device_id
-        },
+        {in_batch,                      // batch
+         in_depths,                     // in_depths
+         {{in_rows,                     // in_rows
+           in_cols}},                   // in_cols
+         FORMAT_NCHW,                   // compute_data_format
+         out_depths,                    // out_depths
+         {{patch_rows,                  // filter_rows
+           patch_cols,                  // filter_cols
+           patch_depths}},              // filter_depths
+         {{dimensions.dilation_rows,    // dilation_rows
+           dimensions.dilation_cols}},  // dilation_cols
+         {{dimensions.stride_rows,      // stride_rows
+           dimensions.stride_cols}},    // stride_cols
+         {{common_padding_rows,         // padding_rows
+           common_padding_cols}},       // padding_cols
+         dtype,                         // tensor datatype
+         device_id,                     // device_id
+         conv_desc.group_count()},
         dnn_activation_mode  // activation_mode
     };
 
     // Launch fused convolution with given parameters and scratch allocator.
     // Record profile result into `profile_result` if it's not nullptr.
     const auto launch = [&](se::dnn::AlgorithmConfig algorithm_config,
-                            DnnScratchAllocator* scratch_allocator,
+                            se::ScratchAllocator* scratch_allocator,
+                            se::DeviceMemory<T> output_ptr_to_use,
                             se::dnn::ProfileResult* profile_result) -> bool {
       return stream
           ->ThenFusedConvolveWithAlgorithm(
@@ -569,7 +622,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
               side_input_ptr, /*side_input_scale=*/0.0,  // side_input
               bias_desc, bias_ptr,                       // bias
               dnn_activation_mode,                       // activation
-              output_desc, &output_ptr,                  // output
+              output_desc, &output_ptr_to_use,           // output
               scratch_allocator, algorithm_config, profile_result)
           .ok();
     };
@@ -577,11 +630,11 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     se::dnn::AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
-          conv_parameters, launch, context, stream,
+          conv_parameters, launch, context, stream, output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
-            LogFusedConvAutotuneResults(
-                se::dnn::ConvolutionKind::FORWARD,
-                se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+            LogFusedConvForwardAutotuneResults(
+                se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                output_ptr, bias_ptr, side_input_ptr, input_desc, filter_desc,
                 output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
                 stream->parent(), results);
           },
@@ -591,7 +644,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     bool cudnn_launch_status = launch(algorithm_config, &scratch_allocator,
-                                      /*profile_result=*/nullptr);
+                                      output_ptr, /*profile_result=*/nullptr);
     OP_REQUIRES(
         context, cudnn_launch_status,
         errors::Internal(absl::Substitute(

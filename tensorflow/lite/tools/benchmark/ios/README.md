@@ -13,13 +13,13 @@ parameters like inputs to the model, type of inputs, number of iterations,
 number of threads. The default values in the JSON file are for the
 Mobilenet_1.0_224 model
 ([paper](https://arxiv.org/pdf/1704.04861.pdf),
-[tflite&pb](http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz))
+[tflite&pb](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz))
 
 ## To build/install/run
 
-- Follow instructions at
-[iOS build for TFLite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/ios.md)
-to build TFLite.
+-   Follow instructions at
+    [iOS build for TFLite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/build_ios.md)
+    to build TFLite.
 
 Running
 

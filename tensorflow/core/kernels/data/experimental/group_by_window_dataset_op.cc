@@ -15,6 +15,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,66 +26,54 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        lib_def_(std::make_shared<FunctionLibraryDefinition>(
-            ctx->function_library()
-                ->GetFunctionLibraryDefinition()
-                ->default_registry(),
-            FunctionDefLibrary{})) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
+      : UnaryDatasetOpKernel(ctx) {
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", params,
+                                                 &key_func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "reduce_func", params,
+                                                 &reduce_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "window_size_func", params,
+                                            &window_size_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-
-    for (const auto& func : {key_func_, reduce_func_, window_size_func_}) {
-      std::shared_ptr<FunctionLibraryDefinition> result;
-      OP_REQUIRES_OK(
-          ctx, CreateFunctionLibraryDefinition(
-                   ctx->function_library()->GetFunctionLibraryDefinition(),
-                   func.name(), &result));
-      OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
-    }
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    CapturedFunction::Params params;
-    params.lib_def = lib_def_;
-
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, key_func_metadata_,
                                                  "key_func_other_arguments",
-                                                 params, &captured_key_func));
-    std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            reduce_func_, ctx, "reduce_func_other_arguments",
-                            params, &captured_reduce_func));
-    std::unique_ptr<CapturedFunction> captured_window_size_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(window_size_func_, ctx,
-                                      "window_size_func_other_arguments",
-                                      params, &captured_window_size_func));
+                                                 &captured_key_func));
 
-    *output = new Dataset(
-        ctx, input, key_func_, reduce_func_, window_size_func_,
-        std::move(captured_key_func), std::move(captured_reduce_func),
-        std::move(captured_window_size_func), output_types_, output_shapes_);
+    std::unique_ptr<CapturedFunction> captured_reduce_func;
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, reduce_func_metadata_,
+                                                 "reduce_func_other_arguments",
+                                                 &captured_reduce_func));
+
+    std::unique_ptr<CapturedFunction> captured_window_size_func;
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(ctx, window_size_func_metadata_,
+                                            "window_size_func_other_arguments",
+                                            &captured_window_size_func));
+
+    *output = new Dataset(ctx, input, std::move(captured_key_func),
+                          std::move(captured_reduce_func),
+                          std::move(captured_window_size_func), output_types_,
+                          output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& key_func, const NameAttrList& reduce_func,
-            const NameAttrList& window_size_func,
             std::unique_ptr<CapturedFunction> captured_key_func,
             std::unique_ptr<CapturedFunction> captured_reduce_func,
             std::unique_ptr<CapturedFunction> captured_window_size_func,
@@ -92,9 +81,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          key_func_(key_func),
-          reduce_func_(reduce_func),
-          window_size_func_(window_size_func),
           captured_key_func_(std::move(captured_key_func)),
           captured_reduce_func_(std::move(captured_reduce_func)),
           captured_window_size_func_(std::move(captured_window_size_func)),
@@ -120,6 +106,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "GroupByWindowDatasetOp::Dataset";
+    }
+
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_window_size_func_->CheckExternalState());
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -148,11 +141,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           &window_size_func_other_arguments_types));
 
       AttrValue key_func;
-      b->BuildAttrValue(key_func_, &key_func);
+      b->BuildAttrValue(captured_key_func_->func(), &key_func);
       AttrValue reduce_func;
-      b->BuildAttrValue(reduce_func_, &reduce_func);
+      b->BuildAttrValue(captured_reduce_func_->func(), &reduce_func);
       AttrValue window_size_func;
-      b->BuildAttrValue(window_size_func_, &window_size_func);
+      b->BuildAttrValue(captured_window_size_func_->func(), &window_size_func);
 
       AttrValue key_func_other_arguments_types_attr;
       b->BuildAttrValue(key_func_other_arguments_types,
@@ -486,8 +479,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
         // Create an iterator for the dataset that was returned by `f`.
-        return returned_dataset->MakeIterator(ctx, prefix(),
-                                              &current_group_iterator_);
+        return returned_dataset->MakeIterator(
+            ctx, strings::StrCat(prefix(), "::Reduce"),
+            &current_group_iterator_);
       }
 
       mutex mu_;
@@ -505,9 +499,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList key_func_;
-    const NameAttrList reduce_func_;
-    const NameAttrList window_size_func_;
     const std::unique_ptr<CapturedFunction> captured_key_func_;
     const std::unique_ptr<CapturedFunction> captured_reduce_func_;
     const std::unique_ptr<CapturedFunction> captured_window_size_func_;
@@ -515,18 +506,23 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  std::shared_ptr<FunctionMetadata> key_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> reduce_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> window_size_func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList key_func_;
-  NameAttrList reduce_func_;
-  NameAttrList window_size_func_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
+                        GroupByWindowDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByWindowDataset").Device(DEVICE_CPU),
     GroupByWindowDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByWindowDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByWindowDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

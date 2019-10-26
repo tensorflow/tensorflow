@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 namespace {
@@ -76,6 +78,59 @@ class SelectOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Select"), SelectOp);
+
+class SelectOpV2 : public XlaOpKernel {
+ public:
+  explicit SelectOpV2(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape cond_shape = ctx->InputShape(0);
+    const TensorShape then_shape = ctx->InputShape(1);
+    const TensorShape else_shape = ctx->InputShape(2);
+
+    // Compute the output shape from the broadcast of the two data inputs, with
+    // the broadcast of the conditional.
+    // Then Broadcast all three inputs to the output shape and emit a select.
+
+    BCast bcast_then_else(BCast::FromShape(then_shape),
+                          BCast::FromShape(else_shape),
+                          /*fewer_dims_optimization=*/false);
+    if (!bcast_then_else.IsValid()) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "Incompatible shapes: ", then_shape.DebugString(), " vs. ",
+          else_shape.DebugString()));
+      return;
+    }
+    BCast bcast(bcast_then_else.output_shape(), BCast::FromShape(cond_shape),
+                /*fewer_dims_optimization=*/false);
+    if (!bcast.IsValid()) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "Incompatible shapes: ",
+          BCast::ToShape(bcast_then_else.output_shape()).DebugString(), " vs. ",
+          cond_shape.DebugString()));
+      return;
+    }
+
+    auto bcasted_cond = BroadcastTo(ctx->Input(0), bcast.output_shape());
+    OP_REQUIRES_OK(ctx, bcasted_cond.status());
+    auto cond_handle = bcasted_cond.ValueOrDie();
+
+    auto bcasted_then = BroadcastTo(ctx->Input(1), bcast.output_shape());
+    OP_REQUIRES_OK(ctx, bcasted_then.status());
+    auto then_handle = bcasted_then.ValueOrDie();
+
+    auto bcasted_else = BroadcastTo(ctx->Input(2), bcast.output_shape());
+    OP_REQUIRES_OK(ctx, bcasted_else.status());
+    auto else_handle = bcasted_else.ValueOrDie();
+
+    ctx->SetOutput(0, xla::Select(cond_handle, then_handle, else_handle));
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(SelectOpV2);
+};
+
+REGISTER_XLA_OP(Name("SelectV2"), SelectOpV2);
 
 }  // namespace
 }  // namespace tensorflow

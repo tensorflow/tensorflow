@@ -1,0 +1,12 @@
+op {
+  name: "ImportEvent"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "event"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

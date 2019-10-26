@@ -20,16 +20,17 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace tracing {
 namespace {
 std::atomic<uint64> unique_arg{1};
-std::atomic<const TraceCollector*> trace_collector;
+std::atomic<bool> enable_annotation;
 }  // namespace
 
 const char* GetEventCategoryName(EventCategory category) {
@@ -61,23 +62,12 @@ uint64 GetArgForName(StringPiece name) {
   return Hash64(name.data(), name.size());
 }
 
-string TraceCollector::ConcatenateNames(StringPiece first, StringPiece second) {
-  std::string result;
-  bool has_two_parts = !first.empty() && !second.empty();
-  result.reserve(first.size() + second.size() +
-                 static_cast<int>(has_two_parts));
-  result.append(first.data(), first.size());
-  if (has_two_parts) result.append({':'});
-  result.append(second.data(), second.size());
-  return result;
+void ScopedAnnotation::Enable(bool enable) {
+  return enable_annotation.store(enable, std::memory_order_release);
 }
 
-void SetTraceCollector(const TraceCollector* collector) {
-  return trace_collector.store(collector, std::memory_order_release);
-}
-
-const TraceCollector* GetTraceCollector() {
-  return trace_collector.load(std::memory_order_acquire);
+const bool ScopedAnnotation::IsEnabled() {
+  return enable_annotation.load(std::memory_order_acquire);
 }
 
 }  // namespace tracing

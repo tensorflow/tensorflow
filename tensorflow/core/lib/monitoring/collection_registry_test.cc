@@ -73,12 +73,9 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
 
   auto handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
-  EXPECT_DEATH(
-      {
-        auto duplicate_handle =
-            collection_registry->Register(&metric_def, EmptyCollectionFunction);
-      },
-      "/tensorflow/metric");
+  auto duplicate_handle =
+      collection_registry->Register(&metric_def, EmptyCollectionFunction);
+  EXPECT_EQ(duplicate_handle, nullptr);
 }
 
 TEST(CollectMetricsTest, Counter) {

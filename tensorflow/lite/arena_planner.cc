@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
+
+#include <cstdint>
 #include <utility>
 
 namespace tflite {
@@ -40,7 +42,7 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
 
 ArenaPlanner::~ArenaPlanner() {}
 
-int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
+std::intptr_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
   if (type == kTfLiteArenaRwPersistent) {
     return persistent_arena_.BasePointer();
   }
@@ -51,8 +53,8 @@ int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
 }
 
 TfLiteStatus ArenaPlanner::ResetAllocations() {
-  TF_LITE_ENSURE_STATUS(arena_.Clear());
-  TF_LITE_ENSURE_STATUS(persistent_arena_.Clear());
+  TF_LITE_ENSURE_STATUS(arena_.ClearPlan());
+  TF_LITE_ENSURE_STATUS(persistent_arena_.ClearPlan());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
   // Note that we only clear the alloc_queue_ when re-planning allocations, as
@@ -153,7 +155,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     }
   }
   // Go through the graph in execution order.
-  for (int i = 0; i < graph_info_->num_nodes(); ++i) {
+  for (size_t i = 0; i < graph_info_->num_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
 
     // First queue output tensors for allocation.
@@ -193,7 +195,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   TF_LITE_ENSURE_STATUS(CalculateAllocations(first_node, last_node));
   TF_LITE_ENSURE_STATUS(Commit());
 
-  for (int i = 0; i < graph_info_->num_tensors(); ++i) {
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
     // TODO(ahentz): we could do this only for the tensors that were modified
     // in CalculateAllocations(), instead of redoing it for tensors that
     // already had proper pointers. However we must be very careful, because
@@ -201,6 +203,32 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
   }
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::ReleaseNonPersistentMemory() {
+  // Clear non-persistent arena's buffer.
+  TF_LITE_ENSURE_STATUS(arena_.ReleaseBuffer());
+  // Set data pointers for all non-persistent tensors to nullptr.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      tensor.data.raw = nullptr;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
+  // First commit arena_ to allocate underlying buffer.
+  TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
+  // Resolve allocations for all tensors not on the persistent arena.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+    }
+  }
   return kTfLiteOk;
 }
 
@@ -237,9 +265,14 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
     }
   }
 
-  // Don't forget to deallocate temporaries of last node.
-  TF_LITE_ENSURE_STATUS(
-      CalculateDeallocationOfInternalTensors(active_node - 1));
+  // For the case if the graph is empty the node index can be negative since we
+  // substract from the active node, so the node_index can be zero for those
+  // cases
+  if (active_node > 0) {
+    // Don't forget to deallocate temporaries of last node.
+    TF_LITE_ENSURE_STATUS(
+        CalculateDeallocationOfInternalTensors(active_node - 1));
+  }
 
   return kTfLiteOk;
 }
@@ -284,8 +317,8 @@ TfLiteStatus ArenaPlanner::CalculateTensorDeallocation(int tensor_index) {
 
 TfLiteStatus ArenaPlanner::CalculateAllocationOfInternalTensors(
     int node_index) {
-  if (node_index < graph_info_->num_nodes()) {
-    const TfLiteNode& node = graph_info_->node(node_index);
+  if (node_index < static_cast<int>(graph_info_->num_nodes())) {
+    const TfLiteNode& node = graph_info_->node(static_cast<size_t>(node_index));
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int i = 0; i < node_temporaries->size; ++i) {
       int tensor_index = node_temporaries->data[i];
@@ -297,8 +330,8 @@ TfLiteStatus ArenaPlanner::CalculateAllocationOfInternalTensors(
 
 TfLiteStatus ArenaPlanner::CalculateDeallocationOfInternalTensors(
     int node_index) {
-  if (node_index < graph_info_->num_nodes()) {
-    const TfLiteNode& node = graph_info_->node(node_index);
+  if (node_index < static_cast<int>(graph_info_->num_nodes())) {
+    const TfLiteNode& node = graph_info_->node(static_cast<size_t>(node_index));
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int i = 0; i < node_temporaries->size; ++i) {
       int tensor_index = node_temporaries->data[i];

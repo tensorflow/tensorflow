@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -42,9 +43,10 @@ def reset_eager(fn):
     try:
       return fn(*args, **kwargs)
     finally:
-      del context._context
-      context._context = context.Context()
-      ops.enable_eager_execution()
+      # Reset the context.
+      context._context = None
+      ops.enable_eager_execution_internal()
+      assert context._context is not None
 
   return wrapper
 
@@ -132,6 +134,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
+    config.set_intra_op_parallelism_threads(10)
+
   @reset_eager
   def testInterOpParallelismThreads(self):
     config.set_inter_op_parallelism_threads(10)
@@ -143,6 +147,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
+
+    config.set_inter_op_parallelism_threads(10)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -198,8 +204,23 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
-    with self.assertRaises(RuntimeError):
-      context.set_log_device_placement(False)
+
+    # If the setting the device placement is a no-op, do not throw a runtime
+    # exception.
+    context.set_log_device_placement(False)
+
+  @reset_eager
+  def testEnableMlirBridge(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests enabling mlir bridge.
+    config.enable_mlir_bridge()
+    self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests disabling mlir bridge.
+    config.disable_mlir_bridge()
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -245,7 +266,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
       ('FunctionOptimization', 'function_optimization'),
       ('DebugStripper', 'debug_stripper'),
       ('ScopedAllocatorOptimization', 'scoped_allocator_optimization'),
-      ('ImplementationSelector', 'implementation_selector'))
+      ('ImplementationSelector', 'implementation_selector'),
+      ('AutoMixedPrecision', 'auto_mixed_precision'))
   @reset_eager
   def testOptimizerToggleOption(self, field):
     # TODO(b/128531235): Improve testing of option
@@ -349,8 +371,8 @@ class DeviceTest(test.TestCase):
 
     context.ensure_initialized()
 
-    cpus = config.list_logical_devices('CPU')
-    self.assertEqual(len(cpus), 2)
+    vcpus = config.list_logical_devices('CPU')
+    self.assertEqual(len(vcpus), 2)
 
     with ops.device('/device:CPU:0'):
       a = constant_op.constant(1.0)
@@ -364,10 +386,24 @@ class DeviceTest(test.TestCase):
         self.evaluate(c)
 
     # Ensure we can place ops on each of the device names
-    for cpu in cpus:
-      with ops.device(cpu.name):
+    for vcpu in vcpus:
+      with ops.device(vcpu.name):
         d = constant_op.constant(1.0)
         self.evaluate(d)
+
+    # Modifying the CPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(cpus[0], [
+          context.VirtualDeviceConfiguration(),
+          context.VirtualDeviceConfiguration(),
+          context.VirtualDeviceConfiguration()
+      ])
+
+    # Setting the same CPU configuration is fine
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
 
   @test_util.run_gpu_only
   @reset_eager
@@ -388,6 +424,13 @@ class DeviceTest(test.TestCase):
       with ops.device('/device:GPU:0'):
         a = constant_op.constant(1.0)
         self.evaluate(a)
+
+    # Modifying the visible devices is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_visible_devices(gpus)
+
+    # Setting the same visible devices is fine
+    config.set_visible_devices(cpus[0])
 
   @reset_eager
   def testGpuMultiple(self):
@@ -432,11 +475,77 @@ class DeviceTest(test.TestCase):
         a = constant_op.constant(1.0)
         self.evaluate(a)
 
+    # Modifying the GPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(gpus[-1], [
+          context.VirtualDeviceConfiguration(memory_limit=20),
+          context.VirtualDeviceConfiguration(memory_limit=20)
+      ])
+
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(gpus[-1], [
+          context.VirtualDeviceConfiguration(memory_limit=10),
+          context.VirtualDeviceConfiguration(memory_limit=10),
+          context.VirtualDeviceConfiguration(memory_limit=10)
+      ])
+
+    # Setting the same GPU configuration is fine
+    config.set_virtual_device_configuration(gpus[-1], [
+        context.VirtualDeviceConfiguration(memory_limit=10),
+        context.VirtualDeviceConfiguration(memory_limit=10)
+    ])
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGpuGrowth(self):
+    gpus = config.list_physical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+
+    self.assertIsNone(config.get_memory_growth(gpus[-1]))
+    for gpu in gpus:
+      config.set_memory_growth(gpu, True)
+
+    c = context.context().config
+    self.assertTrue(c.gpu_options.allow_growth)
+
+    logical_gpus = config.list_logical_devices('GPU')
+    self.assertTrue(len(logical_gpus), len(gpus))
+
+    # Modifying the GPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      for gpu in gpus:
+        config.set_memory_growth(gpu, False)
+
+    # Setting the same GPU configuration is fine
+    for gpu in gpus:
+      config.set_memory_growth(gpu, True)
+
   @test_util.run_gpu_only
   @reset_eager
   def testGpuInvalidConfig(self):
     gpus = config.list_physical_devices('GPU')
     self.assertNotEqual(len(gpus), 0)
+
+    if len(gpus) > 1:
+      # Assert if other GPUs were not configured
+      config.set_memory_growth(gpus[0], True)
+      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+        c = context.context().config
+
+      # If we limit visibility to GPU 0, growth is fine
+      config.set_visible_devices(gpus[0], 'GPU')
+      c = context.context().config
+      self.assertTrue(c.gpu_options.allow_growth)
+
+      # Default setting for second GPU is False and works if we set visibility
+      config.set_visible_devices(gpus[1], 'GPU')
+      c = context.context().config
+      self.assertFalse(c.gpu_options.allow_growth)
+
+      # Growth now fails because all the GPUs are visible and not the same
+      config.set_visible_devices(gpus, 'GPU')
+      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+        c = context.context().config
 
     for gpu in gpus:
       config.set_memory_growth(gpu, True)
@@ -492,6 +601,19 @@ class DeviceTest(test.TestCase):
     for gpu in gpus:
       self.assertIsNotNone(gpu.name)
 
+  @reset_eager
+  def testV1CompatibilityDummyInivisibleDeviceList(self):
+    gpus = config.list_physical_devices('GPU')
+    if gpus:
+      self.skipTest('Test requires no GPUs')
+
+    # Ensure GPU options left untouched on CPU only environments
+    context.context()._physical_devices = None
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list='0'))
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list, '0')
+
   @test_util.run_gpu_only
   @reset_eager
   def testV1Compatibility(self):
@@ -502,19 +624,59 @@ class DeviceTest(test.TestCase):
     context.context()._physical_devices = None
 
     # Ensure CPU is split
-    context.context()._config = config_pb2.ConfigProto(device_count={'CPU': 2},)
+    context.context()._config = config_pb2.ConfigProto(device_count={'CPU': 2})
     new_config = context.context().config
     self.assertEqual(new_config.device_count['CPU'], 2)
     context.context()._physical_devices = None
 
-    # Ensure Handle visible device list parsing
+    # Handle empty visible device list
     context.context()._config = config_pb2.ConfigProto(
-        gpu_options=config_pb2.GPUOptions(visible_device_list='',),)
+        gpu_options=config_pb2.GPUOptions(visible_device_list=''))
     gpus = config.list_physical_devices('GPU')
+    gpu_count = len(gpus)
     new_config = context.context().config
     self.assertEqual(new_config.gpu_options.visible_device_list,
                      ','.join(str(i) for i in range(len(gpus))))
     context.context()._physical_devices = None
+
+    # Handle invalid visible device list
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count)))
+    with self.assertRaisesRegexp(ValueError, 'Invalid visible device index'):
+      gpus = config.list_physical_devices('GPU')
+      new_config = context.context().config
+    context.context()._physical_devices = None
+
+    # Handle single visible device list
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count-1)))
+    gpus = config.list_physical_devices('GPU')
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list,
+                     str(gpu_count-1))
+    context.context()._physical_devices = None
+
+  def testConfigureCollectiveOps(self):
+    context.context().configure_collective_ops(
+        collective_leader='/job:worker/replica:0/task:0',
+        scoped_allocator_enabled_ops=('CollectiveReduce',),
+        use_nccl_communication=False,
+        device_filters=['/job:worker/task:1'])
+    new_config = context.context().config
+
+    # Verify group leader
+    self.assertEqual('/job:worker/replica:0/task:0',
+                     new_config.experimental.collective_group_leader)
+
+    # Verify device filters.
+    self.assertEqual(['/job:worker/task:1'], new_config.device_filters)
+
+    # Verify rewrite options.
+    new_rewrite_options = new_config.graph_options.rewrite_options
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ON,
+                     new_rewrite_options.scoped_allocator_optimization)
+    self.assertEqual(['CollectiveReduce'],
+                     new_rewrite_options.scoped_allocator_opts.enable_op)
 
 
 if __name__ == '__main__':

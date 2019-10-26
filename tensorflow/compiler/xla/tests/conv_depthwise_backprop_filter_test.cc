@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -155,6 +154,13 @@ string BuildHloTextBatchGroupedConvolution2D(
 XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   const BatchGroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
+
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (use_bfloat16) {
+    return;
+  }
+#endif
+
   const string hlo_text =
       BuildHloTextBatchGroupedConvolution2D(spec, use_bfloat16);
 

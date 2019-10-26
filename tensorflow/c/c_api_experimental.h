@@ -62,6 +62,28 @@ extern "C" {
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
 
+// Set XLA's internal BuildXlaOpsPassFlags.tf_xla_enable_lazy_compilation to the
+// value of 'enabled'. Also returns the original value of that flag.
+//
+// Use in tests to allow XLA to fallback to TF classic. This has global effect.
+TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
+    unsigned char enable);
+TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
+
+// Sets XLA's auto jit mode according to the specified string, which is parsed
+// as if passed in XLA_FLAGS. This has global effect.
+TF_CAPI_EXPORT void TF_SetXlaAutoJitMode(const char* mode);
+
+// Sets XLA's minimum cluster size. This has global effect.
+TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
+
+// Gets/Sets TF/XLA flag for whether(true) or not(false) to disable constant
+// folding. This is for testing to ensure that XLA is being tested rather than
+// Tensorflow's CPU implementation through constant folding.
+TF_CAPI_EXPORT unsigned char TF_GetXlaConstantFoldingDisabled();
+TF_CAPI_EXPORT void TF_SetXlaConstantFoldingDisabled(
+    unsigned char should_enable);
+
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
@@ -194,6 +216,34 @@ TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
+// TF_NewCheckpointReader() return the CheckpointReader that can be use to
+// investigate or load the variable from the checkpoint file
+typedef struct TF_CheckpointReader TF_CheckpointReader;
+TF_CAPI_EXPORT extern TF_CheckpointReader* TF_NewCheckpointReader(
+    const char* filename, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_DeleteCheckpointReader(
+    TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderHasTensor(
+    TF_CheckpointReader* reader, const char* name);
+// Get the variable name at the given index
+TF_CAPI_EXPORT extern const char* TF_CheckpointReaderGetVariable(
+    TF_CheckpointReader* reader, int index);
+// Get the number of variable in the checkpoint
+TF_CAPI_EXPORT extern int TF_CheckpointReaderSize(TF_CheckpointReader* reader);
+// Get the DataType of a variable
+TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(
+    TF_CheckpointReader* reader, const char* name);
+// Read the shape of a variable and write to `dims`
+TF_CAPI_EXPORT extern void TF_CheckpointReaderGetVariableShape(
+    TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims,
+    TF_Status* status);
+// Get the number of dimension of a variable
+TF_CAPI_EXPORT extern int TF_CheckpointReaderGetVariableNumDims(
+    TF_CheckpointReader* reader, const char* name);
+// Load the weight of a variable
+TF_CAPI_EXPORT extern TF_Tensor* TF_CheckpointReaderGetTensor(
+    TF_CheckpointReader* reader, const char* name, TF_Status* status);
+
 // TF_NewAttrBuilder() returns an object that you can set attributes on as
 // though it were an op. This allows querying properties of that op for
 // type-checking purposes like if the op will run on a particular device type.
@@ -236,7 +286,7 @@ TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
 // Fast path method that makes constructing a single scalar tensor require less
 // overhead and copies.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
-    TF_DataType dtype, void* scalar, size_t len);
+    TF_DataType data_type, void* data, size_t len, TF_Status* status);
 
 // Specify the server_def that enables collective ops.
 // This is different to the above function in that it doesn't create remote
@@ -293,6 +343,65 @@ TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
 TF_CAPI_EXPORT extern TFE_TensorHandle*
 TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
                                                unsigned int idx);
+
+// Information about the shape of a Tensor and its type.
+struct TF_ShapeAndType {
+  // Number of dimensions. -1 indicates unknown rank.
+  int num_dims;
+  // Array of dimensions. -1 indicates unknown dim.
+  int64_t* dims;
+  // The data type. May be 0 to denote unknown type.
+  TF_DataType dtype;
+};
+
+typedef struct TF_ShapeAndType TF_ShapeAndType;
+
+// A list of TF_ShapeAndType elements..
+struct TF_ShapeAndTypeList {
+  int num_items;
+  TF_ShapeAndType* items;
+};
+typedef struct TF_ShapeAndTypeList TF_ShapeAndTypeList;
+
+// API for manipulating TF_ShapeAndTypeList objects.
+//
+TF_CAPI_EXPORT extern TF_ShapeAndTypeList* TF_NewShapeAndTypeList(
+    int num_shapes);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetShape(
+    TF_ShapeAndTypeList* shape_list, int index, const int64_t* dims,
+    int num_dims);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetUnknownShape(
+    TF_ShapeAndTypeList* shape_list, int index);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetDtype(
+    TF_ShapeAndTypeList* shape_list, int index, TF_DataType dtype);
+TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeList(
+    TF_ShapeAndTypeList* shape_list);
+TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeListArray(
+    TF_ShapeAndTypeList** shape_list_array, int num_items);
+
+// Infer shapes for the given `op`. The arguments mimic the arguments of the
+// `shape_inference::InferenceContext` constructor. Note the following:
+//   - The inputs of the `op` are not used for shape inference. So, it is
+//     OK to not have the inputs properly set in `op`. See `input_tensors`
+//     if you want shape inference to consider the input tensors of the
+//     op for shape inference.
+//   - The types need not be set in `input_shapes` as it is not used.
+//   - The number of `input_tensors` should be the same as the number of items
+//     in `input_shapes`.
+//
+// The results are returned in `output_shapes` and
+// `output_resource_shapes_and_types`. The caller is responsible for freeing the
+// memory in these buffers by calling `TF_DeleteShapeAndTypeList`.
+TF_CAPI_EXPORT extern void TFE_InferShapes(
+    TFE_Op* op, TF_ShapeAndTypeList* input_shapes, TF_Tensor** input_tensors,
+    TF_ShapeAndTypeList* input_tensor_as_shapes,
+    TF_ShapeAndTypeList** input_resource_shapes_and_types,
+    TF_ShapeAndTypeList** output_shapes,
+    TF_ShapeAndTypeList*** output_resource_shapes_and_types, TF_Status* status);
+
+TF_CAPI_EXPORT extern void
+TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable);
 
 #ifdef __cplusplus
 } /* end extern "C" */

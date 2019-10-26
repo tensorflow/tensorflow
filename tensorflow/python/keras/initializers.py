@@ -82,7 +82,7 @@ class TruncatedNormal(TFTruncatedNormal):
     stddev: a python scalar or a scalar tensor. Standard deviation of the random
       values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
     
   Returns:
@@ -106,7 +106,7 @@ class RandomUniform(TFRandomUniform):
     maxval: A python scalar or a scalar tensor. Upper bound of the range of
       random values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type.
     
   Returns:
@@ -131,7 +131,7 @@ class RandomNormal(TFRandomNormal):
     stddev: a python scalar or a scalar tensor. Standard deviation of the random
       values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:

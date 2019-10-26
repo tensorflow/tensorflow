@@ -22,7 +22,7 @@ option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
 
-// add go_package externally with copybara
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/device_attributes.proto";
@@ -31,9 +31,9 @@ import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
@@ -67,6 +67,9 @@ message CreateWorkerSessionRequest {
   // If true, any resources such as Variables used in the session will not be
   // shared with other sessions.
   bool isolate_session_state = 3;
+
+  // The device attributes of all the devices in the cluster.
+  repeated DeviceAttributes cluster_device_attributes = 4;
 }
 
 message CreateWorkerSessionResponse {}
@@ -129,6 +132,11 @@ message RegisterGraphRequest {
   // concurrently so that BufRendezvous entries will make the correct
   // values accessible.
   int64 collective_graph_key = 7;
+
+  // ConfigProto from the session in which this graph was created.
+  // Contains additional parameters beyond graph_options, including
+  // the name of the requested executor.
+  ConfigProto config_proto = 8;
 }
 
 message RegisterGraphResponse {
@@ -482,14 +490,18 @@ message RecvBufRequest {
 
   // Optional, implementation-specific data.
   google.protobuf.Any transport_options = 7;
-  // Optional, for annotating the timeline.
+  // For annotating timeline and device incarnation check.
   string src_device = 8;
+  // Optional, for annotating the timeline.
   string dst_device = 9;
 
   // Depending on the RPC system in use, it may be necessary to set this
   // id to detect resends of RPCs where the server is not aware that
   // the prior RPC failed.
   int64 request_id = 10;
+
+  // Incarnation number of the source device, used to detect worker failures.
+  uint64 src_incarnation = 11;
 }
 
 message RecvBufResponse {

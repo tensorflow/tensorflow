@@ -30,21 +30,21 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/batch_matmul_op_common.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -248,27 +248,27 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(gpu_memory));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
-class CublasScratchAllocator : public se::ScratchAllocator {
+class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
   using DeviceMemoryBytes = se::DeviceMemory<uint8>;
 
-  CublasScratchAllocator(OpKernelContext* context) : context_(context) {}
+  BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override { return -1; }
+  int64 GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
 
     Status allocation_status(context_->allocate_temp(
@@ -357,7 +357,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     typedef Scalar Coefficient;
 
-    // Cublas does
+    // Blas does
     // C = A x B
     // where A, B and C are assumed to be in column major.
     // We want the output to be in row-major, so we can compute
@@ -406,7 +406,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         }
       }
     } else {
-      CublasScratchAllocator scratch_allocator(context);
+      BlasScratchAllocator scratch_allocator(context);
       bool blas_launch_status =
           stream
               ->ThenBlasGemmBatchedWithScratch(
@@ -493,7 +493,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 
     typedef float Coefficient;
 
-    // Cublas does
+    // Blas does
     // C = A x B
     // where A, B and C are assumed to be in column major.
     // We want the output to be in row-major, so we can compute
@@ -517,7 +517,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
             ", k=", k));
       }
     } else {
-      CublasScratchAllocator scratch_allocator(context);
+      BlasScratchAllocator scratch_allocator(context);
       bool blas_launch_status =
           stream
               ->ThenBlasGemmBatchedWithScratch(
@@ -537,7 +537,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
   }
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename Scalar>

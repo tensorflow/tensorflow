@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 // IWYU pragma: no_include "perftools/gputools/executor/stream_executor.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
@@ -23,16 +23,12 @@ limitations under the License.
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
-#ifdef PLATFORM_GOOGLE
-  return nullptr;
-#else
   static auto handle = []() -> void* {
     auto handle_or = stream_executor::internal::DsoLoader::GetCuptiDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.ValueOrDie();
   }();
   return handle;
-#endif
 }
 
 template <typename T>

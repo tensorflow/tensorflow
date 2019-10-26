@@ -26,6 +26,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
+                                      PyObject** out_ndarray);
+
 Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 
 // Converts the given numpy ndarray to a (safe) TF_Tensor. The returned

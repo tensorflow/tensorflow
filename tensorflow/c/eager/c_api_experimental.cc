@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -27,13 +28,21 @@ limitations under the License.
 
 using tensorflow::string;
 
+void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
+                 TF_Status* status, TFE_Op* op_to_reset) {
+  if (op_to_reset) {
+    NewOrResetOp(ctx, op_or_function_name, status, op_to_reset);
+  } else {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "op_to_reset should not be nullptr");
+  }
+}
+
 void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }
 
-TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx) {
-  return new TFE_Profiler(ctx);
-}
+TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }
 
 bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
   return profiler->profiler->Status().ok();
@@ -41,10 +50,8 @@ bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
 
 void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
 
-void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
-                                   TF_Buffer* buf, TF_Status* status) {
-  TFE_ContextAsyncWait(ctx, status);
-  if (TF_GetCode(status) != TF_OK) return;
+void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
+                                   TF_Status* status) {
   string content;
   status->status = profiler->profiler->SerializeToString(&content);
   void* data = tensorflow::port::Malloc(content.length());
@@ -56,122 +63,549 @@ void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
   };
 }
 
-TFE_ProfilerContext* TFE_NewProfilerContext() {
-  return new TFE_ProfilerContext;
-}
-
-void TFE_ProfilerContextSetEagerContext(TFE_ProfilerContext* profiler_context,
-                                        TFE_Context* eager_context) {
-  profiler_context->profiler_context.eager_context = &eager_context->context;
-}
-
-void TFE_DeleteProfilerContext(TFE_ProfilerContext* profiler_context) {
-  delete profiler_context;
-}
-
-void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
-  // Release child thread intentionally. The child thread can be terminate by
+void TFE_StartProfilerServer(int port) {
+  // Release child thread intentionally. The child thread can be terminated by
   // terminating the main thread.
-  tensorflow::StartProfilerServer(&context->profiler_context, port).release();
+  tensorflow::StartProfilerServer(port).release();
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(true);
+  ctx->context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(false);
+  ctx->context->SetShouldStoreGraphs(false);
 }
 
 bool TFE_ProfilerClientStartTracing(const char* service_addr,
                                     const char* logdir, const char* worker_list,
                                     bool include_dataset_ops, int duration_ms,
-                                    int num_tracing_attempts) {
+                                    int num_tracing_attempts,
+                                    TF_Status* status) {
   tensorflow::Status s =
       tensorflow::profiler::client::ValidateHostPortPair(service_addr);
   if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     return false;
   }
   s = tensorflow::profiler::client::StartTracing(
       service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
       num_tracing_attempts);
+  tensorflow::Set_TF_Status_from_Status(status, s);
   return s.ok();
 }
 
-static tensorflow::mutex gauges_map_lock(tensorflow::LINKER_INITIALIZED);
-
-static std::unordered_map<string,
-                          tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>*
-get_gauges_map() EXCLUSIVE_LOCKS_REQUIRED(gauges_map_lock) {
-  static std::unordered_map<
-      string, tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>*
-      gauges_map = new std::unordered_map<
-          string, tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>;
-  return gauges_map;
-}
-
-static tensorflow::mutex counters_map_lock(tensorflow::LINKER_INITIALIZED);
-
-static std::unordered_map<string, tensorflow::monitoring::Counter<1>*>*
-get_counters_map() EXCLUSIVE_LOCKS_REQUIRED(counters_map_lock) {
-  static std::unordered_map<string, tensorflow::monitoring::Counter<1>*>*
-      counters_map =
-          new std::unordered_map<string, tensorflow::monitoring::Counter<1>*>;
-  return counters_map;
-}
-
-static tensorflow::mutex samplers_map_lock(tensorflow::LINKER_INITIALIZED);
-
-static std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>*
-get_samplers_map() EXCLUSIVE_LOCKS_REQUIRED(samplers_map_lock) {
-  static std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>*
-      samplers_map =
-          new std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>;
-  return samplers_map;
-}
-
-void TFE_MonitoringSetGauge(const char* name, const char* label,
-                            int64_t value) {
-  tensorflow::mutex_lock l(gauges_map_lock);
-  auto gauges_map = get_gauges_map();
-  if (gauges_map->find(name) == gauges_map->end()) {
-    gauges_map->emplace(
-        name, tensorflow::monitoring::Gauge<tensorflow::int64, 1>::New(
-                  name,
-                  tensorflow::strings::StrCat(
-                      name, " :Gauge metric collected from Python API."),
-                  "metric_descriptor"));
+void TFE_ProfilerClientMonitor(const char* service_addr, int duration_ms,
+                               int monitoring_level, bool display_timestamp,
+                               TF_Buffer* result, TF_Status* status) {
+  tensorflow::Status s =
+      tensorflow::profiler::client::ValidateHostPortPair(service_addr);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
+    return;
   }
-  gauges_map->at(name)->GetCell(label)->Set(value);
+  string content;
+  s = tensorflow::profiler::client::Monitor(
+      service_addr, duration_ms, monitoring_level, display_timestamp, &content);
+  void* data = tensorflow::port::Malloc(content.length());
+  content.copy(static_cast<char*>(data), content.length(), 0);
+  result->data = data;
+  result->length = content.length();
+  result->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  tensorflow::Set_TF_Status_from_Status(status, s);
 }
 
-void TFE_MonitoringAddCounter(const char* name, const char* label,
-                              int64_t value) {
-  tensorflow::mutex_lock l(counters_map_lock);
-  auto counters_map = get_counters_map();
-  if (counters_map->find(name) == counters_map->end()) {
-    counters_map->emplace(
-        name, tensorflow::monitoring::Counter<1>::New(
-                  name,
-                  tensorflow::strings::StrCat(
-                      name, " :Counter metric collected from Python API."),
-                  "metric_descriptor"));
-  }
-  counters_map->at(name)->GetCell(label)->IncrementBy(value);
+void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
+                                          int64_t value) {
+  cell->cell.IncrementBy(value);
 }
 
-void TFE_MonitoringAddSampler(const char* name, const char* label,
-                              double value) {
-  tensorflow::mutex_lock l(samplers_map_lock);
-  auto samplers_map = get_samplers_map();
-  if (samplers_map->find(name) == samplers_map->end()) {
-    samplers_map->emplace(
-        name, tensorflow::monitoring::Sampler<1>::New(
-                  {name,
-                   tensorflow::strings::StrCat(
-                       name, " :Counter metric collected from Python API."),
-                   "metric_descriptor"},
-                  {tensorflow::monitoring::Buckets::Exponential(1, 2, 30)}));
+int64_t TFE_MonitoringCounterCellValue(TFE_MonitoringCounterCell* cell) {
+  return cell->cell.value();
+}
+
+TFE_MonitoringCounter0* TFE_MonitoringNewCounter0(const char* name,
+                                                  TF_Status* status,
+                                                  const char* description) {
+  auto* result = new TFE_MonitoringCounter0({name, description});
+  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  if (!result->counter->GetStatus().ok()) {
+    delete result;
+    return nullptr;
   }
-  samplers_map->at(name)->GetCell(label)->Add(value);
+  return result;
+}
+
+void TFE_MonitoringDeleteCounter0(TFE_MonitoringCounter0* counter) {
+  delete counter;
+}
+
+TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter0(
+    TFE_MonitoringCounter0* counter) {
+  return static_cast<TFE_MonitoringCounterCell*>(
+      static_cast<void*>(counter->counter->GetCell()));
+}
+
+TFE_MonitoringCounter1* TFE_MonitoringNewCounter1(const char* name,
+                                                  TF_Status* status,
+                                                  const char* description,
+                                                  const char* label1) {
+  auto* result = new TFE_MonitoringCounter1({name, description, label1});
+  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  if (!result->counter->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteCounter1(TFE_MonitoringCounter1* counter) {
+  delete counter;
+}
+
+TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter1(
+    TFE_MonitoringCounter1* counter, const char* label1) {
+  return static_cast<TFE_MonitoringCounterCell*>(
+      static_cast<void*>(counter->counter->GetCell(label1)));
+}
+
+TFE_MonitoringCounter2* TFE_MonitoringNewCounter2(const char* name,
+                                                  TF_Status* status,
+                                                  const char* description,
+                                                  const char* label1,
+                                                  const char* label2) {
+  auto* result =
+      new TFE_MonitoringCounter2({name, description, label1, label2});
+  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  if (!result->counter->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteCounter2(TFE_MonitoringCounter2* counter) {
+  delete counter;
+}
+
+TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter2(
+    TFE_MonitoringCounter2* counter, const char* label1, const char* label2) {
+  return static_cast<TFE_MonitoringCounterCell*>(
+      static_cast<void*>(counter->counter->GetCell(label1, label2)));
+}
+
+void TFE_MonitoringIntGaugeCellSet(TFE_MonitoringIntGaugeCell* cell,
+                                   int64_t value) {
+  cell->cell.Set(value);
+}
+
+int64_t TFE_MonitoringIntGaugeCellValue(TFE_MonitoringIntGaugeCell* cell) {
+  return cell->cell.value();
+}
+
+TFE_MonitoringIntGauge0* TFE_MonitoringNewIntGauge0(const char* name,
+                                                    TF_Status* status,
+                                                    const char* description) {
+  auto* result = new TFE_MonitoringIntGauge0({name, description});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteIntGauge0(TFE_MonitoringIntGauge0* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringIntGaugeCell* TFE_MonitoringGetCellIntGauge0(
+    TFE_MonitoringIntGauge0* gauge) {
+  return static_cast<TFE_MonitoringIntGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell()));
+}
+
+TFE_MonitoringIntGauge1* TFE_MonitoringNewIntGauge1(const char* name,
+                                                    TF_Status* status,
+                                                    const char* description,
+                                                    const char* label1) {
+  auto* result = new TFE_MonitoringIntGauge1({name, description, label1});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteIntGauge1(TFE_MonitoringIntGauge1* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringIntGaugeCell* TFE_MonitoringGetCellIntGauge1(
+    TFE_MonitoringIntGauge1* gauge, const char* label1) {
+  return static_cast<TFE_MonitoringIntGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1)));
+}
+
+TFE_MonitoringIntGauge2* TFE_MonitoringNewIntGauge2(const char* name,
+                                                    TF_Status* status,
+                                                    const char* description,
+                                                    const char* label1,
+                                                    const char* label2) {
+  auto* result =
+      new TFE_MonitoringIntGauge2({name, description, label1, label2});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteIntGauge2(TFE_MonitoringIntGauge2* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringIntGaugeCell* TFE_MonitoringGetCellIntGauge2(
+    TFE_MonitoringIntGauge2* gauge, const char* label1, const char* label2) {
+  return static_cast<TFE_MonitoringIntGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1, label2)));
+}
+
+void TFE_MonitoringStringGaugeCellSet(TFE_MonitoringStringGaugeCell* cell,
+                                      const char* value) {
+  cell->cell.Set({value});
+}
+
+const void TFE_MonitoringStringGaugeCellValue(
+    TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf) {
+  tensorflow::string value = cell->cell.value();
+  void* data = tensorflow::port::Malloc(value.length());
+  value.copy(static_cast<char*>(data), value.length(), 0);
+  buf->data = data;
+  buf->length = value.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+}
+
+TFE_MonitoringStringGauge0* TFE_MonitoringNewStringGauge0(
+    const char* name, TF_Status* status, const char* description) {
+  auto* result = new TFE_MonitoringStringGauge0({name, description});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge0(TFE_MonitoringStringGauge0* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge0(
+    TFE_MonitoringStringGauge0* gauge) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell()));
+}
+
+TFE_MonitoringStringGauge1* TFE_MonitoringNewStringGauge1(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1) {
+  auto* result = new TFE_MonitoringStringGauge1({name, description, label1});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge1(TFE_MonitoringStringGauge1* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge1(
+    TFE_MonitoringStringGauge1* gauge, const char* label1) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1)));
+}
+
+TFE_MonitoringStringGauge2* TFE_MonitoringNewStringGauge2(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2) {
+  auto* result =
+      new TFE_MonitoringStringGauge2({name, description, label1, label2});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge2(TFE_MonitoringStringGauge2* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge2(
+    TFE_MonitoringStringGauge2* gauge, const char* label1, const char* label2) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1, label2)));
+}
+
+void TFE_MonitoringBoolGaugeCellSet(TFE_MonitoringBoolGaugeCell* cell,
+                                    bool value) {
+  cell->cell.Set(value);
+}
+
+bool TFE_MonitoringBoolGaugeCellValue(TFE_MonitoringBoolGaugeCell* cell) {
+  return cell->cell.value();
+}
+
+TFE_MonitoringBoolGauge0* TFE_MonitoringNewBoolGauge0(const char* name,
+                                                      TF_Status* status,
+                                                      const char* description) {
+  auto* result = new TFE_MonitoringBoolGauge0({name, description});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteBoolGauge0(TFE_MonitoringBoolGauge0* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringBoolGaugeCell* TFE_MonitoringGetCellBoolGauge0(
+    TFE_MonitoringBoolGauge0* gauge) {
+  return static_cast<TFE_MonitoringBoolGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell()));
+}
+
+TFE_MonitoringBoolGauge1* TFE_MonitoringNewBoolGauge1(const char* name,
+                                                      TF_Status* status,
+                                                      const char* description,
+                                                      const char* label1) {
+  auto* result = new TFE_MonitoringBoolGauge1({name, description, label1});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteBoolGauge1(TFE_MonitoringBoolGauge1* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringBoolGaugeCell* TFE_MonitoringGetCellBoolGauge1(
+    TFE_MonitoringBoolGauge1* gauge, const char* label1) {
+  return static_cast<TFE_MonitoringBoolGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1)));
+}
+
+TFE_MonitoringBoolGauge2* TFE_MonitoringNewBoolGauge2(const char* name,
+                                                      TF_Status* status,
+                                                      const char* description,
+                                                      const char* label1,
+                                                      const char* label2) {
+  auto* result =
+      new TFE_MonitoringBoolGauge2({name, description, label1, label2});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteBoolGauge2(TFE_MonitoringBoolGauge2* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringBoolGaugeCell* TFE_MonitoringGetCellBoolGauge2(
+    TFE_MonitoringBoolGauge2* gauge, const char* label1, const char* label2) {
+  return static_cast<TFE_MonitoringBoolGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1, label2)));
+}
+
+void TFE_MonitoringSamplerCellAdd(TFE_MonitoringSamplerCell* cell,
+                                  double value) {
+  cell->cell.Add(value);
+}
+
+void TFE_MonitoringSamplerCellValue(TFE_MonitoringSamplerCell* cell,
+                                    TF_Buffer* buf) {
+  string content;
+  cell->cell.value().SerializeToString(&content);
+  void* data = tensorflow::port::Malloc(content.length());
+  content.copy(static_cast<char*>(data), content.length(), 0);
+  buf->data = data;
+  buf->length = content.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+}
+
+TFE_MonitoringBuckets* TFE_MonitoringNewExponentialBuckets(double scale,
+                                                           double growth_factor,
+                                                           int bucket_count) {
+  return new TFE_MonitoringBuckets([scale, growth_factor, bucket_count]() {
+    return tensorflow::monitoring::Buckets::Exponential(scale, growth_factor,
+                                                        bucket_count);
+  });
+}
+
+void TFE_MonitoringDeleteBuckets(TFE_MonitoringBuckets* buckets) {
+  delete buckets;
+}
+
+TFE_MonitoringSampler0* TFE_MonitoringNewSampler0(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* status,
+    const char* description) {
+  auto* result = new TFE_MonitoringSampler0(
+      {name, buckets->create_buckets(), description});
+  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  if (!result->sampler->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteSampler0(TFE_MonitoringSampler0* sampler) {
+  delete sampler;
+}
+
+TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler0(
+    TFE_MonitoringSampler0* sampler) {
+  return static_cast<TFE_MonitoringSamplerCell*>(
+      static_cast<void*>(sampler->sampler->GetCell()));
+}
+
+TFE_MonitoringSampler1* TFE_MonitoringNewSampler1(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* status,
+    const char* description, const char* label1) {
+  auto* result = new TFE_MonitoringSampler1(
+      {name, buckets->create_buckets(), description, label1});
+  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  if (!result->sampler->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteSampler1(TFE_MonitoringSampler1* sampler) {
+  delete sampler;
+}
+
+TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler1(
+    TFE_MonitoringSampler1* sampler, const char* label1) {
+  return static_cast<TFE_MonitoringSamplerCell*>(
+      static_cast<void*>(sampler->sampler->GetCell(label1)));
+}
+
+TFE_MonitoringSampler2* TFE_MonitoringNewSampler2(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* status,
+    const char* description, const char* label1, const char* label2) {
+  auto* result = new TFE_MonitoringSampler2(
+      {name, buckets->create_buckets(), description, label1, label2});
+  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  if (!result->sampler->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteSampler2(TFE_MonitoringSampler2* sampler) {
+  delete sampler;
+}
+
+TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
+    TFE_MonitoringSampler2* sampler, const char* label1, const char* label2) {
+  return static_cast<TFE_MonitoringSamplerCell*>(
+      static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
+}
+
+void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
+                                          TFE_ContextMirroringPolicy policy) {
+  options->mirroring_policy = policy;
+}
+
+void TFE_ContextSetThreadLocalMirroringPolicy(
+    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
+  ctx->context->SetThreadLocalMirroringPolicy(
+      static_cast<tensorflow::ContextMirroringPolicy>(policy));
+}
+
+// Note: this function looks up a thread local policy. So it should be called in
+// the appropriate client thread. In particular, in async mode, it may not be
+// safe to call this function from the async EagerExecutor threads.
+extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
+    TFE_Context* ctx) {
+  return static_cast<TFE_ContextMirroringPolicy>(
+      ctx->context->GetMirroringPolicy());
+}
+
+TFE_CancellationManager* TFE_NewCancellationManager() {
+  return new TFE_CancellationManager;
+}
+
+void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager* cancellation_manager) {
+  cancellation_manager->cancellation_manager.StartCancel();
+}
+
+bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager* cancellation_manager) {
+  return cancellation_manager->cancellation_manager.IsCancelled();
+}
+
+void TFE_DeleteCancellationManager(
+    TFE_CancellationManager* cancellation_manager) {
+  delete cancellation_manager;
+}
+
+void TFE_OpSetCancellationManager(TFE_Op* op,
+                                  TFE_CancellationManager* cancellation_manager,
+                                  TF_Status* status) {
+  op->operation.SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+}
+
+TFE_Executor* TFE_NewExecutor(bool is_async) {
+  return new TFE_Executor(is_async);
+}
+
+void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
+
+bool TFE_ExecutorIsAsync(TFE_Executor* executor) {
+  return executor->executor()->Async();
+}
+
+void TFE_ExecutorWaitForAllPendingNodes(TFE_Executor* executor,
+                                        TF_Status* status) {
+  status->status = executor->executor()->WaitForAllPendingNodes();
+}
+
+void TFE_ExecutorClearError(TFE_Executor* executor) {
+  executor->executor()->ClearError();
+}
+
+void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
+  ctx->context->SetExecutorForThread(executor->executor());
+}
+
+TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
+  return new TFE_Executor(&ctx->context->Executor());
 }

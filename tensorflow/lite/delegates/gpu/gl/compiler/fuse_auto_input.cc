@@ -180,6 +180,11 @@ TransformResult FuseAutoInput::ApplyToNode(Node* node, GraphFloat32* graph) {
       }
       input_num++;
     }
+
+    // Also rename all _h and _w parameters to the new names.
+    for (auto& param : attr.code.parameters) {
+      param.name = absl::StrReplaceAll(param.name, replacements);
+    }
     attr.code.source_code =
         absl::StrReplaceAll(attr.code.source_code, replacements);
 

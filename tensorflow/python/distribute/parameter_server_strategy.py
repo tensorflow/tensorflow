@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes implementing a multi-worker ps DistributionStrategy."""
+"""Class implementing a multi-worker parameter server tf.distribute strategy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -48,13 +48,13 @@ _LOCAL_CPU = "/device:CPU:0"
 # TODO(yuefengz): maybe cache variables on local CPU.
 @tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
 class ParameterServerStrategy(distribute_lib.Strategy):
-  """An asynchronous multi-worker parameter server DistributionStrategy.
+  """An asynchronous multi-worker parameter server tf.distribute strategy.
 
-  This strategy requires two jobs: workers and parameter servers.  Variables and
+  This strategy requires two jobs: workers and parameter servers. Variables and
   updates to those variables will be assigned to parameter servers and other
   operations are assigned to workers.
 
-  When each worker has more than one GPU, operations will be replicated on these
+  When each worker has more than one GPU, operations will be replicated on all
   GPUs. Even though operations may be replicated, variables are not and each
   worker shares a common view for which parameter server a variable is assigned
   to.
@@ -81,13 +81,26 @@ class ParameterServerStrategy(distribute_lib.Strategy):
   variables.
 
   2) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
-  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
-  possibly create conflicts of device assignment.
+  `tf.compat.v1.colocate_with`) under the strategy's scope. For colocating
+  variables, use `strategy.extended.colocate_vars_with` instead. Colocation of
+  ops will possibly create device assignment conflicts.
+
+  Note: This strategy only works with the Estimator API. Pass an instance of
+  this strategy to the `experimental_distribute` argument when you create the
+  `RunConfig`. This instance of `RunConfig` should then be passed to the
+  `Estimator` instance on which `train_and_evaluate` is called.
+
+  For Example:
+  ```
+  strategy = tf.distribute.experimental.ParameterServerStrategy()
+  run_config = tf.estimator.RunConfig(
+      experimental_distribute.train_distribute=strategy)
+  estimator = tf.estimator.Estimator(config=run_config)
+  tf.estimator.train_and_evaluate(estimator,...)
   """
 
   def __init__(self, cluster_resolver=None):
-    """Initializes this strategy.
+    """Initializes this strategy with an optional `cluster_resolver`.
 
     Args:
       cluster_resolver: Optional
@@ -101,9 +114,13 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     extended = ParameterServerStrategyExtended(
         self, cluster_resolver=cluster_resolver)
     super(ParameterServerStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
 
 
-@tf_export(v1=["distribute.experimental.ParameterServerStrategy"])
+@tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
 class ParameterServerStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = ParameterServerStrategy.__doc__
@@ -113,6 +130,12 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
     super(ParameterServerStrategyV1, self).__init__(
         ParameterServerStrategyExtended(
             self, cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
+
+  __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -241,7 +264,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                         compute_devices,
                         parameter_device,
                         cluster_resolver=None):
-    """Initialize internal devices for local training."""
+    """Initialize local devices for training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
     self._input_host_device = numpy_dataset.SingleDevice(worker_device)
 
@@ -250,9 +273,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         num_gpus = context.num_gpus()
       else:
         num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
-        # Save the num_gpus_per_worker for configure method which is used by the
-        # contrib version.
-        self._num_gpus_per_worker = num_gpus
+      # Save the num_gpus_per_worker for configure method which is used by the
+      # contrib version.
+      self._num_gpus_per_worker = num_gpus
 
       compute_devices = device_util.local_devices_from_num_gpus(num_gpus)
 
@@ -282,9 +305,19 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
 
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
+
   def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync)
+    return input_lib.DatasetIterator(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -304,11 +337,33 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [input_context])
+                                           [input_context],
+                                           self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    if self._cluster_spec:
+      input_pipeline_id = multi_worker_util.id_in_cluster(
+          self._cluster_spec, self._task_type, self._task_id)
+      num_input_pipelines = multi_worker_util.worker_count(
+          self._cluster_spec, self._task_type)
+    else:
+      input_pipeline_id = 0
+      num_input_pipelines = 1
+
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=num_input_pipelines,
+        input_pipeline_id=input_pipeline_id,
+        num_replicas_in_sync=self._num_replicas_in_sync)
+
+    return input_lib.get_distributed_datasets_from_function(
+        dataset_fn,
+        self._input_workers,
+        [input_context],
+        self._container_strategy())
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
@@ -327,7 +382,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _allow_variable_partition(self):
     return not context.executing_eagerly()
 
-  # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
+  # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
     if self._num_replicas_in_sync > 1:
@@ -423,7 +478,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                                                value_destination_pairs)
 
   def _select_single_value(self, structured):
-    """Select any single values in `structured`."""
+    """Select any single value in `structured`."""
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
@@ -447,7 +502,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
-    if not isinstance(var, resource_variable_ops.ResourceVariable):
+    if not isinstance(var, resource_variable_ops.BaseResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):
@@ -491,13 +546,13 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                  cluster_spec=None,
                  task_type=None,
                  task_id=None):
-    """Configures the strategy class.
+    """Configures the strategy class with `cluser_spec`.
 
-    The strategy object will be re-initialized if `cluster_spec` is given but
-    was not passed in the constructor.
+    The strategy object will be re-initialized if `cluster_spec` is passed to
+    `configure` but was not passed when instantiating the strategy.
 
     Args:
-      session_config: not used currently.
+      session_config: Session config object.
       cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
         cluster configurations.
       task_type: the current task type.
@@ -540,6 +595,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       updated_config.device_filters.append(
           "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # With a PS job, PS strategy should always be considered as in multi
+    # worker mode.
+    return True
 
   @property
   def _num_replicas_in_sync(self):

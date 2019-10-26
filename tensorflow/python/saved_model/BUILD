@@ -1,19 +1,17 @@
 # Description:
 # TensorFlow SavedModel.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-licenses(["notice"])  # Apache 2.0
-
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 py_library(
     name = "saved_model",
@@ -193,6 +191,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
@@ -291,6 +290,7 @@ py_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
+        ":save_options",
         ":signature_constants",
         ":signature_def_utils",
         ":signature_serialization",
@@ -313,7 +313,6 @@ py_library(
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
-        "//tensorflow/python/training/tracking:object_identity",
         "//tensorflow/python/training/tracking:util",
     ],
 )
@@ -324,12 +323,16 @@ tf_py_test(
     additional_deps = [
         ":loader",
         ":save",
+        ":save_options",
         ":signature_constants",
         ":tag_constants",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["no_rocm"],
 )
 
 py_library(
@@ -355,6 +358,8 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:values",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
@@ -378,7 +383,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "load_test",
     srcs = ["load_test.py"],
     additional_deps = [
@@ -395,7 +400,10 @@ tf_py_test(
         "//tensorflow/python/training/tracking:tracking",
     ],
     shard_count = 10,
-    tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
+    tags = [
+        "no_mac",  # TODO(b/124822121): Re-enable this test.
+        "nogpu",  # TODO(b/136560979): flaky
+    ],
 )
 
 tf_py_test(
@@ -477,6 +485,12 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/ops/ragged",
         "@six_archive//:six",
     ],
 )
@@ -489,5 +503,13 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "save_options",
+    srcs = ["save_options.py"],
+    deps = [
+        "@six_archive//:six",
     ],
 )

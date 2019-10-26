@@ -104,7 +104,7 @@ class EagerTest(xla_test.XLATestCase):
       self.assertAllEqual(15, product)
 
     # Run some ops graphly
-    with context.graph_mode(), self.cached_session():
+    with context.graph_mode(), self.session():
       with self.test_scope():
         three = constant_op.constant(3)
         five = constant_op.constant(5)
@@ -693,8 +693,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         return x, y
 
       wholly_compiled_f = def_function.function(f)
-      op_by_op_f = function.defun_with_attributes(
-          f, attributes={'_XlaCompile': False})
+      op_by_op_f = def_function.function(f, experimental_compile=False)
 
       x = constant_op.constant([0.0, 2.0], name='data')
 

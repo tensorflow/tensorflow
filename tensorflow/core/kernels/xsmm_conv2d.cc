@@ -34,7 +34,7 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 
 #include "include/libxsmm_cpuid.h"
 #include "include/libxsmm_malloc.h"
-#include "third_party/libxsmm/src/libxsmm_main.h"  // TODO(bsteiner): API to avoid incl. header from src/
+#include "src/libxsmm_main.h"  // TODO(bsteiner): API to avoid incl. header from src/
 
 namespace tensorflow {
 

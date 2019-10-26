@@ -38,19 +38,19 @@ namespace gpu {
 class FftScratchAllocator : public se::ScratchAllocator {
  public:
   FftScratchAllocator(int device_ordinal,
-                      DeviceMemoryAllocator* memory_allocator);
+                      se::DeviceMemoryAllocator* memory_allocator);
 
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override;
+  int64 GetMemoryLimitInBytes() override;
 
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override;
+      int64 byte_size) override;
 
  private:
   const int device_ordinal_;
-  DeviceMemoryAllocator* memory_allocator_;
-  std::vector<OwningDeviceMemory> allocated_buffers_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
@@ -72,9 +72,7 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const se::fft::Type fft_type_;

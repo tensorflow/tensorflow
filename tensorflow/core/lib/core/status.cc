@@ -14,14 +14,77 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/status.h"
+
 #include <stdio.h>
+
+#include <deque>
 #include <map>
-#include "tensorflow/core/lib/core/error_codes.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+
+#include "absl/base/call_once.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Log sink is used to collect recent warning and error log messages to be
+// attached to the error status.
+class StatusLogSink : public TFLogSink {
+ public:
+  static StatusLogSink* GetInstance() {
+    static StatusLogSink* sink = new StatusLogSink();
+    return sink;
+  }
+
+  void enable() {
+    absl::call_once(flag_, [this] {
+      num_messages_ = 5;  // default to 5 messages
+
+      if (const char* num_msgs_str =
+              getenv("TF_WORKER_NUM_FORWARDED_LOG_MESSAGES")) {
+        if (!absl::SimpleAtoi(num_msgs_str, &num_messages_)) {
+          LOG(WARNING) << "Failed to parse env variable "
+                          "TF_WORKER_NUM_WARNING_ERROR_LOG_IN_STATUS="
+                       << num_msgs_str << " as int. Using the default value "
+                       << num_messages_ << ".";
+        }
+      }
+
+      if (num_messages_ > 0) {
+        TFAddLogSink(this);
+      }
+    });
+  }
+
+  void GetMessages(std::vector<std::string>* logs) LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+
+    for (auto& msg : messages_) {
+      logs->push_back(msg);
+    }
+  }
+
+  void Send(const TFLogEntry& entry) override LOCKS_EXCLUDED(mu_) {
+    if (entry.log_severity() < absl::LogSeverity::kWarning) return;
+
+    mutex_lock lock(mu_);
+    messages_.emplace_back(entry.ToString());
+    if (messages_.size() > num_messages_) messages_.pop_front();
+  }
+
+ private:
+  mutex mu_;
+  // for allowing repeated/concurrent calls to enable()
+  absl::once_flag flag_;
+  int num_messages_ = 0;
+  std::deque<std::string> messages_ GUARDED_BY(mu_);
+};
+
+}  // namespace
 
 Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
@@ -146,11 +209,19 @@ string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
 static const char* kDerivedMarker = "[_Derived_]";
 
 Status StatusGroup::MakeDerived(const Status& s) {
-  return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+  if (IsDerived(s)) {
+    return s;
+  } else {
+    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+  }
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
   return s.error_message().find(kDerivedMarker) != std::string::npos;
+}
+
+void StatusGroup::ConfigureLogHistory() {
+  StatusLogSink::GetInstance()->enable();
 }
 
 void StatusGroup::Update(const Status& s) {
@@ -174,6 +245,7 @@ static std::vector<Status> GetNonDerivedStatuses(
 }
 
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
+static constexpr int kMaxAttachedLogMessageSize = 512;
 
 // Summarize all the status objects in the StatusGroup. This is used when
 // individual Status objects in the StatusGroup are not already summarized.
@@ -182,21 +254,45 @@ Status StatusGroup::as_summary_status() const {
     return Status::OK();
   }
 
+  // Gather recent logs as a string
+  auto get_recent_logs = [this]() -> std::string {
+    if (!recent_logs_.empty()) {
+      std::vector<std::string> fmt;
+      fmt.push_back("\nRecent warning and error logs:");
+      for (auto& log : recent_logs_) {
+        // Add an indentation to make it look nicer.
+        fmt.push_back("  " + log.substr(0, kMaxAttachedLogMessageSize));
+      }
+      return absl::StrJoin(fmt, "\n");
+    } else {
+      return "";
+    }
+  };
+
   std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
 
-  // If only one root status is found, return it directly.
+  // If only one root status is found, do not add summary header and footer.
   if (nonderived_statuses.size() == 1) {
-    return nonderived_statuses[0];
+    return Status(nonderived_statuses[0].code(),
+                  strings::StrCat(nonderived_statuses[0].error_message(),
+                                  get_recent_logs()));
   }
 
   if (!nonderived_statuses.empty()) {
-    std::vector<string> fmt;
+    std::vector<std::string> fmt;
 
     fmt.push_back(strings::Printf("%zu root error(s) found.",
                                   nonderived_statuses.size()));
 
     int index = 0;
+    auto code = tensorflow::error::CANCELLED;
     for (auto& s : nonderived_statuses) {
+      // NOTE: Avoid using CANCELLED as the code of summary status if the group
+      // contains other error code.
+      if (code == tensorflow::error::CANCELLED &&
+          s.code() != tensorflow::error::CANCELLED) {
+        code = s.code();
+      }
       fmt.emplace_back(strings::StrCat("  (", index, ") ", s.ToString()));
       ++index;
     }
@@ -205,12 +301,13 @@ Status StatusGroup::as_summary_status() const {
     fmt.push_back(
         strings::Printf("%zu derived errors ignored.",
                         children_.size() - nonderived_statuses.size()));
-    return Status(
-        nonderived_statuses[0].code(),
-        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize));
+
+    std::string error_msg =
+        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
+
+    return Status(code, strings::StrCat(error_msg, get_recent_logs()));
   } else {
-    // All status are derived. Return the first status error, which will be
-    // ignored when aggregated at the master node.
+    // All statuses are derived. Pick the first available status to return.
     return children_[0];
   }
 }
@@ -244,6 +341,11 @@ Status StatusGroup::as_concatenated_status() const {
     // This should not happen in normal execution.
     return children_[0];
   }
+}
+
+void StatusGroup::AttachLogMessages() {
+  recent_logs_.clear();
+  StatusLogSink::GetInstance()->GetMessages(&recent_logs_);
 }
 
 }  // namespace tensorflow

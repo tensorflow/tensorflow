@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -124,6 +124,19 @@ TEST_F(FlatbufferConversionsTest, TestParseOpDataConv) {
   EXPECT_EQ(4, params->dilation_height_factor);
 }
 
+TEST_F(FlatbufferConversionsTest, ParseBadFullyConnected) {
+  const Operator* conv_op = BuildTestOperator(
+      BuiltinOptions_FullyConnectedOptions,
+      CreateFullyConnectedOptions(
+          builder_, ActivationFunctionType_RELU,
+          static_cast<FullyConnectedOptionsWeightsFormat>(-1), true)
+          .Union());
+  void* output_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(conv_op, BuiltinOperator_FULLY_CONNECTED,
+                        &mock_reporter_, &mock_allocator_, &output_data));
+}
+
 TEST_F(FlatbufferConversionsTest, TestParseOpDataCustom) {
   const Operator* custom_op =
       BuildTestOperator(BuiltinOptions_NONE, flatbuffers::Offset<void>());
@@ -139,6 +152,13 @@ TEST_F(FlatbufferConversionsTest, TestConvertTensorType) {
   EXPECT_EQ(kTfLiteOk,
             ConvertTensorType(TensorType_FLOAT32, &type, &mock_reporter_));
   EXPECT_EQ(kTfLiteFloat32, type);
+}
+
+TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeFloat16) {
+  TfLiteType type;
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_FLOAT16, &type, &mock_reporter_));
+  EXPECT_EQ(kTfLiteFloat16, type);
 }
 
 }  // namespace tflite

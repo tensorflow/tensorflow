@@ -819,8 +819,8 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   auto constant0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  builder.AddInstruction(HloInstruction::CreateUnary(
-      constant0->shape(), HloOpcode::kBitcast, constant0));
+  builder.AddInstruction(
+      HloInstruction::CreateBitcast(constant0->shape(), constant0));
   auto m = CreateNewVerifiedModule();
   m->AddEntryComputation(builder.Build());
 
@@ -869,11 +869,8 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   ChannelLayoutConstraints channel_constraints;
   AssignLayouts(m.get(), &computation_layout, &channel_constraints);
 
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "root"), ElementsAre(1, 0));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetSubshape(FindInstruction(m.get(), "send")->shape(), {0}),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+  EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
+                               FindInstruction(m.get(), "recv")->shape()));
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
@@ -891,11 +888,11 @@ TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
       ar.0 = f32[2,2] all-reduce(gte),
-        all_reduce_id=1, replica_groups={{0}}, to_apply=add,
+        channel_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=0}
       const = f32[2,2] constant({{0,1},{2,3}})
       ROOT ar.1 = f32[2,2] all-reduce(const),
-        all_reduce_id=1, replica_groups={{0}}, to_apply=add,
+        channel_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=1}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,

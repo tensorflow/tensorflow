@@ -1,16 +1,16 @@
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 cc_library(
     name = "calibration_wrapper_lib",
     srcs = ["calibration_wrapper.cc"],
     hdrs = ["calibration_wrapper.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -58,6 +58,7 @@ py_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
@@ -68,5 +69,6 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

@@ -107,10 +107,10 @@ ifeq ($(TARGET), ecm3531)
 
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+  OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
 
-$(BINDIR)/%.bin: $(BINDIR)/%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
+  $(BINDIR)/%.bin: $(BINDIR)/%
+	  @mkdir -p $(dir $@)
+	  $(OBJCOPY) $< $@ -O binary
 
 endif

@@ -19,15 +19,12 @@ namespace tensorflow {
 
 bool ParseProtoUnlimited(protobuf::MessageLite* proto,
                          const string& serialized) {
-  return ParseProtoUnlimited(proto, serialized.data(), serialized.size());
+  return proto->ParseFromString(serialized);
 }
 
 bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
                          size_t size) {
-  protobuf::io::CodedInputStream coded_stream(
-      reinterpret_cast<const uint8*>(serialized), size);
-  coded_stream.SetTotalBytesLimit(INT_MAX, INT_MAX);
-  return proto->ParseFromCodedStream(&coded_stream);
+  return proto->ParseFromArray(serialized, size);
 }
 
 }  // namespace tensorflow

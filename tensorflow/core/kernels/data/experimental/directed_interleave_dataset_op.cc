@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class DirectedInterleaveDatasetOp : public DatasetOpKernel {
  public:
@@ -109,6 +107,13 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 
+    Status CheckExternalState() const override {
+      for (const auto& input : data_inputs_) {
+        TF_RETURN_IF_ERROR(input->CheckExternalState());
+      }
+      return selector_input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -171,7 +176,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
           }
 
           int64 selected_input = selector_result[0].scalar<int64>()();
-          if (selected_input < 0 || selected_input > data_input_impls_.size()) {
+          if (selected_input < 0 ||
+              selected_input >= data_input_impls_.size()) {
             return errors::InvalidArgument(
                 "Selector index out of range: ", selected_input,
                 " >= ", data_input_impls_.size());
@@ -196,8 +202,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
             }
           }
 
-          LOG(WARNING) << "DirectedInterleave selected an exhausted input: "
-                       << selected_input;
+          VLOG(2) << "DirectedInterleave selected an exhausted input: "
+                  << selected_input;
         }
       }
 
@@ -277,10 +283,13 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("DirectedInterleaveDataset").Device(DEVICE_CPU),
+                        DirectedInterleaveDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDirectedInterleaveDataset").Device(DEVICE_CPU),
     DirectedInterleaveDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

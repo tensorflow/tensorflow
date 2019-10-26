@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/list_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
@@ -291,8 +293,8 @@ TEST(CachedFunctionHandles, Basic) {
   FunctionLibraryDefinition fld(OpRegistry::Global(), proto);
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(
-          /*device_mgr=*/nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
-          OptimizerOptions()));
+          /*device_mgr=*/nullptr, Env::Default(), /*config=*/nullptr,
+          TF_GRAPH_DEF_VERSION, &fld, OptimizerOptions()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
@@ -414,6 +416,87 @@ TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
   auto const_def = nodes.find("duplicate_name/_0");
   ASSERT_NE(const_def, nodes.end());
   EXPECT_EQ(const_def->second.op(), "Const");
+}
+
+TEST(PropagateConstIntoFunctionalNodes, RewriteTensorListWithConstMember) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  {
+    // Cond graph
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto input = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    auto result =
+        ops::Const(scope.WithOpName("result"), false, TensorShape({}));
+    auto ret = ops::_Retval(scope.WithOpName("ret"), result, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(fdef));
+  }
+  {
+    // Forward body graph
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto input = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    auto element = ops::Const(scope.WithOpName("element"), 0, TensorShape({}));
+    auto push =
+        ops::TensorListPushBack(scope.WithOpName("push"), input, element);
+    auto ret = ops::_Retval(scope.WithOpName("ret"), push.output_handle, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "fwd_body", &fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(fdef));
+  }
+  {
+    // Backward body graph
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto input = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    auto shape = ops::Const(scope.WithOpName("element"), -1, TensorShape({}));
+    auto pop =
+        ops::TensorListPopBack(scope.WithOpName("pop"), input, shape, DT_INT32);
+    auto identity = ops::Identity(scope.WithOpName("identity"), pop.tensor);
+    auto ret = ops::_Retval(scope.WithOpName("ret"), pop.output_handle, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "bwd_body", &fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(fdef));
+  }
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto shape = ops::Const(scope.WithOpName("element"), -1, TensorShape({}));
+  auto max_num_elements =
+      ops::Const(scope.WithOpName("max_num_elements"), 10, TensorShape({}));
+  auto tl = ops::EmptyTensorList(scope.WithOpName("tl"), shape,
+                                 max_num_elements, DT_INT32);
+  NameAttrList cond_fn, fwd_body_fn, bwd_body_fn;
+  cond_fn.set_name("cond");
+  fwd_body_fn.set_name("fwd_body");
+  bwd_body_fn.set_name("bwd_body");
+  auto fwd_while_op =
+      ops::While(scope.WithOpName("fwd_while"),
+                 std::initializer_list<Input>{tl}, cond_fn, fwd_body_fn);
+  auto bwd_while_op =
+      ops::While(scope.WithOpName("bwd_while"),
+                 std::initializer_list<Input>{fwd_while_op.output[0]}, cond_fn,
+                 bwd_body_fn);
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  TF_EXPECT_OK(RewriteTensorListWithConstElement(&graph, &fld));
+
+  // Check that in rewritten backward While body function, the Identity node now
+  // has Const node as input.
+  const FunctionDef* bwd_body = fld.Find("bwd_body_tl_rewrite_0");
+  ASSERT_NE(bwd_body, nullptr);
+  std::unique_ptr<FunctionBody> bwd_fbody;
+  TF_CHECK_OK(
+      FunctionDefToBodyHelper(*bwd_body, AttrSlice(), &fld, &bwd_fbody));
+  auto node_name_index = bwd_fbody->graph->BuildNodeNameIndex();
+  const Node* identity = node_name_index.at("identity");
+  ASSERT_NE(identity, nullptr);
+  const Node* input;
+  TF_ASSERT_OK(identity->input_node(0, &input));
+  EXPECT_EQ(input->type_string(), "Const");
 }
 
 }  // namespace

@@ -1,15 +1,18 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
+    python_version = "PY2",
     deps = [":upgrade_schema_main_lib"],
 )
 
@@ -35,6 +38,7 @@ py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -56,12 +60,21 @@ exports_files([
     "schema_v3.fbs",
 ])
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-
 # Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+)
+
+# Generic schema for flatbuffer converter (but with mutable makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_mutable",
+    srcs = ["schema.fbs"],
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
 )
 
 # Generic schema for inference on device (but with reflections makes bigger).
@@ -75,6 +88,12 @@ flatbuffer_cc_library(
         "--gen-object-api",
     ],
     out_prefix = "reflection/",
+)
+
+# Generic schema for model metadata.
+flatbuffer_cc_library(
+    name = "metadata_schema_fbs",
+    srcs = ["metadata_schema.fbs"],
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes
@@ -93,7 +112,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        "//tensorflow/core:lib_platform",
+        "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],

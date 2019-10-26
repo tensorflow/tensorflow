@@ -311,7 +311,9 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
+      available_tags.append(set(meta_graph_def.meta_info_def.tags))
       if set(meta_graph_def.meta_info_def.tags) == set(tags):
         meta_graph_def_to_load = meta_graph_def
         found_match = True
@@ -322,7 +324,7 @@ class SavedModelLoader(object):
           "MetaGraphDef associated with tags " + str(tags).strip("[]") +
           " could not be found in SavedModel. To inspect available tag-sets in"
           " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
-      )
+          "\navailable_tags: " + str(available_tags))
     return meta_graph_def_to_load
 
   def load_graph(self, graph, tags, import_scope=None, **saver_kwargs):
@@ -353,10 +355,10 @@ class SavedModelLoader(object):
     """Restore SavedModel variable values into the session.
 
     Args:
-      sess: tf.Session to restore variable values.
-      saver: a tf.train.Saver object. Can be None if there are no variables in
-        graph. This may be the saver returned by the load_graph() function, or a
-        default `tf.train.Saver()`.
+      sess: tf.compat.v1.Session to restore variable values.
+      saver: a tf.compat.v1.train.Saver object. Can be None if there are no
+        variables in graph. This may be the saver returned by the load_graph()
+        function, or a default `tf.compat.v1.train.Saver()`.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to
         tensor instances loaded into the passed session, but it is *not* written
@@ -383,7 +385,7 @@ class SavedModelLoader(object):
     """Run initialization ops defined in the `MetaGraphDef`.
 
     Args:
-      sess: tf.Session to restore variable values.
+      sess: tf.compat.v1.Session to restore variable values.
       tags: a set of string tags identifying a MetaGraphDef.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to
@@ -404,7 +406,7 @@ class SavedModelLoader(object):
     """Load the MetaGraphDef graph and restore variable values into the session.
 
     Args:
-      sess: tf.Session to restore variable values.
+      sess: tf.compat.v1.Session to restore variable values.
       tags: a set of string tags identifying a MetaGraphDef.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to

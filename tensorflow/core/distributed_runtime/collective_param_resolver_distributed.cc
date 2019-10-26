@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -243,7 +244,7 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
   CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
   gr->group.runtime_details.communicator_key = resp.communicator_key();
   VLOG(2) << "Group communicator_key="
-          << str_util::CEscape(gr->group.runtime_details.communicator_key);
+          << absl::CEscape(gr->group.runtime_details.communicator_key);
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.
@@ -251,7 +252,7 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
     auto it = group_table_.find(gr->group.group_key);
     if (it == group_table_.end()) {
       VLOG(2) << "UpdateGroupCache: communicator_key="
-              << str_util::CEscape(gr->group.runtime_details.communicator_key);
+              << absl::CEscape(gr->group.runtime_details.communicator_key);
       group_table_[gr->group.group_key] = std::move(gr);
     } else {
       auto& previous_gr = group_table_[gr->group.group_key];
@@ -260,10 +261,9 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
         return errors::Internal(
             "UpdateGroupCache: CompleteGroupResponse for group ",
             gr->group.group_key, " gives communicator_key=",
-            str_util::CEscape(gr->group.runtime_details.communicator_key),
+            absl::CEscape(gr->group.runtime_details.communicator_key),
             " but cache already holds communicator_key=",
-            str_util::CEscape(
-                previous_gr->group.runtime_details.communicator_key));
+            absl::CEscape(previous_gr->group.runtime_details.communicator_key));
       }
     }
   }

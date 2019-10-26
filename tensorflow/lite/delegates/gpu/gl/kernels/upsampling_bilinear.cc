@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -61,6 +62,7 @@ class UpsamplingBilinear : public NodeShader {
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/{},
+          /*shared_variables=*/{},
           /*workload=*/uint3(),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 = $input_data_0[0, 0, gid.z]$;",
@@ -69,7 +71,7 @@ class UpsamplingBilinear : public NodeShader {
       };
       return OkStatus();
     }
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
         {"scale_factor",
@@ -99,6 +101,7 @@ class UpsamplingBilinear : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),

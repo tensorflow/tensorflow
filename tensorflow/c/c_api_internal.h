@@ -24,9 +24,13 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
+#include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
@@ -49,18 +53,6 @@ class ServerInterface;
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
-
-struct TF_Status {
-  tensorflow::Status status;
-};
-
-struct TF_Tensor {
-  ~TF_Tensor();
-
-  TF_DataType dtype;
-  tensorflow::TensorShape shape;
-  tensorflow::TensorBuffer* buffer;
-};
 
 struct TF_SessionOptions {
   tensorflow::SessionOptions options;
@@ -193,15 +185,6 @@ struct TF_Server {
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 namespace tensorflow {
-
-class TensorCApi {
- public:
-  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
-  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
-                           TensorBuffer* buf) {
-    return Tensor(static_cast<DataType>(type), shape, buf);
-  }
-};
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 

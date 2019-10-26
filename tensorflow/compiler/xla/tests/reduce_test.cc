@@ -1159,5 +1159,37 @@ XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
+  absl::string_view hlo_string = R"(
+    HloModule VariadicReduceMultiOutput
+
+    VariadicAnd {
+      value = pred[] parameter(0)
+      value_idx = u32[] parameter(1)
+      current_value = pred[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+      ROOT out = (pred[], u32[]) tuple(value, value_idx)
+    }
+
+    ENTRY CheckBuffer {
+      test_value = f32[] parameter(0)
+      buffer = f32[100] parameter(1)
+      value_broadcast = f32[100] broadcast(test_value), dimensions={}
+      comparison_result = pred[100] compare(buffer, value_broadcast), direction=EQ
+      true_constant = pred[] constant(true)
+
+      zero_idx = u32[] constant(0)
+      idxs = u32[100]{0} iota(), iota_dimension=0
+      out = (pred[], u32[]) reduce(
+         comparison_result, idxs, true_constant, zero_idx
+      ), dimensions={0}, to_apply=VariadicAnd
+
+      ROOT returned = u32[] get-tuple-element(out), index=1
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla

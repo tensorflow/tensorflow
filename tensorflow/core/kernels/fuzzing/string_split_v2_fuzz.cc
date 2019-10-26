@@ -46,10 +46,10 @@ class FuzzStringSplitV2 : public FuzzSession {
       if (sep_len > size) {
         sep_len = size - 1;
       }
-      separator_tensor.scalar<string>()() =
+      separator_tensor.scalar<tstring>()() =
           string(reinterpret_cast<const char*>(data), sep_len);
-      input_tensor.scalar<string>()() = string(
-          reinterpret_cast<const char*>(data + sep_len), size - sep_len);
+      input_tensor.scalar<tstring>()() =
+          string(reinterpret_cast<const char*>(data + sep_len), size - sep_len);
 
       RunInputs({{"input", input_tensor}, {"separator", separator_tensor}});
     }

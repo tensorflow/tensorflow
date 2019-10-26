@@ -30,13 +30,13 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('distribute.cluster_resolver.SlurmClusterResolver')
 class SlurmClusterResolver(ClusterResolver):
-  """Cluster Resolver for system with Slurm workload manager.
+  """ClusterResolver for system with Slurm workload manager.
 
   This is an implementation of cluster resolvers for Slurm clusters. This allows
   the specification of jobs and task counts, number of tasks per node, number of
-  GPUs on each node and number of GPUs for each task, It retrieves system
+  GPUs on each node and number of GPUs for each task. It retrieves system
   attributes by Slurm environment variables, resolves allocated computing node
-  names, construct a cluster and return a Cluster Resolver object which an be
+  names, constructs a cluster and returns a ClusterResolver object which can be
   use for distributed TensorFlow.
   """
 
@@ -61,15 +61,15 @@ class SlurmClusterResolver(ClusterResolver):
     """Creates a new SlurmClusterResolver object.
 
     This takes in parameters and creates a SlurmClusterResolver object. It uses
-    those parameters to check which nodes will processes reside and resolves
+    those parameters to check which nodes will processes reside on and resolves
     their hostnames. With the number of the GPUs on each node and number of GPUs
-    for each task it offsets the port number for each processes and allocate
+    for each task it offsets the port number for each process and allocates
     GPUs to tasks by setting environment variables. The resolver currently
     supports homogeneous tasks and default Slurm process allocation.
 
     Args:
       jobs: Dictionary with job names as key and number of tasks in the job as
-        value
+        value.
       port_base: The first port number to start with for processes on a node.
       gpus_per_node: Number of GPUs available on each node.
       gpus_per_task: Number of GPUs to be used for each task.

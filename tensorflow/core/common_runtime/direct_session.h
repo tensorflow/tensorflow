@@ -68,7 +68,9 @@ class DirectSession : public Session {
   typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
+  ::tensorflow::Status Create(GraphDef&& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
+  ::tensorflow::Status Extend(GraphDef&& graph) override;
   ::tensorflow::Status Run(const NamedTensorList& inputs,
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
@@ -110,11 +112,20 @@ class DirectSession : public Session {
 
   ::tensorflow::Status MakeCallable(const CallableOptions& callable_options,
                                     CallableHandle* out_handle) override;
+
   ::tensorflow::Status RunCallable(CallableHandle handle,
                                    const std::vector<Tensor>& feed_tensors,
                                    std::vector<Tensor>* fetch_tensors,
                                    RunMetadata* run_metadata) override;
+
+  ::tensorflow::Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override;
+
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
+
+  const SessionOptions& options() const { return options_; }
 
  private:
   // For access to collective_graph_key_.
@@ -123,7 +134,7 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;                  // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
@@ -178,8 +189,8 @@ class DirectSession : public Session {
   // is "notified" when all executors are done. 'pending_inputs' are the set
   // of pending feeds and 'pending_outputs' are the set of pending fetches.
   struct RunState {
-    mutex mu_;
-    Status status GUARDED_BY(mu_);
+    mutex mu;
+    Status status GUARDED_BY(mu);
     IntraProcessRendezvous* rendez = nullptr;
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
@@ -202,7 +213,8 @@ class DirectSession : public Session {
   };
 
   struct RunStateArgs {
-    RunStateArgs(const DebugOptions& options) : debug_options(options) {}
+    explicit RunStateArgs(const DebugOptions& options)
+        : debug_options(options) {}
 
     bool is_partial_run = false;
     string handle;
@@ -210,12 +222,6 @@ class DirectSession : public Session {
     const DebugOptions& debug_options;
     int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
-
-  // Initializes the base execution state given the 'graph',
-  // if not already initialized.
-  Status MaybeInitializeExecutionState(const GraphDef& graph,
-                                       bool* out_already_initialized)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
@@ -242,17 +248,18 @@ class DirectSession : public Session {
       RunStateArgs* run_state_args, DataTypeVector* input_types,
       DataTypeVector* output_types, int64* collective_graph_key);
 
-  ::tensorflow::Status RunInternal(int64 step_id, const RunOptions& run_options,
-                                   CallFrameInterface* call_frame,
-                                   ExecutorsAndKeys* executors_and_keys,
-                                   RunMetadata* run_metadata);
+  ::tensorflow::Status RunInternal(
+      int64 step_id, const RunOptions& run_options,
+      CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
+      RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options);
 
   // Returns whether inter-op execution uses a global pool or the input
   // `run_options` requests being run on inter_op_thread_pool = 0 in case
   // multiple pools are configured.
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
-  ::tensorflow::Status ExtendLocked(const GraphDef& graph)
+  ::tensorflow::Status ExtendLocked(GraphDef graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
@@ -400,6 +407,18 @@ class DirectSession : public Session {
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;
   int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
+
+  // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
+  // all of following conditions are met:
+  // 1. This session doesn't own any thread pool.
+  // 2. RunOptions.inter_op_thread_pool is unspecified or 0.
+  // 3. This session has a single executor.
+  // 4. config.inter_op_parallelism_threads is specified to negative explicitly
+  //    or through environment variable TF_NUM_INTEROP_THREADS.
+  // 5. RunOptions.experimental.use_run_handler_pool is unspecified or false.
+  // Otherwise run in global thread pool, session owned thread pool or handler
+  // pool according to other specifications of RunOptions and ConfigProto.
+  bool run_in_caller_thread_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 

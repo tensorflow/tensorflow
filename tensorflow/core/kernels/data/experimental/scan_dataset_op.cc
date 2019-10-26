@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,25 +26,27 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ScanDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    if (ctx->HasAttr("use_default_device")) {
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttr("use_default_device", &use_default_device_));
+      params.use_default_device = use_default_device_;
+    }
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tstate", &state_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       func_.name(), &lib_def_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -55,36 +58,35 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                       initial_state_inputs.end());
 
     std::unique_ptr<CapturedFunction> captured_func;
-    data::CapturedFunction::Params params;
-    params.lib_def = lib_def_;
-    OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            std::move(params), &captured_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
-    *output = new Dataset(ctx, input, func_, std::move(initial_state),
-                          std::move(captured_func), state_types_, output_types_,
-                          output_shapes_, preserve_cardinality_);
+    *output =
+        new Dataset(ctx, input, std::move(initial_state),
+                    std::move(captured_func), state_types_, output_types_,
+                    output_shapes_, preserve_cardinality_, use_default_device_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func, std::vector<Tensor> initial_state,
+            std::vector<Tensor> initial_state,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& state_types,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            bool preserve_cardinality)
+            bool preserve_cardinality, bool use_default_device)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          func_(func),
           initial_state_(std::move(initial_state)),
           captured_func_(std::move(captured_func)),
           state_types_(state_types),
           output_types_(output_types),
           output_shapes_(output_shapes),
-          preserve_cardinality_(preserve_cardinality) {
+          preserve_cardinality_(preserve_cardinality),
+          use_default_device_(use_default_device) {
       input_->Ref();
     }
 
@@ -107,6 +109,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -125,20 +132,23 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                     &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue state_types;
       b->BuildAttrValue(state_types_, &state_types);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
       AttrValue preserve_cardinality_attr;
       b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
+      AttrValue use_default_device_attr;
+      b->BuildAttrValue(use_default_device_, &use_default_device_attr);
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {{0, input_node}},
                         {{1, initial_state_nodes}, {2, other_arguments}},
                         {{"f", f},
                          {"Tstate", state_types},
                          {"Targuments", other_arguments_types_attr},
-                         {"preserve_cardinality", preserve_cardinality_attr}},
+                         {"preserve_cardinality", preserve_cardinality_attr},
+                         {"use_default_device", use_default_device_attr}},
                         output));
       return Status::OK();
     }
@@ -278,26 +288,31 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
     const std::vector<Tensor> initial_state_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector state_types_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const bool preserve_cardinality_;
+    const bool use_default_device_;
   };
 
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector state_types_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
   bool preserve_cardinality_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
+  bool use_default_device_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
                         ScanDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("ScanDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalScanDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -224,6 +225,16 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_output=[np.float32([1., 2.]),
                                   np.float32([2., 3.])])
+
+  def testNestedOutput(self):
+    if not context.executing_eagerly():
+      self.skipTest("self.evaluate() does not work with a dataset")
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset)).window(10)
+    for i, nested_dataset in enumerate(dataset):
+      x, y = nested_dataset
+      self.assertDatasetProduces(x, range(i*10, (i+1)*10))
+      self.assertDatasetProduces(y, range(i*10, (i+1)*10))
 
 
 if __name__ == "__main__":

@@ -89,7 +89,7 @@ class ShardingPolicy(object):
         self._number_of_shards = number_of_shards
       else:
         raise ValueError(
-            "Can't set sharding policy to use %s shards; value must be >0",
+            "Can't set sharding policy to use %s shards; value must be >0" %
             str(number_of_shards))
 
   @property
@@ -146,7 +146,6 @@ class ShardingPolicy(object):
       shard_index: The index of the shard whose shape should be returned.
         shard_index can be None for sharding policies that use the same
         shape for every shard.
-      freeze_config:
 
     Returns:
       The shape of the sharded version of the Tensor.
@@ -185,7 +184,7 @@ class ShardingPolicy(object):
       raise ValueError("shape %s cannot be sharded %d ways along dimension %d" %
                        (shape.as_list(), self._number_of_shards,
                         self._shard_dimension))
-    dims[self._shard_dimension] /= self._number_of_shards
+    dims[self._shard_dimension] //= self._number_of_shards
     return tensor_shape.as_shape(dims)
 
   def _unshard_shape(self, shape):

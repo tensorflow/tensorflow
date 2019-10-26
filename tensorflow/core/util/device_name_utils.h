@@ -153,6 +153,14 @@ class DeviceNameUtils {
   static bool IsSameAddressSpace(StringPiece src, StringPiece dst);
   static bool IsSameAddressSpace(const ParsedName& src, const ParsedName& dst);
 
+  // Returns true iff devices identified by 'a' and 'b' are in different
+  // address space.
+  static bool IsDifferentAddressSpace(const ParsedName& a, const ParsedName& b);
+
+  // Returns the an address space specification containing only the
+  // job/replica/task of the given name.
+  static const ParsedName AddressSpace(const ParsedName& name);
+
   // Returns the local device given its "type" and "id".
   static string LocalName(StringPiece type, int id);
 
@@ -174,6 +182,10 @@ class DeviceNameUtils {
   // component to be fully specified.
   static bool SplitDeviceName(StringPiece name, string* task, string* device);
 
+  // Get the task name from ParsedName. Return false if the task component is
+  // not fully specified.
+  static bool GetTaskName(const ParsedName& pn, string* task);
+
   static string ParsedNameToString(const ParsedName& pn);
 
   // Returns canonical and legacy full names for the given parsed
@@ -192,6 +204,9 @@ class DeviceNameUtils {
   static Status DeviceNameToCpuDeviceName(const string& device_name,
                                           string* host_device_name);
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const DeviceNameUtils::ParsedName& x);
 
 }  // namespace tensorflow
 

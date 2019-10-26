@@ -18,9 +18,11 @@
 python generate2.py --output_dir=/tmp/out
 ```
 
-Requires a local installation of:
-  https://github.com/tensorflow/docs/tree/master/tools
-  tf-nightly-2.0-preview
+Requires a local installation of `tensorflow_docs`:
+
+  ```
+  pip install git+https://github.com/tensorflow/docs
+  ```
 """
 
 from __future__ import absolute_import
@@ -28,9 +30,12 @@ from __future__ import division
 from __future__ import print_function
 
 from os import path
+import textwrap
 
 from absl import app
 from absl import flags
+from distutils.version import LooseVersion
+
 import tensorflow as tf
 
 from tensorflow_docs.api_generator import doc_controls
@@ -71,6 +76,98 @@ flags.DEFINE_string("site_path", "",
                     "`_toc.yaml` and `_redirects.yaml` files")
 
 
+if tf.__version__.startswith('1'):
+  PRIVATE_MAP = {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock'],
+      'tf.contrib.estimator': ['python'],
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
+  }
+
+  DO_NOT_DESCEND_MAP = {
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
+          'compiler',
+          'grid_rnn',
+          # Block contrib.keras to de-clutter the docs
+          'keras',
+          'labeled_tensor',
+          'quantization',
+          'session_bundle',
+          'slim',
+          'solvers',
+          'specs',
+          'tensor_forest',
+          'tensorboard',
+          'testing',
+          'tfprof',
+      ],
+      'tf.contrib.bayesflow': [
+          'special_math', 'stochastic_gradient_estimators',
+          'stochastic_variables'
+      ],
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
+          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
+      ],
+      'tf.contrib.keras': ['api', 'python'],
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
+          'datasets',
+          'head',
+          'graph_actions',
+          'io',
+          'models',
+          'monitors',
+          'ops',
+          'preprocessing',
+          'utils',
+      ],
+      'tf.contrib.util': ['loader'],
+  }
+else:
+  PRIVATE_MAP = {
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
+  }
+  DO_NOT_DESCEND_MAP = {}
+  tf.__doc__ = """
+    ## TensorFlow
+
+    ```
+    pip install tensorflow
+    ```
+    """
+
+_raw_ops_doc = textwrap.dedent("""\n
+  Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
+  [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+  for details. Unless you are library writer, you likely do not need to use these
+  ops directly.""")
+
+if LooseVersion(tf.__version__) < LooseVersion('2'):
+  tf.raw_ops.__doc__ = _raw_ops_doc
+  tf.contrib.__doc__ = """
+    Contrib module containing volatile or experimental code.
+
+    Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
+    of its submodules have been integrated into TensorFlow core, or spun-off into
+    other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
+    [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
+    on how to upgrade see the
+    [Migration guide](https://www.tensorflow.org/guide/migrate).
+    """
+else:
+  tf.raw_ops.__doc__ += _raw_ops_doc
+
+
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
@@ -89,6 +186,28 @@ class TfExportAwareDocGeneratorVisitor(
     return (canonical_score,) + scores
 
 
+def _hide_layer_and_module_methods():
+  """Hide methods and properties defined in the base classes of keras layers."""
+  # __dict__ only sees attributes defined in *this* class, not on parent classes
+  module_contents = list(tf.Module.__dict__.items())
+  layer_contents = list(tf.keras.layers.Layer.__dict__.items())
+
+  for name, obj in module_contents + layer_contents:
+    if name == "__init__":
+      continue
+
+    if isinstance(obj, property):
+      obj = obj.fget
+
+    if isinstance(obj, (staticmethod, classmethod)):
+      obj = obj.__func__
+
+    try:
+      doc_controls.do_not_doc_in_subclasses(obj)
+    except AttributeError:
+      pass
+
+
 def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
@@ -97,34 +216,59 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  _hide_layer_and_module_methods()
+
   try:
     doc_controls.do_not_generate_docs(tf.tools)
   except AttributeError:
     pass
 
-  base_dir = path.dirname(tf.__file__)
+  try:
+    doc_controls.do_not_generate_docs(tf.compat.v1.pywrap_tensorflow)
+  except AttributeError:
+    pass
+
+  try:
+    doc_controls.do_not_generate_docs(tf.pywrap_tensorflow)
+  except AttributeError:
+    pass
+
+  try:
+    doc_controls.do_not_generate_docs(tf.flags)
+  except AttributeError:
+    pass
+
+  base_dir = path.normpath(path.join(tf.__file__, "../.."))
+
   base_dirs = (
-      base_dir,
-      path.normpath(path.join(base_dir, "../../tensorflow")),
+      path.join(base_dir, "tensorflow_core"),
+      # External packages base directories
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )
 
   code_url_prefixes = (
       code_url_prefix,
-      # External packages source repositories
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard"
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator"
+      # External packages source repositories,
+      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
+  if LooseVersion(tf.__version__) < LooseVersion('2'):
+    root_title = 'TensorFlow'
+  elif LooseVersion(tf.__version__) >= LooseVersion('2'):
+    root_title = 'TensorFlow 2.0'
+
   doc_generator = generate_lib.DocGenerator(
-      root_title="TensorFlow 2.0 Preview",
+      root_title=root_title,
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
-      visitor_cls=TfExportAwareDocGeneratorVisitor)
+      visitor_cls=TfExportAwareDocGeneratorVisitor,
+      private_map=PRIVATE_MAP,
+      do_not_descend_map=DO_NOT_DESCEND_MAP)
 
   doc_generator.build(output_dir)
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/function_api_info.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -78,6 +79,8 @@ class ImplementationSelector : public CustomGraphOptimizer {
     return "implementation_selector";
   }
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   // This call is not thread-safe.
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
@@ -88,7 +91,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
 
  private:
   Status LoadFunctions(const GraphDef& graph);
-  Status MaybeOptimizeFunctionCall(NodeDef* node_def) const;
+  Status MaybeOptimizeFunctionCall(utils::MutableNodeView* node_view) const;
 
   // Finds all call sites for functions, then replace with the appropriate
   // implementation.

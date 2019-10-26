@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -29,21 +30,28 @@ class BaseConcatenationOpModel : public SingleOpModel {
   // TODO(ahentz): Also test different activation types, axis, input
   // dimensions.
   BaseConcatenationOpModel() {}
-  BaseConcatenationOpModel(const TensorData& input_template, int axis,
-                           int num_inputs) {
+  BaseConcatenationOpModel(const std::vector<TensorData>& input_template,
+                           int axis, int num_inputs,
+                           const TensorData& output_template) {
     std::vector<std::vector<int>> all_input_shapes;
+    CHECK_EQ(input_template.size(), num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
-      all_input_shapes.push_back(input_template.shape);
-      AddInput(input_template);
+      all_input_shapes.push_back(input_template[i].shape);
+      AddInput(input_template[i]);
     }
-    output_ = AddOutput({input_template.type, /*shape=*/{}, input_template.min,
-                         input_template.max});
+    output_ = AddOutput({output_template.type, /*shape=*/{},
+                         output_template.min, output_template.max});
     SetBuiltinOp(
         BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
         CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
             .Union());
     BuildInterpreter(all_input_shapes);
   }
+  BaseConcatenationOpModel(const TensorData& input_template, int axis,
+                           int num_inputs)
+      : BaseConcatenationOpModel(
+            std::vector<TensorData>(num_inputs, input_template), axis,
+            num_inputs, input_template) {}
 
  protected:
   int output_;
@@ -61,23 +69,7 @@ class ConcatenationOpModel : public BaseConcatenationOpModel {
 class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
  public:
   using BaseConcatenationOpModel::BaseConcatenationOpModel;
-  QuantizedConcatenationOpModel(const std::vector<TensorData>& input_template,
-                                int axis, int num_inputs,
-                                const TensorData& output_template) {
-    std::vector<std::vector<int>> all_input_shapes;
-    CHECK_EQ(input_template.size(), num_inputs);
-    for (int i = 0; i < num_inputs; ++i) {
-      all_input_shapes.push_back(input_template[i].shape);
-      AddInput(input_template[i]);
-    }
-    output_ = AddOutput({output_template.type, /*shape=*/{},
-                         output_template.min, output_template.max});
-    SetBuiltinOp(
-        BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
-        CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
-            .Union());
-    BuildInterpreter(all_input_shapes);
-  }
+
   template <typename T>
   void SetInput(int index, std::initializer_list<float> data) {
     QuantizeAndPopulate<T>(index, data);
@@ -162,6 +154,28 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
           148, 158, 168, 178, 188, 198, 208, 218, 228, 238, 248,
       }));
 }
+
+TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
+  ConcatenationOpModel m0(
+      {{TensorType_FLOAT32, {2, 1, 2}}, {TensorType_FLOAT32, {2, 3, 2}}},
+      /*axis=*/1, /*num_inputs=*/2, TensorType_FLOAT32);
+  m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput(1, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0, 7.0f, 8.0f, 9.0f, 10.0f,
+                  11.0f, 12.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 1, 2, 3, 4, 5, 6, 4, 7, 7,
+                                                8, 9, 10, 11, 12}));
+}
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapesWrongAxis) {
+  EXPECT_DEATH(
+      ConcatenationOpModel m0(
+          {{TensorType_FLOAT32, {2, 1, 2}}, {TensorType_FLOAT32, {2, 3, 2}}},
+          /*axis=*/0, /*num_inputs=*/2, TensorType_FLOAT32),
+      "Cannot allocate tensors");
+}
+#endif
 
 TEST(ConcatenationOpTest, OneTrivialInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {1}}, /*axis=*/0,
@@ -327,11 +341,82 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
               }));
 }
 
+TEST(ConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 1, 2}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/1,
+      /*num_inputs=*/1);
+  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({1.0f, 3.0f, 4.0f, 7.0f})));
+}
+
+TEST(ConcatenationOpTest, OneTrivialNonQuantizedInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {1}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/1);
+  m0.SetInput<uint8_t>(0, {5.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput<uint8_t>(), ::testing::ElementsAre(5));
+}
+
+TEST(ConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/1);
+  m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
+  // We will concatenate two tensors along different dimensions.
+  auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/2);
+  m0.SetInput<uint8_t>(0, tensor0);
+  m0.SetInput<uint8_t>(1, tensor1);
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m0_negative(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/-2,
+      /*num_inputs=*/2);
+  m0_negative.SetInput<uint8_t>(0, tensor0);
+  m0_negative.SetInput<uint8_t>(1, tensor1);
+  m0_negative.Invoke();
+  EXPECT_THAT(m0_negative.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m1(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/1,
+      /*num_inputs=*/2);
+  m1.SetInput<uint8_t>(0, tensor0);
+  m1.SetInput<uint8_t>(1, tensor1);
+  m1.Invoke();
+  EXPECT_THAT(m1.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m1_negative(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/-1,
+      /*num_inputs=*/2);
+  m1_negative.SetInput<uint8_t>(0, tensor0);
+  m1_negative.SetInput<uint8_t>(1, tensor1);
+  m1_negative.Invoke();
+  EXPECT_THAT(m1_negative.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

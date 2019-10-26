@@ -29,10 +29,16 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.make_saveable_from_iterator")
 def make_saveable_from_iterator(iterator):
-  """Returns a SaveableObject for saving/restore iterator state using Saver.
+  """Returns a SaveableObject for saving/restoring iterator state using Saver.
 
   Args:
     iterator: Iterator.
+
+  Returns:
+    A SaveableObject for saving/restoring iterator state using Saver.
+
+  Raises:
+    ValueError: If iterator does not support checkpointing.
 
   For example:
 
@@ -44,8 +50,8 @@ def make_saveable_from_iterator(iterator):
     saveable_obj = tf.data.experimental.make_saveable_from_iterator(iterator)
     # Add the SaveableObject to the SAVEABLE_OBJECTS collection so
     # it can be automatically saved using Saver.
-    tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
-    saver = tf.train.Saver()
+    tf.compat.v1.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+    saver = tf.compat.v1.train.Saver()
 
     while continue_training:
       ... Perform training ...
@@ -261,4 +267,3 @@ class _CustomSaver(saver_lib.Saver):
     return super(_CustomSaver, self).save(
         sess, save_path, global_step, latest_filename or self._latest_filename,
         meta_graph_suffix, write_meta_graph, write_state, strip_default_attrs)
-

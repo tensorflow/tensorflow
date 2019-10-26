@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "FP16",
-    hdrs = ["include/fp16.h"],
+    hdrs = glob(["include/**/*.h"]),
     includes = ["include"],
     strip_include_prefix = "include",
 )
