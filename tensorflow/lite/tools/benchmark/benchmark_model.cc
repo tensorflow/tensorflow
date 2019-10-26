@@ -18,7 +18,6 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
-#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
@@ -160,8 +159,6 @@ TfLiteStatus BenchmarkModel::Run() {
 
   LogParams();
 
-  const auto start_mem_usage = profiling::memory::GetMemoryUsage();
-
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
   int64_t initialization_end_us = profiling::time::NowMicros();
@@ -185,15 +182,6 @@ TfLiteStatus BenchmarkModel::Run() {
   Stat<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
-
-  const auto mem_usage = profiling::memory::GetMemoryUsage() - start_mem_usage;
-
-  TFLITE_LOG(INFO) << "Memory usage: max resident set size = "
-                   << mem_usage.max_rss_kb / 1024.0 << " MB";
-  TFLITE_LOG(INFO) << "Memory usage: total malloc-ed memory = "
-                   << mem_usage.total_allocated_bytes / 1024.0 / 1024.0
-                   << " MB";
-
   listeners_.OnBenchmarkEnd(
       {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
 

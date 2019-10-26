@@ -178,7 +178,6 @@ cc_library(
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],
