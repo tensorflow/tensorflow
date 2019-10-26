@@ -198,14 +198,13 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   For example:
   >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
   >>> tf.keras.activations.relu(foo).numpy()
-  # ==> array([0., 0., 0., 5., 10.], dtype=float32)
+  array([ 0.,  0.,  0.,  5., 10.], dtype=float32)
   >>> tf.keras.activations.relu(foo, alpha=0.5).numpy()
-  # ==> array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
+  array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
   >>> tf.keras.activaions.relu(foo, max_value=5).numpy()
-  # ==> array([0., 0., 0., 5., 5.], dtype=float32)
+  array([0., 0., 0., 5., 5.], dtype=float32)
   >>> tf.keras.activations.relu(foo, threshold=5).numpy()
   array([-0., -0.,  0.,  0., 10.], dtype=float32)
-
 
   Arguments:
       x: Input `tensor` or `variable`.
