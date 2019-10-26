@@ -15,7 +15,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 #include <string>
 #include <unordered_map>
-
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/mkl_layout_pass.h"
@@ -33,18 +32,10 @@ class MklEagerOpRewrite : public EagerOpRewrite {
     std::function<bool(EagerOperation*)> RewriteRule;
     std::function<Status(EagerOperation*, std::unique_ptr<EagerOperation>*)>
         CreateMklOp;
-
-    // Overload Operator== for std::find comparison
-    // used by SlowCheckIfKernelRegistered.
-    bool operator==(const MklEagerOp& rhs) const {
-      return (op_name.compare(rhs.op_name) == 0);
-    }
   };
 
  private:
-  // TODO(intel-tf): refactor with unordered_map;
-  // especially when adding more ops/rewrite rules in future.
-  std::vector<MklEagerOp> mkl_eager_ops_;
+  std::unordered_map<std::string, MklEagerOp> mkl_eager_ops_;
 
   // The entry point to execute the op rewrite.
   Status Run(EagerOperation* orig_op,
@@ -69,25 +60,27 @@ class MklEagerOpRewrite : public EagerOpRewrite {
 
   // Calls op-specific rewrite function to create new MKL op.
   Status RewriteToMklOp(EagerOperation* orig_op,
-                        std::unique_ptr<EagerOperation>* mkl_op,
-                        const int op_idx);
+                        std::unique_ptr<EagerOperation>* mkl_op);
 
-  // Checks whether we can rewrite the op to MKL one or not.
-  bool ShouldRewriteOp(EagerOperation* op, int* op_idx);
+  // Check whether we can rewrite the op to MKL one or not.
+  bool ShouldRewriteOp(EagerOperation* op);
 
   // Default rewrite rule to be used when rewrite should happen without any
   // restriction.
   static bool AlwaysRewrite(EagerOperation* op) { return true; }
 
-  // Checks if kernel is registered for a particular op.
-  bool FastCheckIfKernelRegistered(string op_name, DataType dt);
+  // Check if kernel is registered for a particular op.
+  bool FastCheckIfKernelRegistered(std::string op_name, DataType dt);
 
-  // This is called by FastCheckIfKernelRegistered once per unique op name and
-  // data type.
-  bool SlowCheckIfKernelRegistered(string op_name, DataType dt);
+  // This is called by FastCheckIfKernelRegistered once per unique op name
+  // and data type.
+  bool SlowCheckIfKernelRegistered(std::string op_name, DataType dt);
 
-  // map used by FastCheckIfKernelRegistered.
-  std::unordered_map<string, bool> registered_kernels_map;
+  // Helper function to insert mkl_eager_ops to Map
+  void InsertMKLEagerOps(MklEagerOp op);
+
+  // Map used by FastCheckIfKernelRegistered.
+  std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
@@ -95,23 +88,23 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
-  mkl_eager_ops_.push_back({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
-  mkl_eager_ops_.push_back(
-      {"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
-  mkl_eager_ops_.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops_.push_back(
-      {"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops_.push_back(
-      {"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops_.push_back({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
+  InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
+  InsertMKLEagerOps({"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
+  InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+};
+
+void MklEagerOpRewrite::InsertMKLEagerOps(MklEagerOp op) {
+  mkl_eager_ops_.insert(std::make_pair(op.op_name, op));
 }
 
 Status MklEagerOpRewrite::Run(
     EagerOperation* orig_op,
     std::unique_ptr<tensorflow::EagerOperation>* out_op) {
-  int found_op_idx = -1;
-  if (ShouldRewriteOp(orig_op, &found_op_idx)) {
-    TF_CHECK_OK(RewriteToMklOp(orig_op, out_op, found_op_idx));
+  if (ShouldRewriteOp(orig_op)) {
+    TF_CHECK_OK(RewriteToMklOp(orig_op, out_op));
   }
   return Status::OK();
 }
@@ -171,7 +164,7 @@ Status MklEagerOpRewrite::CreateMklConv2DOp(
   return Status::OK();
 }
 
-bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op, int* op_idx) {
+bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   // Don't rewrite the op if MKL use is disabled at runtime.
   if (DisableMKL()) {
     return false;
@@ -186,30 +179,30 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op, int* op_idx) {
     return false;
   }
 
-  *op_idx = -1;
   // Find and call the op's rewrite rule that determines whether we need to
   // rewrite this op or not.
-  for (auto it = mkl_eager_ops_.begin(); it != mkl_eager_ops_.end(); ++it) {
-    if (it->op_name.compare(op->Name()) == 0 && it->RewriteRule(op)) {
-      *op_idx = it - mkl_eager_ops_.begin();
+  auto it = mkl_eager_ops_.find(op->Name());
+  if (it != mkl_eager_ops_.end()) {
+    // Eager op found so verify Rewrite
+    if (it->second.RewriteRule(op)) {
       return true;
     }
   }
   return false;
 }
 
-bool MklEagerOpRewrite::FastCheckIfKernelRegistered(string op_name,
+bool MklEagerOpRewrite::FastCheckIfKernelRegistered(std::string op_name,
                                                     DataType dt) {
   // Check for kernel registration only once per op name and data type
   // for performance reasons.
   string registered_kernels_key = op_name + std::to_string(dt);
-  auto kernel_element = registered_kernels_map.find(registered_kernels_key);
+  auto kernel_element = registered_kernels_map_.find(registered_kernels_key);
   bool kernel_registered = false;
-  if (kernel_element == registered_kernels_map.end()) {
+  if (kernel_element == registered_kernels_map_.end()) {
     // Kernel registration is not verified even once yet.
     // So verify and store registration.
     kernel_registered = SlowCheckIfKernelRegistered(op_name, dt);
-    registered_kernels_map.insert(
+    registered_kernels_map_.insert(
         std::make_pair(registered_kernels_key, kernel_registered));
   } else {
     // Kernel is visited atleast once. return stored registration result.
@@ -221,11 +214,9 @@ bool MklEagerOpRewrite::FastCheckIfKernelRegistered(string op_name,
 
 bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
-  MklEagerOp op_key = {op_name, AlwaysRewrite, CreateGenericMklOp};
-  // Find if the eager op_name exists in vector list mkl_eager_ops_.
-  auto element =
-      std::find(std::begin(mkl_eager_ops_), std::end(mkl_eager_ops_), op_key);
-  if (element != std::end(mkl_eager_ops_) && dt == DT_FLOAT) {
+  // Find if the eager op_name exists in mkl_eager_ops_ list.
+  auto element = mkl_eager_ops_.find(op_name);
+  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
@@ -237,9 +228,10 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
 }
 
 Status MklEagerOpRewrite::RewriteToMklOp(
-    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op,
-    const int op_idx) {
-  mkl_eager_ops_[op_idx].CreateMklOp(orig_op, mkl_op);
+    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
+  // TODO(intel-tf): mkl_eager_ops_ lookup can be reduced from twice
+  // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
+  mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op);
   return Status::OK();
 }
 
