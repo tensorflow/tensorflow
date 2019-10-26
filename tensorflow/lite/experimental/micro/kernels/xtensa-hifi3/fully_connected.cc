@@ -29,6 +29,17 @@ namespace tflite {
 namespace xtensa {
 namespace hifi3 {
 
+/* inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier, */
+/*                                            int shift) { */
+/*   using gemmlowp::RoundingDivideByPOT; */
+/*   using gemmlowp::SaturatingRoundingDoublingHighMul; */
+/*   int left_shift = shift > 0 ? shift : 0; */
+/*   int right_shift = shift > 0 ? 0 : -shift; */
+/*   return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul( */
+/*                                  x * (1 << left_shift), quantized_multiplier), */
+/*                              right_shift); */
+/* } */
+
 template <typename T>
 inline void OptDotProdWithOffsets(
     const int32 input_offset, const int32 filter_offset,
@@ -38,17 +49,11 @@ inline void OptDotProdWithOffsets(
     const int batches, const int output_depth, const int accum_depth,
     const T* input_data, const T* filter_data, const int32* bias_data,
     T* output_data) {
-  ae_int32x2 offsets_input;
-  ((int32_t*)&offsets_input)[0] = input_offset;
-  ((int32_t*)&offsets_input)[1] = input_offset;
+  ae_int32x2 offsets_input = AE_MOVDA32X2(input_offset, input_offset);
+  ae_int32x2 offsets_filter = AE_MOVDA32X2(filter_offset, filter_offset);
 
-  ae_int32x2 offsets_filter;
-  ((int32_t*)&offsets_filter)[0] = filter_offset;
-  ((int32_t*)&offsets_filter)[1] = filter_offset;
-
-  ae_int32x2 inputs_32x2;
-  ae_int32x2 filters_32x2;
-
+  /* ae_int32x2 inputs_32x2; */
+  /* ae_int32x2 filters_32x2; */
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       int acc = 0;
@@ -60,11 +65,8 @@ inline void OptDotProdWithOffsets(
       const T* filter_ptr = filter_data + (out_c * accum_depth);
 
       for (int d = 0; d < num_iters; d++) {
-        ((int32_t*)&inputs_32x2)[0] = *in_ptr++;
-        ((int32_t*)&inputs_32x2)[1] = *in_ptr++;
-
-        ((int32_t*)&filters_32x2)[0] = *filter_ptr++;
-        ((int32_t*)&filters_32x2)[1] = *filter_ptr++;
+        ae_int32x2 inputs_32x2 = AE_MOVDA32X2(*in_ptr++, *in_ptr++);
+        ae_int32x2 filters_32x2 = AE_MOVDA32X2(*filter_ptr++, *filter_ptr++);
 
         ae_int32x2 input_offsets_sum = AE_ADD32(offsets_input, inputs_32x2);
         ae_int32x2 filter_offsets_sum = AE_ADD32(offsets_filter, filters_32x2);
