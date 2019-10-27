@@ -840,14 +840,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func2
-    // CHECK-SAME: tf.H
     // CHECK-SAME: func @referenced_func3
     // CHECK-SAME: tf.I
-    // CHECK-SAME: func @referenced_func0
-    // CHECK-SAME: tf.F
+    // CHECK-SAME: func @referenced_func2
+    // CHECK-SAME: tf.H
     // CHECK-SAME: func @referenced_func1
     // CHECK-SAME: tf.G
+    // CHECK-SAME: func @referenced_func0
+    // CHECK-SAME: tf.F
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
     // CHECK-SAME: Targs = [tensor<?xi32>]
     // CHECK-SAME: Tresults = [tensor<?xi32>]

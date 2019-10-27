@@ -89,39 +89,6 @@ struct TPURewritePass : public ModulePass<TPURewritePass> {
   void runOnModule() override;
 };
 
-// Recursively visits all attributes of `op` to find any Attribute of type
-// `SymbolRefAttr`.
-llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
-  llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
-
-  llvm::SmallVector<Attribute, 8> worklist;
-  worklist.reserve(op->getAttrs().size());
-  for (auto named_attr : op->getAttrs()) {
-    worklist.push_back(named_attr.second);
-  }
-
-  while (!worklist.empty()) {
-    Attribute attr = worklist.pop_back_val();
-
-    if (SymbolRefAttr symbol_ref_attr = attr.dyn_cast<SymbolRefAttr>()) {
-      // Found a SymbolRefAttr, add it to result list.
-      symbol_ref_attrs.push_back(symbol_ref_attr);
-    } else if (ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>()) {
-      // Found an ArrayAttr, add its nested Attributes to worklist for further
-      // inspection.
-      worklist.append(array_attr.begin(), array_attr.end());
-    } else if (DictionaryAttr dict_attr = attr.dyn_cast<DictionaryAttr>()) {
-      // Found a DictionaryAttr, add its nested value Attributes to worklist for
-      // further inspection.
-      for (NamedAttribute named_attr : dict_attr.getValue()) {
-        worklist.push_back(named_attr.second);
-      }
-    }
-  }
-
-  return symbol_ref_attrs;
-}
-
 // Creates a missing attribute error message.
 std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
@@ -130,6 +97,7 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
 LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func.getParentOfType<ModuleOp>();
+  SymbolTable entry_module_table(module);
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
@@ -152,17 +120,17 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    func.walk([&](Operation* op) {
-      for (auto symbol_ref_attr : GetAllSymbolRefAttrs(op)) {
-        FuncOp referenced_func =
-            module.lookupSymbol<FuncOp>(symbol_ref_attr.getValue());
+    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    assert(uses && "expected to be able to collect symbol uses");
+    for (SymbolTable::SymbolUse use : *uses) {
+      FuncOp referenced_func =
+          entry_module_table.lookup<FuncOp>(use.getSymbolRef().getValue());
 
-        // Skip Symbols that do not map to a function.
-        if (!referenced_func) continue;
+      // Skip Symbols that do not map to a function.
+      if (!referenced_func) continue;
 
-        referenced.emplace_back(referenced_func);
-      }
-    });
+      referenced.emplace_back(referenced_func);
+    }
 
     auto clone = func.clone();
     if (clone.getName() == entry_func.getName()) {
