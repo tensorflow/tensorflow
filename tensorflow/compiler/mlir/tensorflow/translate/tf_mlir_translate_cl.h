@@ -37,7 +37,6 @@ extern llvm::cl::opt<std::string> debug_info_file;
 extern llvm::cl::opt<bool> prune_unused_nodes;
 extern llvm::cl::opt<bool> convert_legacy_fed_inputs;
 extern llvm::cl::opt<bool> graph_as_function;
-
-extern llvm::cl::opt<std::string> saved_model_tags;
+extern llvm::cl::opt<bool> upgrade_legacy;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

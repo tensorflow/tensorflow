@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -224,17 +224,20 @@ Status WriteMetadataFile(const string& hash_dir,
   string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
 
-  Status exists = Env::Default()->FileExists(metadata_filename);
-  if (exists.ok()) {
-    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(metadata_filename));
-  }
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
 
   std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(tmp_filename, &file));
 
   auto writer = absl::make_unique<SnapshotWriter>(file.get());
   TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
   TF_RETURN_IF_ERROR(writer->Close());
+  TF_RETURN_IF_ERROR(file->Sync());
+  TF_RETURN_IF_ERROR(file->Close());
+
+  TF_RETURN_IF_ERROR(
+      Env::Default()->RenameFile(tmp_filename, metadata_filename));
 
   return Status::OK();
 }
@@ -245,59 +248,47 @@ Status ReadMetadataFile(const string& hash_dir,
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
+  TF_RETURN_IF_ERROR(
+      Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
   tstring record_bytes;
   auto reader = absl::make_unique<SnapshotReader>(file.get());
-  TF_CHECK_OK(reader->ReadRecord(&record_bytes));
+  TF_RETURN_IF_ERROR(reader->ReadRecord(&record_bytes));
 
   metadata->ParseFromString(record_bytes);
   return Status::OK();
 }
 
-SnapshotMode DetermineOpState(
-    const Status& file_status,
-    const experimental::SnapshotMetadataRecord& metadata,
-    const uint64 pending_snapshot_expiry_seconds) {
+Status DetermineOpState(const Status& file_status,
+                        const experimental::SnapshotMetadataRecord& metadata,
+                        const uint64 pending_snapshot_expiry_seconds,
+                        SnapshotMode* mode) {
   if (errors::IsNotFound(file_status)) {
-    return WRITER;
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (!file_status.ok()) {
+    return file_status;
   }
 
   if (metadata.finalized()) {
     // File found, snapshot has been finalized.
-    return READER;
+    *mode = READER;
+    return Status::OK();
   }
 
   if (metadata.creation_timestamp() >=
       (static_cast<int64>(Env::Default()->NowMicros()) -
        pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
-    return PASSTHROUGH;
+    *mode = PASSTHROUGH;
+    return Status::OK();
   } else {
     // Time has expired, we write regardless.
-    return WRITER;
+    *mode = WRITER;
+    return Status::OK();
   }
-}
-
-Status GraphHash(const GraphDef& graph_def, std::string* hash) {
-  grappler::GraphView gv(&graph_def);
-
-  std::string sink_node_name;
-  for (auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      sink_node_name = node.name();
-      break;
-    }
-  }
-
-  if (sink_node_name.empty()) {
-    return errors::Internal("Cannot find sink node for dataset graph.");
-  }
-
-  uint64 hash_int = HashSubgraph(graph_def, gv.GetNode(sink_node_name));
-  *hash = strings::StrCat(strings::Hex(hash_int, strings::kZeroPad16));
-
-  return Status::OK();
 }
 
 class SnapshotDatasetOp : public UnaryDatasetOpKernel {
@@ -371,14 +362,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
-    string graph_hash;
-    OP_REQUIRES_OK(ctx, GraphHash(graph_def, &graph_hash));
+    uint64 hash;
+    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
 
-    *output = new Dataset(ctx, input, path, graph_hash, reader_path_prefix_,
-                          writer_path_prefix_, compression_, shard_size_bytes_,
-                          pending_snapshot_expiry_seconds_, num_reader_threads_,
-                          reader_buffer_size_, num_writer_threads_,
-                          writer_buffer_size_, shuffle_on_read_, seed_, seed2_);
+    *output = new Dataset(
+        ctx, input, path,
+        strings::StrCat(strings::Hex(hash, strings::kZeroPad16)),
+        reader_path_prefix_, writer_path_prefix_, compression_,
+        shard_size_bytes_, pending_snapshot_expiry_seconds_,
+        num_reader_threads_, reader_buffer_size_, num_writer_threads_,
+        writer_buffer_size_, shuffle_on_read_, seed_, seed2_);
   }
 
  private:
@@ -527,8 +520,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
           Status s = ReadMetadataFile(hash_dir_, &metadata);
-          state_ = DetermineOpState(
-              s, metadata, dataset()->pending_snapshot_expiry_seconds_);
+          TF_RETURN_IF_ERROR(DetermineOpState(
+              ReadMetadataFile(hash_dir_, &metadata), metadata,
+              dataset()->pending_snapshot_expiry_seconds_, &state_));
 
           switch (state_) {
             case WRITER:
@@ -1011,6 +1005,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (cancelled || snapshot_failed) {
             TF_RETURN_IF_ERROR((*writer)->Close());
+            TF_RETURN_IF_ERROR((*file)->Sync());
             TF_RETURN_IF_ERROR((*file)->Close());
             if (snapshot_failed) {
               return errors::Internal(
@@ -1031,6 +1026,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             if (*bytes_written > dataset()->shard_size_bytes_) {
               // If we exceed the shard size, we get a new file and reset.
               TF_RETURN_IF_ERROR((*writer)->Close());
+              TF_RETURN_IF_ERROR((*file)->Sync());
               TF_RETURN_IF_ERROR((*file)->Close());
               *snapshot_data_filename = GetSnapshotFilename();
               TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
@@ -1051,6 +1047,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (*end_of_processing) {
             TF_RETURN_IF_ERROR((*writer)->Close());
+            TF_RETURN_IF_ERROR((*file)->Sync());
             TF_RETURN_IF_ERROR((*file)->Close());
             mutex_lock l(mu_);
             if (!written_final_metadata_file_) {

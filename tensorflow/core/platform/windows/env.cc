@@ -28,11 +28,11 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 

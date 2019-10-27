@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -140,7 +140,13 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       event->set_duration_ps(node.all_end_rel_micros() *
                              EnvTime::kMicrosToPicos);
       if (!node.timeline_label().empty()) {
-        (*args)["label"] = node.timeline_label();
+        std::vector<absl::string_view> label_parts =
+            absl::StrSplit(node.timeline_label(), "@@");
+        (*args)["label"] = string(label_parts.front());
+        if (label_parts.size() == 2) {
+          // NOTE: we can further parse annotation here.
+          (*args)["annotation"] = string(label_parts.back());
+        }
       }
       if (event->name() != node.node_name()) {
         (*args)["long name"] = node.node_name();

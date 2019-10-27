@@ -868,7 +868,7 @@ def partitioned_call(args,
 
   # The generated binding returns an empty list for functions that don't
   # return any Tensors, hence the need to use `create_op` directly.
-  args = [ops.internal_convert_to_tensor(x) for x in args]
+  args = [ops.convert_to_tensor(x) for x in args]
   tin_attr = attr_value_pb2.AttrValue(
       list=attr_value_pb2.AttrValue.ListValue(
           type=[x.dtype.as_datatype_enum for x in args]))

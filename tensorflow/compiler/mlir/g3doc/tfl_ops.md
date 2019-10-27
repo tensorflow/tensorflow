@@ -867,6 +867,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
                       [0, 0, 1, 1, 0, 0]
                       [0, 0, 2, 2, 0, 0]
                       [0, 0, 0, 0, 0, 0]]
+```
 
 ### Operands:
 1. `input`: tensor of 32-bit float or 8-bit integer or 32-bit integer or 64-bit integer values
@@ -905,6 +906,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
                       [0, 0, 1, 1, 0, 0]
                       [0, 0, 2, 2, 0, 0]
                       [0, 0, 0, 0, 0, 0]]
+```
 
 ### Operands:
 1. `input`: tensor of 32-bit float or 8-bit integer or 32-bit integer or 64-bit integer values
@@ -1215,7 +1217,7 @@ Softmax operator
 
 ### Description:
 
-Computes element-wise softmax activiations with the following formula
+Computes element-wise softmax activations with the following formula
 
   exp(input) / tf.reduce_sum(exp(input * beta), dim)
 

@@ -128,12 +128,29 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
 
 /// Return true if value A properly dominates operation B.
 bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
-  if (auto *aInst = a->getDefiningOp())
+  if (auto *aInst = a->getDefiningOp()) {
+    // The values defined by an operation do *not* dominate any nested
+    // operations.
+    if (aInst->getParentRegion() != b->getParentRegion() &&
+        aInst->isAncestor(b))
+      return false;
     return properlyDominates(aInst, b);
+  }
 
   // block arguments properly dominate all operations in their own block, so
   // we use a dominates check here, not a properlyDominates check.
   return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
+}
+
+DominanceInfoNode *DominanceInfo::getNode(Block *a) {
+  auto *region = a->getParent();
+  assert(dominanceInfos.count(region) != 0);
+  return dominanceInfos[region]->getNode(a);
+}
+
+void DominanceInfo::updateDFSNumbers() {
+  for (auto &iter : dominanceInfos)
+    iter.second->updateDFSNumbers();
 }
 
 //===----------------------------------------------------------------------===//

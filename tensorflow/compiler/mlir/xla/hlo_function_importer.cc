@@ -43,6 +43,7 @@ using mlir::DenseIntElementsAttr;
 using mlir::FuncOp;
 using mlir::NamedAttribute;
 using mlir::Operation;
+using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using mlir::Value;
@@ -92,13 +93,12 @@ StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
 
 // Returns whether the instruction is a default dot operation.
 bool DotIsDefault(const HloInstruction* instruction) {
-  auto dot_dimensions = instruction->dot_dimension_numbers();
+  auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
       instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
-  return xla::protobuf_util::ProtobufEquals(dot_dimensions,
-                                            default_dimension_numbers);
+  return xla::protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
 }  // namespace
 
@@ -241,8 +241,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       MakeAndReturn(BroadcastInDimOp);
     }
     case HloOpcode::kDot: {
-      // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
-      // case and the parser sticks it in. Maybe we should too.
       attributes.push_back(ConvertPrecisionConfig(instruction));
 
       // Consider consolidating DotOps together.
@@ -250,8 +248,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
         MakeAndReturn(DotOp);
       }
 
-      attributes.push_back(builder_->getNamedAttr(
-          "dot_dimension_numbers", ConvertDotDimensionNumbers(instruction)));
+      attributes.push_back(
+          ConvertDotDimensionNumbers(instruction->dot_dimension_numbers()));
       MakeAndReturn(DotGeneralOp);
     }
     case HloOpcode::kCall: {
@@ -388,6 +386,48 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kConvolution: {
+      llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<int64_t, 8> paddings;
+      for (const auto& dim : instruction->window().dimensions()) {
+        strides.push_back(dim.stride());
+        lhs_dilations.push_back(dim.base_dilation());
+        rhs_dilations.push_back(dim.window_dilation());
+        paddings.push_back(dim.padding_low());
+        paddings.push_back(dim.padding_high());
+      }
+
+      attributes.push_back(
+          builder_->getNamedAttr("window_strides", Convert(strides)));
+      attributes.push_back(ConvertPadding(paddings));
+      attributes.push_back(
+          builder_->getNamedAttr("lhs_dilations", Convert(lhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("rhs_dilations", Convert(rhs_dilations)));
+      attributes.push_back(ConvertConvDimensionNumbers(
+          instruction->convolution_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "feature_group_count",
+          builder_->getI64IntegerAttr(instruction->feature_group_count())));
+      attributes.push_back(builder_->getNamedAttr(
+          "batch_group_count",
+          builder_->getI64IntegerAttr(instruction->batch_group_count())));
+      attributes.push_back(ConvertPrecisionConfig(instruction));
+      MakeAndReturn(ConvOp);
+    }
+
+    case HloOpcode::kFft: {
+      auto fft_type =
+          builder_->getStringAttr(FftType_Name(instruction->fft_type()));
+
+      std::vector<int64_t> fft_length(instruction->fft_length().begin(),
+                                      instruction->fft_length().end());
+
+      attributes.push_back(builder_->getNamedAttr("fft_type", fft_type));
+      attributes.push_back(
+          builder_->getNamedAttr("fft_length", Convert(fft_length)));
+      MakeAndReturn(FftOp);
+    }
 #define NoAttributeCase(hlo_op_code, mlir_op) \
   case HloOpcode::hlo_op_code: {              \
     MakeAndReturn(mlir_op);                   \
@@ -408,7 +448,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
       // The dimensions attribute is not present on the HLO Reshape instruction.
-      // If dimensions are non-default, the XLA builder implementes it as a
+      // If dimensions are non-default, the XLA builder implements it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
@@ -421,8 +461,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // See operation semantics in
       // g3doc/platforms/xla/g3doc/internal/hlo_semantics#copy
       NoAttributeCase(kCopy, CopyOp);
-      // TODO(b/129422361) Ops below need additional work to handle attributes.
-      NoAttributeCase(kConvolution, ConvOp);
 #undef NoAttributeCase
 #undef MakeAndReturn
     case HloOpcode::kAddDependency:
@@ -471,30 +509,33 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
 
   switch (type) {
     case PrimitiveType::PRED:
-      return builder_->getTensorType(array, builder_->getI1Type());
+      return mlir::RankedTensorType::get(array, builder_->getI1Type());
     case PrimitiveType::F16:
-      return builder_->getTensorType(array, builder_->getF16Type());
+      return mlir::RankedTensorType::get(array, builder_->getF16Type());
     case PrimitiveType::F32:
-      return builder_->getTensorType(array, builder_->getF32Type());
+      return mlir::RankedTensorType::get(array, builder_->getF32Type());
     case PrimitiveType::F64:
-      return builder_->getTensorType(array, builder_->getF64Type());
+      return mlir::RankedTensorType::get(array, builder_->getF64Type());
     case PrimitiveType::S8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::S16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::S32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::S64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
     // TODO(b/130356985): Update once MLIR supports unsigned integers.
     case PrimitiveType::U8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::U16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::U32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::U64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
+    case PrimitiveType::C64:
+      return mlir::RankedTensorType::get(
+          array, mlir::ComplexType::get(builder_->getF32Type()));
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(type)));
@@ -540,6 +581,8 @@ StatusOr<Value*> HloFunctionImporter::GetMlirValue(
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPrecisionConfig(
     HloInstruction* instruction) {
+  // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
+  // case and the parser sticks it in. Maybe we should too.
   llvm::SmallVector<mlir::Attribute, 4> operand_precision_attrs;
 
   for (auto prec : instruction->precision_config().operand_precision()) {
@@ -565,37 +608,42 @@ mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
 
   return DenseIntElementsAttr::get(
-             builder_->getTensorType(dimensions.size(),
-                                     builder_->getIntegerType(64)),
+             RankedTensorType::get(dimensions.size(),
+                                   builder_->getIntegerType(64)),
              dimensions)
       .cast<DenseIntElementsAttr>();
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<int64_t> op_dimensions) {
-  return builder_
-      ->getDenseIntElementsAttr(
-          builder_->getTensorType(op_dimensions.size(),
-                                  builder_->getIntegerType(64)),
-          op_dimensions)
+  return DenseIntElementsAttr::get(
+             RankedTensorType::get(op_dimensions.size(),
+                                   builder_->getIntegerType(64)),
+             op_dimensions)
       .cast<DenseIntElementsAttr>();
 }
 
-mlir::xla_hlo::DotDimensionNumbers
-HloFunctionImporter::ConvertDotDimensionNumbers(HloInstruction* instruction) {
-  auto dot_dimensions = instruction->dot_dimension_numbers();
+mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
+    llvm::ArrayRef<int64_t> padding) {
+  auto ty =
+      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+                                  builder_->getIntegerType(64));
+  auto attr = DenseIntElementsAttr::get(ty, padding);
+  return builder_->getNamedAttr("padding", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertDotDimensionNumbers(
+    const DotDimensionNumbers& dnums) {
   std::vector<int64_t> rhs_contracting_dimensions(
-      dot_dimensions.rhs_contracting_dimensions().begin(),
-      dot_dimensions.rhs_contracting_dimensions().end());
+      dnums.rhs_contracting_dimensions().begin(),
+      dnums.rhs_contracting_dimensions().end());
   std::vector<int64_t> lhs_contracting_dimensions(
-      dot_dimensions.lhs_contracting_dimensions().begin(),
-      dot_dimensions.lhs_contracting_dimensions().end());
+      dnums.lhs_contracting_dimensions().begin(),
+      dnums.lhs_contracting_dimensions().end());
   std::vector<int64_t> rhs_batch_dimensions(
-      dot_dimensions.rhs_batch_dimensions().begin(),
-      dot_dimensions.rhs_batch_dimensions().end());
+      dnums.rhs_batch_dimensions().begin(), dnums.rhs_batch_dimensions().end());
   std::vector<int64_t> lhs_batch_dimensions(
-      dot_dimensions.lhs_batch_dimensions().begin(),
-      dot_dimensions.lhs_batch_dimensions().end());
+      dnums.lhs_batch_dimensions().begin(), dnums.lhs_batch_dimensions().end());
 
   // Push the attributes into our new DictionaryAttr.
   auto lhs_batch_dims_attr = Convert(lhs_batch_dimensions);
@@ -603,9 +651,34 @@ HloFunctionImporter::ConvertDotDimensionNumbers(HloInstruction* instruction) {
   auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions);
   auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions);
 
-  return mlir::xla_hlo::DotDimensionNumbers::get(
+  auto attr = mlir::xla_hlo::DotDimensionNumbers::get(
       lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
       rhs_contracting_dims_attr, context_);
+  return builder_->getNamedAttr("dot_dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertConvDimensionNumbers(
+    const xla::ConvolutionDimensionNumbers& dnums) {
+  llvm::SmallVector<int64_t, 4> input_spatial_dims(
+      dnums.input_spatial_dimensions().begin(),
+      dnums.input_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> kernel_spatial_dims(
+      dnums.kernel_spatial_dimensions().begin(),
+      dnums.kernel_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> output_spatial_dims(
+      dnums.output_spatial_dimensions().begin(),
+      dnums.output_spatial_dimensions().end());
+  auto attr = mlir::xla_hlo::ConvDimensionNumbers::get(
+      builder_->getI64IntegerAttr(dnums.input_batch_dimension()),
+      builder_->getI64IntegerAttr(dnums.input_feature_dimension()),
+      Convert(input_spatial_dims),
+      builder_->getI64IntegerAttr(dnums.kernel_input_feature_dimension()),
+      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
+      Convert(kernel_spatial_dims),
+      builder_->getI64IntegerAttr(dnums.output_batch_dimension()),
+      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
+      Convert(output_spatial_dims), context_);
+  return builder_->getNamedAttr("dimension_numbers", attr);
 }
 
 }  // namespace xla

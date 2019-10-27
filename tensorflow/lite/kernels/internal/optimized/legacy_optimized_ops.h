@@ -72,7 +72,6 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::TensorFlowSplit;
-using reference_ops::Transpose;
 
 static constexpr int kDepthwiseReverseShift = -1;
 
@@ -4917,6 +4916,18 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
 
   Dequantize(op_params, DimsToShape(input_dims), input_data,
              DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, const int* permuted_axes) {
+  TransposeParams params;
+  params.perm_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    params.perm[i] = 3 - permuted_axes[3 - i];
+  }
+  Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
+            output);
 }
 
 }  // namespace optimized_ops

@@ -43,7 +43,7 @@ struct SDBMExprStorage : public StorageUniquer::BaseStorage {
 
 // Storage class for SDBM sum and stripe expressions.
 struct SDBMBinaryExprStorage : public SDBMExprStorage {
-  using KeyTy = std::pair<SDBMVaryingExpr, SDBMConstantExpr>;
+  using KeyTy = std::pair<SDBMDirectExpr, SDBMConstantExpr>;
 
   bool operator==(const KeyTy &key) const {
     return std::get<0>(key) == lhs && std::get<1>(key) == rhs;
@@ -58,13 +58,13 @@ struct SDBMBinaryExprStorage : public SDBMExprStorage {
     return result;
   }
 
-  SDBMVaryingExpr lhs;
+  SDBMDirectExpr lhs;
   SDBMConstantExpr rhs;
 };
 
 // Storage class for SDBM difference expressions.
 struct SDBMDiffExprStorage : public SDBMExprStorage {
-  using KeyTy = std::pair<SDBMTermExpr, SDBMTermExpr>;
+  using KeyTy = std::pair<SDBMDirectExpr, SDBMTermExpr>;
 
   bool operator==(const KeyTy &key) const {
     return std::get<0>(key) == lhs && std::get<1>(key) == rhs;
@@ -79,7 +79,7 @@ struct SDBMDiffExprStorage : public SDBMExprStorage {
     return result;
   }
 
-  SDBMTermExpr lhs;
+  SDBMDirectExpr lhs;
   SDBMTermExpr rhs;
 };
 
@@ -117,19 +117,19 @@ struct SDBMTermExprStorage : public SDBMExprStorage {
 
 // Storage class for SDBM negation expressions.
 struct SDBMNegExprStorage : public SDBMExprStorage {
-  using KeyTy = SDBMTermExpr;
+  using KeyTy = SDBMDirectExpr;
 
-  bool operator==(const KeyTy &key) const { return key == dim; }
+  bool operator==(const KeyTy &key) const { return key == expr; }
 
   static SDBMNegExprStorage *
   construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
     auto *result = allocator.allocate<SDBMNegExprStorage>();
-    result->dim = key;
+    result->expr = key;
     result->dialect = key.getDialect();
     return result;
   }
 
-  SDBMTermExpr dim;
+  SDBMDirectExpr expr;
 };
 
 } // end namespace detail

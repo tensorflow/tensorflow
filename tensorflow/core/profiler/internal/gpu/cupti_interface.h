@@ -173,6 +173,12 @@ class CuptiInterface {
 
   virtual CUptiResult GetResultString(CUptiResult result, const char** str) = 0;
 
+  virtual CUptiResult GetContextId(CUcontext context, uint32_t* context_id) = 0;
+
+  virtual CUptiResult GetStreamIdEx(CUcontext context, CUstream stream,
+                                    uint8_t per_thread_stream,
+                                    uint32_t* stream_id) = 0;
+
   // Interface maintenance functions. Not directly related to CUPTI, but
   // required for implementing an error resilient layer over CUPTI API.
 

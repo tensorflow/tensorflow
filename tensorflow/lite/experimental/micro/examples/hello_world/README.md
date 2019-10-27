@@ -1,7 +1,7 @@
 # Hello World example
 
 This example is designed to demonstrate the absolute basics of using [TensorFlow
-Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers/overview).
+Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers).
 It includes the full end-to-end workflow of training a model, converting it for
 use with TensorFlow Lite, and running inference on a microcontroller.
 
@@ -14,53 +14,20 @@ animation.
 
 ## Table of contents
 
--   [Getting started](#getting-started)
+-   [Understand the model](#understand-the-model)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
+-   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 
-## Getting started
-
-### Understand the model
+## Understand the model
 
 The sample comes with a pre-trained model. The code used to train and convert
-the model is available as a tutorial in [create_sine_model.ipynb](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb).
+the model is available as a tutorial in [create_sine_model.ipynb](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb).
 
 Walk through this tutorial to understand what the model does,
 how it works, and how it was converted for use with TensorFlow Lite for
 Microcontrollers.
-
-### Build the code
-
-To compile and test this example on a desktop Linux or macOS machine, first
-clone the TensorFlow repository from GitHub to a convenient place:
-
-```bash
-git clone --depth 1 https://github.com/tensorflow/tensorflow.git
-```
-
-Next, `cd` into the source directory from a terminal, and then run the following
-command:
-
-```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_hello_world_test
-```
-
-This will take a few minutes, and downloads frameworks the code uses like
-[CMSIS](https://developer.arm.com/embedded/cmsis) and
-[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
-finished, you should see a series of files get compiled, followed by some
-logging output from a test, which should conclude with `~~~ALL TESTS PASSED~~~`.
-
-If you see this, it means that a small program has been built and run that loads
-the trained TensorFlow model, runs some example inputs through it, and got the
-expected outputs.
-
-To understand how TensorFlow Lite does this, you can look at the source in
-[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc).
-It's a fairly small amount of code that creates an interpreter, gets a handle to
-a model that's been compiled into the program, and then invokes the interpreter
-with the model and sample inputs.
 
 ## Deploy to Arduino
 
@@ -71,6 +38,7 @@ to [Arduino](https://www.arduino.cc/) devices.
 
 The sample has been tested with the following devices:
 
+- [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 - [Arduino MKRZERO](https://store.arduino.cc/usa/arduino-mkrzero)
 
 The sample will use PWM to fade an LED on and off according to the model's
@@ -79,34 +47,11 @@ built-in LED as the one being controlled. However, on some boards, this built-in
 LED is not attached to a pin with PWM capabilities. In this case, the LED will
 blink instead of fading.
 
-### Obtain and import the library
+### Install the Arduino_TensorFlowLite library
 
-To use this sample application with Arduino, we've created an Arduino library
-that includes it as an example that you can open in the Arduino Desktop IDE.
-
-Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/hello_world/hello_world.zip)
-
-Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
-Include Library -> Add .ZIP Library...`.
-
-#### Building the library
-
-If you need to build the library from source (for example, if you're making
-modifications to the code), run this command to generate a zip file containing
-the required source files:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_hello_world_arduino_library_zip
-```
-
-A zip file will be created at the following location:
-
-```
-tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/hello_world/hello_world.zip
-```
-
-You can then import this zip file into the Arduino Desktop IDE by going to
-`Sketch -> Include Library -> Add .ZIP Library...`.
+This example application is included as part of the official TensorFlow Lite
+Arduino library. To install it, open the Arduino library manager in
+`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
 
 ### Load and run the example
 
@@ -114,7 +59,7 @@ Once the library has been added, go to `File -> Examples`. You should see an
 example near the bottom of the list named `TensorFlowLite:hello_world`. Select
 it and click `hello_world` to load the example.
 
-Use the Arduino Desktop IDE to build and upload the example. Once it is running,
+Use the Arduino IDE to build and upload the example. Once it is running,
 you should see the built-in LED on your device flashing.
 
 The Arduino Desktop IDE includes a plotter that we can use to display the sine
@@ -369,3 +314,33 @@ x_value: 1.1843798*2^2, y_value: -1.9542645*2^-1
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
 
+### Run the tests on a development machine
+
+To compile and test this example on a desktop Linux or macOS machine, first
+clone the TensorFlow repository from GitHub to a convenient place:
+
+```bash
+git clone --depth 1 https://github.com/tensorflow/tensorflow.git
+```
+
+Next, `cd` into the source directory from a terminal, and then run the following
+command:
+
+```bash
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_hello_world_test
+```
+
+This will take a few minutes, and downloads frameworks the code uses. Once the
+process has finished, you should see a series of files get compiled, followed by
+some logging output from a test, which should conclude with
+`~~~ALL TESTS PASSED~~~`.
+
+If you see this, it means that a small program has been built and run that loads
+the trained TensorFlow model, runs some example inputs through it, and got the
+expected outputs.
+
+To understand how TensorFlow Lite does this, you can look at the source in
+[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc).
+It's a fairly small amount of code that creates an interpreter, gets a handle to
+a model that's been compiled into the program, and then invokes the interpreter
+with the model and sample inputs.

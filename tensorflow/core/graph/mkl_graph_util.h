@@ -136,10 +136,17 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
     return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  // Restrict regular ops to FLOAT and BFLOAT16
+  if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
+    return (T == DT_FLOAT || T == DT_BFLOAT16);
+  }
+#else
   // Restrict regular ops to FLOAT
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     return (T == DT_FLOAT);
   }
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
   return false;
 }
 
@@ -152,7 +159,7 @@ static inline bool IsMklLayoutDependentOp(const string& op_name,
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (Tinput == DT_QUINT8 && Tfilter == DT_QINT8);
+    return (Tfilter == DT_QINT8);
   }
   return false;
 }
@@ -179,7 +186,22 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   search_string += string(";") + string(" T in [");
   search_string += DataType_Name(T) + string("]");
 
-  return kernel.find(search_string) != string::npos;
+  // Temporarily replacing earlier check by adding a type-specific check so
+  // that we can selectively decide which type is supported by MKL operators.
+  // That way kernel registration does not decide which operators we support.
+  // We are using this change to temporarily disable BFLOAT16 support. Once
+  // we want to enable it, we will go back to earlier check.
+  bool isTypeAllowed = false;
+  if (kernel.find(search_string) != string::npos) {
+    isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
+                     T == DT_DOUBLE || T == DT_FLOAT);
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+    isTypeAllowed = isTypeAllowed || (T == DT_BFLOAT16);
+#endif
+    return isTypeAllowed;
+  }
+
+  return false;
 }
 
 // Check if the operator with 'op_name' and type 'T' is an MKL operator that

@@ -41,6 +41,7 @@ class _Merge(Layer):
   def __init__(self, **kwargs):
     super(_Merge, self).__init__(**kwargs)
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
   def _merge_function(self, inputs):
     raise NotImplementedError
@@ -92,9 +93,7 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
-    batch_sizes = [s[0] for s in input_shape if s is not None]
-    batch_sizes = set(batch_sizes)
-    batch_sizes -= set([None])
+    batch_sizes = {s[0] for s in input_shape if s is not None} - {None}
     if len(batch_sizes) > 1:
       raise ValueError(
           'Can not merge tensors with different '
@@ -193,9 +192,7 @@ class _Merge(Layer):
       else:
         shape = input_shape[i][1:]
       output_shape = self._compute_elemwise_op_output_shape(output_shape, shape)
-    batch_sizes = [s[0] for s in input_shape if s is not None]
-    batch_sizes = set(batch_sizes)
-    batch_sizes -= set([None])
+    batch_sizes = {s[0] for s in input_shape if s is not None} - {None}
     if len(batch_sizes) == 1:
       output_shape = (list(batch_sizes)[0],) + output_shape
     else:
@@ -478,6 +475,7 @@ class Dot(_Merge):
     self.normalize = normalize
     self.supports_masking = True
     self._reshape_required = False
+    self._supports_ragged_inputs = False
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

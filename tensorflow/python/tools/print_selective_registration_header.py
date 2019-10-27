@@ -26,7 +26,7 @@ path and pass -DSELECTIVE_REGISTRATION and -DSUPPORT_SELECTIVE_REGISTRATION
 When compiling for Android:
   bazel build -c opt --copt="-DSELECTIVE_REGISTRATION" \
     --copt="-DSUPPORT_SELECTIVE_REGISTRATION" \
-    //tensorflow/contrib/android:libtensorflow_inference.so \
+    //tensorflow/tools/android/inference_interface:libtensorflow_inference.so \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --crosstool_top=//external:android/crosstool --cpu=armeabi-v7a
 """

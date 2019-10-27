@@ -720,12 +720,15 @@ string BufferAssignment::ToString() const {
   string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
   std::vector<const HloValue*> used_values;
+  int64 total_size = 0;
   for (auto& allocation : allocations_) {
+    total_size += allocation.size();
     absl::StrAppend(&output, allocation.ToString());
     for (const auto& p : allocation.assigned_buffers()) {
       used_values.push_back(p.first);
     }
   }
+  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
   absl::StrAppend(&output, "\nUsed values:\n");
   absl::c_sort(used_values, &CompareHloValuesById);
   for (const HloValue* value : used_values) {
@@ -1257,19 +1260,14 @@ Status BufferAssigner::AssignBuffersForComputations(
           return a_size > b_size;  // use ">" for decreasing size.
         }
 
-        // Values which live out the computation lifetime will be assigned
-        // first, as they can not be given to the heap simulator.
         const bool a_live_out = alias_analysis.BufferLivesOut(*a);
         const bool b_live_out = alias_analysis.BufferLivesOut(*b);
         if (a_live_out != b_live_out) {
           return a_live_out;
         }
-
-        // Process values in the reverse postorder, since we have to start
-        // with the last value.
         auto compare = [&post_order_position](const HloValue* value1,
                                               const HloValue* value2) {
-          return post_order_position.at(value1->instruction()) >
+          return post_order_position.at(value1->instruction()) <
                  post_order_position.at(value2->instruction());
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);

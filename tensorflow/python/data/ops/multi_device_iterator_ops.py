@@ -51,8 +51,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _init_func():
       return multi_device_iterator_string_handle
 
-    init_func_concrete = (
-        _init_func._get_concrete_function_internal_garbage_collected())  # pylint: disable=protected-access
+    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(autograph=False)  # Pure graph code.
@@ -63,8 +62,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = (
-        _remote_init_func._get_concrete_function_internal_garbage_collected())  # pylint: disable=protected-access
+    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
@@ -86,8 +84,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           output_types=structure.get_flat_tensor_types(self._element_spec),
           output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
 
-    next_func_concrete = (
-        _next_func._get_concrete_function_internal_garbage_collected())  # pylint: disable=protected-access
+    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun_with_attributes(
@@ -101,8 +98,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=structure.get_flat_tensor_types(self._element_spec),
           f=next_func_concrete)
 
-    self._next_func = (
-        _remote_next_func._get_concrete_function_internal_garbage_collected())  # pylint: disable=protected-access
+    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._next_captured_args = self._next_func.captured_inputs
 
     self._incarnation_id_index = -1
@@ -117,8 +113,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = (
-        _finalize_func._get_concrete_function_internal_garbage_collected())  # pylint: disable=protected-access
+    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(
@@ -131,8 +126,8 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = (_remote_finalize_func  # pylint: disable=protected-access
-                           ._get_concrete_function_internal_garbage_collected())
+    self._finalize_func = (
+        _remote_finalize_func._get_concrete_function_internal())  # pylint: disable=protected-access
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
     variant_tensor = gen_dataset_ops.generator_dataset(
@@ -410,7 +405,7 @@ class MultiDeviceIteratorResourceDeleter(object):
 
 
 class MultiDeviceIteratorSpec(type_spec.TypeSpec):
-  """Type specification for `MultiDeviceIteratorV2`."""
+  """Type specification for `OwnedMultiDeviceIterator`."""
 
   __slots__ = ["_devices", "_source_device", "_element_spec"]
 
@@ -421,7 +416,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
 
   @property
   def value_type(self):
-    return MultiDeviceIteratorV2
+    return OwnedMultiDeviceIterator
 
   def _serialize(self):
     return (tuple(self._devices), self._source_device, self._element_spec)
@@ -443,7 +438,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
     return c
 
   def _from_components(self, components):
-    return MultiDeviceIteratorV2(
+    return OwnedMultiDeviceIterator(
         dataset=None,
         devices=self._devices,
         source_device=self._source_device,
@@ -459,8 +454,15 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
         value.element_spec)
 
 
-class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
-  """An iterator over multiple devices."""
+class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
+  """An iterator over multiple devices.
+
+  The multi-device iterator resource created through `OwnedMultiDeviceIterator`
+  is owned by the Python object and the life time of the underlying resource is
+  tied to the life time of the `OwnedMultiDeviceIterator` object. This makes
+  `OwnedMultiDeviceIterator` appropriate for use in eager mode and inside of
+  tf.functions.
+  """
 
   def __init__(self,
                dataset=None,
@@ -470,7 +472,7 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
                source_device="/cpu:0",
                components=None,
                element_spec=None):
-    """Constructs a MultiDeviceIteratorV2 object.
+    """Constructs an owned MultiDeviceIterator object.
 
     Args:
       dataset: The input dataset to be iterated over.
@@ -491,7 +493,7 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
     """
     if (not context.executing_eagerly() and
         not ops.get_default_graph()._building_function):  # pylint: disable=protected-access
-      raise RuntimeError("MultiDeviceIteratorV2 is only supported inside of "
+      raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:
       raise ValueError("`devices` must be provided")

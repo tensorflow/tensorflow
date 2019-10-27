@@ -25,7 +25,9 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include <numeric>
+
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -101,12 +103,12 @@ template <> unsigned BlockOperand::getOperandNumber() {
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
-  return create(location, name, operands, resultTypes,
+  return create(location, name, resultTypes, operands,
                 NamedAttributeList(attributes), successors, numRegions,
                 resizableOperandList);
 }
@@ -114,8 +116,8 @@ Operation *Operation::create(Location location, OperationName name,
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
   unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.operands,
-                         state.types, state.attributes, state.successors,
+  Operation *op = create(state.location, state.name, state.types,
+                         state.operands, state.attributes, state.successors,
                          numRegions, state.resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
     if (state.regions[i])
@@ -126,8 +128,8 @@ Operation *Operation::create(const OperationState &state) {
 /// Overload of create that takes an existing NamedAttributeList to avoid
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              const NamedAttributeList &attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -278,6 +280,15 @@ Region *Operation::getParentRegion() {
 
 Operation *Operation::getParentOp() {
   return block ? block->getParentOp() : nullptr;
+}
+
+/// Return true if this operation is a proper ancestor of the `other`
+/// operation.
+bool Operation::isProperAncestor(Operation *other) {
+  while ((other = other->getParentOp()))
+    if (this == other)
+      return true;
+  return false;
 }
 
 /// Replace any uses of 'from' with 'to' within this operation.
@@ -563,7 +574,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
   SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
   auto *newOp =
-      Operation::create(getLoc(), getName(), operands, resultTypes, attrs,
+      Operation::create(getLoc(), getName(), resultTypes, operands, attrs,
                         successors, numRegions, hasResizableOperandsList());
 
   // Remember the mapping of any results.
@@ -603,12 +614,12 @@ Operation *Operation::clone() {
 //===----------------------------------------------------------------------===//
 
 // The fallback for the parser is to reject the custom assembly form.
-ParseResult OpState::parse(OpAsmParser *parser, OperationState *result) {
-  return parser->emitError(parser->getNameLoc(), "has no custom assembly form");
+ParseResult OpState::parse(OpAsmParser &parser, OperationState &result) {
+  return parser.emitError(parser.getNameLoc(), "has no custom assembly form");
 }
 
 // The fallback for the printer is to print in the generic assembly form.
-void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getOperation()); }
+void OpState::print(OpAsmPrinter &p) { p.printGenericOp(getOperation()); }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
@@ -737,50 +748,31 @@ LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
   return success();
 }
 
-/// Returns success if the given two types have the same shape. That is,
-/// they are both scalars (not shaped), or they are both shaped types and at
-/// least one is unranked or they have the same shape. The element type does not
-/// matter.
-static LogicalResult verifyShapeMatch(Type type1, Type type2) {
-  auto sType1 = type1.dyn_cast<ShapedType>();
-  auto sType2 = type2.dyn_cast<ShapedType>();
-
-  // Either both or neither type should be shaped.
-  if (!sType1)
-    return success(!sType2);
-  if (!sType2)
-    return failure();
-
-  if (!sType1.hasRank() || !sType2.hasRank())
-    return success();
-
-  return success(sType1.getShape() == sType2.getShape());
-}
-
 LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError() << "requires the same shape for all operands";
   }
   return success();
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
   for (auto resultType : op->getResultTypes()) {
-    if (failed(verifyShapeMatch(resultType, type)))
+    if (failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
@@ -788,19 +780,12 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
+  auto elementType = getElementTypeOrSelf(op->getOperand(0));
 
-  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
-
-  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    auto shapedType = operandType.dyn_cast<ShapedType>();
-    if (!shapedType)
-      return op->emitOpError("requires shaped type operands");
-    if (shapedType.getElementType() != elementType)
+  for (auto operand : llvm::drop_begin(op->getOperands(), 1)) {
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
   }
 
@@ -809,30 +794,22 @@ LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
 
 LogicalResult
 OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
-  auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
+  auto elementType = getElementTypeOrSelf(op->getResult(0));
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
-    auto resultType = result->getType().dyn_cast<ShapedType>();
-    if (!resultType)
-      return op->emitOpError("requires shaped type results");
-    if (resultType.getElementType() != elementType)
+    if (getElementTypeOrSelf(result) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
 
   // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
-    auto operandType = operand->getType().dyn_cast<ShapedType>();
-    if (!operandType)
-      return op->emitOpError("requires shaped type operands");
-    if (operandType.getElementType() != elementType)
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
@@ -841,17 +818,21 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getResult(0)->getType();
+  auto elementType = getElementTypeOrSelf(type);
   for (auto resultType : llvm::drop_begin(op->getResultTypes(), 1)) {
-    if (resultType != type)
+    if (getElementTypeOrSelf(resultType) != elementType ||
+        failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
   for (auto opType : op->getOperandTypes()) {
-    if (opType != type)
+    if (getElementTypeOrSelf(opType) != elementType ||
+        failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
@@ -934,69 +915,69 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                          Value *rhs) {
   assert(lhs->getType() == rhs->getType());
-  result->addOperands({lhs, rhs});
-  result->types.push_back(lhs->getType());
+  result.addOperands({lhs, rhs});
+  result.types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
+ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                                  OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  return failure(parser->parseOperandList(ops, 2) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperands(ops, type, result->operands) ||
-                 parser->addTypeToList(type, result->types));
+  return failure(parser.parseOperandList(ops) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(ops, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
-void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
-  assert(op->getNumOperands() == 2 && "binary op should have two operands");
-  assert(op->getNumResults() == 1 && "binary op should have one result");
+void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
 
   // If not all the operand and result types are the same, just use the
   // generic assembly form to avoid omitting information in printing.
   auto resultType = op->getResult(0)->getType();
-  if (op->getOperand(0)->getType() != resultType ||
-      op->getOperand(1)->getType() != resultType) {
-    p->printGenericOp(op);
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
+    p.printGenericOp(op);
     return;
   }
 
-  *p << op->getName() << ' ' << *op->getOperand(0) << ", "
-     << *op->getOperand(1);
-  p->printOptionalAttrDict(op->getAttrs());
+  p << op->getName() << ' ';
+  p.printOperands(op->getOperands());
+  p.printOptionalAttrDict(op->getAttrs());
   // Now we can output only one type for all operands and the result.
-  *p << " : " << op->getResult(0)->getType();
+  p << " : " << resultType;
 }
 
 //===----------------------------------------------------------------------===//
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState *result, Value *source,
+void impl::buildCastOp(Builder *builder, OperationState &result, Value *source,
                        Type destType) {
-  result->addOperands(source);
-  result->addTypes(destType);
+  result.addOperands(source);
+  result.addTypes(destType);
 }
 
-ParseResult impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
+ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
-  return failure(parser->parseOperand(srcInfo) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(srcType) ||
-                 parser->resolveOperand(srcInfo, srcType, result->operands) ||
-                 parser->parseKeywordType("to", dstType) ||
-                 parser->addTypeToList(dstType, result->types));
+  return failure(parser.parseOperand(srcInfo) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(srcType) ||
+                 parser.resolveOperand(srcInfo, srcType, result.operands) ||
+                 parser.parseKeywordType("to", dstType) ||
+                 parser.addTypeToList(dstType, result.types));
 }
 
-void impl::printCastOp(Operation *op, OpAsmPrinter *p) {
-  *p << op->getName() << ' ' << *op->getOperand(0);
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : " << op->getOperand(0)->getType() << " to "
-     << op->getResult(0)->getType();
+void impl::printCastOp(Operation *op, OpAsmPrinter &p) {
+  p << op->getName() << ' ' << *op->getOperand(0);
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << op->getOperand(0)->getType() << " to "
+    << op->getResult(0)->getType();
 }
 
 Value *impl::foldCastOp(Operation *op) {

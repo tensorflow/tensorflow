@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +43,7 @@ import re
 from absl import app
 from absl import flags
 
+import six
 import six.moves.urllib.request as urllib
 
 FLAGS = flags.FLAGS
@@ -61,21 +63,18 @@ def retrieve_from_web(generate_csv=False):
     NVIDIA page. Order goes from top to bottom of the webpage content (.html).
   """
   url = "https://developer.nvidia.com/cuda-gpus"
-  source = urllib.urlopen(url)
+  source = urllib.request.urlopen(url)
   matches = []
   while True:
     line = source.readline()
     if "</html>" in line:
       break
     else:
-      gpu = re.search(
-          r"<a href=.*>([\w\S\s\d\[\]\,]+[^*])</a>(<a href=.*)?.*",
-          line
-      )
+      gpu = re.search(r"<a href=.*>([\w\S\s\d\[\]\,]+[^*])</a>(<a href=.*)?.*",
+                      six.ensure_str(line))
       capability = re.search(
           r"([\d]+).([\d]+)(/)?([\d]+)?(.)?([\d]+)?.*</td>.*",
-          line
-      )
+          six.ensure_str(line))
       if gpu:
         matches.append(gpu.group(1))
       elif capability:
@@ -155,15 +154,15 @@ def create_gpu_capa_map(match_list,
 
         gpu = ""
         cnt += 1
-        if len(gpu_capa.keys()) < cnt:
+        if len(list(gpu_capa.keys())) < cnt:
           mismatch_cnt += 1
-          cnt = len(gpu_capa.keys())
+          cnt = len(list(gpu_capa.keys()))
 
       else:
         gpu = match
 
   if generate_csv:
-    f_name = filename + ".csv"
+    f_name = six.ensure_str(filename) + ".csv"
     write_csv_from_dict(f_name, gpu_capa)
 
   return gpu_capa
@@ -179,8 +178,8 @@ def write_csv_from_dict(filename, input_dict):
     filename: String that is the output file name.
     input_dict: Dictionary that is to be written out to a `.csv` file.
   """
-  f = open(PATH_TO_DIR + "/data/" + filename, "w")
-  for k, v in input_dict.iteritems():
+  f = open(PATH_TO_DIR + "/data/" + six.ensure_str(filename), "w")
+  for k, v in six.iteritems(input_dict):
     line = k
     for item in v:
       line += "," + item
@@ -203,7 +202,7 @@ def check_with_golden(filename):
   Args:
     filename: String that is the name of the newly created file.
   """
-  path_to_file = PATH_TO_DIR + "/data/" + filename
+  path_to_file = PATH_TO_DIR + "/data/" + six.ensure_str(filename)
   if os.path.isfile(path_to_file) and os.path.isfile(CUDA_CC_GOLDEN_DIR):
     with open(path_to_file, "r") as f_new:
       with open(CUDA_CC_GOLDEN_DIR, "r") as f_golden:

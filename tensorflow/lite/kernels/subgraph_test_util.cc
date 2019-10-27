@@ -17,30 +17,13 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
-
-namespace ops {
-namespace builtin {
-// ADD and MUL are used to test simple branch.
-// ADD and MUL can be used to test dynamic sized subgraphs with the
-// use of IF op.
-TfLiteRegistration* Register_ADD();
-TfLiteRegistration* Register_MUL();
-// PAD is used to test dynamic sized subgraphs.
-TfLiteRegistration* Register_PAD();
-TfLiteRegistration* Register_LESS_EQUAL();
-}  // namespace builtin
-namespace custom {
-TfLiteRegistration* Register_IF();
-TfLiteRegistration* Register_WHILE();
-}  // namespace custom
-}  // namespace ops
-
 namespace subgraph_test_util {
 
 namespace {
@@ -178,7 +161,7 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   int node_index;
   subgraph->AddNodeWithParameters(
       {kCondInput, kInput1, kInput2}, {kOutput}, {}, nullptr, 0, params,
-      ::tflite::ops::custom::Register_IF(), &node_index);
+      ::tflite::ops::builtin::Register_IF(), &node_index);
 }
 
 void SubgraphBuilder::BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs) {
@@ -336,7 +319,7 @@ void SubgraphBuilder::BuildWhileSubgraph(Subgraph* subgraph) {
 
   int node_index;
   subgraph->AddNodeWithParameters({0, 1}, {2, 3}, {}, nullptr, 0, params,
-                                  ::tflite::ops::custom::Register_WHILE(),
+                                  ::tflite::ops::builtin::Register_WHILE(),
                                   &node_index);
 }
 

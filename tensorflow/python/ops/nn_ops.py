@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import numbers
+import os
 
 import numpy as np
 
@@ -996,8 +997,8 @@ def convolution_internal(
     if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
       # fast path for TPU or if no dilation as gradient only supported on GPU
       # for dilations
-    # copybara:strip_end
-    # copybara:insert if all(i == 1 for i in dilations):
+      # copybara:strip_end
+      # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -2682,6 +2683,19 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
         name=name)
 
 
+def _tf_deterministic_ops():
+  if _tf_deterministic_ops.value is None:
+    tf_deterministic_ops = os.environ.get("TF_DETERMINISTIC_OPS")
+    if tf_deterministic_ops is not None:
+      tf_deterministic_ops = tf_deterministic_ops.lower()
+    _tf_deterministic_ops.value = (
+        tf_deterministic_ops == "true" or tf_deterministic_ops == "1")
+  return _tf_deterministic_ops.value
+
+
+_tf_deterministic_ops.value = None
+
+
 @tf_export("nn.bias_add")
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
@@ -2697,11 +2711,19 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the channel dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'N...C' and 'NC...' are supported.
+    data_format: A string. 'N...C' and 'NC...' are supported. If `None` (the
+      default) is specified then 'N..C' is assumed.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError if data format is unrecognized, if `value` has less than two
+    dimensions when `data_format` is 'N..C'/`None` or `value` has less
+    then three dimensions when `data_format` is `NC..`, if `bias` does not
+    have exactly one dimension (is a vector), or if the size of `bias`
+    does not match the size of the channel dimension of `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
     if data_format is not None:
@@ -2715,7 +2737,25 @@ def bias_add(value, bias, data_format=None, name=None):
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
+
+    # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
+    #   level.
+    if _tf_deterministic_ops():
+      # Note that this code does not implement the same error checks as the
+      # pre-existing C++ ops.
+      if data_format == "NCHW":
+        broadcast_shape_head = [1, array_ops.size(bias)]
+        broadcast_shape_tail = array_ops.ones(
+            array_ops.rank(value) - 2, dtype=dtypes.int32)
+        broadcast_shape = array_ops.concat(
+            [broadcast_shape_head, broadcast_shape_tail], 0)
+        return math_ops.add(
+            value, array_ops.reshape(bias, broadcast_shape), name=name)
+      else:  # data_format == 'NHWC' or data_format == None
+        return math_ops.add(value, bias, name=name)
+    else:
+      return gen_nn_ops.bias_add(
+          value, bias, data_format=data_format, name=name)
 
 
 def bias_add_v1(value, bias, name=None):
@@ -2937,9 +2977,17 @@ def softmax(logits, axis=None, name=None, dim=None):
 
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
+  See: https://en.wikipedia.org/wiki/Softmax_function
+
+  Example usage:
+  >>> tf.nn.softmax([-1, 0., 1.])
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+
   Args:
-    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    logits: A non-empty `Tensor`, or an object whose type has a registered
+      `Tensor` conversion function. Must be one of the following types:
+      `half`,`float32`, `float64`. See also `convert_to_tensor`
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
@@ -2951,6 +2999,11 @@ def softmax(logits, axis=None, name=None, dim=None):
   Raises:
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
+    TypeError: If no conversion function is registered for `logits` to
+      Tensor.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+      
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
@@ -3067,6 +3120,13 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
 
   If using exclusive `labels` (wherein one and only
   one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
+  Usage:
+  >>> logits = [[4.0, 2.0, 1.0], [0.0, 5.0, 1.0]]
+  >>> labels = [[1.0, 0.0, 0.0], [0.0, 0.8, 0.2]]
+  >>> tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([0.16984604, 0.82474494], dtype=float32)>
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
@@ -4201,7 +4261,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
     rate: A scalar `Tensor` with the same type as `x`. The probability that each
       element of `x` is discarded.
@@ -4231,23 +4291,51 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 
 @tf_export("nn.dropout", v1=[])
 def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
-  """Computes dropout.
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
 
-  With probability `rate`, drops elements of `x`. Input that are kept are
-  scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
-  the expected sum is unchanged.
-
-  **Note:** The behavior of dropout has changed between TensorFlow 1.x and 2.x.
+  Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
   When converting 1.x code, please use named arguments to ensure behavior stays
   consistent.
+
+  See also: `tf.keras.layers.Dropout` for a dropout layer.
+
+  [Dropout](https://arxiv.org/abs/1207.0580) is useful for regularizing DNN
+  models. Inputs elements are randomly set to zero (and the other elements are
+  rescaled). This encourages each node to be independently useful, as it cannot
+  rely on the output of other nodes.
+
+  More precisely: With probability `rate` elements of `x` are set to `0`.
+  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  expected value is preserved.
+
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate = 0.5).numpy()
+  array([[0., 0., 2., 2., 0.],
+         [2., 0., 2., 2., 0.],
+         [2., 2., 2., 0., 0.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 0.8).numpy()
+  array([[0., 0., 5., 0., 0.],
+         [0., 0., 5., 0., 0.],
+         [5., 0., 0., 5., 0.]], dtype=float32)
+
+  If rate is set to `0` the input is returned, unchanged:
+
+  >>> tf.nn.dropout(x, rate = 0.0) is x
+  True
 
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
   to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
-  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
-  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
-  kept independently and each row and column will be kept or not kept together.
+  will make independent decisions. This is useful for dropping whole
+  channels from an image or sequence. For example:
+
+  >>> x = tf.ones([3,10])
+  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10]).numpy()
+  array([[0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.]], dtype=float32)
 
   Args:
     x: A floating point tensor.
@@ -4257,15 +4345,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `rate` is not in `(0, 1]` or if `x` is not a floating point
-      tensor.
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because theoutput would be all zeros,
+      which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")

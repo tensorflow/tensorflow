@@ -1,0 +1,105 @@
+apply plugin: 'com.android.library'
+
+// TensorFlow repo root dir on local machine
+def TF_SRC_DIR = projectDir.toString() + "/../../../.."
+
+android {
+    compileSdkVersion 24
+    // Check local build_tools_version as this is liable to change within Android Studio.
+    buildToolsVersion '25.0.2'
+
+    // for debugging native code purpose
+    publishNonDefault true
+
+    defaultConfig {
+        archivesBaseName = "Tensorflow-Android-Inference"
+        minSdkVersion 21
+        targetSdkVersion 23
+        versionCode 1
+        versionName "1.0"
+        ndk {
+            abiFilters  'armeabi-v7a'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_TOOLCHAIN=clang',
+                          '-DANDROID_STL=c++_static'
+            }
+        }
+    }
+    sourceSets {
+        main {
+            java {
+                srcDir "${TF_SRC_DIR}/tensorflow/tools/android/inference_interface/java"
+                srcDir "${TF_SRC_DIR}/tensorflow/java/src/main/java"
+                exclude '**/examples/**'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'CMakeLists.txt'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'),
+                          'proguard-rules.pro'
+        }
+    }
+}
+
+// Build libtensorflow-core.a if necessary
+// Note: the environment needs to be set up already
+//    [ such as installing autoconfig, make, etc ]
+// How to use:
+//    1) install all of the necessary tools to build libtensorflow-core.a
+//    2) inside Android Studio IDE, uncomment buildTensorFlow in
+//       whenTaskAdded{...}
+//    3) re-sync and re-build. It could take a long time if NOT building
+//       with multiple processes.
+import org.apache.tools.ant.taskdefs.condition.Os
+
+Properties properties = new Properties()
+properties.load(project.rootProject.file('local.properties')
+                .newDataInputStream())
+def ndkDir = properties.getProperty('ndk.dir')
+if (ndkDir == null || ndkDir == "") {
+    ndkDir = System.getenv('ANDROID_NDK_HOME')
+}
+
+if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
+    // This script is for non-Windows OS. For Windows OS, MANUALLY build
+    // (or copy the built) libs/headers to the
+    //    ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/gen
+    // refer to CMakeLists.txt about lib and header directories for details
+    task buildTensorflow(type: Exec) {
+        group 'buildTensorflowLib'
+        workingDir getProjectDir().toString() + '/../../../../'
+        environment PATH: '/opt/local/bin:/opt/local/sbin:' +
+                          System.getenv('PATH')
+        environment NDK_ROOT: ndkDir
+        commandLine 'tensorflow/contrib/makefile/build_all_android.sh'
+    }
+
+    tasks.whenTaskAdded { task ->
+        group 'buildTensorflowLib'
+        if (task.name.toLowerCase().contains('sources')) {
+            def tensorflowTarget = new File(getProjectDir().toString() +
+                    '/../../makefile/gen/lib/libtensorflow-core.a')
+            if (!tensorflowTarget.exists()) {
+                // Note:
+                //    just uncomment this line to use it:
+                //    it can take long time to build by default
+                //    it is disabled to avoid false first impression
+                task.dependsOn buildTensorflow
+            }
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+}

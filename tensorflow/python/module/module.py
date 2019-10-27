@@ -141,7 +141,7 @@ class Module(tracking.AutoTrackable):
 
   @property
   def variables(self):
-    """Sequence of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
@@ -156,7 +156,7 @@ class Module(tracking.AutoTrackable):
 
   @property
   def trainable_variables(self):
-    """Sequence of variables owned by this module and it's submodules.
+    """Sequence of trainable variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result

@@ -153,6 +153,9 @@ class XlaCompiler {
     // For a kResource, has this resource been initialized?
     bool initialized = false;
 
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
+
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
     int64 max_array_size = -1;
@@ -176,6 +179,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;

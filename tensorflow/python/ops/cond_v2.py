@@ -26,6 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -271,6 +272,8 @@ def _build_cond(pred,
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
+  if_op._true_graph = true_graph
+  if_op._false_graph = false_graph
   util.maybe_set_lowering_attr(if_op)
   util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
@@ -301,11 +304,15 @@ def get_func_graphs(op):
     for Case).
   """
 
-  def _get_func_graph_for_branch(name_attr_list):
+  def _get_func_graph_for_branch(name_attr_list, cached_attr_name=None):
     """Generates and returns a FuncGraph for the given branch."""
+    func_graph = None
+    if cached_attr_name is not None:
+      func_graph = getattr(op, cached_attr_name, None)
     inputs = op.inputs[1:]  # First input is pred.
-    input_shapes = [t.shape for t in inputs]
-    func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
+    if func_graph is None:
+      input_shapes = [t.shape for t in inputs]
+      func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
     func_graph.reset_captures(zip(inputs, func_graph.inputs))
@@ -314,9 +321,12 @@ def get_func_graphs(op):
     return func_graph
 
   if op.type in ["If", "StatelessIf"]:
-    return (_get_func_graph_for_branch(op.get_attr("then_branch")),
-            _get_func_graph_for_branch(op.get_attr("else_branch")))
+    return (_get_func_graph_for_branch(
+        op.get_attr("then_branch"), "_true_graph"),
+            _get_func_graph_for_branch(
+                op.get_attr("else_branch"), "_false_graph"))
   elif op.type == "Case":
+    # TODO(b/141114088): investigate whether to cache graphs in forward pass
     return [_get_func_graph_for_branch(branch_fn)
             for branch_fn in op.get_attr("branches")]
   else:
@@ -779,6 +789,9 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     # Raw intermediates captured from the forward graph. Populated iff we're in
     # an XLA context.
     self._xla_intermediates = []
+    # Maps forward intermediate constant valued tensor's id to the constant
+    # created in this graph for that tensor.
+    self._captured_constants = {}
 
   @property
   def wrapped_intermediates(self):
@@ -796,6 +809,17 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         any(tensor is t for t in self._forward_graph.outputs)):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
+    tensor_id = ops.tensor_id(tensor)
+
+    # If `tensor` is a graph-building time constant, we create a constant with
+    # the same value in the backward graph instead of capturing it.
+    if tensor_id in self._captured_constants:
+      return self._captured_constants[tensor_id]
+    elif constant_op.is_constant(tensor):
+      self._captured_constants[tensor_id] = constant_op.constant(
+          tensor_util.constant_value(tensor), dtype=tensor.dtype)
+      return self._captured_constants[tensor_id]
+
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -804,7 +828,6 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    tensor_id = ops.tensor_id(tensor)
     captured_tensor = self._indirect_captures.get(tensor_id)
     if captured_tensor is not None:
       return captured_tensor

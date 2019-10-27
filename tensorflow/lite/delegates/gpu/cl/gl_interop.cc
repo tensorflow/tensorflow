@@ -25,6 +25,13 @@ namespace gpu {
 namespace cl {
 namespace {
 
+#ifndef EGL_VERSION_1_5
+typedef void* EGLSync;
+#define EGL_SYNC_CL_EVENT 0x30FE
+#define EGL_CL_EVENT_HANDLE 0x309C
+#define EGL_NO_SYNC 0
+#endif /* EGL_VERSION_1_5 */
+
 // TODO(b/131897059): replace with 64 version when EGL 1.5 is available.
 // it should use KHR_cl_event2 extension. More details are in b/129974818.
 using PFNEGLCREATESYNCPROC = EGLSync(EGLAPIENTRYP)(

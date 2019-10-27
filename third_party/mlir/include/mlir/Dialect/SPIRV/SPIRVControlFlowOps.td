@@ -29,6 +29,11 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
+#ifdef MLIR_CALLINTERFACES
+#else
+include "mlir/Analysis/CallInterfaces.td"
+#endif // MLIR_CALLINTERFACES
+
 // -----
 
 def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
@@ -41,23 +46,29 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
     ``` {.ebnf}
     branch-op ::= `spv.Branch` successor
+    successor ::= bb-id branch-use-list?
+    branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
     ```
 
     For example:
 
     ```
     spv.Branch ^target
+    spv.Branch ^target(%0, %1: i32, f32)
     ```
   }];
 
-  let arguments = (ins);
+  let arguments = (ins
+    Variadic<AnyType>:$block_arguments
+  );
 
   let results = (outs);
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState *state, Block *successor", [{
-        state->addSuccessor(successor, {});
+      "Builder *, OperationState &state, "
+      "Block *successor, ArrayRef<Value *> arguments = {}", [{
+        state.addSuccessor(successor, arguments);
       }]
     >
   ];
@@ -65,7 +76,13 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
   let skipDefaultBuilders = 1;
 
   let extraClassDeclaration = [{
+    /// Returns the branch target block.
     Block *getTarget() { return getOperation()->getSuccessor(0); }
+
+    /// Returns the block arguments.
+    operand_range getBlockArguments() {
+      return getOperation()->getSuccessorOperands(0);
+    }
   }];
 
   let autogenSerialization = 0;
@@ -100,17 +117,21 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
     branch-conditional-op ::= `spv.BranchConditional` ssa-use
                               (`[` integer-literal, integer-literal `]`)?
                               `,` successor `,` successor
+    successor ::= bb-id branch-use-list?
+    branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
     ```
 
     For example:
 
     ```
     spv.BranchConditional %condition, ^true_branch, ^false_branch
+    spv.BranchConditional %condition, ^true_branch(%0: i32), ^false_branch(%1: i32)
     ```
   }];
 
   let arguments = (ins
     SPV_Bool:$condition,
+    Variadic<AnyType>:$branch_arguments,
     OptionalAttr<I32ArrayAttr>:$branch_weights
   );
 
@@ -118,18 +139,19 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, Value *condition, "
-      "Block *trueBranch, Block *falseBranch, "
-      "Optional<std::pair<uint32_t, uint32_t>> weights",
+      "Builder *builder, OperationState &state, Value *condition, "
+      "Block *trueBlock, ArrayRef<Value *> trueArguments, "
+      "Block *falseBlock, ArrayRef<Value *> falseArguments, "
+      "Optional<std::pair<uint32_t, uint32_t>> weights = {}",
       [{
-        state->addOperands(condition);
-        state->addSuccessor(trueBranch, {});
-        state->addSuccessor(falseBranch, {});
+        state.addOperands(condition);
+        state.addSuccessor(trueBlock, trueArguments);
+        state.addSuccessor(falseBlock, falseArguments);
         if (weights) {
           auto attr =
               builder->getI32ArrayAttr({static_cast<int32_t>(weights->first),
                                         static_cast<int32_t>(weights->second)});
-          state->addAttribute("branch_weights", attr);
+          state.addAttribute("branch_weights", attr);
         }
       }]
     >
@@ -140,13 +162,105 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
   let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
-    // Branch indices into the successor list.
+    /// Branch indices into the successor list.
     enum { kTrueIndex = 0, kFalseIndex = 1 };
 
+    /// Returns the target block for the true branch.
     Block *getTrueBlock() { return getOperation()->getSuccessor(kTrueIndex); }
 
+    /// Returns the target block for the false branch.
     Block *getFalseBlock() { return getOperation()->getSuccessor(kFalseIndex); }
+
+    /// Returns the number of arguments to the true target block.
+    unsigned getNumTrueBlockArguments() {
+      return getNumSuccessorOperands(kTrueIndex);
+    }
+
+    /// Returns the number of arguments to the false target block.
+    unsigned getNumFalseBlockArguments() {
+      return getNumSuccessorOperands(kFalseIndex);
+    }
+
+    // Iterator and range support for true target block arguments.
+    operand_iterator true_block_argument_begin() {
+      return operand_begin() + getTrueBlockArgumentIndex();
+    }
+    operand_iterator true_block_argument_end() {
+      return true_block_argument_begin() + getNumTrueBlockArguments();
+    }
+    operand_range getTrueBlockArguments() {
+      return {true_block_argument_begin(), true_block_argument_end()};
+    }
+
+    // Iterator and range support for false target block arguments.
+    operand_iterator false_block_argument_begin() {
+      return true_block_argument_end();
+    }
+    operand_iterator false_block_argument_end() {
+      return false_block_argument_begin() + getNumFalseBlockArguments();
+    }
+    operand_range getFalseBlockArguments() {
+      return {false_block_argument_begin(), false_block_argument_end()};
+    }
+
+  private:
+    /// Gets the index of the first true block argument in the operand list.
+    unsigned getTrueBlockArgumentIndex() {
+      return 1; // Omit the first argument, which is the condition.
+    }
+
+    /// Gets the index of the first false block argument in the operand list.
+    unsigned getFalseBlockArgumentIndex() {
+      return getTrueBlockArgumentIndex() + getNumTrueBlockArguments();
+    }
   }];
+}
+
+// -----
+
+def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
+    InFunctionScope, DeclareOpInterfaceMethods<CallOpInterface>]> {
+  let summary = "Call a function.";
+
+  let description = [{
+    Result Type is the type of the return value of the function. It must be
+    the same as the Return Type operand of the Function Type operand of the
+    Function operand.
+
+    Function is an OpFunction instruction.  This could be a forward
+    reference.
+
+    Argument N is the object to copy to parameter N of Function.
+
+    Note: A forward call is possible because there is no missing type
+    information: Result Type must match the Return Type of the function, and
+    the calling argument types must match the formal parameter types.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    function-call-op ::= `spv.FunctionCall` function-id `(` ssa-use-list `)`
+                     `:` function-type
+    ```
+
+    For example:
+
+    ```
+    spv.FunctionCall @f_void(%arg0) : (i32) ->  ()
+    %0 = spv.FunctionCall @f_iadd(%arg0, %arg1) : (i32, i32) -> i32
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$callee,
+    Variadic<SPV_Type>:$arguments
+  );
+
+  let results = (outs
+    SPV_Optional<SPV_Type>:$result
+  );
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -204,11 +318,13 @@ def SPV_LoopOp : SPV_Op<"loop"> {
   }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----
 
-def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
+def SPV_MergeOp : SPV_Op<"_merge", [Terminator]> {
   let summary = "A special terminator for merging a structured selection/loop.";
 
   let description = [{
@@ -227,6 +343,8 @@ def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -282,6 +400,55 @@ def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   );
 
   let results = (outs);
+}
+
+def SPV_SelectionOp : SPV_Op<"selection"> {
+  let summary = "Define a structured selection.";
+
+  let description = [{
+    SPIR-V can explicitly declare structured control-flow constructs using merge
+    instructions. These explicitly declare a header block before the control
+    flow diverges and a merge block where control flow subsequently converges.
+    These blocks delimit constructs that must nest, and can only be entered
+    and exited in structured ways. See "2.11. Structured Control Flow" of the
+    SPIR-V spec for more details.
+
+    Instead of having a `spv.SelectionMerge` op to directly model selection
+    merge instruction for indicating the merge target, we use regions to delimit
+    the boundary of the selection: the merge target is the next op following the
+    `spv.selection` op. This way it's easier to discover all blocks belonging to
+    the selection and it plays nicer with the MLIR system.
+
+    The `spv.selection` region should contain at least two blocks: one selection
+    header block, and one selection merge. The selection header block should be
+    the first block. The selection merge block should be the last block.
+    The merge block should only contain a `spv._merge` op.
+  }];
+
+  let arguments = (ins
+    SPV_SelectionControlAttr:$selection_control
+  );
+
+  let results = (outs);
+
+  let regions = (region AnyRegion:$body);
+
+  let extraClassDeclaration = [{
+    // Returns the selection header block.
+    Block *getHeaderBlock();
+
+    // Returns the selection merge block.
+    Block *getMergeBlock();
+
+    // Adds a selection merge block containing one spv._merge op.
+    void addMergeBlock();
+  }];
+
+  let hasOpcode = 0;
+
+  let autogenSerialization = 0;
+
+  let hasCanonicalizer = 1;
 }
 
 #endif // SPIRV_CONTROLFLOW_OPS

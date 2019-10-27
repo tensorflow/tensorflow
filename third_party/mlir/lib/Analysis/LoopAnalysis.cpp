@@ -77,7 +77,7 @@ void mlir::buildTripCountMapAndOperands(
   SmallVector<AffineExpr, 4> lbSplatExpr(ubValueMap.getNumResults(),
                                          lbMap.getResult(0));
   auto lbMapSplat =
-      b.getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
+      AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
   AffineValueMap lbSplatValueMap(lbMapSplat, lbOperands);
 
   AffineValueMap tripCountValueMap;
@@ -236,7 +236,7 @@ static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
 
   int uniqueVaryingIndexAlongIv = -1;
   auto accessMap = memoryOp.getAffineMap();
-  SmallVector<Value *, 4> mapOperands(memoryOp.getIndices());
+  SmallVector<Value *, 4> mapOperands(memoryOp.getMapOperands());
   unsigned numDims = accessMap.getNumDims();
   for (unsigned i = 0, e = memRefType.getRank(); i < e; ++i) {
     // Gather map operands used result expr 'i' in 'exprOperands'.

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
@@ -138,6 +139,16 @@ void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
 
 uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
   return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(hlo)];
+}
+
+HloExecutionProfileData HloExecutionProfile::ToProto() const {
+  HloExecutionProfileData hlo_execution_profile_data;
+  for (const auto& counter : profile_counters_) {
+    hlo_execution_profile_data.add_profile_counters(counter);
+  }
+  *(hlo_execution_profile_data.mutable_printer_data()) =
+      hlo_profile_printer_data_;
+  return hlo_execution_profile_data;
 }
 
 }  // namespace xla

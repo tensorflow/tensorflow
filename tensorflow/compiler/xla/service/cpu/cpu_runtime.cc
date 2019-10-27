@@ -19,7 +19,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -49,6 +52,8 @@ extern const char* const kEigenMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenMatMulF32";
 extern const char* const kEigenMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenMatMulF64";
+extern const char* const kEigenMatMulS32SymbolName =
+    "__xla_cpu_runtime_EigenMatMulS32";
 extern const char* const kMKLConvF32SymbolName = "__xla_cpu_runtime_MKLConvF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
@@ -71,6 +76,8 @@ extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF64";
+extern const char* const kEigenSingleThreadedMatMulS32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulS32";
 extern const char* const kEigenSingleThreadedConvF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedConvF16";
 extern const char* const kEigenSingleThreadedConvF32SymbolName =
@@ -98,9 +105,24 @@ extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 
 namespace {
 
+// Inverses the encoding of a Shape protobuf into an LLVM global variable.
+xla::StatusOr<xla::Shape> DecodeSelfDescribingShapeConstant(
+    const void* shape_ptr, xla::int32 size_bytes) {
+  xla::ShapeProto shape_proto;
+  if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
+    return tensorflow::errors::Internal("Failed parsing the shape proto");
+  }
+  xla::Shape shape(shape_proto);
+  auto status = xla::ShapeUtil::ValidateShape(shape);
+  if (!status.ok()) {
+    return status;
+  }
+  return std::move(shape);
+}
+
 tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
   xla::StatusOr<xla::Shape> shape =
-      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
     return xla::ShapeUtil::HumanStringWithLayout(shape.ValueOrDie());
   }
@@ -165,7 +187,7 @@ __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
   xla::cpu::runtime::XfeedManager* xfeed =
       xla::cpu::runtime::GetXfeedManager(device_ordinal);
   xla::StatusOr<xla::Shape> shape =
-      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
 }
@@ -208,7 +230,7 @@ __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
   xla::cpu::runtime::XfeedManager* xfeed =
       xla::cpu::runtime::GetXfeedManager(device_ordinal);
   xla::StatusOr<xla::Shape> shape =
-      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
 }

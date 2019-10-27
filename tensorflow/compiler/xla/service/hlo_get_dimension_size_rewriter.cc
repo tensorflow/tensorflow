@@ -56,6 +56,20 @@ StatusOr<bool> ReplaceGetSize(
   return true;
 }
 
+StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kSetDimensionSize) {
+    return false;
+  }
+
+  TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape()))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "instruction operand shape " << instr->operand(0)->shape();
+  HloInstruction* operand = instr->mutable_operand(0);
+
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+  return true;
+}
+
 }  // namespace
 
 StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
@@ -66,9 +80,10 @@ StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   *proto.mutable_hlo_module() = module->ToProto();
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool replaced,
+      TF_ASSIGN_OR_RETURN(bool replaced_get_size,
                           ReplaceGetSize(instruction, &inference));
-      changed = changed || replaced;
+      TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
+      changed = changed || replaced_get_size || replaced_set_size;
     }
   }
   return changed;

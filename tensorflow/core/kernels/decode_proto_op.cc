@@ -163,7 +163,6 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
     case WireFormatLite::TYPE_UINT64:
       return InitDefaultValue(dtype, field_desc->default_value_uint64(),
                               result);
-    case WireFormatLite::TYPE_ENUM:
     case WireFormatLite::TYPE_INT32:
     case WireFormatLite::TYPE_SINT32:
     case WireFormatLite::TYPE_SFIXED32:
@@ -174,6 +173,9 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
                               result);
     case WireFormatLite::TYPE_BOOL:
       return InitDefaultValue(dtype, field_desc->default_value_bool(), result);
+    case WireFormatLite::TYPE_ENUM:
+      return InitDefaultValue(dtype, field_desc->default_value_enum()->number(),
+                              result);
     case WireFormatLite::TYPE_BYTES:
     case WireFormatLite::TYPE_STRING:
       // Manipulating default string values as C-style pointers should be OK

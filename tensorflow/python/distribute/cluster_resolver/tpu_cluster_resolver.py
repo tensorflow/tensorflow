@@ -297,9 +297,8 @@ class TPUClusterResolver(ClusterResolver):
         not _GOOGLE_API_CLIENT_INSTALLED):
       raise ImportError('googleapiclient and oauth2client must be installed '
                         'before using the TPU cluster resolver. Execute: '
-                        '`pip install --upgrade google-api-python-client` '
-                        'and `pip install --upgrade oauth2client` to '
-                        'install with pip.')
+                        '`pip install --upgrade google-api-python-client '
+                        'oauth2client` to install with pip.')
 
     # We save user-passed credentials, unless the user didn't pass in anything.
     self._credentials = credentials

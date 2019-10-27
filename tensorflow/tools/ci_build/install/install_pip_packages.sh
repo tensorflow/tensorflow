@@ -121,14 +121,18 @@ pip3 install --upgrade termcolor
 # Keras
 pip2 install keras_applications==1.0.8 --no-deps
 pip3 install keras_applications==1.0.8 --no-deps
-pip2 install keras_preprocessing==1.0.5 --no-deps
-pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install keras_preprocessing==1.1.0 --no-deps
+pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
 # Estimator
 pip2 install tf-estimator-nightly --no-deps
 pip3 install tf-estimator-nightly --no-deps
+
+# Tensorboard
+pip2 install tb-nightly --no-deps
+pip3 install tb-nightly --no-deps
 
 # Argparse
 pip2 install --upgrade argparse

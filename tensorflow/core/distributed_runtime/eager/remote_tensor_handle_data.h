@@ -25,7 +25,7 @@ namespace tensorflow {
 class RemoteTensorHandleData : public TensorHandleData {
  public:
   RemoteTensorHandleData(int64 op_id, int output_num, const TensorShape& shape,
-                         eager::EagerClient* eager_client, uint64 context_id,
+                         const string& remote_task, uint64 context_id,
                          EagerContext* ctx);
   ~RemoteTensorHandleData() override;
 
@@ -48,7 +48,7 @@ class RemoteTensorHandleData : public TensorHandleData {
   const int64 op_id_;
   const int32 output_num_;
   const TensorShape shape_;
-  eager::EagerClient* eager_client_;
+  string remote_task_;
   uint64 context_id_;
   EagerContext* const ctx_;
 };
@@ -58,8 +58,8 @@ class RemoteTensorHandleData : public TensorHandleData {
 class UnshapedRemoteTensorHandleData : public TensorHandleData {
  public:
   UnshapedRemoteTensorHandleData(int64 op_id, int32 output_num,
-                                 eager::EagerClient* eager_client,
-                                 uint64 context_id, EagerContext* ctx);
+                                 const string& remote_task, uint64 context_id,
+                                 EagerContext* ctx);
   ~UnshapedRemoteTensorHandleData() override;
 
   // Unshaped remote tensor handles are not ready and hence cannot satisfy any
@@ -75,7 +75,7 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
 
   int64 op_id() const { return op_id_; }
   int32 output_num() const { return output_num_; }
-  eager::EagerClient* eager_client() const { return eager_client_; }
+  string remote_task() const { return remote_task_; }
   uint64 context_id() const { return context_id_; }
   EagerContext* ctx() const { return ctx_; }
 
@@ -93,7 +93,7 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   const int64 op_id_;
   const int32 output_num_;
   bool delete_remote_tensor_;
-  eager::EagerClient* eager_client_;
+  string remote_task_;
   uint64 context_id_;
   EagerContext* const ctx_;
 };

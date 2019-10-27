@@ -20,28 +20,38 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.keras import applications
+from tensorflow.python.keras.applications import densenet
+from tensorflow.python.keras.applications import inception_resnet_v2
+from tensorflow.python.keras.applications import inception_v3
+from tensorflow.python.keras.applications import mobilenet
+from tensorflow.python.keras.applications import mobilenet_v2
+from tensorflow.python.keras.applications import nasnet
+from tensorflow.python.keras.applications import resnet
+from tensorflow.python.keras.applications import resnet_v2
+from tensorflow.python.keras.applications import vgg16
+from tensorflow.python.keras.applications import vgg19
+from tensorflow.python.keras.applications import xception
 from tensorflow.python.platform import test
 
 
 MODEL_LIST = [
-    (applications.ResNet50, 2048),
-    (applications.ResNet101, 2048),
-    (applications.ResNet152, 2048),
-    (applications.ResNet50V2, 2048),
-    (applications.ResNet101V2, 2048),
-    (applications.ResNet152V2, 2048),
-    (applications.VGG16, 512),
-    (applications.VGG19, 512),
-    (applications.Xception, 2048),
-    (applications.InceptionV3, 2048),
-    (applications.InceptionResNetV2, 1536),
-    (applications.MobileNet, 1024),
-    (applications.MobileNetV2, 1280),
-    (applications.DenseNet121, 1024),
-    (applications.DenseNet169, 1664),
-    (applications.DenseNet201, 1920),
-    (applications.NASNetMobile, 1056),
+    (resnet.ResNet50, 2048),
+    (resnet.ResNet101, 2048),
+    (resnet.ResNet152, 2048),
+    (resnet_v2.ResNet50V2, 2048),
+    (resnet_v2.ResNet101V2, 2048),
+    (resnet_v2.ResNet152V2, 2048),
+    (vgg16.VGG16, 512),
+    (vgg19.VGG19, 512),
+    (xception.Xception, 2048),
+    (inception_v3.InceptionV3, 2048),
+    (inception_resnet_v2.InceptionResNetV2, 1536),
+    (mobilenet.MobileNet, 1024),
+    (mobilenet_v2.MobileNetV2, 1280),
+    (densenet.DenseNet121, 1024),
+    (densenet.DenseNet169, 1664),
+    (densenet.DenseNet201, 1920),
+    (nasnet.NASNetMobile, 1056),
 ]
 
 

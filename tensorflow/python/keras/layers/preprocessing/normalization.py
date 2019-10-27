@@ -28,6 +28,7 @@ from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 
 _COUNT_NAME = 'count'
@@ -40,8 +41,8 @@ class Normalization(CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
   This layer will coerce its inputs into a normal distribution centered around
-  0. It accomplishes this by precomputing the mean and variance of the data, and
-  calling (input-mean)/var at runtime.
+  0 with standard deviation 1. It accomplishes this by precomputing the mean and
+  variance of the data, and calling (input-mean)/sqrt(var) at runtime.
 
   What happens in `adapt`: Compute mean and variance of the data and store them
     as the layer's weights. `adapt` should be called before `fit`, `evaluate`,
@@ -107,7 +108,7 @@ class Normalization(CombinerPreprocessingLayer):
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
     variance = array_ops.reshape(self.variance, self._broadcast_shape)
-    return (inputs - mean) / variance
+    return (inputs - mean) / math_ops.sqrt(variance)
 
   def compute_output_shape(self, input_shape):
     return input_shape

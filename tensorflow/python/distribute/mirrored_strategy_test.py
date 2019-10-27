@@ -49,6 +49,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -371,6 +372,22 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual((0, 1), self.evaluate(result.values))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
+  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+    def merge_fn(_):
+      pass
+
+    @def_function.function
+    def model_fn():
+      def body_fn(i):
+        ds_context.get_replica_context().merge_call(merge_fn)
+        return i + 1
+      return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
+
   def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
     def merge_fn(_):
       pass
@@ -381,9 +398,29 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return 0.
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
-          RuntimeError, "`merge_call` called while defining a new graph."):
-        distribution.extended.call_for_each_replica(model_fn)
+      self.assertEqual(
+          self.evaluate(distribution.extended.call_for_each_replica(model_fn)),
+          0.)
+
+  def testFunctionInCallForEachReplicaCached(self, distribution):
+    traces = []
+
+    @def_function.function
+    def model_fn():
+      traces.append(None)
+
+    self.assertEmpty(traces)
+
+    for i in range(10):
+      distribution.extended.call_for_each_replica(model_fn)
+
+      if i == 0:
+        num_devices = len(traces)
+        self.assertGreater(num_devices, 0)
+      else:
+        # model_fn should not have been re-evaluated so the length should remain
+        # the same.
+        self.assertLen(traces, num_devices)
 
 
 @combinations.generate(
@@ -615,7 +652,6 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertIsInstance(mirrored_var, values.MirroredVariable)
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
-      self.assertIsNotNone(ops.tensor_id(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign(6.0))
       self.assertEqual(6.0, mirrored_var_result)
 
@@ -1147,6 +1183,41 @@ class MultiWorkerMirroredStrategyTest(
     self.assertTrue(new_config.isolate_session_state)
 
 
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            combinations.NamedDistribution(
+                "Mirrored",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.MirroredStrategy(
+                    devices=["/job:worker/task:0/gpu:{}".format(
+                        i) for i in range(context.num_gpus())]),
+                required_gpus=1)
+        ],
+        mode=["graph"]))
+class RemoteSingleWorkerMirroredStrategyGraph(
+    multi_worker_test_base.SingleWorkerTestBaseGraph,
+    strategy_test_lib.RemoteSingleWorkerMirroredStrategyBase):
+
+  def _get_num_gpus(self):
+    return context.num_gpus()
+
+  def testNumReplicasInSync(self, distribution):
+    self._testNumReplicasInSync(distribution)
+
+  def testMinimizeLoss(self, distribution):
+    self._testMinimizeLoss(distribution)
+
+  def testDeviceScope(self, distribution):
+    self._testDeviceScope(distribution)
+
+  def testMakeInputFnIteratorWithDataset(self, distribution):
+    self._testMakeInputFnIteratorWithDataset(distribution)
+
+  def testMakeInputFnIteratorWithCallable(self, distribution):
+    self._testMakeInputFnIteratorWithCallable(distribution)
+
+
 class MultiWorkerMirroredStrategyTestWithChief(
     multi_worker_test_base.MultiWorkerTestBase,
     strategy_test_lib.DistributionTestBase):
@@ -1186,8 +1257,12 @@ class MultiWorkerMirroredStrategyTestWithChief(
       with test.mock.patch.dict("os.environ",
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
-        self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                              cross_device_ops_lib.NcclAllReduce)
+        if context.num_gpus() > 0:
+          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                                cross_device_ops_lib.NcclAllReduce)
+        else:
+          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                                cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
       self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 

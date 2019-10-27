@@ -341,9 +341,9 @@ x = tf.while_loop(
 The same restriction in AutoGraph code:
 
 ```
-x = tf.constant(0, dtype=tf.int32)
+x = tf.constant(1,)
 while tf.random.uniform(()) > 0.5:
-  x = tf.constant(0, dtype=tf.float32)  # Error -- inconsistent shapes: (), (3,)
+  x = tf.constant((1, 2, 3))  # Error -- inconsistent shapes: (), (3,)
 ```
 
 ### Undefined and None values in TensorFlow

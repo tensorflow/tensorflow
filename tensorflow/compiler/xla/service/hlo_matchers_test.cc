@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
@@ -24,6 +25,8 @@ using ::testing::Eq;
 
 namespace xla {
 namespace {
+
+using HloMatchersTest = HloTestBase;
 
 string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
   std::stringstream ss;
@@ -39,7 +42,7 @@ string Explain(const T& t, const M& m) {
   return listener.str();
 }
 
-TEST(HloMatchersTest, Test) {
+TEST_F(HloMatchersTest, Test) {
   auto shape = ShapeUtil::MakeShape(F32, {1});
   auto param = HloInstruction::CreateParameter(0, shape, "param");
   auto mul = HloInstruction::CreateBinary(shape, HloOpcode::kMultiply,
@@ -85,7 +88,7 @@ TEST(HloMatchersTest, Test) {
          "add, (%param = f32[1]{0} parameter(0))"));
 }
 
-TEST(HloMatchersTest, CustomCallMatcher) {
+TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c1 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto c2 =
@@ -116,7 +119,7 @@ TEST(HloMatchersTest, CustomCallMatcher) {
               R"(custom-call with call target that is equal to "foo_target")");
 }
 
-TEST(HloMatchersTest, ShapeMatcher) {
+TEST_F(HloMatchersTest, ShapeMatcher) {
   auto p0 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
 
@@ -154,7 +157,7 @@ TEST(HloMatchersTest, ShapeMatcher) {
       "(expected: f32[7,5]{1,0})");
 }
 
-TEST(HloMatchersTest, ShardingMatcher) {
+TEST_F(HloMatchersTest, ShardingMatcher) {
   auto p0 = HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {5}),
                                             "param.0");
   p0->clear_sharding();
@@ -196,7 +199,7 @@ TEST(HloMatchersTest, ShardingMatcher) {
               "has incorrect sharding (expected: {maximal device=0})");
 }
 
-TEST(HloMatchersTest, DotMatcher) {
+TEST_F(HloMatchersTest, DotMatcher) {
   string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
@@ -208,7 +211,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),
@@ -232,7 +235,7 @@ ENTRY DotOperationFusion_TransposeFusion {
       "rhs_contracting_dimensions (got {0} want {1})");
 }
 
-TEST(HloMatchersTest, ComparisonMatcher) {
+TEST_F(HloMatchersTest, ComparisonMatcher) {
   auto shape = ShapeUtil::MakeShape(F32, {1});
   auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
   auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
@@ -264,7 +267,7 @@ TEST(HloMatchersTest, ComparisonMatcher) {
                  "has wrong comparison direction (got EQ, want NE)"));
 }
 
-TEST(HloMatchersTest, AsyncCopyMatcher) {
+TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
       /*element_size_in_bits=*/0, /*memory_space=*/1);

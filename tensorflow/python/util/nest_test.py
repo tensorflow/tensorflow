@@ -55,6 +55,15 @@ class _CustomMapping(collections_abc.Mapping):
     return len(self._wrapped)
 
 
+class _CustomSequenceThatRaisesException(collections.Sequence):
+
+  def __len__(self):
+    return 1
+
+  def __getitem__(self, item):
+    raise ValueError("Cannot get item: %s" % item)
+
+
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
@@ -135,10 +144,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegexp(ValueError, "Structure is a scalar"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        "nest cannot guarantee that it is safe to map one to the other."):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, "flat_sequence"):
+    with self.assertRaisesRegexp(TypeError, "but found incompatible type"):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
@@ -258,8 +269,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(structure, unflattened)
 
   def testPackSequenceAs_notIterableError(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 "flat_sequence must be a sequence"):
+    with self.assertRaisesRegexp(
+        TypeError,
+        "Attempted to pack value:\n  bye\ninto a sequence, but found "
+        "incompatible type `<(type|class) 'str'>` instead."):
       nest.pack_sequence_as("hi", "bye")
 
   def testPackSequenceAs_wrongLengthsError(self):
@@ -748,10 +761,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.assert_shallow_structure(shallow_tree, input_tree)
 
   def testFlattenWithTuplePathsUpTo(self):
-    def get_paths_and_values(shallow_tree, input_tree,
-                             check_subtrees_length=True):
+    def get_paths_and_values(shallow_tree, input_tree):
       path_value_pairs = nest.flatten_with_tuple_paths_up_to(
-          shallow_tree, input_tree, check_subtrees_length=check_subtrees_length)
+          shallow_tree, input_tree)
       paths = [p for p, _ in path_value_pairs]
       values = [v for _, v in path_value_pairs]
       return paths, values
@@ -885,16 +897,6 @@ class NestTest(parameterized.TestCase, test.TestCase):
             input_length=len(input_tree),
             shallow_length=len(shallow_tree))):
       get_paths_and_values(shallow_tree, input_tree)
-
-    (flattened_input_tree_paths,
-     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree,
-                                                  check_subtrees_length=False)
-    (flattened_shallow_tree_paths,
-     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
-    self.assertEqual(flattened_input_tree_paths, [("a",), ("c",)])
-    self.assertEqual(flattened_input_tree, ["A", "C"])
-    self.assertEqual(flattened_shallow_tree_paths, [("a",), ("c",)])
-    self.assertEqual(flattened_shallow_tree, [1, 2])
 
     # Using non-iterable elements.
     input_tree = [0]
@@ -1208,6 +1210,19 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):
     with self.assertRaises(error_type):
       nest.map_structure_with_tuple_paths(lambda path, *s: 0, s1, s2)
+
+  def testFlattenCustomSequenceThatRaisesException(self):  # b/140746865
+    seq = _CustomSequenceThatRaisesException()
+    with self.assertRaisesRegexp(ValueError, "Cannot get item"):
+      nest.flatten(seq)
+
+  def testListToTuple(self):
+    input_sequence = [1, (2, {3: [4, 5, (6,)]}, None, 7, [[[8]]])]
+    expected = (1, (2, {3: (4, 5, (6,))}, None, 7, (((8,),),)))
+    nest.assert_same_structure(
+        nest.list_to_tuple(input_sequence),
+        expected,
+    )
 
 
 class NestBenchmark(test.Benchmark):

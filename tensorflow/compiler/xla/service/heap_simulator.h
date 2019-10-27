@@ -257,22 +257,6 @@ class HeapAlgorithm {
   // Finish collects the buffer offset assignment results.  Free may only be
   // called once, after the Alloc and Free calls.
   virtual Result Finish() = 0;
-
-  // Heap algorithms can optionally make use of the instruction/computation
-  // schedule. These data structures are guaranteed to be valid while Finish()
-  // is being called.
-  virtual void SetSchedules(
-      const HloInstructionSequence* flattened_instruction_sequence,
-      const absl::flat_hash_map<const HloInstruction*, int64>*
-          instruction_schedule) {
-    flattened_instruction_sequence_ = flattened_instruction_sequence;
-    instruction_schedule_ = instruction_schedule;
-  }
-
- protected:
-  const HloInstructionSequence* flattened_instruction_sequence_;
-  const absl::flat_hash_map<const HloInstruction*, int64>*
-      instruction_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;

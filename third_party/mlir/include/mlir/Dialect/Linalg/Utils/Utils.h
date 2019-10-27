@@ -18,11 +18,9 @@
 #ifndef MLIR_DIALECT_LINALG_UTILS_H_
 #define MLIR_DIALECT_LINALG_UTILS_H_
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
-#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 class AffineExpr;
@@ -57,8 +55,8 @@ public:
 };
 
 /// Helper class to sugar building loop.for loop nests from ranges.
-/// This is similar to edsc::LoopNestBuilder except it works on ranges directly.
-/// In the current implementation it produces loop.for operations.
+/// This is similar to edsc::AffineLoopNestBuilder except it works on ranges
+/// directly. In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
@@ -76,6 +74,18 @@ private:
 } // namespace edsc
 
 namespace linalg {
+class LinalgDependenceGraph;
+
+struct FusionInfo {
+  LinalgOp originalProducer;
+  LinalgOp fusedProducer;
+};
+
+// Fuses producer into consumer if the producer is structurally feasible and the
+// fusion would not violate dependencies.
+Optional<FusionInfo> fuseProducerOf(LinalgOp consumer, unsigned consumerIdx,
+                                    LinalgDependenceGraph &graph,
+                                    OperationFolder &state);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
@@ -84,9 +94,9 @@ template <typename ConcreteOp>
 SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
   SmallVector<Value *, 8> res;
   for (auto v : linalgOp.getInputsAndOutputs()) {
-    ViewType t = v->getType().template cast<ViewType>();
+    MemRefType t = v->getType().template cast<MemRefType>();
     for (unsigned i = 0; i < t.getRank(); ++i)
-      res.push_back(intrinsics::dim(v, i));
+      res.push_back(edsc::intrinsics::dim(v, i));
   }
   return res;
 }
@@ -104,26 +114,16 @@ struct TiledLinalgOp {
 };
 
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
-                                           ArrayRef<Value *> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes, OperationFolder &folder);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
-                                           ArrayRef<int64_t> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OperationFolder &folder);
 
 struct PromotionInfo {
   Value *buffer;
@@ -131,8 +131,8 @@ struct PromotionInfo {
   Value *partialLocalView;
 };
 
-/// Promotes the `views` into a new buffer allocated at the insertion point `b`.
-/// For now, promotion occurs in 3 steps:
+/// Promotes the `subViews` into a new buffer allocated at the insertion point
+/// `b`. For now, promotion occurs in 3 steps:
 ///   1. Create a new buffer for a full tile (i.e. not clipped at the boundary).
 ///   2. Take a full view on the buffer and `linalg.fill` it with zeros (use
 ///      float zero for now).
@@ -140,10 +140,9 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteLinalgViews(OpBuilder &b,
-                                                       Location loc,
-                                                       ArrayRef<Value *> views,
-                                                       OperationFolder &folder);
+llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
+                                                    ArrayRef<Value *> subViews,
+                                                    OperationFolder &folder);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

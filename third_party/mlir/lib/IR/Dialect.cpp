@@ -49,7 +49,7 @@ void mlir::registerDialectAllocator(const DialectAllocatorFunction &function) {
 }
 
 /// Registers a function to set specific hooks for a specific dialect, typically
-/// used through the DialectHooksRegistreation template.
+/// used through the DialectHooksRegistration template.
 void mlir::registerDialectHooksSetter(const DialectHooksSetter &function) {
   assert(
       function &&
@@ -86,6 +86,15 @@ Dialect::~Dialect() {}
 /// invoked from any operation containing a region.
 LogicalResult Dialect::verifyRegionArgAttribute(Operation *, unsigned, unsigned,
                                                 NamedAttribute) {
+  return success();
+}
+
+/// Verify an attribute from this dialect on the result at 'resultIndex' for
+/// the region at 'regionIndex' on the given operation. Returns failure if
+/// the verification failed, success otherwise. This hook may optionally be
+/// invoked from any operation containing a region.
+LogicalResult Dialect::verifyRegionResultAttribute(Operation *, unsigned,
+                                                   unsigned, NamedAttribute) {
   return success();
 }
 

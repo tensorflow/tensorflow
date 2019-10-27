@@ -281,7 +281,8 @@ REGISTER_OP("Lgamma").UNARY_REAL();
 REGISTER_OP("Digamma").UNARY_REAL();
 
 REGISTER_OP("Erf").UNARY_REAL();
-
+REGISTER_OP("Erfinv").UNARY_REAL();
+REGISTER_OP("Ndtri").UNARY_REAL();
 REGISTER_OP("Erfc").UNARY_REAL();
 
 REGISTER_OP("Sigmoid").UNARY_COMPLEX();
@@ -917,7 +918,7 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 #endif  // INTEL_MKL
 
@@ -1420,7 +1421,7 @@ REGISTER_OP("Range")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {bfloat16, float, double, int32, int64} = DT_INT32")
+    .Attr("Tidx: {bfloat16, half, float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1459,7 +1460,7 @@ REGISTER_OP("LinSpace")
     .Input("stop: T")
     .Input("num: Tidx")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;

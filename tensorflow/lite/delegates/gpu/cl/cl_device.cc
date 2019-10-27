@@ -290,6 +290,10 @@ bool DeviceInfo::SupportsTextureArray() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
 
+bool DeviceInfo::SupportsImageBuffer() const {
+  return cl_version >= OpenCLVersion::CL_1_2;
+}
+
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
     : id_(id), platform_id_(platform_id), info_(id) {}
 
@@ -337,6 +341,10 @@ bool CLDevice::SupportsExtension(const std::string& extension) const {
 
 bool CLDevice::SupportsTextureArray() const {
   return info_.SupportsTextureArray();
+}
+
+bool CLDevice::SupportsImageBuffer() const {
+  return info_.SupportsImageBuffer();
 }
 
 std::string CLDevice::GetPlatformVersion() const {

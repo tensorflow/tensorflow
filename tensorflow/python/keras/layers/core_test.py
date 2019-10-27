@@ -31,6 +31,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -271,6 +272,16 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertIsNotNone(out._keras_mask)
     self.assertAllClose(self.evaluate(out._keras_mask), expected_mask)
 
+  def test_lambda_with_ragged_input(self):
+
+    def add_one(inputs):
+      return inputs + 1.0
+    layer = keras.layers.Lambda(add_one)
+
+    ragged_input = ragged_factory_ops.constant([[1.0], [2.0, 3.0]])
+    out = layer(ragged_input)
+    expected_out = ragged_factory_ops.constant([[2.0], [3.0, 4.0]])
+    self.assertAllClose(out, expected_out)
 
 class TestStatefulLambda(keras_parameterized.TestCase):
 
@@ -432,8 +443,8 @@ class CoreLayersTest(keras_parameterized.TestCase):
 
   def test_dense_with_policy(self):
     inputs = ops.convert_to_tensor(
-        np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
-    layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
+        np.random.randint(low=0, high=7, size=(2, 2)))
+    layer = keras.layers.Dense(5, dtype=policy.Policy('mixed_float16'))
     outputs = layer(inputs)
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype='float16', shape=(2, 2)))

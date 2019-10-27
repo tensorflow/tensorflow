@@ -22,153 +22,128 @@ namespace {
 
 constexpr char kNodeName[] = "repeat_dataset";
 
-class RepeatDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates `TensorSliceDataset` variant tensor from the input vector of
-  // tensors.
-  Status CreateTensorSliceDatasetTensor(
-      std::vector<Tensor> *const tensor_vector, Tensor *dataset_tensor) {
-    DatasetBase *tensor_slice_dataset;
-    TF_RETURN_IF_ERROR(CreateTensorSliceDataset(
-        "tensor_slice_node", tensor_vector, &tensor_slice_dataset));
-    TF_RETURN_IF_ERROR(
-        StoreDatasetInVariantTensor(tensor_slice_dataset, dataset_tensor));
+class RepeatDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  RepeatDatasetParams(T input_dataset_params, int64 count,
+                      DataTypeVector output_dtypes,
+                      std::vector<PartialTensorShape> output_shapes,
+                      string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        count_(count) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    return {CreateTensor<int64>(TensorShape({}), {count_})};
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->emplace_back(RepeatDatasetOp::kInputDataset);
+    input_names->emplace_back(RepeatDatasetOp::kCount);
     return Status::OK();
   }
 
-  // Creates a new `RepeatDataset` op kernel.
-  Status CreateRepeatDatasetKernel(
-      const DataTypeVector &output_types,
-      const std::vector<PartialTensorShape> &output_shapes,
-      std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(RepeatDatasetOp::kDatasetType),
-        {RepeatDatasetOp::kInputDataset, RepeatDatasetOp::kCount},
-        {{RepeatDatasetOp::kOutputTypes, output_types},
-         {RepeatDatasetOp::kOutputShapes, output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    attr_vector->clear();
+    attr_vector->emplace_back(RepeatDatasetOp::kOutputTypes, output_dtypes_);
+    attr_vector->emplace_back(RepeatDatasetOp::kOutputShapes, output_shapes_);
     return Status::OK();
   }
 
-  // Create a new `RepeatDataset` op kernel context.
-  Status CreateRepeatDatasetContext(
-      OpKernel *op_kernel, gtl::InlinedVector<TensorValue, 4> *const inputs,
-      std::unique_ptr<OpKernelContext> *context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    return Status::OK();
-  }
+  string dataset_type() const override { return RepeatDatasetOp::kDatasetType; }
+
+ private:
+  int64 count_;
 };
 
-struct TestCase {
-  std::vector<Tensor> input_tensors;
-  int64 count;
-  std::vector<Tensor> expected_outputs;
-  DataTypeVector expected_output_dtypes;
-  std::vector<PartialTensorShape> expected_output_shapes;
-  int64 expected_cardinality;
-  std::vector<int> breakpoints;
-};
+class RepeatDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
-TestCase FiniteRepeatTestCase() {
-  return {/*input_tensors*/
-          {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-           CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
-          /*count*/ 2,
-          /*expected_outputs*/
-          {CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           CreateTensor<tstring>(TensorShape{1}, {"a"}),
-           CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           CreateTensor<tstring>(TensorShape{1}, {"b"}),
-           CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           CreateTensor<tstring>(TensorShape{1}, {"a"}),
-           CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           CreateTensor<tstring>(TensorShape{1}, {"b"})},
-          /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
-          /*expected_output_shapes*/
-          {PartialTensorShape({2}), PartialTensorShape({1})},
-          /*expected_cardinality*/ 4,
-          /*breakpoints*/ {0, 1, 3}};
+RepeatDatasetParams FiniteRepeatDatasetParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+                      CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
+      /*node_name=*/"tensor_slice");
+  return RepeatDatasetParams(
+      /*input_dataset_params=*/std::move(tensor_slice_dataset_params),
+      /*count=*/2,
+      /*output_dtypes=*/{DT_INT64, DT_STRING},
+      /*output_shapes=*/{PartialTensorShape({2}), PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
 }
 
-TestCase EmptyRepeatTestCase() {
-  return {/*input_tensors*/
-          {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-           CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
-          /*count*/ 0,
-          /*expected_outputs*/
-          {},
-          /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
-          /*expected_output_shapes*/
-          {PartialTensorShape({2}), PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 1, 3}};
+RepeatDatasetParams EmptyRepeatDatasetParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+                      CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
+      /*node_name=*/"tensor_slice");
+  return RepeatDatasetParams(
+      /*input_dataset_params=*/std::move(tensor_slice_dataset_params),
+      /*count=*/0,
+      /*output_dtypes=*/{DT_INT64, DT_STRING},
+      /*output_shapes=*/{PartialTensorShape({2}), PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
 }
 
-TestCase ForeverRepeatTestCase() {
-  return {/*input_tensors*/
-          {CreateTensor<int64>(TensorShape{2, 1}, {1, 2})},
-          /*count*/ -1,
-          /*expected_outputs*/
-          // Use the first group of the repeated tensors to represent the
-          // infinite outputs.
-          {CreateTensor<int64>(TensorShape{1}, {1}),
-           CreateTensor<int64>(TensorShape{1}, {2})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ -1,
-          /*breakpoints*/ {0, 1, 3}};
+RepeatDatasetParams ForeverRepeatDatasetParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<int64>(TensorShape{2, 1}, {1, 2})},
+      /*node_name=*/"tensor_slice");
+  return RepeatDatasetParams(
+      /*input_dataset_params=*/std::move(tensor_slice_dataset_params),
+      /*count=*/-1,
+      /*output_dtypes=*/{DT_INT64, DT_STRING},
+      /*output_shapes=*/{PartialTensorShape({2}), PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
 }
 
-class ParameterizedDatasetOpTest
+std::vector<GetNextTestCase<RepeatDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<tstring>(TensorShape{1}, {"a"}),
+            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<tstring>(TensorShape{1}, {"b"}),
+            CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<tstring>(TensorShape{1}, {"a"}),
+            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<tstring>(TensorShape{1}, {"b"})}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*expected_outputs=*/{}},
+          {/*dataset_params=*/
+           ForeverRepeatDatasetParams(),
+           // Use the first group of the repeated tensors to represent the
+           // infinite outputs.
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape{1}, {1}),
+            CreateTensor<int64>(TensorShape{1}, {2})}}};
+}
+
+class ParameterizedIteratorGetNextOpTest
     : public RepeatDatasetOpTest,
-      public ::testing::WithParamInterface<TestCase> {};
+      public ::testing::WithParamInterface<
+          GetNextTestCase<RepeatDatasetParams>> {};
 
-TEST_P(ParameterizedDatasetOpTest, GetNext) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(repeat_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      repeat_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+TEST_P(ParameterizedIteratorGetNextOpTest, GetNext) {
+  auto test_case = GetParam();
+  TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
   auto expected_outputs_it = test_case.expected_outputs.begin();
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
 
-  if (test_case.count < 0) {
+  if (dataset_->Cardinality() == kInfiniteCardinality) {
     // We test only a finite number of steps of the infinite sequence.
     for (int i = 0; i < 100; ++i) {
       out_tensors.clear();
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
-      for (const auto &tensor : out_tensors) {
+      TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
+                                      &end_of_sequence));
+      for (const auto& tensor : out_tensors) {
         TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
         expected_outputs_it++;
         // In the forever-repeat test case, the first group of the repeated
@@ -182,10 +157,10 @@ TEST_P(ParameterizedDatasetOpTest, GetNext) {
     EXPECT_FALSE(end_of_sequence);
   } else {
     while (!end_of_sequence) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
+                                      &end_of_sequence));
       if (!end_of_sequence) {
-        for (const auto &tensor : out_tensors) {
+        for (const auto& tensor : out_tensors) {
           EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
           TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
           expected_outputs_it++;
@@ -196,346 +171,181 @@ TEST_P(ParameterizedDatasetOpTest, GetNext) {
   }
 }
 
+INSTANTIATE_TEST_SUITE_P(RepeatDatasetOpTest,
+                         ParameterizedIteratorGetNextOpTest,
+                         ::testing::ValuesIn(GetNextTestCases()));
+
 TEST_F(RepeatDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = FiniteRepeatTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  EXPECT_EQ(repeat_dataset->node_name(), kNodeName);
+  auto dataset_params = FiniteRepeatDatasetParams();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
 }
 
 TEST_F(RepeatDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = FiniteRepeatTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  EXPECT_EQ(repeat_dataset->type_string(),
-            name_utils::OpName(RepeatDatasetOp::kDatasetType));
+  auto dataset_params = FiniteRepeatDatasetParams();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetTypeString(
+      name_utils::OpName(RepeatDatasetOp::kDatasetType)));
 }
 
-TEST_P(ParameterizedDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-  TF_EXPECT_OK(VerifyTypesMatch(repeat_dataset->output_dtypes(),
-                                test_case.expected_output_dtypes));
+std::vector<DatasetOutputDtypesTestCase<RepeatDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING}},
+          {/*dataset_params=*/ForeverRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+DATASET_OUTPUT_DTYPES_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                             DatasetOutputDtypesTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-  TF_EXPECT_OK(VerifyShapesCompatible(repeat_dataset->output_shapes(),
-                                      test_case.expected_output_shapes));
+std::vector<DatasetOutputShapesTestCase<RepeatDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({2}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({2}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/ForeverRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1})}}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+DATASET_OUTPUT_SHAPES_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                             DatasetOutputShapesTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  EXPECT_EQ(repeat_dataset->Cardinality(), GetParam().expected_cardinality);
+std::vector<CardinalityTestCase<RepeatDatasetParams>>
+DatasetCardinalityTestCases() {
+  return {{FiniteRepeatDatasetParams(), /*expected_cardinality=*/4},
+          {EmptyRepeatDatasetParams(), /*expected_cardinality=*/0},
+          {ForeverRepeatDatasetParams(),
+           /*expected_cardinality=*/kInfiniteCardinality}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+DATASET_CARDINALITY_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                           DatasetCardinalityTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(repeat_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      repeat_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
-                                test_case.expected_output_dtypes));
+std::vector<IteratorOutputDtypesTestCase<RepeatDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING}},
+          {/*dataset_params=*/ForeverRepeatDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+ITERATOR_OUTPUT_DTYPES_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                              IteratorOutputDtypesTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(repeat_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      repeat_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      test_case.expected_output_shapes));
+std::vector<IteratorOutputShapesTestCase<RepeatDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({2}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({2}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/ForeverRepeatDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1})}}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+ITERATOR_OUTPUT_SHAPES_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                              IteratorOutputShapesTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(repeat_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      repeat_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  if (test_case.count < 0) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::ForeverRepeat");
-  } else if (test_case.count == 0) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::EmptyRepeat");
-  } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::FiniteRepeat");
-  }
+std::vector<IteratorPrefixTestCase<RepeatDatasetParams>>
+IteratorPrefixTestCases() {
+  return {
+      {/*dataset_params=*/FiniteRepeatDatasetParams(),
+       /*expected_iterator_prefix=*/
+       name_utils::IteratorPrefix(
+           "FiniteRepeat", FiniteRepeatDatasetParams().iterator_prefix())},
+      {/*dataset_params=*/EmptyRepeatDatasetParams(),
+       /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
+           "EmptyRepeat", EmptyRepeatDatasetParams().iterator_prefix())},
+      {/*dataset_params=*/ForeverRepeatDatasetParams(),
+       /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
+           "ForeverRepeat", ForeverRepeatDatasetParams().iterator_prefix())}};
 }
 
-TEST_P(ParameterizedDatasetOpTest, Roundtrip) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = GetParam();
-  auto expected_outputs_it = test_case.expected_outputs.begin();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
+ITERATOR_PREFIX_TEST_P(RepeatDatasetOpTest, RepeatDatasetParams,
+                       IteratorPrefixTestCases())
 
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
+std::vector<IteratorSaveAndRestoreTestCase<RepeatDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
+           /*breakpoints*/ {0, 1, 3},
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<tstring>(TensorShape{1}, {"a"}),
+            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<tstring>(TensorShape{1}, {"b"}),
+            CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<tstring>(TensorShape{1}, {"a"}),
+            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<tstring>(TensorShape{1}, {"b"})}},
+          {/*dataset_params=*/EmptyRepeatDatasetParams(),
+           /*breakpoints*/ {0, 1, 3},
+           /*expected_outputs=*/{}},
+          {/*dataset_params=*/
+           ForeverRepeatDatasetParams(),
+           /*breakpoints*/ {0, 1, 3},
+           // Use the first group of the repeated tensors to represent the
+           // infinite outputs.
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape{1}, {1}),
+            CreateTensor<int64>(TensorShape{1}, {2})}}};
+}
 
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(repeat_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      repeat_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+class ParameterizedIteratorSaveAndRestoreTest
+    : public RepeatDatasetOpTest,
+      public ::testing::WithParamInterface<
+          IteratorSaveAndRestoreTestCase<RepeatDatasetParams>> {};
+
+TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
+  auto test_case = GetParam();
+  TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
 
-  bool end_of_sequence = repeat_dataset->Cardinality() == 0;
+  auto expected_outputs_it = test_case.expected_outputs.begin();
+  bool end_of_sequence = dataset_->Cardinality() == 0;
   std::vector<Tensor> out_tensors;
   int cur_iteration = 0;
   std::vector<int> breakpoints = GetParam().breakpoints;
   for (int breakpoint : breakpoints) {
     VariantTensorData data;
     VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
+    TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
-                                 *repeat_dataset, &iterator));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                                 test_case.dataset_params.iterator_prefix(),
+                                 *dataset_, &iterator_));
 
     while (cur_iteration < breakpoint) {
       out_tensors.clear();
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
+                                      &end_of_sequence));
       if (!end_of_sequence) {
-        for (auto &tensor : out_tensors) {
+        for (auto& tensor : out_tensors) {
           EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
           TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
           expected_outputs_it++;
         }
       }
       cur_iteration++;
-      if (test_case.count < 0 &&
+      if (dataset_->Cardinality() == kInfiniteCardinality &&
           expected_outputs_it == test_case.expected_outputs.end()) {
         expected_outputs_it = test_case.expected_outputs.begin();
       }
     }
 
-    if (breakpoint >= repeat_dataset->Cardinality()) {
-      if (test_case.count < 0) {
+    if (breakpoint >= dataset_->Cardinality()) {
+      if (dataset_->Cardinality() == kInfiniteCardinality) {
         EXPECT_FALSE(end_of_sequence);
       } else {
         EXPECT_TRUE(end_of_sequence);
@@ -547,10 +357,9 @@ TEST_P(ParameterizedDatasetOpTest, Roundtrip) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(RepeatDatasetOpTest, ParameterizedDatasetOpTest,
-                         ::testing::ValuesIn(std::vector<TestCase>(
-                             {FiniteRepeatTestCase(), EmptyRepeatTestCase(),
-                              ForeverRepeatTestCase()})));
+INSTANTIATE_TEST_SUITE_P(
+    RepeatDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
+    ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
 }  // namespace
 }  // namespace data

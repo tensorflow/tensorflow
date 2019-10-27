@@ -41,10 +41,14 @@ from tensorflow.python.platform import tf_logging as logging
 class BatchCounterCallback(callbacks.Callback):
 
   def __init__(self):
-    self.batch_count = 0
+    self.batch_begin_count = 0
+    self.batch_end_count = 0
+
+  def on_batch_begin(self, *args, **kwargs):
+    self.batch_begin_count += 1
 
   def on_batch_end(self, *args, **kwargs):
-    self.batch_count += 1
+    self.batch_end_count += 1
 
 
 class TestTrainingWithDataset(keras_parameterized.TestCase):
@@ -119,8 +123,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     # Test with sample weight.
     sample_weight = np.random.random((10,))
     with self.assertRaisesRegexp(
-        ValueError, '`sample_weight` argument is not supported '
-        'when input `x` is a dataset or a dataset iterator'):
+        ValueError, r'`sample_weight` argument is not supported .+dataset'):
       model.fit(
           dataset,
           epochs=1,
@@ -141,8 +144,9 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         ValueError, 'The `batch_size` argument must not be specified'):
       model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'you should not specify a target'):
+    with self.assertRaisesRegexp(
+        ValueError, '(you should not specify a target)|'
+        '(`y` argument is not supported when using dataset as input.)'):
       model.fit(dataset, dataset,
                 epochs=1, steps_per_epoch=2, verbose=0)
 
@@ -385,7 +389,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -411,7 +415,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -461,7 +465,16 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     self.assertIn('10/10', lines[-1])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    # The first epoch will invoke batch begin 11 times, since it doesn't know
+    # the cardinality. The second epoch should just invoke 10 times.
+    if (testing_utils.should_run_eagerly()
+        or testing_utils.should_run_tf_function()):
+      expected_batch_begin_count = 21
+    else:
+      expected_batch_begin_count = 20
+    self.assertEqual(batch_counter.batch_begin_count,
+                     expected_batch_begin_count)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -503,7 +516,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           'building your dataset.', str(mock_log.call_args))
 
     self.assertLen(history.history['loss'], 1)
-    self.assertEqual(batch_counter.batch_count, 10)
+    self.assertEqual(batch_counter.batch_end_count, 10)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -520,6 +533,46 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     # dataset contains only features, no labels.
     dataset = dataset_ops.Dataset.from_tensor_slices(x).repeat(10).batch(10)
     model.fit(dataset)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_train_eval_with_steps(self):
+    # See b/142880049 for more details.
+    inp = keras.Input(shape=(4,), name='inp1')
+    out = keras.layers.Dense(2)(inp)
+    model = keras.Model(inp, out)
+    model.compile(
+        'rmsprop', loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    inputs = np.zeros((100, 4), dtype=np.float32)
+    targets = np.random.randint(0, 2, size=100, dtype=np.int32)
+    training_ds = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).repeat().batch(10)
+
+    # Create eval dataset with generator, so that dataset won't contain the
+    # overall size metadata. Without eval_steps, we expect to run through all
+    # the data in this dataset every epoch.
+    def gen():
+      for _ in range(100):
+        yield (np.zeros(4, dtype=np.float32),
+               np.random.randint(0, 2, size=1, dtype=np.int32))
+    eval_ds = dataset_ops.Dataset.from_generator(
+        generator=gen,
+        output_types=('float64', 'int32'),
+        output_shapes=([4], [1])).batch(100)
+    batch_counter = BatchCounterCallback()
+
+    model.fit(
+        training_ds,
+        steps_per_epoch=10,
+        epochs=10,
+        validation_data=eval_ds,
+        callbacks=[batch_counter]
+    )
+
+    # Expect 10 batch from training per epoch.
+    self.assertEqual(batch_counter.batch_end_count, 100)
 
 
 class TestMetricsWithDatasets(keras_parameterized.TestCase):

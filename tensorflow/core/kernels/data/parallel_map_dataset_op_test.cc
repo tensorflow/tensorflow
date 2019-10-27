@@ -86,7 +86,7 @@ FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
 TestCase TestCase1() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          CreateTensor<int64>(TensorShape({}), {1}),
+          CreateTensor<int32>(TensorShape({}), {1}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ false,
@@ -108,7 +108,7 @@ TestCase TestCase1() {
 TestCase TestCase2() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          CreateTensor<int64>(TensorShape({}), {2}),
+          CreateTensor<int32>(TensorShape({}), {2}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ true,
@@ -131,7 +131,7 @@ TestCase TestCase3() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int32>(TensorShape({}), {3}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
@@ -153,7 +153,7 @@ TestCase TestCase3() {
 TestCase TestCase4() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int32>(TensorShape({}), {4}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ false,
@@ -176,7 +176,7 @@ TestCase TestCase5() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      CreateTensor<int64>(TensorShape({}), {model::kAutotune}),
+      CreateTensor<int32>(TensorShape({}), {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
@@ -199,7 +199,7 @@ TestCase TestCase6() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int32>(TensorShape({}), {4}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
@@ -223,7 +223,7 @@ TestCase TestCase7() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int32>(TensorShape({}), {2}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,
@@ -247,7 +247,7 @@ TestCase TestCase8() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      CreateTensor<int64>(TensorShape({}), {model::kAutotune}),
+      CreateTensor<int32>(TensorShape({}), {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,
@@ -267,7 +267,7 @@ TestCase TestCase8() {
 TestCase InvalidNumParallelCallsTestCase() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          CreateTensor<int64>(TensorShape({}), {-4}),
+          CreateTensor<int32>(TensorShape({}), {-4}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ true,

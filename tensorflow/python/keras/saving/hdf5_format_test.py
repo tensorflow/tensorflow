@@ -335,6 +335,11 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                  r'element\(s\)\.'):
       hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
+    hdf5_format.load_weights_from_hdf5_group_by_name(
+        f_model, model.layers, skip_mismatch=True)
+    self.assertAllClose(keras.backend.get_value(ref_model.layers[1].kernel),
+                        keras.backend.get_value(model.layers[1].kernel))
+
   @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
@@ -357,6 +362,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
+      keras.backend.set_value(ref_model.layers[1].bias, [3.5] * num_classes)
       hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
 
       f_model = h5py.File(h5_path, 'r')
@@ -374,6 +380,11 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    r'shape \(3, 10\), but the saved weight has '
                                    r'shape \(3, 5\)\.'):
         hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+
+      hdf5_format.load_weights_from_hdf5_group_by_name(
+          f_model, model.layers, skip_mismatch=True)
+      self.assertAllClose([3.5] * num_classes,
+                          keras.backend.get_value(model.layers[1].bias))
 
 
 class TestWholeModelSaving(test.TestCase):

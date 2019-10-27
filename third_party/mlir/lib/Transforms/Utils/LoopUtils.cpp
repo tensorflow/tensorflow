@@ -42,7 +42,6 @@
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
-using llvm::MapVector;
 using llvm::SetVector;
 using llvm::SmallMapVector;
 
@@ -88,7 +87,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   for (unsigned i = 0, e = tripCountMap.getNumResults(); i < e; i++) {
     auto tripCountExpr = tripCountMap.getResult(i);
     bumpExprs[i] = (tripCountExpr - tripCountExpr % unrollFactor) * step;
-    auto bumpMap = b.getAffineMap(tripCountMap.getNumDims(),
+    auto bumpMap = AffineMap::get(tripCountMap.getNumDims(),
                                   tripCountMap.getNumSymbols(), bumpExprs[i]);
     bumpValues[i] =
         b.create<AffineApplyOp>(forOp.getLoc(), bumpMap, tripCountOperands);
@@ -101,7 +100,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   operands->clear();
   operands->push_back(lb);
   operands->append(bumpValues.begin(), bumpValues.end());
-  *map = b.getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs);
+  *map = AffineMap::get(1 + tripCountMap.getNumResults(), 0, newUbExprs);
   // Simplify the map + operands.
   fullyComposeAffineMapAndOperands(map, operands);
   *map = simplifyAffineMap(*map);
@@ -236,7 +235,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 // This method uses an algorithm// in time linear in the number of operations
 // in the body of the for loop - (using the 'sweep line' paradigm). This method
 // asserts preservation of SSA dominance. A check for that as well as that for
-// memory-based depedence preservation check rests with the users of this
+// memory-based dependence preservation check rests with the users of this
 // method.
 LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                                  bool unrollPrologueEpilogue) {
@@ -368,10 +367,7 @@ void getPerfectlyNestedLoopsImpl(
     unsigned maxLoops = std::numeric_limits<unsigned>::max()) {
   for (unsigned i = 0; i < maxLoops; ++i) {
     forOps.push_back(rootForOp);
-    // FIXME: ForOp and AffineForOp currently provide different names to access
-    // the region ("region" and "getRegion").  Remove this generic access when
-    // AffineForOp moves to ODS and also gets "region".
-    Block &body = rootForOp.getOperation()->getRegion(0).front();
+    Block &body = rootForOp.region().front();
     if (body.begin() != std::prev(body.end(), 2))
       return;
 
@@ -491,7 +487,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
     if (!forOpIV->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
-      auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
+      auto bumpMap = AffineMap::get(1, 0, {d0 + i * step});
       auto ivUnroll =
           builder.create<AffineApplyOp>(forOp.getLoc(), bumpMap, forOpIV);
       operandMap.map(forOpIV, ivUnroll);
@@ -535,7 +531,7 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
 
 // Checks each dependence component against the permutation to see if the
 // desired loop interchange would violate dependences by making the
-// dependence componenent lexicographically negative.
+// dependence component lexicographically negative.
 static bool checkLoopInterchangeDependences(
     const std::vector<llvm::SmallVector<DependenceComponent, 2>> &depCompsVec,
     ArrayRef<AffineForOp> loops, ArrayRef<unsigned> loopPermMap) {
@@ -680,7 +676,7 @@ static void augmentMapAndBounds(OpBuilder &b, Value *iv, AffineMap *map,
   auto bounds = llvm::to_vector<4>(map->getResults());
   bounds.push_back(b.getAffineDimExpr(map->getNumDims()) + offset);
   operands->insert(operands->begin() + map->getNumDims(), iv);
-  *map = b.getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds);
+  *map = AffineMap::get(map->getNumDims() + 1, map->getNumSymbols(), bounds);
   canonicalizeMapAndOperands(map, operands);
 }
 
@@ -833,7 +829,7 @@ Loops mlir::tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
 
 Loops mlir::tilePerfectlyNested(loop::ForOp rootForOp,
                                 ArrayRef<Value *> sizes) {
-  // Collect prefectly nested loops.  If more size values provided than nested
+  // Collect perfectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
   SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());
@@ -846,7 +842,7 @@ Loops mlir::tilePerfectlyNested(loop::ForOp rootForOp,
 
 // Build the IR that performs ceil division of a positive value by a constant:
 //    ceildiv(a, B) = divis(a + (B-1), B)
-// where divis is roundning-to-zero division.
+// where divis is rounding-to-zero division.
 static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
                               int64_t divisor) {
   assert(divisor > 0 && "expected positive divisor");
@@ -1233,7 +1229,7 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
             ? memIndicesStart[d]
             : b.create<AffineApplyOp>(
                   loc,
-                  b.getAffineMap(memAffineMap.getNumDims(),
+                  AffineMap::get(memAffineMap.getNumDims(),
                                  memAffineMap.getNumSymbols(),
                                  memAffineMap.getResult(d)),
                   memIndicesStart);
@@ -1242,7 +1238,7 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
     SmallVector<Value *, 2> operands = {memBase, forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
-        b.getAffineMap(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
+        AffineMap::get(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
         operands);
     memIndices.push_back(memIndex);
   }
@@ -1347,7 +1343,7 @@ static LogicalResult generateCopy(
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
-  // 'regionSymbols' hold values that this memory region is symbolic/paramteric
+  // 'regionSymbols' hold values that this memory region is symbolic/parametric
   // on; these typically include loop IVs surrounding the level at which the
   // copy generation is being done or other valid symbols in MLIR.
   SmallVector<Value *, 8> regionSymbols;
@@ -1385,7 +1381,7 @@ static LogicalResult generateCopy(
     } else {
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
-      auto map = top.getAffineMap(
+      auto map = AffineMap::get(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset);
       memIndices.push_back(b.create<AffineApplyOp>(loc, map, regionSymbols));
     }
@@ -1405,8 +1401,8 @@ static LogicalResult generateCopy(
   if (!existingBuf) {
     AffineMap fastBufferLayout = b.getMultiDimIdentityMap(rank);
     auto fastMemRefType =
-        top.getMemRefType(fastBufferShape, memRefType.getElementType(),
-                          fastBufferLayout, copyOptions.fastMemorySpace);
+        MemRefType::get(fastBufferShape, memRefType.getElementType(),
+                        fastBufferLayout, copyOptions.fastMemorySpace);
 
     // Create the fast memory space buffer just before the 'affine.for'
     // operation.
@@ -1474,8 +1470,8 @@ static LogicalResult generateCopy(
   } else {
     // DMA generation.
     // Create a tag (single element 1-d memref) for the DMA.
-    auto tagMemRefType = top.getMemRefType({1}, top.getIntegerType(32), {},
-                                           copyOptions.tagMemorySpace);
+    auto tagMemRefType = MemRefType::get({1}, top.getIntegerType(32), {},
+                                         copyOptions.tagMemorySpace);
     auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
 
     SmallVector<Value *, 4> tagIndices({zeroIndex});
@@ -1536,7 +1532,7 @@ static LogicalResult generateCopy(
     auto dimExpr = b.getAffineDimExpr(regionSymbols.size() + i);
     remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap = b.getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
+  auto indexRemap = AffineMap::get(regionSymbols.size() + rank, 0, remapExprs);
 
   // Record the begin since it may be invalidated by memref replacement.
   Block::iterator prevOfBegin;
@@ -1548,6 +1544,7 @@ static LogicalResult generateCopy(
   replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/regionSymbols,
+                           /*symbolOperands=*/{},
                            /*domInstFilter=*/&*begin,
                            /*postDomInstFilter=*/&*postDomFilter);
 
@@ -1667,7 +1664,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
       if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
         LLVM_DEBUG(
-            opInst->emitError("Non-constant memref sizes not yet supported"));
+            opInst->emitError("non-constant memref sizes not yet supported"));
         error = true;
         return;
       }
@@ -1702,7 +1699,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
             // If the union fails, we will overapproximate.
             if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
               LLVM_DEBUG(opInst->emitError(
-                  "Non-constant memref sizes not yet supported"));
+                  "non-constant memref sizes not yet supported"));
               error = true;
               return true;
             }

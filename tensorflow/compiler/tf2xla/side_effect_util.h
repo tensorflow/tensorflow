@@ -44,6 +44,9 @@ extern const char kXlaReplicaIdAttrName[];
 // This node is a Placeholder node added for tail outside compilation.
 extern const char kXlaIsPlaceholderForTailOcAttrName[];
 
+// This attribute is the original node name for this node.
+extern const char kXlaOriginalOutsideCompilationNodeName[];
+
 // Sets device ordinal attribute for nodes with attribute
 // `kXlaHasHostTransferAttrName`.
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal);

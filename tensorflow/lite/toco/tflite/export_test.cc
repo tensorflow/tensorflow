@@ -508,8 +508,8 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
-// only in Conv version 2. So Toco populates version=1 when dialation
-// parameters are all 1, and version=2 otherwise.
+// only in Conv version 2. So Toco populates version=1 when dilation parameters
+// are all 1, and version=2 otherwise.
 class FakeConvolutionOperator
     : public BuiltinOperator<ConvOperator, ::tflite::Conv2DOptions,
                              ::tflite::BuiltinOptions_Conv2DOptions> {
@@ -566,7 +566,7 @@ class VersionedOpExportTest : public ::testing::Test {
     input_model_.GetOrCreateArray("filter");
     input_model_.GetOrCreateArray("output");
   }
-  void AddConvOp(bool use_dialation) {
+  void AddConvOp(bool use_dilation) {
     {
       auto* op = new ConvOperator;
       op->inputs.push_back("input");
@@ -576,7 +576,7 @@ class VersionedOpExportTest : public ::testing::Test {
       op->padding.type = PaddingType::kSame;
       op->stride_width = 1;
       op->stride_height = 1;
-      if (use_dialation) {
+      if (use_dilation) {
         op->dilation_width_factor = 2;
         op->dilation_height_factor = 2;
       } else {

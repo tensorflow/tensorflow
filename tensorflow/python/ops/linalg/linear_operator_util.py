@@ -90,7 +90,7 @@ def convert_nonref_to_tensor(value, dtype=None, dtype_hint=None, name=None):
   tf.is_tensor(y)
   # ==> True
 
-  x = tfp.util.DeferredTensor(lambda x: x, 13.37)
+  x = tfp.util.DeferredTensor(13.37, lambda x: x)
   y = convert_nonref_to_tensor(x)
   x is y
   # ==> True

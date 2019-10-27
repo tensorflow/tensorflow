@@ -89,6 +89,9 @@ $(PRJDIR)$(3)/$(1)/.vscode/tasks.json : tensorflow/lite/experimental/micro/tools
 
 generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
 
+list_$(3)_$(1)_files:
+	@echo $(4) $(5)
+
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
@@ -121,7 +124,7 @@ $(PRJDIR)$(2)/arduino/examples/%.h: tensorflow/lite/experimental/micro/examples/
         --source_path="$$<" \
         --third_party_headers="$(4)" < $$< > $$@
 
-$(PRJDIR)$(2)/arduino/examples/%/main.ino: tensorflow/lite/experimental/micro/examples/%/main.cc
+$(PRJDIR)$(2)/arduino/examples/%/main.ino: tensorflow/lite/experimental/micro/examples/%/main_functions.cc
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --is_example_ino \
@@ -191,7 +194,7 @@ $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h: tensorflow/lite/experimental/micro/t
 generate_$(2)_arduino_project: \
 $(addprefix $(PRJDIR)$(2)/arduino/,         \
 $(patsubst tensorflow/%,src/tensorflow/%,\
-$(patsubst examples/%/main.cpp,examples/%/main.ino,\
+$(patsubst examples/%/main_functions.cpp,examples/%/main.ino,\
 $(patsubst examples/%_test.cpp,examples/%_test.ino,\
 $(patsubst tensorflow/lite/experimental/micro/examples/%,examples/%,\
 $(patsubst third_party/%,src/third_party/%,\
@@ -253,6 +256,7 @@ $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
+	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)

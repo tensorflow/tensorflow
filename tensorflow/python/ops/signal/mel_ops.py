@@ -72,18 +72,19 @@ def _validate_arguments(num_mel_bins, sample_rate,
   """Checks the inputs to linear_to_mel_weight_matrix."""
   if num_mel_bins <= 0:
     raise ValueError('num_mel_bins must be positive. Got: %s' % num_mel_bins)
-  if sample_rate <= 0.0:
-    raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
   if lower_edge_hertz < 0.0:
     raise ValueError('lower_edge_hertz must be non-negative. Got: %s' %
                      lower_edge_hertz)
   if lower_edge_hertz >= upper_edge_hertz:
     raise ValueError('lower_edge_hertz %.1f >= upper_edge_hertz %.1f' %
                      (lower_edge_hertz, upper_edge_hertz))
-  if upper_edge_hertz > sample_rate / 2:
-    raise ValueError('upper_edge_hertz must not be larger than the Nyquist '
-                     'frequency (sample_rate / 2). Got: %s for sample_rate: %s'
-                     % (upper_edge_hertz, sample_rate))
+  if not isinstance(sample_rate, ops.Tensor):
+    if sample_rate <= 0.0:
+      raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
+    if upper_edge_hertz > sample_rate / 2:
+      raise ValueError('upper_edge_hertz must not be larger than the Nyquist '
+                       'frequency (sample_rate / 2). Got %s for sample_rate: %s'
+                       % (upper_edge_hertz, sample_rate))
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Got: %s' % dtype)
 
@@ -126,10 +127,10 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
     num_spectrogram_bins: An integer `Tensor`. How many bins there are in the
       source spectrogram data, which is understood to be `fft_size // 2 + 1`,
       i.e. the spectrogram only contains the nonredundant FFT bins.
-    sample_rate: Python float. Samples per second of the input signal used to
-      create the spectrogram. We need this to figure out the actual frequencies
-      for each spectrogram bin, which dictates how they are mapped into the mel
-      scale.
+    sample_rate: An integer or float `Tensor`. Samples per second of the input
+      signal used to create the spectrogram. Used to figure out the frequencies
+      corresponding to each spectrogram bin, which dictates how they are mapped
+      into the mel scale.
     lower_edge_hertz: Python float. Lower bound on the frequencies to be
       included in the mel spectrum. This corresponds to the lower edge of the
       lowest triangular band.
@@ -144,8 +145,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   Raises:
     ValueError: If `num_mel_bins`/`num_spectrogram_bins`/`sample_rate` are not
       positive, `lower_edge_hertz` is negative, frequency edges are incorrectly
-      ordered, `upper_edge_hertz` is larger than the Nyquist frequency, or
-      `sample_rate` is neither a Python float nor a constant Tensor.
+      ordered, `upper_edge_hertz` is larger than the Nyquist frequency.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
@@ -155,9 +155,6 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
       maybe_const_val = tensor_util.constant_value(sample_rate)
       if maybe_const_val is not None:
         sample_rate = maybe_const_val
-      else:
-        raise ValueError('`sample_rate` was a non-constant Tensor. Must be a '
-                         'Python float or a constant Tensor.')
 
     # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
     # and the validation is already done in linspace (both in shape function
@@ -167,7 +164,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
     # This function can be constant folded by graph optimization since there are
     # no Tensor inputs.
-    sample_rate = ops.convert_to_tensor(
+    sample_rate = math_ops.cast(
         sample_rate, dtype, name='sample_rate')
     lower_edge_hertz = ops.convert_to_tensor(
         lower_edge_hertz, dtype, name='lower_edge_hertz')

@@ -22,14 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -107,21 +107,21 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-  // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
+  // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
-  pipeline.AddPass<CudnnConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
-  pipeline.AddPass<CudnnConvPaddingLegalization>();
+  pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
   // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
   // fixes.
   pipeline.AddPass<TupleSimplifier>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter and CudnnConvRewriter
+  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier
   {
@@ -134,7 +134,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
-  // CudnnConvRewriter, CudnnConvPaddingLegalization and
+  // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
@@ -170,7 +170,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Choose the fastest algorithm for each conv.
   //
   // We pick the algorithm before fusion so we can generate better HLO. After
-  // CudnnConvRewriter, our convolutions are CustomCalls which return a
+  // GpuConvRewriter, our convolutions are CustomCalls which return a
   // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
   // scratch:
   //
@@ -188,11 +188,11 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // The new tuple and gte instructions then be simplified away, because
   // nobody is expected to use the scratch value.
   //
-  // However, if we were to run CudnnConvAlgorithmPicker after fusion
+  // However, if we were to run GpuConvAlgorithmPicker after fusion
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.
-  pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
+  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
 
   // Find the fastest algorithm for GEMMs.
   pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);

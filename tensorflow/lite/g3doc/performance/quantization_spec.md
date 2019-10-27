@@ -2,6 +2,15 @@
 
 ### Specification summary
 
+We are providing a specification, and we can only provide some guarantees on
+behaviour if the spec is followed. We also understand different hardware may
+have preferences and restrictions that may cause slight deviations when
+implementing the spec that result in implementations that are not bit-exact.
+Whereas that may be acceptable in most cases (and we will provide a suite of
+tests that to the best of our knowledge include per-operation tolerances that we
+gathered from several models), the nature of machine learning (and deep learning
+in the most common case) makes it impossible to provide any hard guarantees.
+
 8-bit quantization approximates floating point values using the following
 formula.
 

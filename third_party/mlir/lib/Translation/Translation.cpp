@@ -42,6 +42,13 @@ getMutableTranslationFromMLIRRegistry() {
   return translationFromMLIRRegistry;
 }
 
+// Get the mutable static map between registered file-to-file MLIR translations
+// and the TranslateFunctions that perform those translations.
+static llvm::StringMap<TranslateFunction> &getMutableTranslationRegistry() {
+  static llvm::StringMap<TranslateFunction> translationRegistry;
+  return translationRegistry;
+}
+
 TranslateToMLIRRegistration::TranslateToMLIRRegistration(
     StringRef name, const TranslateToMLIRFunction &function) {
   auto &translationToMLIRRegistry = getMutableTranslationToMLIRRegistry();
@@ -64,6 +71,17 @@ TranslateFromMLIRRegistration::TranslateFromMLIRRegistration(
   translationFromMLIRRegistry[name] = function;
 }
 
+TranslateRegistration::TranslateRegistration(
+    StringRef name, const TranslateFunction &function) {
+  auto &translationRegistry = getMutableTranslationRegistry();
+  if (translationRegistry.find(name) != translationRegistry.end())
+    llvm::report_fatal_error(
+        "Attempting to overwrite an existing <file-to-file> function");
+  assert(function &&
+         "Attempting to register an empty translate <file-to-file> function");
+  translationRegistry[name] = function;
+}
+
 // Merely add the const qualifier to the mutable registry so that external users
 // cannot modify it.
 const llvm::StringMap<TranslateToMLIRFunction> &
@@ -74,4 +92,8 @@ mlir::getTranslationToMLIRRegistry() {
 const llvm::StringMap<TranslateFromMLIRFunction> &
 mlir::getTranslationFromMLIRRegistry() {
   return getMutableTranslationFromMLIRRegistry();
+}
+
+const llvm::StringMap<TranslateFunction> &mlir::getTranslationRegistry() {
+  return getMutableTranslationRegistry();
 }

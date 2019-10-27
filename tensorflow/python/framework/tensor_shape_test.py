@@ -69,7 +69,7 @@ class DimensionTest(test_util.TensorFlowTestCase):
 
   def testUnknownDimension(self):
     dim = tensor_shape.Dimension(None)
-    self.assertIs(None, dim.value)
+    self.assertIsNone(dim.value)
     self.assertEqual(dim.value, tensor_shape.Dimension(None).value)
     self.assertEqual(tensor_shape.Dimension(None).value,
                      (dim + tensor_shape.Dimension(None)).value)
@@ -80,14 +80,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
         (dim // tensor_shape.Dimension(None)).value)
     self.assertEqual(tensor_shape.Dimension(None).value,
                      dim.merge_with(tensor_shape.Dimension(None)).value)
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) < tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) <= tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) > tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) >= tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) < tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) <= tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) > tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) >= tensor_shape.Dimension(None))
 
   def testKnownAndUnknownDimensions(self):
     known = tensor_shape.Dimension(12)
@@ -108,22 +108,18 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(12), known.merge_with(unknown))
     self.assertEqual(
         tensor_shape.Dimension(12), unknown.merge_with(known))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) < tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) <= tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) > tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) >= tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) < tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) <= tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) > tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) >= tensor_shape.Dimension(12))
+    self.assertIsNone(tensor_shape.Dimension(12) < tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(12) <= tensor_shape.Dimension(None))
+    self.assertIsNone(tensor_shape.Dimension(12) > tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(12) >= tensor_shape.Dimension(None))
+    self.assertIsNone(tensor_shape.Dimension(None) < tensor_shape.Dimension(12))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) <= tensor_shape.Dimension(12))
+    self.assertIsNone(tensor_shape.Dimension(None) > tensor_shape.Dimension(12))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) >= tensor_shape.Dimension(12))
 
   def testAsDimension(self):
     self.assertEqual(tensor_shape.Dimension(12),
@@ -136,48 +132,56 @@ class DimensionTest(test_util.TensorFlowTestCase):
                      tensor_shape.as_dimension(None).value)
 
   def testEquality(self):
-    self.assertTrue(tensor_shape.Dimension(12) == tensor_shape.Dimension(12))
-    self.assertFalse(tensor_shape.Dimension(12) == tensor_shape.Dimension(13))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) == tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) == tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) == tensor_shape.Dimension(None))
-    self.assertTrue(tensor_shape.Dimension(12) == "12")
-    self.assertTrue(tensor_shape.Dimension(12) == 24.0 / 2)
+    self.assertEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(12))
+    self.assertNotEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(13))
+    self.assertIsNone(
+        tensor_shape.Dimension(12) == tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) == tensor_shape.Dimension(12))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) == tensor_shape.Dimension(None))
 
     # None indicates ambiguous comparison, but comparison vs the wrong type
     # is unambigously False.
-    self.assertIsNotNone(tensor_shape.Dimension(12) == "_")
     self.assertIsNotNone(tensor_shape.Dimension(None) == 12.99)
-    self.assertFalse(tensor_shape.Dimension(12) == "_")
-    self.assertFalse(tensor_shape.Dimension(None) == 12.99)
+    self.assertNotEqual(tensor_shape.Dimension(None), 12.99)
 
-    self.assertIs(None, tensor_shape.Dimension(None) == "13")
-    self.assertIs(None, tensor_shape.Dimension(None) == None)  # pylint: disable=g-equals-none
-    self.assertFalse(tensor_shape.Dimension(12) == 12.99)
+    # pylint: disable=singleton-comparison, g-equals-none
+    self.assertIsNone(tensor_shape.Dimension(None) == None)
+    # pylint: enable=singleton-comparison, g-equals-none
+    self.assertNotEqual(tensor_shape.Dimension(12), 12.99)
 
   def testInequality(self):
-    self.assertTrue(tensor_shape.Dimension(12) != tensor_shape.Dimension(13))
-    self.assertFalse(tensor_shape.Dimension(12) != tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(12) != tensor_shape.Dimension(None))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) != tensor_shape.Dimension(12))
-    self.assertIs(None,
-                  tensor_shape.Dimension(None) != tensor_shape.Dimension(None))
+    self.assertNotEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(13))
+    self.assertEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(12))
+    self.assertIsNone(
+        tensor_shape.Dimension(12) != tensor_shape.Dimension(None))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) != tensor_shape.Dimension(12))
+    self.assertIsNone(
+        tensor_shape.Dimension(None) != tensor_shape.Dimension(None))
 
     # None indicates ambiguous comparison, but comparison vs the wrong type
     # is unambigously False.
-    self.assertIsNotNone(tensor_shape.Dimension(12) != "_")
     self.assertIsNotNone(tensor_shape.Dimension(None) != 12.99)
-    self.assertTrue(tensor_shape.Dimension(12) != "_")
-    self.assertTrue(tensor_shape.Dimension(None) != 12.99)
+    self.assertNotEqual(tensor_shape.Dimension(None), 12.99)
 
-    self.assertIs(None, tensor_shape.Dimension(None) != "13")
-    self.assertIs(None, tensor_shape.Dimension(None) != None)  # pylint: disable=g-equals-none
-    self.assertTrue(tensor_shape.Dimension(12) != 12.99)
+    self.assertIsNone(tensor_shape.Dimension(None) != None)  # pylint: disable=g-equals-none
+    self.assertNotEqual(tensor_shape.Dimension(12), 12.99)
+
+  def testIsCompatibleWithError(self):
+    with self.assertRaisesRegex(TypeError, "must be integer or None"):
+      tensor_shape.Dimension(42).is_compatible_with([])
+
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      tensor_shape.Dimension(42).is_compatible_with(-1)
+
+  def testMergeWithError(self):
+    with self.assertRaisesRegex(TypeError, "must be integer or None"):
+      tensor_shape.Dimension(42).merge_with([])
+
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      tensor_shape.Dimension(42).merge_with(-1)
 
   def testRepr(self):
     self.assertEqual(repr(tensor_shape.Dimension(7)), "Dimension(7)")
@@ -229,14 +233,18 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testUnknownShape(self):
     s = tensor_shape.TensorShape(None)
-    with self.assertRaises(ValueError):
+    # pylint: disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(ValueError, "Shape .+ is not fully defined"):
       s.assert_is_fully_defined()
-    self.assertIs(None, s.rank)
-    with self.assertRaises(ValueError):
+    # pylint: enable=g-error-prone-assert-raises
+    self.assertIsNone(s.rank)
+    with self.assertRaisesRegex(
+        ValueError, "Cannot take the length of shape with unknown rank."):
       len(s)
     self.assertFalse(s)
-    self.assertIs(None, s.dims)
-    with self.assertRaises(ValueError):
+    self.assertIsNone(s.dims)
+    with self.assertRaisesRegex(
+        ValueError, "Cannot iterate over a shape with unknown rank."):
       for _ in tensor_shape.TensorShape(None):
         pass
 
@@ -244,8 +252,8 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
         3), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
     s.assert_is_fully_defined()
-    self.assertEqual(3, s.rank)
-    self.assertEqual(3, len(s))
+    self.assertEqual(s.rank, 3)
+    self.assertLen(s, 3)
     self.assertTrue(s)
     s.assert_has_rank(3)
     self.assertEqual([tensor_shape.Dimension(3),
@@ -263,10 +271,12 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testPartiallyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
         3), tensor_shape.Dimension(None), tensor_shape.Dimension(7)])
-    with self.assertRaises(ValueError):
+    # pylint: disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(ValueError, "Shape .+ is not fully defined"):
       s.assert_is_fully_defined()
-    self.assertEqual(3, s.rank)
-    self.assertEqual(3, len(s))
+    # pylint: enable=g-error-prone-assert-raises
+    self.assertEqual(s.rank, 3)
+    self.assertLen(s, 3)
     self.assertTrue(s)
     s.assert_has_rank(3)
     self.assertEqual(tensor_shape.Dimension(3), s[0])
@@ -444,33 +454,31 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s3 = tensor_shape.TensorShape([tensor_shape.Dimension(3),
                                    tensor_shape.Dimension(4), None])
 
-    self.assertTrue(s1 == s2)
-    self.assertFalse(s1 != s2)
-    self.assertFalse(s1 == "a string")
-    self.assertTrue(s1 != "a string")
-    self.assertNotEqual(s1, "347", "Should not equal an ambiguous string.")
-    self.assertEqual(s1, ["3", "4", "7"])
+    self.assertEqual(s1, s2)
+    self.assertEqual(s1, s2)
 
     # Test with an unknown shape in s3
-    self.assertTrue(s1 != s3)
-    self.assertFalse(s3 == "a string")
-    self.assertTrue(s3 != "a string")
+    self.assertNotEqual(s1, s3)
 
     # eq and neq are not symmetric for unknown shapes.
+    # pylint: disable=g-generic-assert
     unk0 = tensor_shape.unknown_shape()
     self.assertFalse(unk0 == s1)
     self.assertFalse(s1 == unk0)
+    # pylint: enable=g-generic-assert
     with self.assertRaises(ValueError):
-      unk0 != s1  # pylint: disable=pointless-statement
+      _ = unk0 != s1
     with self.assertRaises(ValueError):
-      s1 != unk0  # pylint: disable=pointless-statement
+      _ = s1 != unk0
     unk1 = tensor_shape.unknown_shape()
+    # pylint: disable=g-generic-assert
     self.assertTrue(unk0 == unk1)
     self.assertTrue(unk1 == unk0)
+    # pylint: enable=g-generic-assert
     with self.assertRaises(ValueError):
-      unk0 != unk1  # pylint: disable=pointless-statement
+      _ = unk0 != unk1
     with self.assertRaises(ValueError):
-      unk1 != unk0  # pylint: disable=pointless-statement
+      _ = unk1 != unk0
 
   def testAsList(self):
     with self.assertRaisesRegexp(ValueError,

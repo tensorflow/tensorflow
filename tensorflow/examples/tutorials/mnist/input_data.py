@@ -14,9 +14,7 @@
 # ==============================================================================
 """Functions for downloading and reading MNIST data (deprecated).
 
-This module and all its submodules are deprecated. See
-[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
-for migration instructions.
+This module and all its submodules are deprecated.
 """
 
 from __future__ import absolute_import
@@ -118,9 +116,7 @@ def _extract_labels(f, one_hot=False, num_classes=10):
 class _DataSet(object):
   """Container class for a _DataSet (deprecated).
 
-  THIS CLASS IS DEPRECATED. See
-  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
-  for general migration instructions.
+  THIS CLASS IS DEPRECATED.
   """
 
   @deprecated(None, 'Please use alternatives such as official/mnist/_DataSet.py'

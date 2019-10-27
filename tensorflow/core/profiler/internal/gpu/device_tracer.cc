@@ -154,10 +154,11 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
           }
 
           auto annotation_stack = ParseAnnotationStack(event.annotation);
+          std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
           std::string activity_name =
               !annotation_stack.empty()
                   ? std::string(annotation_stack.back().name)
-                  : port::MaybeAbiDemangle(event.name.c_str());
+                  : kernel_name;
           ns->set_node_name(activity_name);
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
@@ -168,7 +169,8 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
                   event.kernel_info.grid_x, event.kernel_info.grid_y,
                   event.kernel_info.grid_z, event.kernel_info.block_x,
                   event.kernel_info.block_y, event.kernel_info.block_z);
-              ns->set_timeline_label(absl::StrCat(activity_name, " ", details));
+              ns->set_timeline_label(absl::StrCat(kernel_name, " ", details,
+                                                  "@@", event.annotation));
               auto nscopy = new NodeExecStats(*ns);
               collector->Save(absl::StrCat(stream_device, "all"), ns);
               collector->Save(absl::StrCat(stream_device, event.stream_id),
@@ -288,6 +290,12 @@ Status GpuTracer::DoStart() {
       // GENERIC
       CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
+
+  bool use_cupti_activity_api = true;
+  ReadBoolFromEnvVar("TF_GPU_CUPTI_USE_ACTIVITY_API", true,
+                     &use_cupti_activity_api)
+      .IgnoreError();
+  options_.enable_event_based_activity = !use_cupti_activity_api;
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", false,
