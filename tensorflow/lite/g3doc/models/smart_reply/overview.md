@@ -37,7 +37,7 @@ The on-device model comes with several benefits. It is:
 
 ## Example output
 
-<img alt="Animation showing smart reply" src="images/smart_reply.gif" />
+<img alt="Animation showing smart reply" src="images/smart_reply.gif" style="max-width: 300px"/>
 
 ## Read more about this
 

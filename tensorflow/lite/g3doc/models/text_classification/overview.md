@@ -4,7 +4,7 @@ Use a pre-trained model to category a paragraph into predefined groups.
 
 ## Get started
 
-<img src="images/screenshot.png" class="attempt-right" style="max-width: 300px">
+<img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
 If you are new to TensorFlow Lite and are working with Android, we recommend
 exploring the following example applications that can help you get started.
