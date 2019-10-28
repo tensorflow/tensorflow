@@ -44,6 +44,14 @@ except ImportError:
   scipy_sparse = None
 
 
+try:
+  # In Python2 unicode is a scalar type
+  scalar_types = (float, int, str, unicode)
+except NameError:
+  # In Python3 unicode is not present, it always uses string
+  scalar_types = (float, int, str)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class DataAdapter(object):
   """Base class for input data adapter.
@@ -415,6 +423,9 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
   as Numpy, but it ignores any case where all the inputs are Tensors or Numpy
   arrays (because that case is handled by the base TensorLikeDataAdapter).
 
+  It ignores scipy sparse matrices and Composite Tensors because those are
+  handled by the CompositeTensorDataAdapter.
+
   It also does not handle lists/tuples of scalars, because those are handled
   by the ListsOfScalarsDataAdapter.
   """
@@ -434,7 +445,8 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
           hasattr(v, "__len__")
       )
 
-    if not TensorLikeDataAdapter.can_handle(x, y):
+    if (not TensorLikeDataAdapter.can_handle(x, y) and
+        not CompositeTensorDataAdapter.can_handle(x, y)):
       return all(_is_array_like(v) for v in flat_inputs)
     else:
       return False
@@ -612,7 +624,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, (float, int, str)):
+    if isinstance(inp, scalar_types):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])

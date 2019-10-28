@@ -155,7 +155,8 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-    self._experimental_run_tf_function = False
+    self._experimental_run_tf_function = (
+        ops.executing_eagerly_outside_functions())
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -308,11 +309,18 @@ class Model(network.Network):
             'Session arguments: %s' % (self._function_kwargs,))
 
     self._set_optimizer(optimizer)
-    is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
-                              for opt in nest.flatten(self.optimizer))
+    is_any_keras_optimizer_v1 = any(
+        (isinstance(opt, optimizers.Optimizer)
+         and not isinstance(opt, optimizers.TFOptimizer)
+        ) for opt in nest.flatten(self.optimizer))
+
+    if is_any_keras_optimizer_v1 and ops.executing_eagerly_outside_functions():
+      raise ValueError('`tf.compat.v1.keras` Optimizer (', optimizer, ') is '
+                       'not supported when eager execution is enabled. Use a '
+                       '`tf.keras` Optimizer instead, or disable eager '
+                       'execution.')
 
     if ((target_tensors is not None)
-        or is_any_optimizer_v1
         or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
@@ -3293,6 +3301,11 @@ def _convert_scipy_sparse_tensor(value, expected_input):
   """
   if issparse is not None and issparse(value):
     if ops.is_dense_tensor_like(expected_input):
+      if ops.executing_eagerly_outside_functions():
+        # In TF2 we do not silently densify sparse matrices.
+        raise ValueError('A SciPy sparse matrix was passed to a model '
+                         'that expects dense inputs. Please densify your '
+                         'inputs first, such as by calling `x.toarray().')
       return value.toarray()
     else:
       sparse_coo = value.tocoo()
