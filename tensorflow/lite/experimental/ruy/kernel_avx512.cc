@@ -43,7 +43,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit");
 
   std::int32_t dst_stride;
   if ((params.dst_type_id == DstTypeId<std::int8_t>::kValue) ||
@@ -1040,7 +1040,7 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 }  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;

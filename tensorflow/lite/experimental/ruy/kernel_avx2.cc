@@ -346,7 +346,7 @@ inline void mm256_n_storeu_ps(float* dst, int residual_rows, const __m256 v) {
 }  // namespace
 
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 8-bit");
   const std::int8_t splitter_idx_data[32] = {
       0, 1, 4, 5, 8,  9,  12, 13,  //
       2, 3, 6, 7, 10, 11, 14, 15,  //
@@ -1139,7 +1139,7 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
 }  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;
