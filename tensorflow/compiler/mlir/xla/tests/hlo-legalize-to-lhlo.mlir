@@ -65,3 +65,12 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
   tensor_store %tensor_result, %result : memref<10x5xf32>
   "xla_lhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @iota
+func @iota(%result: memref<10xi32>) {
+  %tensor_result = "xla_hlo.iota"()
+      {iota_dimension = 0 : i64} : () -> tensor<10xi32>
+  // CHECK-NEXT: "xla_lhlo.iota"(%{{.*}}) {iota_dimension = 0 : i64}
+  tensor_store %tensor_result, %result : memref<10xi32>
+  "xla_lhlo.terminator"() : () -> ()
+}
