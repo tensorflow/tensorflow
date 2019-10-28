@@ -271,6 +271,16 @@ inline void Pack8bitAvx2Packer(const std::int8_t* src_ptr,
   }
 }
 
+inline __m256 Mm256UnpackloPsx2(const __m256 a, const __m256 b) {
+  return _mm256_castpd_ps(
+      _mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+}
+
+inline __m256 Mm256UnpackhiPsx2(const __m256 a, const __m256 b) {
+  return _mm256_castpd_ps(
+      _mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+}
+
 inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
                                 int src_stride, int remaining_src_cols,
                                 int src_rows, float* packed_ptr,
@@ -341,21 +351,58 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
     // available_src_rows = std::max(0, std::min(kPackDim, src_rows - k));
     // but treat each case separately.
     if (available_src_rows >= kPackRows) {
-      for (int i = 0; i < 8; ++i) {
-        in_data[0][i] = src_ptr0[i];
-        in_data[1][i] = src_ptr1[i];
-        in_data[2][i] = src_ptr2[i];
-        in_data[3][i] = src_ptr3[i];
-        in_data[4][i] = src_ptr4[i];
-        in_data[5][i] = src_ptr5[i];
-        in_data[6][i] = src_ptr6[i];
-        in_data[7][i] = src_ptr7[i];
-      }
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-          packed_ptr[8 * i + j] = in_data[j][i];
-        }
-      }
+      __m256 t0, t1, t2, t3, t4, t5, t6, t7;
+      __m256 r0, r1, r2, r3, r4, r5, r6, r7;
+
+      t0 = _mm256_loadu_ps(src_ptr0);
+      t4 = _mm256_loadu_ps(src_ptr4);
+      t1 = _mm256_loadu_ps(src_ptr1);
+      t5 = _mm256_loadu_ps(src_ptr5);
+      t2 = _mm256_loadu_ps(src_ptr2);
+      t6 = _mm256_loadu_ps(src_ptr6);
+      t3 = _mm256_loadu_ps(src_ptr3);
+      t7 = _mm256_loadu_ps(src_ptr7);
+
+      r0 = _mm256_unpacklo_ps(t0, t1);
+      r4 = _mm256_unpacklo_ps(t4, t5);
+      r2 = _mm256_unpackhi_ps(t0, t1);
+      r6 = _mm256_unpackhi_ps(t4, t5);
+      r1 = _mm256_unpacklo_ps(t2, t3);
+      r5 = _mm256_unpacklo_ps(t6, t7);
+      r3 = _mm256_unpackhi_ps(t2, t3);
+      r7 = _mm256_unpackhi_ps(t6, t7);
+
+      t0 = Mm256UnpackloPsx2(r0, r1);
+      t4 = Mm256UnpackloPsx2(r4, r5);
+      t2 = Mm256UnpackhiPsx2(r0, r1);
+      t6 = Mm256UnpackhiPsx2(r4, r5);
+      t1 = Mm256UnpackloPsx2(r2, r3);
+      t5 = Mm256UnpackloPsx2(r6, r7);
+      t3 = Mm256UnpackhiPsx2(r2, r3);
+      t7 = Mm256UnpackhiPsx2(r6, r7);
+
+      // The preceding sets of rearrangement operations interleaved by 4 bytes
+      // and then by 8 bytes *within* lanes. The following set interleave by 16
+      // bytes (128-bit), operating *between* AVX lanes. For instance (t0, t4)
+      // are interleaved to create (r0, r1). This complexity follows from the
+      // way that AVX is centered around MM 128-bit lanes.
+      r0 = _mm256_permute2f128_ps(t0, t4, 0x20);
+      r4 = _mm256_permute2f128_ps(t1, t5, 0x20);
+      r1 = _mm256_permute2f128_ps(t0, t4, 0x31);
+      r5 = _mm256_permute2f128_ps(t1, t5, 0x31);
+      r2 = _mm256_permute2f128_ps(t2, t6, 0x20);
+      r6 = _mm256_permute2f128_ps(t3, t7, 0x20);
+      r3 = _mm256_permute2f128_ps(t2, t6, 0x31);
+      r7 = _mm256_permute2f128_ps(t3, t7, 0x31);
+
+      _mm256_storeu_ps(packed_ptr + 0 * 8, r0);
+      _mm256_storeu_ps(packed_ptr + 2 * 8, r4);
+      _mm256_storeu_ps(packed_ptr + 4 * 8, r1);
+      _mm256_storeu_ps(packed_ptr + 6 * 8, r5);
+      _mm256_storeu_ps(packed_ptr + 1 * 8, r2);
+      _mm256_storeu_ps(packed_ptr + 3 * 8, r6);
+      _mm256_storeu_ps(packed_ptr + 5 * 8, r3);
+      _mm256_storeu_ps(packed_ptr + 7 * 8, r7);
     } else if (available_src_rows > 0) {
       for (int i = 0; i < available_src_rows; ++i) {
         in_data[0][i] = src_ptr0[i];
