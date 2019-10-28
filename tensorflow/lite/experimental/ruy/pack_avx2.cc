@@ -138,6 +138,8 @@ inline void Pack8bitAvx2Packer(const std::int8_t* src_ptr,
       sums_ptr[i] = 0;
     }
   }
+  __m256i sums_8x4_16bit_lo = _mm256_set1_epi16(0);
+  __m256i sums_8x4_16bit_hi = _mm256_set1_epi16(0);
 
   // The overall packing effectively pads the source rows to
   // (src_rows + 63) & ~63. The iteration over k may skip when m=1, and then we
@@ -153,33 +155,198 @@ inline void Pack8bitAvx2Packer(const std::int8_t* src_ptr,
     // available rows = std::max(0, std::min(8, src_rows - k));
     // treat each case separately.
     if (available_src_rows >= kNumChunkedSrcRows) {
-      // i: chunks, s: Layout::Rows.
-      for (int i = 0; i < 8; ++i) {
-        for (int s = 0; s < 4; ++s) {
-          in_data[0][i][s] = src_ptr0[i * 4 + s];
-          in_data[1][i][s] = src_ptr1[i * 4 + s];
-          in_data[2][i][s] = src_ptr2[i * 4 + s];
-          in_data[3][i][s] = src_ptr3[i * 4 + s];
-          in_data[4][i][s] = src_ptr4[i * 4 + s];
-          in_data[5][i][s] = src_ptr5[i * 4 + s];
-          in_data[6][i][s] = src_ptr6[i * 4 + s];
-          in_data[7][i][s] = src_ptr7[i * 4 + s];
-        }
-      }
-      // i: chunks, j: Layout::kCols, s: Layout::Rows.
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-          for (int s = 0; s < 4; ++s) {
-            // 8 * 4 * i is offset for each block, that is
-            // (Layout::kCols * Layout::kRows * i)
-            packed_ptr[(8 * i + j) * 4 + s] = in_data[j][i][s] ^ input_xor;
-          }
-          if (sums_ptr) {
-            for (int s = 0; s < 4; ++s) {
-              sums_ptr[j] += in_data[j][i][s] ^ input_xor;
-            }
-          }
-        }
+      if (sums_ptr) {
+        __m256i t0, t1, t2, t3, t4, t5, t6, t7;
+        __m256i r0, r1, r2, r3, r4, r5, r6, r7;
+        const __m256i input_xor_v = _mm256_set1_epi8(input_xor);
+
+        t0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr0));
+        t4 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr4));
+        t1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr1));
+        t5 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr5));
+        t2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr2));
+        t6 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr6));
+        t3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr3));
+        t7 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr7));
+
+        r0 = _mm256_unpacklo_epi32(t0, t1);
+        r4 = _mm256_unpacklo_epi32(t4, t5);
+        r2 = _mm256_unpackhi_epi32(t0, t1);
+        r6 = _mm256_unpackhi_epi32(t4, t5);
+        r1 = _mm256_unpacklo_epi32(t2, t3);
+        r5 = _mm256_unpacklo_epi32(t6, t7);
+        r3 = _mm256_unpackhi_epi32(t2, t3);
+        r7 = _mm256_unpackhi_epi32(t6, t7);
+
+        t0 = _mm256_unpacklo_epi64(r0, r1);
+        t4 = _mm256_unpacklo_epi64(r4, r5);
+        t2 = _mm256_unpackhi_epi64(r0, r1);
+        t6 = _mm256_unpackhi_epi64(r4, r5);
+        t1 = _mm256_unpacklo_epi64(r2, r3);
+        t5 = _mm256_unpacklo_epi64(r6, r7);
+        t3 = _mm256_unpackhi_epi64(r2, r3);
+        t7 = _mm256_unpackhi_epi64(r6, r7);
+
+        // The preceding sets of rearrangement operations interleaved by 4 bytes
+        // and then by 8 bytes *within* lanes. The following set interleave by
+        // 16 bytes (128-bit), operating *between* AVX lanes. For instance (t0,
+        // t4) are interleaved to create (r0, r1). This complexity follows from
+        // the way that AVX is centered around MM 128-bit lanes.
+        r0 = _mm256_permute2x128_si256(t0, t4, 0x20);
+        r4 = _mm256_permute2x128_si256(t1, t5, 0x20);
+        r1 = _mm256_permute2x128_si256(t0, t4, 0x31);
+        r5 = _mm256_permute2x128_si256(t1, t5, 0x31);
+        r2 = _mm256_permute2x128_si256(t2, t6, 0x20);
+        r6 = _mm256_permute2x128_si256(t3, t7, 0x20);
+        r3 = _mm256_permute2x128_si256(t2, t6, 0x31);
+        r7 = _mm256_permute2x128_si256(t3, t7, 0x31);
+
+        r0 = _mm256_xor_si256(r0, input_xor_v);
+        r1 = _mm256_xor_si256(r1, input_xor_v);
+        r2 = _mm256_xor_si256(r2, input_xor_v);
+        r3 = _mm256_xor_si256(r3, input_xor_v);
+        r4 = _mm256_xor_si256(r4, input_xor_v);
+        r5 = _mm256_xor_si256(r5, input_xor_v);
+        r6 = _mm256_xor_si256(r6, input_xor_v);
+        r7 = _mm256_xor_si256(r7, input_xor_v);
+
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r0)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r1)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r2)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r3)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r4)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r5)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r6)));
+        sums_8x4_16bit_lo =
+            _mm256_add_epi16(sums_8x4_16bit_lo,
+                             _mm256_cvtepi8_epi16(_mm256_castsi256_si128(r7)));
+
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r0, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r1, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r2, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r3, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r4, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r5, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r6, 1)));
+        sums_8x4_16bit_hi = _mm256_add_epi16(
+            sums_8x4_16bit_hi,
+            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(r7, 1)));
+
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 0 * 8 * 4),
+                            r0);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 2 * 8 * 4),
+                            r4);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 4 * 8 * 4),
+                            r1);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 6 * 8 * 4),
+                            r5);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 1 * 8 * 4),
+                            r2);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 3 * 8 * 4),
+                            r6);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 5 * 8 * 4),
+                            r3);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 7 * 8 * 4),
+                            r7);
+      } else {
+        __m256i t0, t1, t2, t3, t4, t5, t6, t7;
+        __m256i r0, r1, r2, r3, r4, r5, r6, r7;
+        const __m256i input_xor_v = _mm256_set1_epi8(input_xor);
+
+        t0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr0));
+        t4 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr4));
+        t1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr1));
+        t5 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr5));
+        t2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr2));
+        t6 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr6));
+        t3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr3));
+        t7 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_ptr7));
+
+        r0 = _mm256_unpacklo_epi32(t0, t1);
+        r4 = _mm256_unpacklo_epi32(t4, t5);
+        r2 = _mm256_unpackhi_epi32(t0, t1);
+        r6 = _mm256_unpackhi_epi32(t4, t5);
+        r1 = _mm256_unpacklo_epi32(t2, t3);
+        r5 = _mm256_unpacklo_epi32(t6, t7);
+        r3 = _mm256_unpackhi_epi32(t2, t3);
+        r7 = _mm256_unpackhi_epi32(t6, t7);
+
+        t0 = _mm256_unpacklo_epi64(r0, r1);
+        t4 = _mm256_unpacklo_epi64(r4, r5);
+        t2 = _mm256_unpackhi_epi64(r0, r1);
+        t6 = _mm256_unpackhi_epi64(r4, r5);
+        t1 = _mm256_unpacklo_epi64(r2, r3);
+        t5 = _mm256_unpacklo_epi64(r6, r7);
+        t3 = _mm256_unpackhi_epi64(r2, r3);
+        t7 = _mm256_unpackhi_epi64(r6, r7);
+
+        // The preceding sets of rearrangement operations interleaved by 4 bytes
+        // and then by 8 bytes *within* lanes. The following set interleave by
+        // 16 bytes (128-bit), operating *between* AVX lanes. For instance (t0,
+        // t4) are interleaved to create (r0, r1). This complexity follows from
+        // the way that AVX is centered around MM 128-bit lanes.
+        r0 = _mm256_permute2x128_si256(t0, t4, 0x20);
+        r4 = _mm256_permute2x128_si256(t1, t5, 0x20);
+        r1 = _mm256_permute2x128_si256(t0, t4, 0x31);
+        r5 = _mm256_permute2x128_si256(t1, t5, 0x31);
+        r2 = _mm256_permute2x128_si256(t2, t6, 0x20);
+        r6 = _mm256_permute2x128_si256(t3, t7, 0x20);
+        r3 = _mm256_permute2x128_si256(t2, t6, 0x31);
+        r7 = _mm256_permute2x128_si256(t3, t7, 0x31);
+
+        r0 = _mm256_xor_si256(r0, input_xor_v);
+        r1 = _mm256_xor_si256(r1, input_xor_v);
+        r2 = _mm256_xor_si256(r2, input_xor_v);
+        r3 = _mm256_xor_si256(r3, input_xor_v);
+        r4 = _mm256_xor_si256(r4, input_xor_v);
+        r5 = _mm256_xor_si256(r5, input_xor_v);
+        r6 = _mm256_xor_si256(r6, input_xor_v);
+        r7 = _mm256_xor_si256(r7, input_xor_v);
+
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 0 * 8 * 4),
+                            r0);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 2 * 8 * 4),
+                            r4);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 4 * 8 * 4),
+                            r1);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 6 * 8 * 4),
+                            r5);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 1 * 8 * 4),
+                            r2);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 3 * 8 * 4),
+                            r6);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 5 * 8 * 4),
+                            r3);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(packed_ptr + 7 * 8 * 4),
+                            r7);
       }
     } else if (available_src_rows > 0) {
       RUY_DCHECK_LT(available_src_rows, kNumChunkedSrcRows);
@@ -268,6 +435,34 @@ inline void Pack8bitAvx2Packer(const std::int8_t* src_ptr,
     src_ptr5 += src_inc5;
     src_ptr6 += src_inc6;
     src_ptr7 += src_inc7;
+  }
+
+  if (sums_ptr) {
+    __m256i sums =
+        _mm256_loadu_si256(reinterpret_cast<const __m256i*>(sums_ptr));
+    const __m256i ones_16bit = _mm256_set1_epi16(1);
+    const __m256i idx = _mm256_set_epi32(7, 5, 3, 1, 6, 4, 2, 0);
+
+    // The sums have been performed across columns, and now we have 4x16-bit
+    // sums packed together. We use madd for pairwise 32-bit sums, then we
+    // deinterlace the neighbours, finshing up by adding them to the stored
+    // accumulated sums.
+    const __m256i sums_8x2_32bit_lo =
+        _mm256_madd_epi16(sums_8x4_16bit_lo, ones_16bit);
+    const __m256i sums_8x2_32bit_hi =
+        _mm256_madd_epi16(sums_8x4_16bit_hi, ones_16bit);
+    const __m256i sums_2x8_32bit_lo =
+        _mm256_permutevar8x32_epi32(sums_8x2_32bit_lo, idx);
+    const __m256i sums_2x8_32bit_hi =
+        _mm256_permutevar8x32_epi32(sums_8x2_32bit_hi, idx);
+    const __m256i sums_2x8_32bit_a =
+        _mm256_permute2x128_si256(sums_2x8_32bit_lo, sums_2x8_32bit_hi, 0x20);
+    const __m256i sums_2x8_32bit_b =
+        _mm256_permute2x128_si256(sums_2x8_32bit_lo, sums_2x8_32bit_hi, 0x31);
+    sums = _mm256_add_epi32(sums, sums_2x8_32bit_a);
+    sums = _mm256_add_epi32(sums, sums_2x8_32bit_b);
+
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(sums_ptr), sums);
   }
 }
 
