@@ -99,6 +99,8 @@ int32 NumIntraOpThreadsFromEnvironment() {
 
 #ifdef INTEL_MKL
 int32 OMPThreadsFromEnvironment() {
+  // 1) std::getenv is thread-safe (as long as no other function modifies the host env) from C++11 onward.
+  // 2) Most of TF code (except tests and experimental code) doesn't call setenv and unsetenv
   int32 num;
   const char* val = std::getenv("OMP_NUM_THREADS");
   return (val && strings::safe_strto32(val, &num)) ? num : 0;
@@ -114,7 +116,7 @@ int32 DefaultNumIntraOpThreads() {
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
-#endif
+#endif // INTEL_MKL
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
