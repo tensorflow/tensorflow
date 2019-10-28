@@ -74,7 +74,6 @@ extern tflite::ErrorReporter* reporter;
   tflite::ErrorReporter* reporter;             \
   }                                            \
                                                \
-  _Pragma("stackfunction 15000")               \
   int main(int argc, char** argv) {            \
     micro_test::tests_passed = 0;              \
     micro_test::tests_failed = 0;              \
