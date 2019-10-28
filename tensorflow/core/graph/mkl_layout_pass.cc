@@ -1615,8 +1615,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     if (mode_string == "MIN_FIRST") {
       if (type != DT_QUINT8) {
         VLOG(1) << "QuantizeOpRewrite: For MIN_FIRST mode the data type is "
-                << "not DT_UINT8."
-                << "This case is not optimized by Intel MKL, "
+                << "not DT_UINT8. This case is not optimized by Intel MKL, "
                 << "thus using Eigen op for Quantize op ";
         return false;
       }

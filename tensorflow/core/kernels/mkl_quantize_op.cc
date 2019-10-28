@@ -304,7 +304,7 @@ class MklQuantizeV2Op : public OpKernel {
     if (!minfirst_input_) {
       minfirst_input_ = new float[size];
       minfirst_input_size_ = size;
-    } else if (size != minfirst_input_size_) {
+    } else if (size > minfirst_input_size_) {
       delete minfirst_input_;
       minfirst_input_ = new float[size];
       minfirst_input_size_ = size;
@@ -313,8 +313,8 @@ class MklQuantizeV2Op : public OpKernel {
     return minfirst_input_;
   }
 
-  void Compute_Scalar(OpKernelContext* ctx, float min_range, float max_range) {
-    // TO-DO - Scalar support has to be added for SCALE mode
+  void ComputeScalar(OpKernelContext* ctx, float min_range, float max_range) {
+    // TODO(intel-tf): Scalar support has to be added for SCALE mode
     OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
                 errors::InvalidArgument(
                     "Scalar calculation in MKL is supported only for"
@@ -344,7 +344,7 @@ class MklQuantizeV2Op : public OpKernel {
     AllocateOutputSetMklShape(ctx, 2, &output_max_tensor, max_tf_shape,
                               max_mkl_shape);
 
-    // Estimate scale for qunatization
+    // Estimate scale for quantization
     float scale_factor = 0;
     const int number_of_bits = sizeof(T) * 8;
     const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
@@ -361,7 +361,8 @@ class MklQuantizeV2Op : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& input = ctx->input(0);
+    const unsigned int src_idx = 0;
+    const Tensor& input = ctx->input(src_idx);
     const float input_min_range = ctx->input(1).flat<float>()(0);
     const float input_max_range = ctx->input(2).flat<float>()(0);
     float min_range = std::min(0.0f, input_min_range);
@@ -386,7 +387,6 @@ class MklQuantizeV2Op : public OpKernel {
     // Clamping the max_range to zero since max_range can also be negative.
     max_range = std::max(0.0f, max_range);
     auto cpu_engine = engine(engine::cpu, 0);
-    const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
     MklDnnShape src_mkl_shape;
     GetMklShape(ctx, src_idx, &src_mkl_shape);
@@ -439,11 +439,11 @@ class MklQuantizeV2Op : public OpKernel {
       const Eigen::TensorOpCost cost(
           sizeof(float), /*load bytes*/
           sizeof(float), /*saved bytes*/
-          /*sub cost*/ Eigen::TensorOpCost::AddCost<float>());
+          Eigen::TensorOpCost::AddCost<float>()/*sub cost */);
 
       const CPUDevice& d = ctx->eigen_device<CPUDevice>();
       auto ParallelSub = [&](int64 start, int64 end) {
-        for (int i = start; i < end; i++) {
+        for (int i = start; i < end; ++i) {
           minfirst_input[i] = flat_input[i] - min_range;
         }
       };
