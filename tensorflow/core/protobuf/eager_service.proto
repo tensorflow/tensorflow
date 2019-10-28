@@ -164,6 +164,14 @@ message RegisterFunctionOp {
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
   bool is_component_function = 2;
+
+  // All necessary FunctionDefs and GradientDefs to expand `function_def`.
+  // When is_component_function is true, `function_def` could be a nested
+  // function, since some nodes in its parent's function body could be
+  // replaced with a new function by the graph optimization passes. No need to
+  // add FunctionDefs here to the function cache in EagerContext since they
+  // won't be executed as KernelAndDevices.
+  FunctionDefLibrary library = 3;
 }
 
 // Cleanup the step state of a multi-device function (e.g. tensors buffered by
