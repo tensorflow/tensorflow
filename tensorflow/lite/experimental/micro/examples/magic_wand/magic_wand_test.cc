@@ -154,7 +154,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   negative_score = output->data.f[kNegativeIndex];
   TF_LITE_MICRO_EXPECT_GT(slope_score, wing_score);
   TF_LITE_MICRO_EXPECT_GT(slope_score, ring_score);
-  // TF_LITE_MICRO_EXPECT_GT(slope_score, negative_score);
+  TF_LITE_MICRO_EXPECT_GT(slope_score, negative_score);
 }
 
 TF_LITE_MICRO_TESTS_END
