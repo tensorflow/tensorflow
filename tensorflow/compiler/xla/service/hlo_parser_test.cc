@@ -1798,6 +1798,17 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
   EXPECT_NE(Status::OK(), result.status());
 }
 
+TEST_F(HloParserTest, MetadataWithCholesky) {
+  const string original = R"(HloModule metadata_with_cholesky
+ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
+}
+
 TEST_F(HloParserTest, WrongShape) {
   const string original = R"(HloModule wrong_opcode:
 

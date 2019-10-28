@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -209,7 +210,8 @@ class HloParserImpl : public HloParser {
     kDistribution,
     kDomain,
     kPrecisionList,
-    kShapeList
+    kShapeList,
+    kEnum
   };
 
   struct AttrConfig {
@@ -256,20 +258,21 @@ class HloParserImpl : public HloParser {
       const std::unordered_map<std::string, AttrConfig>& attrs,
       std::unordered_set<std::string>* seen_attrs);
 
+  // Copy attributes from `attrs` to `message`, unless the attribute name is in
+  // `ignored_attrs`.
+  bool CopyAttributeToProtoMessage(
+      std::vector<std::string> ignored_attrs,
+      const std::unordered_map<std::string, AttrConfig>& attrs,
+      tensorflow::protobuf::Message* message);
+
   // Parses an attribute string into a protocol buffer `message`.
   // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
   // set of mandatory attributes.
+  // `ignored_attrs` specifies attributes the parser ignores, without writing
+  // them into the proto, but without giving the error either.
   bool ParseAttributesAsProtoMessage(
-      const std::unordered_set<std::string>& required_attrs,
+      const std::unordered_map<std::string, AttrConfig>& ignored_attrs,
       tensorflow::protobuf::Message* message);
-
-  // Parses one attribute. If it has already been seen, return error. Returns
-  // true and adds to seen_attrs on success.
-  //
-  // Do not call this except in ParseAttributesAsProtoMessage.
-  bool ParseAttributeAsProtoMessageHelper(
-      tensorflow::protobuf::Message* message,
-      std::unordered_set<std::string>* seen_attrs);
 
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
@@ -1166,7 +1169,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       TriangularSolveOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributesAsProtoMessage(
-              /*required_attrs=*/std::unordered_set<std::string>(), &options)) {
+              /*ignored_attrs=*/attrs, &options)) {
         return false;
       }
       instruction =
@@ -1190,7 +1193,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       CholeskyOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributesAsProtoMessage(
-              /*required_attrs=*/std::unordered_set<std::string>(), &options)) {
+              /*ignored_attrs=*/attrs, &options)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -2909,6 +2912,15 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kEnum: {
+        if (lexer_.GetKind() != TokKind::kIdent) {
+          return TokenError("expects an enumeration value");
+        }
+        std::string result = lexer_.GetStrVal();
+        lexer_.Lex();
+        static_cast<optional<std::string>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kWindow: {
         Window result;
         if (!ParseWindow(&result, /*expect_outer_curlies=*/true)) {
@@ -3061,93 +3073,113 @@ bool HloParserImpl::ParseAttributeHelper(
   return true;
 }
 
-// attributes ::= (',' attribute)*
-bool HloParserImpl::ParseAttributesAsProtoMessage(
-    const std::unordered_set<std::string>& required_attrs,
+bool HloParserImpl::CopyAttributeToProtoMessage(
+    std::vector<std::string> ignored_attrs,
+    const std::unordered_map<std::string, AttrConfig>& attrs,
     tensorflow::protobuf::Message* message) {
-  LocTy loc = lexer_.GetLoc();
-  std::unordered_set<std::string> seen_attrs;
-  while (EatIfPresent(TokKind::kComma)) {
-    if (!ParseAttributeAsProtoMessageHelper(message, &seen_attrs)) {
-      return false;
+  const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
+  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
+
+  for (const auto& p : attrs) {
+    const std::string& name = p.first;
+    if (absl::c_count(ignored_attrs, name)) {
+      continue;
+    }
+    const tensorflow::protobuf::FieldDescriptor* fd =
+        descriptor->FindFieldByName(name);
+    if (!fd) {
+      std::string allowed_attrs = "Allowed attributes: ";
+
+      for (int i = 0; i < descriptor->field_count(); ++i) {
+        if (i == 0) {
+          absl::StrAppend(&allowed_attrs, descriptor->field(i)->name());
+        } else {
+          absl::StrAppend(&allowed_attrs, ", ", descriptor->field(i)->name());
+        }
+      }
+      return TokenError(
+          StrFormat("unexpected attribute \"%s\".  %s", name, allowed_attrs));
+    }
+
+    CHECK(!fd->is_repeated());  // Repeated fields not implemented.
+    bool success = [&] {
+      switch (fd->type()) {
+        case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+          reflection->SetBool(
+              message, fd, **(static_cast<optional<bool>*>(p.second.result)));
+          return true;
+        }
+        case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
+          std::string value =
+              **(static_cast<optional<std::string>*>(p.second.result));
+          const tensorflow::protobuf::EnumValueDescriptor* evd =
+              fd->enum_type()->FindValueByName(value);
+          reflection->SetEnum(message, fd, evd);
+          return true;
+        }
+        default:
+          return false;
+      }
+    }();
+
+    if (!success) {
+      return TokenError(StrFormat("error parsing attribute %s", name));
     }
   }
-  // Check that all required attrs were seen.
-  for (const std::string& attr : required_attrs) {
-    if (seen_attrs.find(attr) == seen_attrs.end()) {
-      return Error(loc,
-                   StrFormat("attribute %s is expected but not seen", attr));
-    }
-  }
+
   return true;
 }
 
-bool HloParserImpl::ParseAttributeAsProtoMessageHelper(
-    tensorflow::protobuf::Message* message,
-    std::unordered_set<std::string>* seen_attrs) {
-  LocTy loc = lexer_.GetLoc();
-  std::string name;
-  if (!ParseAttributeName(&name)) {
-    return Error(loc, "error parsing attributes");
-  }
-  VLOG(3) << "Parsing attribute " << name;
-  if (!seen_attrs->insert(name).second) {
-    return Error(loc, StrFormat("attribute %s already exists", name));
-  }
+// attributes ::= (',' attribute)*
+bool HloParserImpl::ParseAttributesAsProtoMessage(
+    const std::unordered_map<std::string, AttrConfig>& ignored_attrs,
+    tensorflow::protobuf::Message* message) {
   const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  const tensorflow::protobuf::FieldDescriptor* fd =
-      descriptor->FindFieldByName(name);
-  if (!fd) {
-    std::string allowed_attrs = "Allowed attributes: ";
+  std::unordered_map<std::string, AttrConfig> attrs;
 
-    for (int i = 0; i < descriptor->field_count(); ++i) {
-      if (i == 0) {
-        absl::StrAppend(&allowed_attrs, descriptor->field(i)->name());
-      } else {
-        absl::StrAppend(&allowed_attrs, ", ", descriptor->field(i)->name());
-      }
-    }
-    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
-                                allowed_attrs));
-  }
-  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
-  CHECK(!fd->is_repeated());  // Repeated fields not implemented.
-  bool success = [&] {
+  // Storage for attributes.
+  std::map<std::string, optional<bool>> bool_params;
+  std::map<std::string, optional<std::string>> string_params;
+
+  // Populate the storage of expected attributes from the protobuf description.
+  for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
+    const tensorflow::protobuf::FieldDescriptor* fd =
+        descriptor->field(field_idx);
+    const std::string& field_name = fd->name();
     switch (fd->type()) {
       case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-        bool result;
-        if (!ParseBool(&result)) {
-          return false;
-        }
-        reflection->SetBool(message, fd, result);
-        return true;
+        auto p = bool_params.emplace(field_name, absl::nullopt);
+        attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
+                             &p.first->second};
+        break;
       }
       case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        if (lexer_.GetKind() != TokKind::kIdent) {
-          return TokenError(
-              StrFormat("expects %s type", fd->enum_type()->name()));
-        }
-        std::string val = lexer_.GetStrVal();
-        const tensorflow::protobuf::EnumValueDescriptor* evd =
-            fd->enum_type()->FindValueByName(val);
-        if (evd == nullptr) {
-          return TokenError(StrFormat("expects %s type but sees: %s",
-                                      fd->enum_type()->name(), val));
-        }
-        reflection->SetEnum(message, fd, evd);
-        lexer_.Lex();
-        return true;
+        auto p = string_params.emplace(field_name, absl::nullopt);
+        attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
+                             &p.first->second};
+        break;
       }
       default:
-        LOG(ERROR) << "Unimplemented protocol buffer type "
-                   << fd->DebugString();
-        return false;
+        return TokenError(absl::StrFormat(
+            "Unexpected protocol buffer type: %s ", fd->DebugString()));
     }
-  }();
-  if (!success) {
-    return Error(loc, StrFormat("error parsing attribute %s", name));
   }
-  return true;
+
+  std::vector<std::string> ignored_attrs_names;
+  ignored_attrs_names.reserve(ignored_attrs.size());
+  for (const auto& p : ignored_attrs) {
+    const std::string& attr_name = p.first;
+    if (attrs.find(attr_name) == attrs.end()) {
+      ignored_attrs_names.push_back(attr_name);
+    }
+    attrs[attr_name] = p.second;
+  }
+
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+
+  return CopyAttributeToProtoMessage(ignored_attrs_names, attrs, message);
 }
 
 bool HloParserImpl::ParseComputationName(HloComputation** value) {
