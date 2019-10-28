@@ -116,6 +116,31 @@ struct MyTarget : public ConversionTarget {
 };
 ```
 
+### Recursive Legality
+
+In some cases, it may be desirable to mark entire regions of operations as
+legal. This provides an additional granularity of context to the concept of
+"legal". The `ConversionTarget` supports marking operations, that were
+previously added as `Legal` or `Dynamic`, as `recursively` legal. Recursive
+legality means that if an operation instance is legal, either statically or
+dynamically, all of the operations nested within are also considered legal. An
+operation can be marked via `markOpRecursivelyLegal<>`:
+
+```c++
+ConversionTarget &target = ...;
+
+/// The operation must first be marked as `Legal` or `Dynamic`.
+target.addLegalOp<MyOp>(...);
+target.addDynamicallyLegalOp<MySecondOp>(...);
+
+/// Mark the operation as always recursively legal.
+target.markOpRecursivelyLegal<MyOp>();
+/// Mark optionally with a callback to allow selective marking.
+target.markOpRecursivelyLegal<MyOp, MySecondOp>([](Operation *op) { ... });
+/// Mark optionally with a callback to allow selective marking.
+target.markOpRecursivelyLegal<MyOp>([](MyOp op) { ... });
+```
+
 ## Rewrite Pattern Specification
 
 After the conversion target has been defined, a set of legalization patterns
