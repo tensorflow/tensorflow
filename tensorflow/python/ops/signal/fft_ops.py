@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import tensor_util as _tensor_util
@@ -118,10 +117,15 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
                          [input_tensor, fft_length]) as name:
       input_tensor = _ops.convert_to_tensor(input_tensor,
                                             preferred_dtype=_dtypes.float32)
+      if input_tensor.dtype not in (_dtypes.float32, _dtypes.float64):
+        raise ValueError(
+            "RFFT requires tf.float32 or tf.float64 inputs, got: %s" %
+            input_tensor)
       real_dtype = input_tensor.dtype
       if real_dtype == _dtypes.float32:
         complex_dtype = _dtypes.complex64
-      elif real_dtype == _dtypes.float64:
+      else:
+        assert real_dtype == _dtypes.float64
         complex_dtype = _dtypes.complex128
       input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
@@ -129,9 +133,6 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
-
-      if not compat.forward_compatible(2019, 10, 12):
-        return fft_fn(input_tensor, fft_length, name=name)
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
   _rfft.__doc__ = fft_fn.__doc__
   return _rfft
@@ -147,6 +148,10 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       input_tensor = _ops.convert_to_tensor(input_tensor,
                                             preferred_dtype=_dtypes.complex64)
       input_tensor.shape.with_rank_at_least(fft_rank)
+      if input_tensor.dtype not in (_dtypes.complex64, _dtypes.complex128):
+        raise ValueError(
+            "IRFFT requires tf.complex64 or tf.complex128 inputs, got: %s" %
+            input_tensor)
       complex_dtype = input_tensor.dtype
       real_dtype = complex_dtype.real_dtype
       if fft_length is None:
@@ -155,8 +160,6 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
-      if not compat.forward_compatible(2019, 10, 12):
-        return ifft_fn(input_tensor, fft_length, name=name)
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
   _irfft.__doc__ = ifft_fn.__doc__
   return _irfft
