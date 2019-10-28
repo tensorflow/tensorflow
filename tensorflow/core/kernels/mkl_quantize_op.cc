@@ -254,7 +254,6 @@ class MklQuantizeV2Op : public OpKernel {
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
-<<<<<<< HEAD
     OP_REQUIRES(ctx,
                 (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
                  mode_string == "SCALED"),
@@ -281,7 +280,6 @@ class MklQuantizeV2Op : public OpKernel {
     if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
       round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
     } else if (round_mode_string == "HALF_TO_EVEN") {
-    if (round_mode_string == "HALF_TO_EVEN") {
       OP_REQUIRES(ctx, mode_string == "SCALED",
                   errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
                                           "only supported for mode 'SCALED', "
