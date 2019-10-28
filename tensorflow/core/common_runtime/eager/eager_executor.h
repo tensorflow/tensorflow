@@ -98,8 +98,8 @@ class EagerExecutor {
 
   ~EagerExecutor();
 
-  // Puts this in a shutdown state. In this state, Add() will return an error
-  // and not add new EagerNodes. After putting this in the shutdown state,
+  // Puts this in a shutdown state. In this state, AddOrExecute() will return an
+  // error and not add new EagerNodes. After putting this in the shutdown state,
   // blocks until all pendings nodes have finished running.
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
