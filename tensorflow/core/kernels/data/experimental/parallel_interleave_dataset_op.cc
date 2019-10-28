@@ -233,6 +233,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_,
+                             ",deterministic=", !dataset()->sloppy_, "#");
+    }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));

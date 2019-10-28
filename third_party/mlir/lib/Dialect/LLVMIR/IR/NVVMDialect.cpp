@@ -29,6 +29,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/StandardTypes.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Attributes.h"
@@ -70,20 +71,29 @@ static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser &parser) {
 
 // <operation> ::=
 //     `llvm.nvvm.shfl.sync.bfly %dst, %val, %offset, %clamp_and_mask`
-//     : result_type
+//      ({return_value_and_is_valid})? : result_type
 static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
                                            OperationState &result) {
-  auto llvmDialect = getLlvmDialect(parser);
-  auto int32Ty = LLVM::LLVMType::getInt32Ty(llvmDialect);
-
   SmallVector<OpAsmParser::OperandType, 8> ops;
-  Type type;
-  return failure(parser.parseOperandList(ops) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
-                 parser.parseColonType(type) ||
-                 parser.addTypeToList(type, result.types) ||
-                 parser.resolveOperands(ops, {int32Ty, type, int32Ty, int32Ty},
-                                        parser.getNameLoc(), result.operands));
+  Type resultType;
+  if (parser.parseOperandList(ops) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonType(resultType) ||
+      parser.addTypeToList(resultType, result.types))
+    return failure();
+
+  auto type = resultType.cast<LLVM::LLVMType>();
+  for (auto &attr : result.attributes) {
+    if (attr.first != "return_value_and_is_valid")
+      continue;
+    if (type.isStructTy() && type.getStructNumElements() > 0)
+      type = type.getStructElementType(0);
+    break;
+  }
+
+  auto int32Ty = LLVM::LLVMType::getInt32Ty(getLlvmDialect(parser));
+  return parser.resolveOperands(ops, {int32Ty, type, int32Ty, int32Ty},
+                                parser.getNameLoc(), result.operands);
 }
 
 // <operation> ::= `llvm.nvvm.vote.ballot.sync %mask, %pred` : result_type

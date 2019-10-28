@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
+#include "mlir/Dialect/SPIRV/LayoutUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
@@ -83,18 +84,25 @@ Type SPIRVBasicTypeConverter::convertType(Type t) {
 // Entry Function signature Conversion
 //===----------------------------------------------------------------------===//
 
+Type getLayoutDecoratedType(spirv::StructType type) {
+  VulkanLayoutUtils::Size size = 0, alignment = 0;
+  return VulkanLayoutUtils::decorateType(type, size, alignment);
+}
+
 /// Generates the type of variable given the type of object.
 static Type getGlobalVarTypeForEntryFnArg(Type t) {
   auto convertedType = basicTypeConversion(t);
   if (auto ptrType = convertedType.dyn_cast<spirv::PointerType>()) {
     if (!ptrType.getPointeeType().isa<spirv::StructType>()) {
       return spirv::PointerType::get(
-          spirv::StructType::get(ptrType.getPointeeType()),
+          getLayoutDecoratedType(
+              spirv::StructType::get(ptrType.getPointeeType())),
           ptrType.getStorageClass());
     }
   } else {
-    return spirv::PointerType::get(spirv::StructType::get(convertedType),
-                                   spirv::StorageClass::StorageBuffer);
+    return spirv::PointerType::get(
+        getLayoutDecoratedType(spirv::StructType::get(convertedType)),
+        spirv::StorageClass::StorageBuffer);
   }
   return convertedType;
 }
@@ -119,12 +127,12 @@ static Value *createAndLoadGlobalVarForEntryFnArg(PatternRewriter &rewriter,
   spirv::GlobalVariableOp var;
   {
     OpBuilder::InsertionGuard moduleInsertionGuard(rewriter);
-    rewriter.setInsertionPointToStart(&module.getBlock());
+    rewriter.setInsertionPoint(funcOp.getOperation());
     std::string varName =
         funcOp.getName().str() + "_arg_" + std::to_string(origArgNum);
     var = rewriter.create<spirv::GlobalVariableOp>(
         funcOp.getLoc(),
-        rewriter.getTypeAttr(getGlobalVarTypeForEntryFnArg(origArg->getType())),
+        TypeAttr::get(getGlobalVarTypeForEntryFnArg(origArg->getType())),
         rewriter.getStringAttr(varName), nullptr);
     var.setAttr(
         spirv::SPIRVDialect::getAttributeName(spirv::Decoration::DescriptorSet),
@@ -244,7 +252,7 @@ LogicalResult lowerAsEntryFunction(FuncOp funcOp,
     for (auto origArg : enumerate(funcOp.getArguments())) {
       auto replacement = createAndLoadGlobalVarForEntryFnArg(
           rewriter, origArg.index(), origArg.value());
-      rewriter.replaceUsesOfBlockArgument(origArg.value(), replacement);
+      signatureConverter.remapInput(origArg.index(), replacement);
     }
   }
   newFuncOp = applySignatureConversion(funcOp, rewriter, signatureConverter);
@@ -345,7 +353,7 @@ public:
 
 /// Convert load -> spv.LoadOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.load.
 class LoadOpConversion final : public ConversionPattern {
@@ -390,7 +398,7 @@ public:
 
 /// Convert store -> spv.StoreOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.store.
 class StoreOpConversion final : public ConversionPattern {

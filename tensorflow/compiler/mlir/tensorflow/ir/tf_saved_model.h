@@ -28,6 +28,10 @@ class TensorFlowSavedModelDialect : public Dialect {
   LogicalResult verifyRegionArgAttribute(Operation *op, unsigned region_index,
                                          unsigned arg_index,
                                          NamedAttribute named_attr) override;
+  LogicalResult verifyRegionResultAttribute(Operation *op,
+                                            unsigned region_index,
+                                            unsigned result_index,
+                                            NamedAttribute named_attr) override;
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute named_attr) override;
 };
@@ -35,6 +39,9 @@ class TensorFlowSavedModelDialect : public Dialect {
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
+
+// Returns the list of exported names for `op`.
+SmallVector<StringRef, 2> GetExportedNames(Operation *op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

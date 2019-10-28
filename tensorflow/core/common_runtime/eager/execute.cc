@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -28,6 +29,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -588,13 +590,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
                << "compile_with_xla=" << compile_with_xla
                << ". Full node_def=" << ndef.DebugString();
+      // TODO(b/134094971): Set get_op_id when
+      // EagerClusterFunctionLibraryRuntime is in use.
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
-          [ctx](const int64 step_id) {
-            return ctx->CreateRendezvous(step_id);
-          }));
+          [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+          /* get_op_id= */ nullptr));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
                << "compile_with_xla=" << compile_with_xla
@@ -632,9 +635,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new ExecuteNode(
-      ctx, op->Inputs(), std::move(kernel), graph_collector, output_dtypes,
-      op->GetCancellationManager(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(
+      new ExecuteNode(ctx, op->Inputs(), op->remote_func_params(),
+                      std::move(kernel), graph_collector, output_dtypes,
+                      op->GetCancellationManager(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -948,42 +952,20 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 }
 
 // TODO(gjn): Consider moving into ExecuteNode class
-Status EagerKernelExecute(EagerContext* ctx,
-                          const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          const core::RefCountPtr<KernelAndDevice>& kernel,
-                          GraphCollector* graph_collector,
-                          CancellationManager* cancellation_manager,
-                          absl::Span<TensorHandle*> retvals) {
+Status EagerKernelExecute(
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    GraphCollector* graph_collector, CancellationManager* cancellation_manager,
+    absl::Span<TensorHandle*> retvals) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
-
-  // If there are multiple references to a TensorHandle in 'op_inputs' we must
-  // increment the reference count of the corresponding Tensor or risk it being
-  // overwritten during kernel execution. The reference count is incremented
-  // below when we insert a copy of the Tensor into protected_tensors, and will
-  // be decremented once execution is complete.
-  int first_index_that_needs_protecting = -1;
   gtl::InlinedVector<TensorValue, 4> input_vector(op_inputs.size());
-  for (int i = 0; i < op_inputs.size(); ++i) {
-    TensorHandle* in = op_inputs[i];
-    TF_RETURN_IF_ERROR(in->TensorValue(&input_vector[i]));
-    if (first_index_that_needs_protecting < 0 && !in->RefCountIsOne()) {
-      first_index_that_needs_protecting = i;
-    }
-  }
 
-  TensorReferenceVector protected_tensors;
-  if (first_index_that_needs_protecting >= 0) {
-    for (int i = 0; i < op_inputs.size(); ++i) {
-      if (!op_inputs[i]->RefCountIsOne()) {
-        const Tensor* input_tensor = nullptr;
-        TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
-        protected_tensors.emplace_back(TensorReference(*input_tensor));
-      }
-    }
-  }
-
+  std::unique_ptr<ExecuteNodeArgs> inputs;
+  TF_RETURN_IF_ERROR(ExecuteNodeArgs::CreateExecuteNodeArgs(
+      std::move(input_vector), ctx, op_inputs, &inputs));
   // TODO(apassos) figure out how to record stats for ops which are a part of
   // functions.
   // TODO(agarwal): change Run to take vector of handles ?
@@ -992,16 +974,13 @@ Status EagerKernelExecute(EagerContext* ctx,
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
-  Status s;
   if (container == nullptr) {
-    s = kernel->Run(input_vector, &outputs, cancellation_manager);
+    TF_RETURN_IF_ERROR(kernel->Run(*inputs, &outputs, cancellation_manager,
+                                   remote_func_params));
   } else {
-    s = kernel->Run(container, input_vector, &outputs, cancellation_manager);
+    TF_RETURN_IF_ERROR(kernel->Run(container, *inputs, &outputs,
+                                   cancellation_manager, remote_func_params));
   }
-  for (const auto& tensor_ref : protected_tensors) {
-    tensor_ref.Unref();
-  }
-  TF_RETURN_IF_ERROR(s);
   if (graph_collector != nullptr) {
     mutex_lock ml(*ctx->MetadataMu());
     {

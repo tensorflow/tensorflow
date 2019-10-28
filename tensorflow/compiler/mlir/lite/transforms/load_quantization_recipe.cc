@@ -40,7 +40,7 @@ namespace {
 // Specifically, it extends the fused ops with their internal implementation as
 // op regions. Each ops in the region produces results with element type
 // AnyQuantizedType, thus bitwidth, narrow_range, etc are included. The op also
-// defines the op quantization traits, which are used to propgate the
+// defines the op quantization traits, which are used to propagate the
 // quantization parameters by the following passes.
 struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
   void runOnFunction() override;
@@ -95,7 +95,7 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
 Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, Value* in,
                                                    Value* ln_w, Value* ln_bias,
                                                    OpBuilder* builder) {
-  // Note that l2_normalization and add ops here are not the execution kernle
+  // Note that l2_normalization and add ops here are not the execution kernel
   // implementation for layer_normalization and we just want to use them to
   // model the quantization requirement.
   auto l2_norm = builder->create<L2NormalizationOp>(loc, int16, in, none_af);
@@ -145,7 +145,7 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
   builder->setInsertionPointToEnd(&region.front());
   Location loc = lstm.getLoc();
   Type int32_type = builder->getIntegerType(32);
-  Type int32_tensor = builder->getTensorType(int32_type);
+  Type int32_tensor = UnrankedTensorType::get(int32_type);
   none_cst = builder->create<ConstantOp>(loc, builder->getNoneType(),
                                          builder->getUnitAttr());
 

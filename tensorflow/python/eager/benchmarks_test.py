@@ -20,6 +20,13 @@ To run CPU benchmarks:
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
     --benchmarks=.
+
+To run a subset of benchmarks using --benchmarks flag.
+--benchmarks: the list of benchmarks to run. The specified value is interpreted
+as a regular expression and any benchmark whose name contains a partial match
+to the regular expression is executed.
+e.g. --benchmarks=".*matmul*." will run all matmul related benmarks.
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -46,6 +53,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -136,7 +144,7 @@ def make_sequential_keras_model(initializer="ones"):
 def run_benchmark(func, num_iters, execution_mode=None):
   ctx = context.context()
   with context.execution_mode(execution_mode):
-    # call func to maybe warm up the GPU
+    # call func to warm up
     func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
@@ -168,7 +176,12 @@ class MicroBenchmarks(test.Benchmark):
     self.report_benchmark(
         iters=num_iters,
         wall_time=mean_us,
-        extras={"examples_per_sec": num_iters / total_time})
+        extras={
+            "examples_per_sec":
+                float("{0:.3f}".format(num_iters / total_time)),
+            "us_per_example":
+                float("{0:.3f}".format(total_time * 1e6 / num_iters))
+        })
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -763,6 +776,97 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
+
+  def _benchmark_tf_reduce_logsumexp(self, device=CPU, execution_mode=None):
+    with context.device(device):
+      x = constant_op.constant([[1, 0.], [0., 0.]])
+      func = lambda: math_ops.reduce_logsumexp(x)
+      self._run(func, 3000, execution_mode=execution_mode)
+
+  def benchmark_tf_reduce_logsumexp_CPU(self):
+    self._benchmark_tf_reduce_logsumexp()
+
+  def benchmark_tf_reduce_logsumexp_CPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(execution_mode=context.ASYNC)
+
+  def benchmark_tf_reduce_logsumexp_GPU(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU)
+
+  def benchmark_tf_reduce_logsumexp_GPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU,
+                                        execution_mode=context.ASYNC)
+
+  def _benchmark_tf_zeros_like(self, m, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros_like(m)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_like_CPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2)
+
+  def benchmark_tf_zeros_like_GPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2, device=GPU)
+
+  def benchmark_tf_zeros_like_variable_CPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m)
+
+  def benchmark_tf_zeros_like_variable_GPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m, device=GPU)
+
+  def _benchmark_tf_random_uniform_2_by_2(self,
+                                          shape=(2, 2),
+                                          dtype=dtypes.int32,
+                                          device=CPU):
+    with context.device(device):
+
+      def func():
+        return random_ops.random_uniform(shape, maxval=3, dtype=dtype)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_random_uniform_2_by_2_integer_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2()
+
+  def benchmark_tf_random_uniform_2_by_2_integer_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(device=GPU)
+
+  def benchmark_tf_random_uniform_2_by_2_float_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32)
+
+  def benchmark_tf_random_uniform_2_by_2_float_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(
+        dtype=dtypes.float32, device=GPU)
+
+  def _benchmark_transpose(self,
+                           m,
+                           num_iters,
+                           perm=None,
+                           conjugate=False,
+                           execution_mode=None):
+    func = lambda: array_ops.transpose(m, perm, conjugate)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
+  def benchmark_tf_transpose_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
 
   def benchmark_defun_without_signature(self):
 

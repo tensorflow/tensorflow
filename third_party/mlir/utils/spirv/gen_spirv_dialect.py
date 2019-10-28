@@ -311,7 +311,7 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
 
 
 def snake_casify(name):
-  """Turns the given name to follow snake_case convension."""
+  """Turns the given name to follow snake_case convention."""
   name = re.sub('\W+', '', name).split()
   name = [s.lower() for s in name]
   return '_'.join(name)
@@ -343,7 +343,7 @@ def map_spec_operand_to_ods_argument(operand):
       arg_type = 'Variadic<SPV_Type>'
   elif kind == 'IdMemorySemantics' or kind == 'IdScope':
     # TODO(antiagainst): Need to further constrain 'IdMemorySemantics'
-    # and 'IdScope' given that they should be gernated from OpConstant.
+    # and 'IdScope' given that they should be generated from OpConstant.
     assert quantifier == '', ('unexpected to have optional/variadic memory '
                               'semantics or scope <id>')
     arg_type = 'I32'

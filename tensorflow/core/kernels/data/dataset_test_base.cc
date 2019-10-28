@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
+#include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
@@ -756,13 +757,12 @@ Status DatasetOpsTestBaseV2::MakeDataset(
   return Status::OK();
 }
 
-Status DatasetOpsTestBaseV2::MakeDataset(
+Status DatasetOpsTestBaseV2::RunDatasetOp(
     const DatasetParams& dataset_params,
     std::unique_ptr<OpKernel>* dataset_kernel,
     std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
-    std::unique_ptr<OpKernelContext>* dataset_ctx,
     std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    DatasetBase** dataset) {
+    std::unique_ptr<OpKernelContext>* dataset_ctx) {
   std::vector<Tensor*> input_datasets;
   for (auto& input : dataset_params.input_dataset_params()) {
     std::unique_ptr<Tensor> t;
@@ -786,8 +786,23 @@ Status DatasetOpsTestBaseV2::MakeDataset(
   TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, dataset_kernel));
   TF_RETURN_IF_ERROR(CreateDatasetContext(dataset_kernel->get(), &inputs,
                                           dataset_ctx_params, dataset_ctx));
-  TF_RETURN_IF_ERROR(
-      CreateDataset(dataset_kernel->get(), dataset_ctx->get(), dataset));
+  TF_RETURN_IF_ERROR(RunOpKernel(dataset_kernel->get(), dataset_ctx->get()));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::MakeDataset(
+    const DatasetParams& dataset_params,
+    std::unique_ptr<OpKernel>* dataset_kernel,
+    std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
+    std::unique_ptr<OpKernelContext>* dataset_ctx,
+    std::vector<std::unique_ptr<Tensor>>* created_tensors,
+    DatasetBase** dataset) {
+  TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, dataset_kernel,
+                                  dataset_ctx_params, created_tensors,
+                                  dataset_ctx));
+  // Assume that DatasetOp has only one output.
+  DCHECK_EQ((*dataset_ctx)->num_outputs(), 1);
+  TF_RETURN_IF_ERROR(GetDatasetFromContext(dataset_ctx->get(), 0, dataset));
   return Status::OK();
 }
 
@@ -805,6 +820,16 @@ Status DatasetOpsTestBaseV2::MakeIterator(
   return Status::OK();
 }
 
+Status DatasetOpsTestBaseV2::RunDatasetOp(const DatasetParams& dataset_params,
+                                          std::vector<Tensor>* outputs) {
+  TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, &dataset_kernel_, &params_,
+                                  &tensors_, &dataset_ctx_));
+  for (int i = 0; i < dataset_ctx_->num_outputs(); ++i) {
+    outputs->emplace_back(*dataset_ctx_->mutable_output(i));
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
     const DatasetParams& dataset_params,
     std::unique_ptr<OpKernel>* dataset_kernel) {
@@ -814,10 +839,10 @@ Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  NodeDef node_def =
-      test::function::NDef(dataset_params.node_name(),
-                           name_utils::OpName(dataset_params.op_name(), params),
-                           input_names, attributes);
+  NodeDef node_def = test::function::NDef(
+      dataset_params.node_name(),
+      name_utils::OpName(dataset_params.dataset_type(), params), input_names,
+      attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
   return Status::OK();
 }
@@ -910,12 +935,7 @@ Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status RangeDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeRangeDataset();
-  return Status::OK();
-}
-
-string RangeDatasetParams::op_name() const {
+string RangeDatasetParams::dataset_type() const {
   return RangeDatasetOp::kDatasetType;
 }
 
@@ -940,12 +960,7 @@ Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status BatchDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeBatchDataset();
-  return Status::OK();
-}
-
-string BatchDatasetParams::op_name() const {
+string BatchDatasetParams::dataset_type() const {
   return BatchDatasetOp::kDatasetType;
 }
 
@@ -973,15 +988,9 @@ Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status MapDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  std::vector<string> input_names;
-  TF_RETURN_IF_ERROR(GetInputNames(&input_names));
-  bool has_other_args = input_names.size() > 1;
-  *fdef = test::function::MakeMapDataset(has_other_args);
-  return Status::OK();
+string MapDatasetParams::dataset_type() const {
+  return MapDatasetOp::kDatasetType;
 }
-
-string MapDatasetParams::op_name() const { return MapDatasetOp::kDatasetType; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
@@ -1036,12 +1045,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
-Status TensorSliceDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeTensorSliceDataset();
-  return Status::OK();
-}
-
-string TensorSliceDatasetParams::op_name() const {
+string TensorSliceDatasetParams::dataset_type() const {
   return TensorSliceDatasetOp::kDatasetType;
 }
 
@@ -1051,9 +1055,7 @@ std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
 
 Status TakeDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  input_names->reserve(input_dataset_params_.size() + 1);
-  input_names->emplace_back(TakeDatasetOp::kInputDataset);
-  input_names->emplace_back(TakeDatasetOp::kCount);
+  *input_names = {TakeDatasetOp::kInputDataset, TakeDatasetOp::kCount};
   return Status::OK();
 }
 
@@ -1063,13 +1065,30 @@ Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   return Status::OK();
 }
 
-Status TakeDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  *fdef = test::function::MakeTakeDataset();
+string TakeDatasetParams::dataset_type() const {
+  return TakeDatasetOp::kDatasetType;
+}
+
+std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
+  return {};
+}
+
+Status ConcatenateDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  *input_names = {ConcatenateDatasetOp::kInputDataset,
+                  ConcatenateDatasetOp::kAnotherDataset};
   return Status::OK();
 }
 
-string TakeDatasetParams::op_name() const {
-  return TakeDatasetOp::kDatasetType;
+Status ConcatenateDatasetParams::GetAttributes(
+    AttributeVector* attr_vector) const {
+  *attr_vector = {{ConcatenateDatasetOp::kOutputTypes, output_dtypes_},
+                  {ConcatenateDatasetOp::kOutputShapes, output_shapes_}};
+  return Status::OK();
+}
+
+string ConcatenateDatasetParams::dataset_type() const {
+  return ConcatenateDatasetOp::kDatasetType;
 }
 
 }  // namespace data

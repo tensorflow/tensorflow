@@ -930,7 +930,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         val += 1
 
   @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
-  def testIteratorV2Function(self):
+  def testOwnedIteratorFunction(self):
 
     queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
 
@@ -947,7 +947,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(queue.dequeue().numpy(), i)
 
   @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
-  def testIteratorV2FunctionError(self):
+  def testOwnedIteratorFunctionError(self):
     # In this test we verify that a function that raises an error ends up
     # properly deallocating the iterator resource.
 

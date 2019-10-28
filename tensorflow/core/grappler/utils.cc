@@ -99,6 +99,7 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   const string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
+    VLOG(1) << "Node could not be found: " << name;
     return nullptr;
   }
   return it->second;

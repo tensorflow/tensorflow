@@ -15,21 +15,23 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/memory_helpers.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
 namespace tflite {
 
 uint8_t* AlignPointerUp(uint8_t* data, size_t alignment) {
-  size_t data_as_size_t = reinterpret_cast<size_t>(data);
+  std::uintptr_t data_as_uintptr_t = reinterpret_cast<std::uintptr_t>(data);
   uint8_t* aligned_result = reinterpret_cast<uint8_t*>(
-      ((data_as_size_t + (alignment - 1)) / alignment) * alignment);
+      ((data_as_uintptr_t + (alignment - 1)) / alignment) * alignment);
   return aligned_result;
 }
 
 uint8_t* AlignPointerDown(uint8_t* data, size_t alignment) {
-  size_t data_as_size_t = reinterpret_cast<size_t>(data);
+  std::uintptr_t data_as_uintptr_t = reinterpret_cast<std::uintptr_t>(data);
   uint8_t* aligned_result =
-      reinterpret_cast<uint8_t*>((data_as_size_t / alignment) * alignment);
+      reinterpret_cast<uint8_t*>((data_as_uintptr_t / alignment) * alignment);
   return aligned_result;
 }
 

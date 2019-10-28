@@ -612,6 +612,7 @@ cc_library(
     srcs = ["register.cc"],
     hdrs = [
         "builtin_op_kernels.h",
+        "fully_connected.h",
         "register.h",
     ],
     deps = [

@@ -58,8 +58,9 @@ std::string GetMaxUnoolingKernelCode(
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(0) % dst_size.w;\n";
-    c += "  int X0 = get_global_id(0) / dst_size.w;\n";
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X0 = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
     c += "  int src_x0 = (X0 + padding.x) / stride.x;\n";
     c += "  int src_x = src_x0 * dst_size.w + B;\n";
   } else {

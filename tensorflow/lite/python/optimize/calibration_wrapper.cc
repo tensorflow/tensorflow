@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -195,7 +196,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
-                                            int activations_py_type) {
+                                            int activations_py_type,
+                                            bool enable_mlir_quantizer) {
   TfLiteType activations_type =
       python_utils::TfLiteTypeFromPyType(activations_py_type);
   if (activations_type != kTfLiteInt8 &&
@@ -216,10 +218,21 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto tflite_model = CreateMutableModel(*model_->GetModel());
   reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
-  auto status = tflite::optimize::QuantizeModel(
-      &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), allow_float,
-      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
+
+  auto status = kTfLiteOk;
+  if (enable_mlir_quantizer) {
+    status = mlir::lite::QuantizeModel(
+        *tflite_model, TfLiteTypeToSchemaType(input_type),
+        TfLiteTypeToSchemaType(output_type), {}, allow_float, &builder,
+        error_reporter_.get());
+  } else {
+    status = tflite::optimize::QuantizeModel(
+        &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+        TfLiteTypeToSchemaType(output_type), allow_float,
+        TfLiteTypeToSchemaType(activations_type),
+        error_reporter_.get());
+  }
+
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;

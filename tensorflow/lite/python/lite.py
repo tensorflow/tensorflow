@@ -166,7 +166,8 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_enable_mlir_converter = False
+    self.experimental_new_converter = False
+    self.experimental_new_quantizer = False
     self._debug_info = None
 
   def _grappler_config(self):
@@ -247,13 +248,14 @@ class TFLiteConverterBase(object):
             self._smallest_supported_type() != constants.FLOAT16)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type):
+                                inference_output_type, enable_mlir_quantizer):
     allow_float = not self._is_int8_target_required() and not self._is_int16_target_required()
+
     calibrate_quantize = _calibrator.Calibrator(result)
     activation_type = constants.INT8 if not self._is_int16_target_required() else constants.INT16
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float, activation_type)
+        inference_output_type, allow_float, activation_type, enable_mlir_quantizer)
 
   def _get_base_converter_args(self):
     """Returns the base converter args.
@@ -270,7 +272,7 @@ class TFLiteConverterBase(object):
         "quantize_to_float16": float16_quantize,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_enable_mlir_converter,
+        "enable_mlir_converter": self.experimental_new_converter,
     }
     return args
 
@@ -292,9 +294,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
-
+    experimental_new_converter: Experimental flag, subject to change.
+      Enables MLIR-based conversion instead of TOCO conversion.
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -397,7 +400,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Returns:
       TFLiteConverter object.
     """
-    func = _saving_utils.trace_model_call(model)
+    input_signature = None
+    # If the model's call is not a `tf.function`, then we need to first get its
+    # input signature from `model_input_signature` method. We can't directly
+    # call `trace_model_call` because otherwise the batch dimension is set
+    # to None.
+    # Once we have better support for dynamic shapes, we can remove this.
+    if not isinstance(model.call, _def_function.Function):
+      # Pass `keep_original_batch_size=True` will ensure that we get an input
+      # signature including the batch dimension specified by the user.
+      input_signature = _saving_utils.model_input_signature(
+          model, keep_original_batch_size=True)
+
+    func = _saving_utils.trace_model_call(model, input_signature)
     concrete_func = func.get_concrete_function()
     return cls([concrete_func])
 
@@ -464,8 +479,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
         **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT)
+      result = self._calibrate_quantize_model(
+          result, constants.FLOAT, constants.FLOAT,
+          self.experimental_new_quantizer)
 
     return result
 
@@ -546,9 +562,10 @@ class TFLiteConverter(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
-
+    experimental_new_converter: Experimental flag, subject to change.
+      Enables MLIR-based conversion instead of TOCO conversion.
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -1007,8 +1024,9 @@ class TFLiteConverter(TFLiteConverterBase):
           **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, inference_input_type,
-                                              inference_output_type)
+      result = self._calibrate_quantize_model(
+          result, inference_input_type, inference_output_type,
+          self.experimental_new_quantizer)
 
     return result
 

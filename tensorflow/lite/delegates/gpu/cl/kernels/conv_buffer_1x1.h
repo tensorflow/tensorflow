@@ -117,12 +117,14 @@ Status ConvBuffer1x1::UploadWeights(
 
   if (definition_.GetDataType() == DataType::FLOAT32) {
     std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsToOHWI4I4O(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   } else {
     std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsToOHWI4I4O(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   }

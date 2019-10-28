@@ -40,6 +40,11 @@ include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
 #endif // SPIRV_ARITHMETIC_OPS
 
+#ifdef SPIRV_BIT_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
+#endif // SPIRV_BIT_OPS
+
 #ifdef SPIRV_CONTROLFLOW_OPS
 #else
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
@@ -122,6 +127,8 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
 
   let builders = [OpBuilder<[{Builder *builder, OperationState &state,
                               Value *basePtr, ArrayRef<Value *> indices}]>];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----
@@ -479,6 +486,15 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
     OptionalAttr<I32Attr>:$alignment
   );
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "Value *ptr, Value *value, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addOperands(ptr);
+      state.addOperands(value);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
 
   let results = (outs);
 }

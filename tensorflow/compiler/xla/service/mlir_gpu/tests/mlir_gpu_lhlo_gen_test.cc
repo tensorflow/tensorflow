@@ -50,6 +50,40 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
       )");
 }
 
+TEST_F(LhloGenTest, Compare) {
+  CompileAndVerifyIr(R"(
+HloModule Compare
+
+ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %compare = pred[2,2]{1,0} compare(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y), direction=EQ
+})",
+                     R"(
+;CHECK: func @compare(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[PRED:.*]]: [[PRED_TYPE:.*]]) {
+;CHECK:   "xla_lhlo.compare"(%[[ARG0]], %[[ARG1]], %[[PRED]])
+;CHECK: {comparison_direction = "EQ", name = "compare"} : ([[TYPE]], [[TYPE]], [[PRED_TYPE]]) -> ()
+;CHECK: }
+)");
+}
+
+TEST_F(LhloGenTest, Select) {
+  CompileAndVerifyIr(R"(
+HloModule Select
+
+ENTRY %Select (p: pred[2,2], x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %p = pred[2,2]{1,0} parameter(0)
+  %x = f32[2,2]{1,0} parameter(1)
+  %y = f32[2,2]{1,0} parameter(2)
+  ROOT %select = f32[2,2]{1,0} select(pred[2,2]{1,0} %p, f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @select(%[[PRED:.*]]: [[PRED_TYPE:.*]], %[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.select"(%[[PRED]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "select"} : ([[PRED_TYPE]], [[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
 TEST_F(LhloGenTest, Exp) {
   CompileAndVerifyIr(R"(
 HloModule Exp
@@ -101,17 +135,97 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 ;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 ;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]][[INDEX:.*]]
+;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
 ;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][0 : index]
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]{{.*}}
+;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]
 ;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
 ;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
 ;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][0 : index]
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]{{.*}}
+;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]
 ;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
       )",
                      LoweringStage::LLVM);
+}
+
+TEST_F(LhloGenTest, AddAsKernel) {
+  CompileAndVerifyIr(R"(
+HloModule Add
+
+ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
+
+;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
+;CHECK: %[[GEP0O:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0O]]
+;CHECK: %[[GEP0S0:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: %[[CST0S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST0S0]], %[[GEP0S0]]
+;CHECK: %[[GEP0S1:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: %[[CST0S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST0S1]], %[[GEP0S1]]
+;CHECK: %[[GEP0ST0:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0ST0]]
+;CHECK: %[[GEP0ST1:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %{{.*}}, %[[GEP0ST1]]
+
+;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
+;CHECK: %[[GEP1O:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1O]]
+;CHECK: %[[GEP1S0:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: %[[CST1S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST1S0]], %[[GEP1S0]]
+;CHECK: %[[GEP1S1:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: %[[CST1S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST1S1]], %[[GEP1S1]]
+;CHECK: %[[GEP1ST0:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1ST0]]
+;CHECK: %[[GEP1ST1:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %{{.*}}, %[[GEP1ST1]]
+
+;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
+;CHECK: %[[GEP2O:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2O]]
+;CHECK: %[[GEP2S0:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: %[[CST2S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST2S0]], %[[GEP2S0]]
+;CHECK: %[[GEP2S1:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: %[[CST2S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: llvm.store %[[CST2S1]], %[[GEP2S1]]
+;CHECK: %[[GEP2ST0:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2ST0]]
+;CHECK: %[[GEP2ST1:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %{{.*}}, %[[GEP2ST1]]
+
+;CHECK: %[[VL0:.*]] = llvm.load %[[DESC0]]
+;CHECK: %[[VL1:.*]] = llvm.load %[[DESC1]]
+;CHECK: %[[VL2:.*]] = llvm.load %[[DESC2]]
+;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][0 : index]
+;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
+;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
+;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][0 : index]
+;CHECK: %[[VGEP1:.*]] = llvm.getelementptr %[[EV1]]
+;CHECK: %[[VAL1:.*]] = llvm.load %[[VGEP1]]
+;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
+;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][0 : index]
+;CHECK: %[[SGEP:.*]] = llvm.getelementptr %[[EV2]]
+;CHECK: llvm.store %[[VAL2]], %[[SGEP]]
+      )",
+                     LoweringStage::KERNEL);
 }
 
 TEST_F(LhloGenTest, AddMultiply) {

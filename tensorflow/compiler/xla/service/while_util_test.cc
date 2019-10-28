@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 
+#include <memory>
+
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -26,10 +29,12 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-StatusOr<std::unique_ptr<HloModule>> GetParsedModule(
-    HloComputation** entry_computation, HloInstruction** param0,
-    HloInstruction** param1, HloInstruction** param2) {
-  const char* const hlo_string = R"(
+class WhileUtilTest : public HloTestBase {
+ protected:
+  StatusOr<std::unique_ptr<HloModule>> GetParsedModule(
+      HloComputation** entry_computation, HloInstruction** param0,
+      HloInstruction** param1, HloInstruction** param2) {
+    const char* const hlo_string = R"(
 HloModule ModuleWithWhile
 
 while_body {
@@ -50,23 +55,25 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnUnverifiedModule(hlo_string));
+    // TODO(b/80488902): Use VerifiedHloModule here.
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnUnverifiedModule(hlo_string));
 
-  *entry_computation = module->entry_computation();
-  *param0 = (*entry_computation)->parameter_instruction(0);
-  *param1 = (*entry_computation)->parameter_instruction(1);
-  *param2 = (*entry_computation)->parameter_instruction(2);
+    *entry_computation = module->entry_computation();
+    *param0 = (*entry_computation)->parameter_instruction(0);
+    *param1 = (*entry_computation)->parameter_instruction(1);
+    *param2 = (*entry_computation)->parameter_instruction(2);
 
-  return std::move(module);
-}
+    return std::move(module);
+  }
+};
 
-TEST(WhileUtil, MakeZeroInstructionsLiveOp) {
+TEST_F(WhileUtilTest, MakeZeroInstructionsLiveOp) {
   HloInstruction *param0, *param1, *param2;
   HloComputation* entry_computation;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
+      auto module,
       GetParsedModule(&entry_computation, &param0, &param1, &param2));
 
   HloInstruction* while_instr = entry_computation->root_instruction();
@@ -92,12 +99,12 @@ TEST(WhileUtil, MakeZeroInstructionsLiveOp) {
                         op::GetTupleElement(param_reconstructed, 1)));
 }
 
-TEST(WhileUtilTest, MakeTwoInstructionsLive) {
+TEST_F(WhileUtilTest, MakeTwoInstructionsLive) {
   HloInstruction *param0, *param1, *param2;
   HloComputation* entry_computation;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
+      auto module,
       GetParsedModule(&entry_computation, &param0, &param1, &param2));
 
   HloInstruction* while_instr = entry_computation->root_instruction();
@@ -128,7 +135,7 @@ TEST(WhileUtilTest, MakeTwoInstructionsLive) {
                         op::GetTupleElement(op::Parameter(0), 3)));
 }
 
-TEST(WhileUtilTest, GetInvariantGTEsForWhileBody) {
+TEST_F(WhileUtilTest, GetInvariantGTEsForWhileBody) {
   const char* const hlo_string = R"(
 HloModule ModuleWithWhile
 
@@ -151,8 +158,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* while_body = module->GetComputationWithName("body");
 
@@ -166,7 +173,7 @@ ENTRY main {
   EXPECT_EQ((*gte_list.begin())->name(), "gte.0");
 }
 
-TEST(WhileUtilTest, AlwaysRemovePreviousWhileBody) {
+TEST_F(WhileUtilTest, AlwaysRemovePreviousWhileBody) {
   const char* const hlo_string = R"(
 HloModule WhileWithSideEffects
 
@@ -192,8 +199,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* main = module->GetComputationWithName("main");
   HloInstruction* while_instr = main->root_instruction();

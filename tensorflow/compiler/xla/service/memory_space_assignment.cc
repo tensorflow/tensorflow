@@ -23,6 +23,28 @@ namespace {
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
 }  // namespace
 
+bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
+    const Shape& shape, int64 start_time, int64 end_time) const {
+  return end_time - start_time <= max_overlap_count_;
+}
+
+void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
+                                                   int64 start_time,
+                                                   int64 end_time) {
+  end_time_ = end_time;
+  current_prefetch_time_ = std::max(start_time, end_time_ - max_overlap_count_);
+}
+
+int64 InstructionCountPrefetchIntervalPicker::Next() {
+  CHECK(!Done()) << "Prefetch interval picker's Next() is called even though "
+                    "Done() is false";
+  return current_prefetch_time_++;
+}
+
+bool InstructionCountPrefetchIntervalPicker::Done() const {
+  return end_time_ - current_prefetch_time_ <= min_overlap_count_;
+}
+
 std::vector<const GlobalDecreasingSizeBestFitHeap::BufferInterval*>
 AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
@@ -49,11 +71,11 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       GetSortedBufferIntervals();
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
-          << max_size_in_bytes_
-          << ", min prefetch interval = " << min_prefetch_interval_
-          << ", max prefetch interval = " << max_prefetch_interval_;
+          << max_size_in_bytes_;
 
   AddInputAndOutputRequiredAssignments();
+  prefetch_interval_picker_->SetInstructionSchedule(
+      hlo_live_range_.instruction_schedule());
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
@@ -244,8 +266,6 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = buffer;
   alternate_mem_interval.size = size;
-  alternate_mem_interval.start =
-      std::max(start_time, end_time - max_prefetch_interval_);
   alternate_mem_interval.end = end_time;
 
   VLOG(2) << "Finding allocation for " << buffer->ToShortString() << " ("
@@ -395,11 +415,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   //                                     ^      ^
   //                                   Copy    Copy
   //                                   Start   Done
-  for (alternate_mem_interval.start =
-           std::max(start_time, end_time - max_prefetch_interval_);
-       alternate_mem_interval.end - alternate_mem_interval.start >
-       min_prefetch_interval_;
-       ++alternate_mem_interval.start) {
+  prefetch_interval_picker_->Begin(use, start_time, end_time);
+  while (!prefetch_interval_picker_->Done()) {
+    alternate_mem_interval.start = prefetch_interval_picker_->Next();
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", "
             << alternate_mem_interval.end << ")";
@@ -499,9 +517,12 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     return false;
   }
 
-  if (alternate_mem_interval.start != start_time) {
+  if (!prefetch_interval_picker_->CanAllocateInAlternateMemoryNoCopy(
+          non_bitcast_operand->shape(), start_time, end_time)) {
     return false;
   }
+
+  alternate_mem_interval.start = start_time;
 
   // Prefer the offset that was previously used for the previous allocation.
   int64 preferred_offset = -1;
@@ -587,7 +608,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(
     HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-    int64 min_prefetch_interval, int64 max_prefetch_interval,
+    PrefetchIntervalPicker* prefetch_interval_picker,
     int64 alternate_memory_space_alignment_in_bytes,
     BufferValue::SizeFunction size_fn,
     AlternateMemoryBestFitHeap::IsAllowedInAlternateMemoryFunction
@@ -607,11 +628,10 @@ MemorySpaceAssignment::Run(
   // TODO(berkin): Explore heap algorithms other than kSpatial.
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_map_, max_size_in_bytes,
-      min_prefetch_interval, max_prefetch_interval, *alias_analysis,
+      prefetch_interval_picker, *alias_analysis,
       *memory_space_assignment.hlo_live_range_,
-      alternate_memory_space_alignment_in_bytes,
-      GlobalDecreasingSizeBestFitHeap::Type::kSpatial,
-      is_allowed_in_alternate_mem, max_outstanding_async_copies);
+      alternate_memory_space_alignment_in_bytes, is_allowed_in_alternate_mem,
+      max_outstanding_async_copies);
 
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
                                         module->schedule(),

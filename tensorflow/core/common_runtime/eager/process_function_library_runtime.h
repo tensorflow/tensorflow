@@ -33,29 +33,6 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-#if !defined(IS_MOBILE_PLATFORM)
-class EagerFunctionArgs : public FunctionArgsInterface {
- public:
-  EagerFunctionArgs(const std::vector<absl::optional<Tensor>>* tensor_args,
-                    std::function<Status(const int, RemoteTensorHandle*)>
-                        serialize_remote_handle)
-      : tensor_args_(tensor_args),
-        serialize_remote_handle_(std::move(serialize_remote_handle)) {}
-
-  ~EagerFunctionArgs() override{};
-
-  Status GetLocalArg(const int index, Tensor* val) const override;
-
-  Status GetRemoteArg(const int index,
-                      eager::RemoteTensorHandle* val) const override;
-
- private:
-  const std::vector<absl::optional<Tensor>>* tensor_args_;
-  std::function<Status(const int, eager::RemoteTensorHandle*)>
-      serialize_remote_handle_;
-};
-#endif  // IS_MOBILE_PLATFORM
-
 // A ProcessFunctionLibraryRuntime which supports running functions with inputs
 // on remote devices.
 // TODO(b/134094971): Support outputting tensors on remote devices.

@@ -167,7 +167,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
-        ":mlir_passthrough_op",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -214,8 +213,10 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
+        "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
+        "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
         "transforms/bridge.h",
@@ -226,11 +227,13 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
+        ":tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
@@ -645,6 +648,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -820,6 +824,22 @@ tf_gen_op_wrapper_py(
 #
 # This is a separate library so that external passes can link only this library
 # without linking any of the other tensorflow passes.
+gentbl(
+    name = "lower_tf_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_lower_tf.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/lower_tf.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "lower_tf_lib",
     srcs = [
@@ -829,7 +849,9 @@ cc_library(
         "transforms/lower_tf.h",
     ],
     deps = [
+        ":lower_tf_inc_gen",
         ":tensorflow",
+        "//tensorflow/core:framework",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

@@ -349,6 +349,15 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     return control_flow_ops.group([
         operator.assert_positive_definite() for operator in self.operators])
 
+  def _eigvals(self):
+    eig_list = []
+    for operator in self.operators:
+      # Extend the axis for broadcasting.
+      eig_list += [operator.eigvals()[..., array_ops.newaxis]]
+    eig_list = linear_operator_util.broadcast_matrix_batch_dims(eig_list)
+    eigs = array_ops.concat(eig_list, axis=-2)
+    return array_ops.squeeze(eigs, axis=-1)
+
   def _split_input_into_blocks(self, x, axis=-1):
     """Split `x` into blocks matching `operators`'s `domain_dimension`.
 

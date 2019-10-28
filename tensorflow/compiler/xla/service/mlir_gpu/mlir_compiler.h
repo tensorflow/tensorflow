@@ -62,7 +62,14 @@ class MlirCompiler : public Compiler {
   }
 
   struct IRHook {
-    enum class LoweringStage { LHLO, GPU, LLVM };
+    enum class LoweringStage { LHLO, GPU, LLVM, KERNEL };
+
+    Status invoke(LoweringStage stage_, mlir::ModuleOp module) {
+      if (callback && stage == stage_) {
+        return callback(module);
+      }
+      return Status::OK();
+    }
 
     std::function<Status(mlir::ModuleOp)> callback;
     LoweringStage stage;
@@ -71,6 +78,7 @@ class MlirCompiler : public Compiler {
   void SetModuleHook(IRHook module_hook);
   void RemoveModuleHook();
   void SetErrorHandler(ErrorHandler error_handler);
+  void RemoveErrorHandler();
 
  private:
   ::mlir::MLIRContext context_;

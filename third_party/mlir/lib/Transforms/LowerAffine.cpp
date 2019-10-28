@@ -319,7 +319,7 @@ public:
     auto f = rewriter.create<loop::ForOp>(loc, lowerBound, upperBound, step);
     f.region().getBlocks().clear();
     rewriter.inlineRegionBefore(op.region(), f.region(), f.region().end());
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -370,7 +370,7 @@ public:
     }
 
     // Ok, we're done!
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -431,7 +431,7 @@ public:
     if (!maybeExpandedMap)
       return matchFailure();
 
-    // Build std.store valutToStore, memref[expandedMap.results].
+    // Build std.store valueToStore, memref[expandedMap.results].
     rewriter.replaceOpWithNewOp<StoreOp>(op, op.getValueToStore(),
                                          op.getMemRef(), *maybeExpandedMap);
     return matchSuccess();

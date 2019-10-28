@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
@@ -413,6 +414,32 @@ def _test_cholesky(use_placeholder, shapes_info, dtype):
   return test_cholesky
 
 
+def _test_eigvalsh(use_placeholder, shapes_info, dtype):
+  def test_eigvalsh(self):
+    with self.test_session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, mat = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder,
+          ensure_self_adjoint_and_pd=True)
+      # Eigenvalues are real, so we'll cast these to float64 and sort
+      # for comparison.
+      op_eigvals = sort_ops.sort(
+          math_ops.cast(operator.eigvals(), dtype=dtypes.float64), axis=-1)
+      mat_eigvals = sort_ops.sort(
+          math_ops.cast(
+              linalg_ops.self_adjoint_eigvals(mat), dtype=dtypes.float64),
+          axis=-1)
+      op_eigvals_v, mat_eigvals_v = sess.run([op_eigvals, mat_eigvals])
+
+      atol = self._atol[dtype]  # pylint: disable=protected-access
+      rtol = self._rtol[dtype]  # pylint: disable=protected-access
+      if dtype == dtypes.float32 or dtype == dtypes.complex64:
+        atol = 1e-4
+        rtol = 1e-4
+      self.assertAllClose(op_eigvals_v, mat_eigvals_v, atol=atol, rtol=rtol)
+  return test_eigvalsh
+
+
 def _test_solve_base(
     self,
     use_placeholder,
@@ -552,6 +579,7 @@ def add_tests(test_cls):
       "cholesky": _test_cholesky,
       "det": _test_det,
       "diag_part": _test_diag_part,
+      "eigvalsh": _test_eigvalsh,
       "inverse": _test_inverse,
       "log_abs_det": _test_log_abs_det,
       "matmul": _test_matmul,
@@ -678,6 +706,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     """List of test names to skip."""
     return [
         "cholesky",
+        "eigvalsh",
         "inverse",
         "solve",
         "solve_with_broadcast",

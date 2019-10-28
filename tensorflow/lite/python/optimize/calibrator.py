@@ -56,7 +56,9 @@ class Calibrator(object):
       raise ValueError("Failed to parse the model.")
 
   def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
-                             allow_float, activations_type = lite_constants.INT8):
+                             allow_float, activations_type = lite_constants.INT8, 
+                             enable_mlir_quantizer=False):
+
     """Calibrates the model with specified generator and then quantizes it.
 
     Returns:
@@ -71,13 +73,18 @@ class Calibrator(object):
                    If False, an error will be thrown if an operation cannot be
                    quantized, otherwise the model will fallback to float ops.
       activations_type: A tf.dtype representing the desired type for activations
+      enable_mlir_quantizer: A boolean. True if wants to use mlir quantizer to
+                             quantize the calibrated model.
+
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
       self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float, np.dtype(activations_type.as_numpy_dtype()).num)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float, 
+        np.dtype(activations_type.as_numpy_dtype()).num,
+        enable_mlir_quantizer)
 
   def calibrate_and_quantize_single(self, dataset_gen, input_type, output_type,
                                     allow_float, op_output_name):

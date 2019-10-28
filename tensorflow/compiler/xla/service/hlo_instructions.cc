@@ -2834,7 +2834,7 @@ HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
 std::vector<string>
 HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
-  return {StrCat("delta={", delta(), "}")};
+  return {StrCat("delta=", delta())};
 }
 
 bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(

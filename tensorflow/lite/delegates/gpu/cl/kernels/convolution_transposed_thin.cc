@@ -70,8 +70,9 @@ std::string GenerateConvolutionTransposedCode(
   c += "    FLT4 bias_value            \n";
   c += ") {\n";
   if (op_def.batch_support) {
-    c += "  int X = get_global_id(0) / dst_size.w;\n";
-    c += "  int B = get_global_id(0) % dst_size.w;\n";
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
   } else {
     c += "  int X = get_global_id(0);\n";
   }

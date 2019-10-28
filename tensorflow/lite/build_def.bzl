@@ -13,8 +13,12 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
+        clean_dep("//tensorflow:android_arm64"): [
+            "-O3",
+        ],
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
+            "-O3",
         ],
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
@@ -26,10 +30,6 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:optimized"): ["-O3"],
-        "//conditions:default": [],
     })
 
     return copts
@@ -243,6 +243,9 @@ def generated_test_models():
         "constant",
         "control_dep",
         "conv",
+        "conv_relu",
+        "conv_relu1",
+        "conv_relu6",
         "conv2d_transpose",
         "conv_with_shared_weights",
         "conv_to_depthwiseconv_with_shared_weights",
@@ -336,6 +339,7 @@ def generated_test_models():
         "strided_slice_1d_exhaustive",
         "strided_slice_np_style",
         "sub",
+        "tanh",
         "tile",
         "topk",
         "transpose",

@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+from absl import logging
 import numpy as np
 import six
 
@@ -588,8 +589,11 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    # TODO(b/129298253): Allow creating datasets/tensors before enabling
+    # collective ops.
     if self._context_handle is not None:
-      raise RuntimeError("Collective ops must be enabled at program startup")
+      logging.warning("Enabling collective ops after program startup may cause "
+                      "error when accessing previously created tensors.")
 
     self._collective_ops_server_def = server_def
 
@@ -606,7 +610,7 @@ class Context(object):
 
     Args:
       collective_leader: a device string for collective leader, e.g.
-        "/job:worker/replica:0/task:"; empty string means local execution of
+        "/job:worker/replica:0/task:0"; empty string means local execution of
           collective ops.
       scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
         allocator to run with.
@@ -729,6 +733,8 @@ class Context(object):
     """
     if isinstance(name, LogicalDevice):
       name = name.name
+    elif pydev.is_device_spec(name):
+      name = name.to_string()
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -1240,10 +1246,10 @@ class Context(object):
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
           raise ValueError(
-              "Setting memory limit is required for GPU virtual devices is")
+              "Setting memory limit is required for GPU virtual devices")
     else:
       raise ValueError("Virtual devices are not supported for %s" %
-                       dev.device_type())
+                       dev.device_type)
 
     if self._virtual_device_map.get(dev) == virtual_devices:
       return

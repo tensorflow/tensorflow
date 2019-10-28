@@ -72,9 +72,11 @@ TEST(uKernels, IsZeroInt8Test) {
   static int8_t zeros[kVectorSize] = {0};
   EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
 
-  static int8_t non_zeros[kVectorSize] = {0};
-  non_zeros[33] = 3;
-  EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
+  for (int i = 0; i < kVectorSize; ++i) {
+    int8_t non_zeros[kVectorSize] = {0};
+    non_zeros[i] = 1;
+    EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
+  }
 }
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {

@@ -240,6 +240,17 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
         reflection_axis, axis=-1, keepdims=True)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 
+  def _eigvals(self):
+    # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    result_shape = array_ops.shape(self.reflection_axis)
+    n = result_shape[-1]
+    ones_shape = array_ops.concat([result_shape[:-1], [n - 1]], axis=-1)
+    neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
+    eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
+    eigvals = array_ops.concat(
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+    return eigvals
+
   @property
   def reflection_axis(self):
     return self._reflection_axis

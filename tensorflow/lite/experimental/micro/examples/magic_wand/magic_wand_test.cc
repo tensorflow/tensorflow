@@ -16,24 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.h"
-#include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-namespace tflite {
-namespace ops {
-namespace micro {
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
-TfLiteRegistration* Register_MAX_POOL_2D();
-TfLiteRegistration* Register_CONV_2D();
-TfLiteRegistration* Register_FULLY_CONNECTED();
-TfLiteRegistration* Register_SOFTMAX();
-}  // namespace micro
-}  // namespace ops
-}  // namespace tflite
 
 TF_LITE_MICRO_TESTS_BEGIN
 
@@ -44,8 +33,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model =
-      ::tflite::GetModel(g_magic_wand_model_data);
+  const tflite::Model* model = ::tflite::GetModel(g_magic_wand_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -58,16 +46,15 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  static tflite::MicroMutableOpResolver micro_mutable_op_resolver; // NOLINT
+  static tflite::MicroMutableOpResolver micro_mutable_op_resolver;  // NOLINT
   micro_mutable_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
   micro_mutable_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_MAX_POOL_2D,
       tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_CONV_2D,
-      tflite::ops::micro::Register_CONV_2D());
+  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                                       tflite::ops::micro::Register_CONV_2D());
   micro_mutable_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_FULLY_CONNECTED,
       tflite::ops::micro::Register_FULLY_CONNECTED());

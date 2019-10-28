@@ -49,13 +49,13 @@ struct OpQuantSpec {
   // Maps the operand index of a bias input to its quantization specifications,
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
-  // This map is empty if the op doesn't havea bias operand.
+  // This map is empty if the op doesn't have a bias operand.
   std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
       biases_params;
 
   // Quantization parameters for value restricted outputs. This is the
   // "hard-coded" parameters and should be used unconditionally for the
-  // quantized op. This vector is empty if the op doesn't have value resctricted
+  // quantized op. This vector is empty if the op doesn't have value restricted
   // outputs.
   llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
 };
@@ -105,7 +105,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     rewriter.setInsertionPointAfter(op);
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
-                                rewriter.getTypeAttr(result_type));
+                                TypeAttr::get(result_type));
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult()->replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
@@ -287,7 +287,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
     rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
-                                   rewriter.getTypeAttr(new_output_type));
+                                   TypeAttr::get(new_output_type));
     return this->matchSuccess();
   }
 };

@@ -10,6 +10,6 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/lite/python:lite",
+        "//tensorflow:tensorflow_py",
     ],
 )

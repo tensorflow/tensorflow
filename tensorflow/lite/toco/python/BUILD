@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "if_mlir_tflite", "py_binary", "tf_py_test")
 
 package(
@@ -14,6 +13,16 @@ config_setting(
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
     visibility = [
         "//tensorflow/lite:__subpackages__",
+    ],
+)
+
+filegroup(
+    name = "toco_python_api_hdrs",
+    srcs = [
+        "toco_python_api.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -33,6 +42,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_convert",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
@@ -49,6 +59,7 @@ cc_library(
         if_false = [],
         if_true = ["//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer"],
     ),
+    alwayslink = True,
 )
 
 # Compatibility stub. Remove when internal customers moved.
@@ -61,7 +72,7 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:_pywrap_toco_api",
     ],
 )
 
@@ -71,6 +82,7 @@ py_binary(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -87,12 +99,5 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
-    ],
-)
-
-exports_files(
-    ["toco.i"],
-    visibility = [
-        "//tensorflow/python:__subpackages__",
     ],
 )

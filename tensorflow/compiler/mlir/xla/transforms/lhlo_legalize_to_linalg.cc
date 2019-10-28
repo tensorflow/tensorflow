@@ -30,101 +30,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
 namespace {
-
-// TODO(pifon): Move LHLO -> STD op map to a separate lib.
-template <typename LHLO_BinaryOp>
-struct ScalarOp;
-
-template <>
-struct ScalarOp<xla_lhlo::AddOp> {
-  using FOp = ::mlir::AddFOp;
-  using IOp = ::mlir::AddIOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::DivOp> {
-  using FOp = ::mlir::DivFOp;
-  using IOp = ::mlir::DivISOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::MulOp> {
-  using FOp = ::mlir::MulFOp;
-  using IOp = ::mlir::MulIOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::SubOp> {
-  using FOp = ::mlir::SubFOp;
-  using IOp = ::mlir::SubIOp;
-};
-template <typename LHLO_BinaryOp>
-using ScalarFOp = typename ScalarOp<LHLO_BinaryOp>::FOp;
-template <typename LHLO_BinaryOp>
-using ScalarIOp = typename ScalarOp<LHLO_BinaryOp>::IOp;
-
-template <typename LhloOp>
-Operation* GetLinalgBodyOp(Location loc, Type element_type,
-                           ArrayRef<Type> body_result_types,
-                           ArrayRef<Value*> block_args, OpBuilder b) {
-  if (element_type.isa<IntegerType>()) {
-    return b.template create<ScalarIOp<LhloOp>>(loc, body_result_types,
-                                                block_args, mlir::None);
-  }
-  if (element_type.isa<FloatType>()) {
-    return b.template create<ScalarFOp<LhloOp>>(loc, body_result_types,
-                                                block_args, mlir::None);
-  }
-  return nullptr;
-}
-
-template <>
-Operation* GetLinalgBodyOp<xla_lhlo::MaxOp>(Location loc, Type element_type,
-                                            ArrayRef<Type> body_result_types,
-                                            ArrayRef<Value*> block_args,
-                                            OpBuilder b) {
-  const auto& lhs = block_args[0];
-  const auto& rhs = block_args[1];
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_gt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SGT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_gt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_gt_rhs = b.create<CmpFOp>(loc, CmpFPredicate::OGT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_gt_rhs, lhs, rhs);
-  }
-  return nullptr;
-}
-
-template <>
-Operation* GetLinalgBodyOp<xla_lhlo::MinOp>(Location loc, Type element_type,
-                                            ArrayRef<Type> body_result_types,
-                                            ArrayRef<Value*> block_args,
-                                            OpBuilder b) {
-  const auto& lhs = block_args[0];
-  const auto& rhs = block_args[1];
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_lt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SLT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_lt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_lt_rhs = b.create<CmpFOp>(loc, CmpFPredicate::OLT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_lt_rhs, lhs, rhs);
-  }
-  return nullptr;
-}
-
-template <>
-Operation* GetLinalgBodyOp<xla_lhlo::AndOp>(Location loc, Type element_type,
-                                            ArrayRef<Type> body_result_types,
-                                            ArrayRef<Value*> block_args,
-                                            OpBuilder b) {
-  return element_type.isa<IntegerType>()
-             ? b.create<::mlir::AndOp>(loc, body_result_types, block_args,
-                                       mlir::None)
-             : nullptr;
-}
 
 template <typename LhloOp>
 class LhloToLinalgOpConverter : public ConversionPattern {
@@ -150,6 +60,7 @@ class LhloToLinalgOpConverter : public ConversionPattern {
     SmallVector<Attribute, 2> indexing_maps;
     SmallVector<Type, 4> body_arg_types, body_result_types;
     unsigned nloops = 0;
+    const auto operandCount = args.size() - 1;
     for (const auto& arg : llvm::enumerate(args)) {
       auto memref_type = arg.value()->getType().dyn_cast<MemRefType>();
       if (!memref_type) {
@@ -160,9 +71,9 @@ class LhloToLinalgOpConverter : public ConversionPattern {
       }
       nloops = std::max(nloops, static_cast<unsigned>(memref_type.getRank()));
       indexing_maps.emplace_back(
-          rewriter.getAffineMapAttr(rewriter.getMultiDimIdentityMap(nloops)));
+          AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
       auto& result_or_body_arg =
-          arg.index() < 2 ? body_arg_types : body_result_types;
+          arg.index() < operandCount ? body_arg_types : body_result_types;
       result_or_body_arg.emplace_back(memref_type.getElementType());
     }
 
@@ -193,10 +104,10 @@ class LhloToLinalgOpConverter : public ConversionPattern {
     }
 
     rewriter.setInsertionPointToEnd(block);
-    Operation* op = GetLinalgBodyOp<LhloOp>(
-        loc, body_arg_types[0], body_result_types, body_args, rewriter);
+    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), body_result_types, body_args, rewriter);
     rewriter.create<linalg::YieldOp>(loc, llvm::to_vector<1>(op->getResults()));
-    rewriter.replaceOp(lhlo_op, {});
+    rewriter.eraseOp(lhlo_op);
     return matchSuccess();
   }
 };
@@ -205,10 +116,13 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   patterns->insert<LhloToLinalgOpConverter<xla_lhlo::AddOp>,
                    LhloToLinalgOpConverter<xla_lhlo::AndOp>,
+                   LhloToLinalgOpConverter<xla_lhlo::CompareOp>,
                    LhloToLinalgOpConverter<xla_lhlo::DivOp>,
+                   LhloToLinalgOpConverter<xla_lhlo::ExpOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MaxOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MinOp>,
                    LhloToLinalgOpConverter<xla_lhlo::MulOp>,
+                   LhloToLinalgOpConverter<xla_lhlo::SelectOp>,
                    LhloToLinalgOpConverter<xla_lhlo::SubOp>>(context);
 }
 

@@ -720,12 +720,15 @@ string BufferAssignment::ToString() const {
   string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
   std::vector<const HloValue*> used_values;
+  int64 total_size = 0;
   for (auto& allocation : allocations_) {
+    total_size += allocation.size();
     absl::StrAppend(&output, allocation.ToString());
     for (const auto& p : allocation.assigned_buffers()) {
       used_values.push_back(p.first);
     }
   }
+  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
   absl::StrAppend(&output, "\nUsed values:\n");
   absl::c_sort(used_values, &CompareHloValuesById);
   for (const HloValue* value : used_values) {

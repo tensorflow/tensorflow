@@ -233,6 +233,13 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                    min_value, max_value, scaling_factor);
 }
 
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float min_value,
+                             float max_value, float* scaling_factor) {
+  NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
+                   min_value, max_value, scaling_factor);
+}
+
 void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,

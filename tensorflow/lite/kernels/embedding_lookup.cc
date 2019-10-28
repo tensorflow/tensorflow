@@ -76,8 +76,11 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
   const int row_size = SizeOfDimension(value, 0);
   const int row_bytes = value->bytes / row_size;
 
+  char* output_raw = GetTensorData<char>(output);
+  const char* value_raw = GetTensorData<char>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup->data.i32[i];
+    int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       context->ReportError(context,
                            "Embedding Lookup: index out of bounds. "
@@ -85,8 +88,8 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                            idx, row_size - 1);
       return kTfLiteError;
     } else {
-      memcpy(output->data.raw + i * row_bytes,
-             value->data.raw + idx * row_bytes, row_bytes);
+      std::memcpy(output_raw + i * row_bytes, value_raw + idx * row_bytes,
+                  row_bytes);
     }
   }
 
@@ -106,15 +109,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   }
 
   float* output_ptr = GetTensorData<float>(output);
-  const int8_t* value_ptr;
-  if (value->type == kTfLiteUInt8) {
-    value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
-  } else {
-    value_ptr = value->data.int8;
-  }
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
 
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup->data.i32[i];
+    int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       context->ReportError(context,
                            "Embedding Lookup: index out of bounds. "
