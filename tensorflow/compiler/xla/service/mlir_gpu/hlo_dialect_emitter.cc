@@ -31,13 +31,11 @@ namespace {
 
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
-using ::mlir::Builder;
 using ::mlir::Identifier;
 using ::mlir::Location;
 using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
 using ::mlir::RankedTensorType;
-using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 
@@ -50,22 +48,22 @@ StatusOr<Value*> InsertMlirOp(
   switch (opcode) {
     case HloOpcode::kAdd:
       return {func_builder.create<hlo::AddOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMultiply:
-      return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
-    case HloOpcode::kSubtract:
-      return {func_builder.create<hlo::SubOp>(loc, rets, args, attrs)};
-    case HloOpcode::kDivide:
-      return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kAnd:
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMinimum:
-      return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMaximum:
-      return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kDivide:
+      return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMaximum:
+      return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMinimum:
+      return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMultiply:
+      return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
     case HloOpcode::kSelect:
       return {func_builder.create<hlo::SelectOp>(loc, rets, args, attrs)};
+    case HloOpcode::kSubtract:
+      return {func_builder.create<hlo::SubOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "HLO Opcode ", HloOpcodeString(opcode), " is not supported."));
@@ -100,6 +98,21 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
       auto inserted, InsertMlirOp(instr->opcode(), builder_, getLocation(instr),
                                   res_type, arguments, name_attr));
   instruction_to_values_[instr] = inserted;
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
+  mlir::DenseIntElementsAttr broadcast_dim =
+      CreateDenseIntElementsAttrFromVector(broadcast->dimensions(), builder_);
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         broadcast->shape(), builder_));
+
+  auto broadcast_op = builder_.create<hlo::BroadcastInDimOp>(
+      getLocation(broadcast), llvm::makeArrayRef(res_type),
+      instruction_to_values_[broadcast->operand(0)], broadcast_dim);
+  broadcast_op.setAttr("name", builder_.getStringAttr(broadcast->name()));
+
+  instruction_to_values_[broadcast] = broadcast_op;
   return Status::OK();
 }
 

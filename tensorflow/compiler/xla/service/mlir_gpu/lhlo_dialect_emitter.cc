@@ -66,29 +66,29 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kAdd:
       func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
-    case HloOpcode::kMultiply:
-      func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
-      break;
-    case HloOpcode::kSubtract:
-      func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
+    case HloOpcode::kAnd:
+      func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
       func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
       break;
-    case HloOpcode::kAnd:
-      func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
-      break;
-    case HloOpcode::kMinimum:
-      func_builder.create<lhlo::MinOp>(loc, rets, args, attrs);
+    case HloOpcode::kExp:
+      func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMaximum:
       func_builder.create<lhlo::MaxOp>(loc, rets, args, attrs);
       break;
-    case HloOpcode::kExp:
-      func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
+    case HloOpcode::kMinimum:
+      func_builder.create<lhlo::MinOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kMultiply:
+      func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSelect:
-      func_builder.create<::mlir::xla_lhlo::SelectOp>(loc, rets, args, attrs);
+      func_builder.create<lhlo::SelectOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kSubtract:
+      func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -176,6 +176,19 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
                                   getLocation(instr), ArrayRef<Type>{},
                                   arg_values, attributes));
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
+  mlir::DenseIntElementsAttr broadcast_dim =
+      CreateDenseIntElementsAttrFromVector(broadcast->dimensions(), builder_);
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*broadcast));
+  OpBuilder func_builder(function.getBody());
+  auto broadcast_op = func_builder.create<lhlo::BroadcastInDimOp>(
+      getLocation(broadcast), function.getArgument(0), function.getArgument(1),
+      broadcast_dim);
+  broadcast_op.setAttr("name", builder_.getStringAttr(broadcast->name()));
   return Status::OK();
 }
 
