@@ -199,6 +199,12 @@ A SPIR-V function is defined using the builtin `func` op. `spv.module` verifies
 that the functions inside it comply with SPIR-V requirements: at most one
 result, no nested functions, and so on.
 
+## Operations
+
+Operation documentation is written in each op's Op Definition Spec using
+TableGen. A markdown version of the doc can be generated using `mlir-tblgen
+-gen-doc`.
+
 ## Control Flow
 
 SPIR-V binary format uses merge instructions (`OpSelectionMerge` and
@@ -385,7 +391,63 @@ func @loop(%count : i32) -> () {
 }
 ```
 
-## Serialization
+### Block argument for Phi
+
+There are no direct Phi operations in the SPIR-V dialect; SPIR-V `OpPhi`
+instructions are modelled as block arguments in the SPIR-V dialect. (See the
+[Rationale][Rationale] doc for "Block Arguments vs Phi nodes".) Each block
+argument corresponds to one `OpPhi` instruction in the SPIR-V binary format. For
+example, for the following SPIR-V function `foo`:
+
+```spirv
+  %foo = OpFunction %void None ...
+%entry = OpLabel
+  %var = OpVariable %_ptr_Function_int Function
+         OpSelectionMerge %merge None
+         OpBranchConditional %true %true %false
+ %true = OpLabel
+         OpBranch %phi
+%false = OpLabel
+         OpBranch %phi
+  %phi = OpLabel
+  %val = OpPhi %int %int_1 %false %int_0 %true
+         OpStore %var %val
+         OpReturn
+%merge = OpLabel
+         OpReturn
+         OpFunctionEnd
+```
+
+It will be represented as:
+
+```mlir
+func @foo() -> () {
+  %var = spv.Variable : !spv.ptr<i32, Function>
+
+  spv.selection {
+    %true = spv.constant true
+    spv.BranchConditional %true, ^true, ^false
+
+  ^true:
+    %zero = spv.constant 0 : i32
+    spv.Branch ^phi(%zero: i32)
+
+  ^false:
+    %one = spv.constant 1 : i32
+    spv.Branch ^phi(%one: i32)
+
+  ^phi(%arg: i32):
+    spv.Store "Function" %var, %arg : i32
+    spv.Return
+
+  ^merge:
+    spv._merge
+  }
+  spv.Return
+}
+```
+
+## Serialization and deserialization
 
 The serialization library provides two entry points, `mlir::spirv::serialize()`
 and `mlir::spirv::deserialize()`, for converting a MLIR SPIR-V module to binary
@@ -399,6 +461,25 @@ the SPIR-V binary module and does not guarantee roundtrip equivalence (at least
 for now). For the latter, please use the assembler/disassembler in the
 [SPIRV-Tools][SPIRV-Tools] project.
 
+A few transformations are performed in the process of serialization because of
+the representational differences between SPIR-V dialect and binary format:
+
+*   Attributes on `spv.module` are emitted as their corresponding SPIR-V
+    instructions.
+*   `spv.constant`s are unified and placed in the SPIR-V binary module section
+    for types, constants, and global variables.
+*   `spv.selection`s and `spv.loop`s are emitted as basic blocks with `Op*Merge`
+    instructions in the header block as required by the binary format.
+
+Similarly, a few transformations are performed during deserialization:
+
+*   Instructions for execution environment requirements will be placed as
+    attribues on `spv.module`.
+*   `OpConstant*` instructions are materialized as `spv.constant` at each use
+    site.
+*   `OpPhi` instructions are converted to block arguments.
+*   Structured control flow are placed inside `spv.selection` and `spv.loop`.
+
 [SPIR-V]: https://www.khronos.org/registry/spir-v/
 [ArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeArray
 [ImageType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeImage
@@ -406,3 +487,4 @@ for now). For the latter, please use the assembler/disassembler in the
 [RuntimeArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeRuntimeArray
 [StructType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#Structure
 [SPIRV-Tools]: https://github.com/KhronosGroup/SPIRV-Tools
+[Rationale]: https://github.com/tensorflow/mlir/blob/master/g3doc/Rationale.md#block-arguments-vs-phi-nodes
