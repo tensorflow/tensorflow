@@ -21,7 +21,7 @@ To try the example applications and learn how to use the API, read
 ## Supported platforms
 
 TensorFlow Lite for Microcontrollers is written in C++ 11 and requires a 32-bit
-platform. It has been test extensively with many processors based on the
+platform. It has been tested extensively with many processors based on the
 [Arm Cortex-M Series](https://developer.arm.com/ip-products/processors/cortex-m)
 architecture, and has been ported to other architectures including
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview).
