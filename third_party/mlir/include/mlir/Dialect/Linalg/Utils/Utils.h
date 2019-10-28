@@ -83,9 +83,13 @@ struct FusionInfo {
 
 // Fuses producer into consumer if the producer is structurally feasible and the
 // fusion would not violate dependencies.
-Optional<FusionInfo> fuseProducerOf(LinalgOp consumer, unsigned consumerIdx,
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
+                                    unsigned consumerIdx,
                                     LinalgDependenceGraph &graph,
-                                    OperationFolder &state);
+                                    OperationFolder *folder = nullptr);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
@@ -102,11 +106,13 @@ SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
 }
 
 /// Returns the values obtained by applying `map` to the list of values.
-/// Performs simplifications and foldings where possible.
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
 SmallVector<Value *, 4> applyMapToValues(OpBuilder &b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
-                                         OperationFolder &state);
+                                         OperationFolder *folder = nullptr);
 
 struct TiledLinalgOp {
   LinalgOp op;
@@ -116,14 +122,28 @@ struct TiledLinalgOp {
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-llvm::Optional<TiledLinalgOp>
-tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes, OperationFolder &folder);
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                           ArrayRef<Value *> tileSizes,
+                                           OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-llvm::Optional<TiledLinalgOp>
-tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OperationFolder &folder);
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                           ArrayRef<int64_t> tileSizes,
+                                           OperationFolder *folder = nullptr);
+
+template <typename... Args>
+llvm::Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
+                                                  Args... args) {
+  return tileLinalgOp(b, cast<LinalgOp>(op), args...);
+}
 
 struct PromotionInfo {
   Value *buffer;
@@ -142,7 +162,7 @@ struct PromotionInfo {
 /// full and partial views indexing into the buffer.
 llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
                                                     ArrayRef<Value *> subViews,
-                                                    OperationFolder &folder);
+                                                    OperationFolder *folder);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

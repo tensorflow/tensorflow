@@ -81,7 +81,7 @@ static Value *allocBuffer(Type elementType, Value *size) {
 // by a partial `copy` op.
 static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
                                            SubViewOp subView,
-                                           OperationFolder &folder) {
+                                           OperationFolder *folder) {
   auto zero = constant_index(folder, 0);
   auto one = constant_index(folder, 1);
 
@@ -113,7 +113,7 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
 SmallVector<PromotionInfo, 8>
 mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
                               ArrayRef<Value *> subViews,
-                              OperationFolder &folder) {
+                              OperationFolder *folder) {
   if (subViews.empty())
     return {};
 
@@ -157,7 +157,7 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
 }
 
 static void promoteSubViewOperands(LinalgOp op, SetVector<Value *> subViews,
-                                   OperationFolder &folder) {
+                                   OperationFolder *folder) {
   // 1. Promote the specified views and use them in the new op.
   OpBuilder b(op);
   ScopedContext scope(b, op.getLoc());
@@ -211,7 +211,7 @@ static void promoteSubViews(FuncOp f) {
       if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
         subViews.insert(sv);
     if (!subViews.empty()) {
-      promoteSubViewOperands(op, subViews, folder);
+      promoteSubViewOperands(op, subViews, &folder);
       toErase.push_back(op);
     }
   });

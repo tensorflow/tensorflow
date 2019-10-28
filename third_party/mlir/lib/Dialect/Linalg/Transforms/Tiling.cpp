@@ -68,7 +68,7 @@ static bool isZero(Value *v) {
 static SmallVector<SubViewOp::Range, 4>
 makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
-                    ArrayRef<Value *> allTileSizes, OperationFolder &folder) {
+                    ArrayRef<Value *> allTileSizes, OperationFolder *folder) {
   assert(allTileSizes.size() == map.getNumResults());
   // Apply `map` to get view sizes in loop order.
   auto viewSizes = applyMapToValues(b, loc, map, allViewSizes, folder);
@@ -141,7 +141,7 @@ static bool isTiled(AffineMap map, ArrayRef<Value *> tileSizes) {
 static SmallVector<Value *, 4>
 makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
                ArrayRef<Value *> ivs, ArrayRef<Value *> tileSizes,
-               ArrayRef<Value *> viewSizes, OperationFolder &folder) {
+               ArrayRef<Value *> viewSizes, OperationFolder *folder) {
   assert(ivs.size() == static_cast<size_t>(llvm::count_if(
                            llvm::make_range(tileSizes.begin(), tileSizes.end()),
                            [](Value *v) { return !isZero(v); })) &&
@@ -211,17 +211,22 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   }
 
   // Traverse the mins/maxes and erase those that don't have uses left.
-  mins.append(maxes.begin(), maxes.end());
-  for (auto *v : mins)
-    if (v->use_empty())
-      v->getDefiningOp()->erase();
+  // This is a special type of folding that we only apply when `folder` is
+  // defined.
+  if (folder) {
+    mins.append(maxes.begin(), maxes.end());
+    for (auto *v : mins)
+      if (v->use_empty())
+        v->getDefiningOp()->erase();
+  }
 
   return res;
 }
 
 llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
-                           OperationFolder &folder) {
+mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
+                           ArrayRef<Value *> tileSizes,
+                           OperationFolder *folder) {
   // 1. Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -229,9 +234,9 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
                  op.getNumWindowLoops() ==
              tileSizes.size() &&
          "expected matching number of tile sizes and loops");
-
-  OpBuilder builder(op.getOperation());
-  ScopedContext scope(builder, op.getLoc());
+  OpBuilder::InsertionGuard g(b);
+  b.setInsertionPoint(op);
+  ScopedContext scope(b, op.getLoc());
   // 2. Build the tiled loop ranges.
   auto viewSizes = getViewSizes(op);
   // The flattened loopToOperandRangesMaps is expected to be an invertible
@@ -240,8 +245,8 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(op)));
   assert(viewSizesToLoopsMap && "expected invertible map");
   auto loopRanges =
-      makeTiledLoopRanges(scope.getBuilder(), scope.getLocation(),
-                          viewSizesToLoopsMap, viewSizes, tileSizes, folder);
+      makeTiledLoopRanges(b, scope.getLocation(), viewSizesToLoopsMap,
+                          viewSizes, tileSizes, folder);
 
   // 3. Create the tiled loops.
   LinalgOp res = op;
@@ -268,8 +273,9 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
 }
 
 llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
-                           OperationFolder &folder) {
+mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
+                           ArrayRef<int64_t> tileSizes,
+                           OperationFolder *folder) {
   if (tileSizes.empty())
     return llvm::None;
 
@@ -284,8 +290,9 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
     return llvm::None;
 
   // Create a builder for tile size constants.
-  OpBuilder builder(op);
-  ScopedContext scope(builder, op.getLoc());
+  OpBuilder::InsertionGuard g(b);
+  b.setInsertionPoint(op);
+  ScopedContext scope(b, op.getLoc());
 
   // Materialize concrete tile size values to pass the generic tiling function.
   SmallVector<Value *, 8> tileSizeValues;
@@ -298,13 +305,14 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
       tileSizeValues.push_back(constant_index(folder, 0));
   }
 
-  return tileLinalgOp(op, tileSizeValues, folder);
+  return tileLinalgOp(b, op, tileSizeValues, folder);
 }
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
+  OpBuilder b(f);
   OperationFolder folder(f.getContext());
-  f.walk([tileSizes, &folder](LinalgOp op) {
-    auto opLoopsPair = tileLinalgOp(op, tileSizes, folder);
+  f.walk([tileSizes, &b, &folder](LinalgOp op) {
+    auto opLoopsPair = tileLinalgOp(b, op, tileSizes, &folder);
     // If tiling occurred successfully, erase old op.
     if (opLoopsPair)
       op.erase();
