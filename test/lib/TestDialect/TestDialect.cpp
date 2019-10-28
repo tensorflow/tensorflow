@@ -197,12 +197,16 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
   SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
   OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
-  builder.create<TestReturnOp>(result.location, return_operands);
+  builder.create<TestReturnOp>(wrapped_op->getLoc(), return_operands);
 
   // Get the results type for the wrapping op from the terminator operands.
   Operation &return_op = body.back().back();
   result.types.append(return_op.operand_type_begin(),
                       return_op.operand_type_end());
+
+  // Use the location of the wrapped op for the "test.wrapping_region" op.
+  result.location = wrapped_op->getLoc();
+
   return success();
 }
 
