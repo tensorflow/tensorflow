@@ -293,7 +293,7 @@ function main() {
     fi
   done
 
-  if [[ $(( GPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -le "1" ]]; then
+  if [[ $(( GPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
     echo "Only one of [--gpu, --cpu, --gpudirect, --rocm] may be provided."
     usage
     exit 1
