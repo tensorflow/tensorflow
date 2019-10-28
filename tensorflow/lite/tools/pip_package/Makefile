@@ -11,6 +11,7 @@ VERSION_SUFFIX ?=
 
 MAKEFILE_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 TENSORFLOW_DIR := $(MAKEFILE_DIR)/../../../..
+OUT_DIR := $(CURDIR)/out/$(PYTHON)/$(subst :,-,$(BASE_IMAGE))
 TAG_IMAGE := "tflite-runtime-builder-$(subst :,-,$(BASE_IMAGE))"
 
 .PHONY: help \
@@ -35,6 +36,7 @@ docker-shell: docker-image
 		$(TAG_IMAGE)
 
 docker-build: docker-image
+	mkdir -p $(OUT_DIR)
 	docker run --user $(shell id -u):$(shell id -g) \
 		--rm --interactive $(shell tty -s && echo --tty) \
 		--env "PYTHON=$(PYTHON)" \
@@ -42,10 +44,11 @@ docker-build: docker-image
 		--env "BUILD_DEB=$(BUILD_DEB)" \
 		--env "VERSION_SUFFIX=$(VERSION_SUFFIX)" \
 		--volume $(TENSORFLOW_DIR):/tensorflow \
-		--volume $(CURDIR):/out \
+		--volume $(OUT_DIR):/out \
 		$(TAG_IMAGE) \
 		/bin/bash -c "tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
-		              (cp /tmp/tflite_pip/*.deb /tmp/tflite_pip/$(PYTHON)/dist/*.whl /out 2>/dev/null || true)"
+		              (cp /tmp/tflite_pip/*.deb /tmp/tflite_pip/$(PYTHON)/dist/{*.whl,*.tar.gz} /out 2>/dev/null || true)"
 
 clean:
-	rm -f *.whl *.deb
+	rm -rf $(CURDIR)/out
+
