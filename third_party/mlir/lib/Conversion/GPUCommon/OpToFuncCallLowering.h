@@ -22,7 +22,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Module.h"
 
 namespace mlir {
 
@@ -93,10 +92,9 @@ private:
                                      Operation *op) const {
     using LLVM::LLVMFuncOp;
 
-    LLVMFuncOp funcOp =
-        op->getParentOfType<ModuleOp>().lookupSymbol<LLVMFuncOp>(funcName);
+    Operation *funcOp = SymbolTable::lookupNearestSymbolFrom(op, funcName);
     if (funcOp)
-      return funcOp;
+      return llvm::cast<LLVMFuncOp>(*funcOp);
 
     mlir::OpBuilder b(op->getParentOfType<LLVMFuncOp>());
     return b.create<LLVMFuncOp>(op->getLoc(), funcName, funcType, llvm::None);
