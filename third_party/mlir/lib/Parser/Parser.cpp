@@ -271,8 +271,7 @@ public:
   ///
   ///   trailing-location     ::= location?
   ///
-  template <typename Owner>
-  ParseResult parseOptionalTrailingLocation(Owner *owner) {
+  ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
       return success();
@@ -281,7 +280,7 @@ public:
     LocationAttr directLoc;
     if (parseLocation(directLoc))
       return failure();
-    owner->setLoc(directLoc);
+    loc = directLoc;
     return success();
   }
 
@@ -3186,10 +3185,6 @@ ParseResult OperationParser::parseOperation() {
     }
   }
 
-  // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(op))
-    return failure();
-
   return success();
 }
 
@@ -3350,6 +3345,10 @@ Operation *OperationParser::parseGenericOperation() {
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
     result.addSuccessor(successor, operands);
   }
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(result.location))
+    return nullptr;
 
   return opBuilder.createOperation(result);
 }
@@ -3883,6 +3882,10 @@ Operation *OperationParser::parseCustomOperation() {
 
   // If it emitted an error, we failed.
   if (opAsmParser.didEmitError())
+    return nullptr;
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(opState.location))
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
