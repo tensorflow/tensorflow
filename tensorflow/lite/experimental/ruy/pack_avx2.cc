@@ -488,8 +488,6 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
   static constexpr int kPackCols = 8;  // Source cols packed together.
   static constexpr int kPackRows = 8;  // Short input is padded.
 
-  float in_data[kPackCols][kPackRows];
-
   const float* src_ptr0 = src_ptr;
   const float* src_ptr1 = src_ptr0 + src_stride;
   const float* src_ptr2 = src_ptr1 + src_stride;
@@ -599,34 +597,62 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
       _mm256_storeu_ps(packed_ptr + 5 * 8, r3);
       _mm256_storeu_ps(packed_ptr + 7 * 8, r7);
     } else if (available_src_rows > 0) {
-      for (int i = 0; i < available_src_rows; ++i) {
-        in_data[0][i] = src_ptr0[i];
-        in_data[1][i] = src_ptr1[i];
-        in_data[2][i] = src_ptr2[i];
-        in_data[3][i] = src_ptr3[i];
-        in_data[4][i] = src_ptr4[i];
-        in_data[5][i] = src_ptr5[i];
-        in_data[6][i] = src_ptr6[i];
-        in_data[7][i] = src_ptr7[i];
-      }
-      for (int i = available_src_rows; i < kPackRows; ++i) {
-        in_data[0][i] = 0.0f;
-        in_data[1][i] = 0.0f;
-        in_data[2][i] = 0.0f;
-        in_data[3][i] = 0.0f;
-        in_data[4][i] = 0.0f;
-        in_data[5][i] = 0.0f;
-        in_data[6][i] = 0.0f;
-        in_data[7][i] = 0.0f;
-      }
-      // We loop through [0, 7) rather than [0, packed_rows), since that
-      // emulates what we might do in fully-optimized code.
-      // i: (kPackRows - 1), j: kPackCols.
-      for (int i = 0; i < 7; ++i) {
-        for (int j = 0; j < 8; ++j) {
-          trailing_buf[kPackRows * i + j] = in_data[j][i];
-        }
-      }
+      const __m256i series = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+      const __m256i row_mask_v =
+          _mm256_cmpgt_epi32(_mm256_set1_epi32(available_src_rows), series);
+
+      __m256 t0, t1, t2, t3, t4, t5, t6, t7;
+      __m256 r0, r1, r2, r3, r4, r5, r6, r7;
+
+      t0 = _mm256_maskload_ps(src_ptr0, row_mask_v);
+      t4 = _mm256_maskload_ps(src_ptr4, row_mask_v);
+      t1 = _mm256_maskload_ps(src_ptr1, row_mask_v);
+      t5 = _mm256_maskload_ps(src_ptr5, row_mask_v);
+      t2 = _mm256_maskload_ps(src_ptr2, row_mask_v);
+      t6 = _mm256_maskload_ps(src_ptr6, row_mask_v);
+      t3 = _mm256_maskload_ps(src_ptr3, row_mask_v);
+      t7 = _mm256_maskload_ps(src_ptr7, row_mask_v);
+
+      r0 = _mm256_unpacklo_ps(t0, t1);
+      r4 = _mm256_unpacklo_ps(t4, t5);
+      r2 = _mm256_unpackhi_ps(t0, t1);
+      r6 = _mm256_unpackhi_ps(t4, t5);
+      r1 = _mm256_unpacklo_ps(t2, t3);
+      r5 = _mm256_unpacklo_ps(t6, t7);
+      r3 = _mm256_unpackhi_ps(t2, t3);
+      r7 = _mm256_unpackhi_ps(t6, t7);
+
+      t0 = Mm256UnpackloPsx2(r0, r1);
+      t4 = Mm256UnpackloPsx2(r4, r5);
+      t2 = Mm256UnpackhiPsx2(r0, r1);
+      t6 = Mm256UnpackhiPsx2(r4, r5);
+      t1 = Mm256UnpackloPsx2(r2, r3);
+      t5 = Mm256UnpackloPsx2(r6, r7);
+      t3 = Mm256UnpackhiPsx2(r2, r3);
+      t7 = Mm256UnpackhiPsx2(r6, r7);
+
+      // The preceding sets of rearrangement operations interleaved by 4 bytes
+      // and then by 8 bytes *within* lanes. The following set interleave by 16
+      // bytes (128-bit), operating *between* AVX lanes. For instance (t0, t4)
+      // are interleaved to create (r0, r1). This complexity follows from the
+      // way that AVX is centered around MM 128-bit lanes.
+      r0 = _mm256_permute2f128_ps(t0, t4, 0x20);
+      r4 = _mm256_permute2f128_ps(t1, t5, 0x20);
+      r1 = _mm256_permute2f128_ps(t0, t4, 0x31);
+      r5 = _mm256_permute2f128_ps(t1, t5, 0x31);
+      r2 = _mm256_permute2f128_ps(t2, t6, 0x20);
+      r6 = _mm256_permute2f128_ps(t3, t7, 0x20);
+      r3 = _mm256_permute2f128_ps(t2, t6, 0x31);
+      r7 = _mm256_permute2f128_ps(t3, t7, 0x31);
+
+      _mm256_storeu_ps(trailing_buf + 0 * 8, r0);
+      _mm256_storeu_ps(trailing_buf + 2 * 8, r4);
+      _mm256_storeu_ps(trailing_buf + 4 * 8, r1);
+      _mm256_storeu_ps(trailing_buf + 6 * 8, r5);
+      _mm256_storeu_ps(trailing_buf + 1 * 8, r2);
+      _mm256_storeu_ps(trailing_buf + 3 * 8, r6);
+      _mm256_storeu_ps(trailing_buf + 5 * 8, r3);
+      _mm256_storeu_ps(trailing_buf + 7 * 8, r7);
     }
 
     packed_ptr += kPackRows * kPackCols;
