@@ -1894,8 +1894,8 @@ class Model(network.Network):
         # Check `batch_size` argument is consistent with InputLayer.
         if batch_size is not None:
           if batch_size % num_splits_for_ds != 0:
-            raise ValueError('The `batch_size` argument value {} cannot be '
-                             'divisible by number of replicas {}'.format(
+            raise ValueError('The `batch_size` argument ({}) must be divisible '
+                             'the by number of replicas ({})'.format(
                                  batch_size, num_splits_for_ds))
           per_replica_batch_size = batch_size // num_splits_for_ds
 
