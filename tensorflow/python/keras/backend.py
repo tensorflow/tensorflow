@@ -73,6 +73,7 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import moving_averages
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -1601,11 +1602,6 @@ def moving_average_update(x, value, momentum):
   Returns:
       An Operation to update the variable.
   """
-  # `training` is higher-up than the Keras backend in the abstraction hierarchy.
-  # In particular, `training` depends on layers, and thus on Keras.
-  # moving_averages, being low-level ops, should not be part of the training
-  # module.
-  from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
   zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
       x, value, momentum, zero_debias=zero_debias)
