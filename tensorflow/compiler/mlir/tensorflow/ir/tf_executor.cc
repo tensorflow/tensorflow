@@ -358,13 +358,19 @@ void Print(IslandOp op, OpAsmPrinter &p) {
       std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
     Operation &wrapped_op = op.GetBody().front();
     Operation &yield_op = op.GetBody().back();
-    if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
-        std::equal(wrapped_op.getResults().begin(),
-                   wrapped_op.getResults().end(),
-                   yield_op.getOperands().begin())) {
-      p << " wraps ";
-      p.printGenericOp(&op.GetBody().front());
-      return;
+    // The "wraps" syntax only encodes a single location.
+    // In order to correctly round-trip, we can only use this syntax when all
+    // the locations are identical.
+    if (wrapped_op.getLoc() == op.getLoc() &&
+        yield_op.getLoc() == op.getLoc()) {
+      if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
+          std::equal(wrapped_op.getResults().begin(),
+                     wrapped_op.getResults().end(),
+                     yield_op.getOperands().begin())) {
+        p << " wraps ";
+        p.printGenericOp(&op.GetBody().front());
+        return;
+      }
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
@@ -397,8 +403,9 @@ ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
     if (!wrapped_op) return failure();
     OpBuilder builder(parser.getBuilder().getContext());
     builder.setInsertionPointToEnd(&block);
-    builder.create<YieldOp>(result.location,
+    builder.create<YieldOp>(wrapped_op->getLoc(),
                             llvm::to_vector<8>(wrapped_op->getResults()));
+    result.location = wrapped_op->getLoc();
   } else if (parser.parseRegion(body, llvm::None, llvm::None)) {
     return failure();
   }
