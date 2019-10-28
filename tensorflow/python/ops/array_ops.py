@@ -2152,8 +2152,8 @@ def matrix_diag(diagonal,
     A Tensor. Has the same type as `diagonal`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 10, 31):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 11, 30):
+  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2264,8 +2264,8 @@ def matrix_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 10, 31):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 11, 30):
+  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2371,8 +2371,8 @@ def matrix_set_diag(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 10, 31):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 11, 30):
+  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
 
