@@ -249,6 +249,18 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
+  mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
+      static_cast<HloIotaInstruction*>(iota)->iota_dimension());
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*iota));
+  OpBuilder func_builder(function.getBody());
+  auto iota_op = func_builder.create<lhlo::IotaOp>(getLocation(iota), iota_dim,
+                                                   function.getArgument(0));
+  iota_op.setAttr("name", builder_.getStringAttr(iota->name()));
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {
   return Status::OK();
 }

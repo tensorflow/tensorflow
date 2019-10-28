@@ -307,5 +307,20 @@ ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
 )");
 }
 
+TEST_F(LhloGenTest, Iota) {
+  CompileAndVerifyIr(R"(
+HloModule Iota
+
+ENTRY %Iota() -> s64[10, 5] {
+  ROOT %iota = s64[10, 5]{1,0} iota(), iota_dimension=0
+})",
+                     R"(
+;CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
+;CHECK:   "xla_lhlo.iota"(%[[OUT]])
+;CHECK:   {iota_dimension = 0 : i64, name = "iota"} : ([[OUT_T]]) -> ()
+;CHECK: }
+)");
+}
+
 }  // namespace mlir_gpu
 }  // namespace xla

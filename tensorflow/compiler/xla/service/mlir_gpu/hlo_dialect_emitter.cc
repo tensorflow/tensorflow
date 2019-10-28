@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 namespace xla {
 namespace mlir_gpu {
@@ -189,6 +190,20 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
   instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
       getLocation(compare), llvm::makeArrayRef(res_type), arguments,
       attributes);
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleIota(HloInstruction* iota) {
+  mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
+      static_cast<HloIotaInstruction*>(iota)->iota_dimension());
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         iota->shape(), builder_));
+
+  auto iota_op =
+      builder_.create<hlo::IotaOp>(getLocation(iota), res_type, iota_dim);
+  iota_op.setAttr("name", builder_.getStringAttr(iota->name()));
+
+  instruction_to_values_[iota] = iota_op;
   return Status::OK();
 }
 
