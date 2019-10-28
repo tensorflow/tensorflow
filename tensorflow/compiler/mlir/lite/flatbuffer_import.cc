@@ -197,7 +197,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
                                         Value* res) {
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
   // min/max stats is just for comments, so ignore it.
-  if (IsQuantized(tensor)) return nullptr;
+  if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
 
   auto mins = tensor.quantization->min;
   auto maxs = tensor.quantization->max;
@@ -223,6 +223,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     axis_stats = mlir::DenseFPElementsAttr::get(
         mlir::RankedTensorType::get(axis_stats_shape, b.getF32Type()),
         min_maxs);
+    // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
   return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
