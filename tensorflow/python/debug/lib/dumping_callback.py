@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
 import socket
 import threading
@@ -396,6 +397,8 @@ def enable_dumping(dump_root,
       "(dump root: %s, tensor debug mode: %s)",
       threading.current_thread().name, _state.config.dump_root,
       tensor_debug_mode)
+
+  atexit.register(disable_dumping)
   return _get_writer()
 
 
@@ -410,6 +413,7 @@ def disable_dumping():
   if hasattr(_state, "config"):
     dump_root = _state.config.dump_root
     delattr(_state, "config")
+    debug_events_writer.DebugEventsWriter(dump_root).Close()
     op_callbacks.remove_op_callback(_dumping_callback)
     logging.info("Disabled dumping callback in thread %s (dump root: %s)",
                  threading.current_thread().name, dump_root)

@@ -300,6 +300,7 @@ cc_test(
     ],
     deps = [
         ":simple_memory_arena",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

@@ -16,7 +16,7 @@
 set -e
 set -x
 
-source "tensorflow/tools/ci_build/release/common.sh"
+source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip2.7
 

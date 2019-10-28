@@ -42,8 +42,8 @@ template <typename ContainerT,
           typename = typename std::enable_if<
               std::is_same<mlir::Type, decltype(*std::declval<ContainerT>()
                                                      .begin())>::value>::type>
-Status SetAttribute(absl::string_view name, ContainerT types,
-                    AttrValueMap* values) {
+Status SetTypeAttribute(absl::string_view name, ContainerT types,
+                        AttrValueMap* values) {
   AttrValue value;
   auto& type_list = *value.mutable_list();
   for (auto type : types) {

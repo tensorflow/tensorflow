@@ -301,6 +301,19 @@ func @NotRescaleLogistic(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e
 // CHECK: return %[[log]]
 }
 
+// CHECK-LABEL: QuantizeL2Norm
+func @QuantizeL2Norm(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x6x6x16xf32> {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.l2_normalization"(%0) {fused_activation_function = "NONE"} : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+  return %1 : tensor<1x6x6x16xf32>
+
+// CHECK: %[[in:.*]] = "tfl.dequantize"(%arg0)
+// CHECK: %[[l2:.*]] = "tfl.l2_normalization"(%[[in]])
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[l2]]) {qtype = tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>}
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK: return %[[dq]] : tensor<1x6x6x16xf32>
+}
+
 // CHECK-LABEL: NotQuantizeConcatConstantOperand
 func @NotQuantizeConcatConstantOperand(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
   %0 = constant dense<1.0> : tensor<1x2xf32>

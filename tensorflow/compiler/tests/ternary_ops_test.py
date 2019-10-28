@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -28,7 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class TernaryOpsTest(xla_test.XLATestCase):
+class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _testTernary(self, op, a, b, c, expected):
     with self.session() as session:
@@ -39,20 +40,24 @@ class TernaryOpsTest(xla_test.XLATestCase):
         output = op(pa, pb, pc)
       result = session.run(output, {pa: a, pb: b, pc: c})
       self.assertAllClose(result, expected, rtol=1e-3)
+      return result
 
-  def testLinspace(self):
-    self._testTernary(
+  @parameterized.parameters(
+      {'start': 1, 'end': 2, 'num': 1},
+      {'start': 1, 'end': 4, 'num': 3},
+      {'start': 0, 'end': 41, 'num': 42})
+  def testLinspace(self, start, end, num):
+    expected = np.linspace(start, end, num, dtype=np.float32)
+    result = self._testTernary(
         math_ops.linspace,
-        np.float32(1),
-        np.float32(2),
-        np.int32(1),
-        expected=np.array([1], dtype=np.float32))
-    self._testTernary(
-        math_ops.linspace,
-        np.float32(1),
-        np.float32(4),
-        np.int32(3),
-        expected=np.array([1, 2.5, 4], dtype=np.float32))
+        np.float32(start),
+        np.float32(end),
+        np.int32(num),
+        expected)
+    # According to linspace spec, start has to be the first element and end has
+    # to be last element.
+    self.assertEqual(result[-1], expected[-1])
+    self.assertEqual(result[0], expected[0])
 
   def testRange(self):
     self._testTernary(

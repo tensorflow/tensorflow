@@ -365,7 +365,7 @@ class Variant {
   struct InlineValue {
     // We try to size InlineValue so that sizeof(Variant) <= 64 and it can fit
     // into the aligned space of a TensorBuffer.
-    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/16);
+    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/8);
 
     typedef char ValueDataArray[kMaxValueSize];
     alignas(kMaxInlineValueAlignSize) ValueDataArray value_data;

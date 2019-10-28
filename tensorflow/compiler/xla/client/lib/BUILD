@@ -542,3 +542,43 @@ xla_test(
         "//tensorflow/stream_executor/lib",
     ],
 )
+
+cc_library(
+    name = "logdet",
+    srcs = ["logdet.cc"],
+    hdrs = ["logdet.h"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        ":loops",
+        ":math",
+        ":matrix",
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "logdet_test",
+    srcs = ["logdet_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":logdet",
+        ":matrix",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)

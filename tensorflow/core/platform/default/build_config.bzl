@@ -689,6 +689,11 @@ def tf_additional_rpc_deps():
 def tf_additional_tensor_coding_deps():
     return []
 
+def tf_fingerprint_deps():
+    return [
+        "@farmhash_archive//:farmhash",
+    ]
+
 def tf_protobuf_deps():
     return if_static(
         [

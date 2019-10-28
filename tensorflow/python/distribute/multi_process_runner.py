@@ -138,6 +138,14 @@ class MultiProcessRunner(object):
 
     assert cluster_spec is not None
     assert callable(proc_func)
+
+    if not multi_process_lib.using_context_manager():
+      raise RuntimeError('`multi_process_runner` is not initialized. '
+                         'Please call `multi_process_runner.test_main()` '
+                         'within `if __name__ == \'__main__\':` block '
+                         'in your python module to properly initialize '
+                         '`multi_process_runner`.')
+
     processes = []
     args = args or ()
     kwargs = kwargs or {}

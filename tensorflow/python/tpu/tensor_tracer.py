@@ -515,6 +515,9 @@ class TensorTracer(object):
 
   def _use_tensor_values_cache(self):
     """Returns True if immediate tensors should be first saved to a cache."""
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
+      # For summary tace mode only compact format is supported.
+      return True
 
     if self._parameters.trace_mode not in set([
         tensor_tracer_flags.TRACE_MODE_NAN_INF,

@@ -72,6 +72,10 @@ def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   );
 }
 
+def RankedTensorOp : TEST_Op<"ranked_tensor_op"> {
+  let arguments = (ins AnyRankedTensor:$input);
+}
+
 def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
   let arguments = (ins
     TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0

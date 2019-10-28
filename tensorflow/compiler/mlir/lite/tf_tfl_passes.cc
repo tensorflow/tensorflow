@@ -97,8 +97,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
-  pass_manager->addPass(mlir::createCanonicalizerPass());
-  pass_manager->addPass(mlir::createCSEPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
@@ -106,15 +106,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::createCSEPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     // This pass should be always at the end of the floating point model
     // conversion. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes

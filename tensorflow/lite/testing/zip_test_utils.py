@@ -316,8 +316,8 @@ def make_zip_of_tests(options,
   processed_labels = set()
 
   if options.make_edgetpu_tests:
-    extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
-    extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+    extra_toco_options.inference_input_type = tf.uint8
+    extra_toco_options.inference_output_type = tf.uint8
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:

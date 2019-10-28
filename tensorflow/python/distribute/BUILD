@@ -404,6 +404,30 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "multi_worker_continuous_run_test",
+    srcs = [
+        "multi_worker_continuous_run_test.py",
+    ],
+    additional_deps = [
+        ":collective_all_reduce_strategy",
+        ":multi_process_runner",
+        ":reduce_util",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
 py_library(
     name = "numpy_dataset",
     srcs = ["numpy_dataset.py"],
@@ -1317,6 +1341,16 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    deps = [
+        ":multi_process_runner",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_test(
+    name = "multi_process_runner_no_init_test",
+    srcs = ["multi_process_runner_no_init_test.py"],
+    python_version = "PY3",
     deps = [
         ":multi_process_runner",
         "//tensorflow/python/eager:test",

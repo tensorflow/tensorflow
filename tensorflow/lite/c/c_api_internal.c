@@ -60,10 +60,14 @@ TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
 
 void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
+#endif  // TF_LITE_STATIC_MEMORY
+
 int TfLiteFloatArrayGetSizeInBytes(int size) {
   static TfLiteFloatArray dummy;
   return sizeof(dummy) + sizeof(dummy.data[0]) * size;
 }
+
+#ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
   TfLiteFloatArray* ret =

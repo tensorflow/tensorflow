@@ -13,25 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include <std_string.i>
-%include "tensorflow/python/lib/core/strings.i"
-%include "tensorflow/python/platform/base.i"
+package org.tensorflow.lite.support.common;
 
-%{
-#include "tensorflow/core/profiler/internal/python_traceme.h"
-%}
-
-%ignoreall
-
-%unignore tensorflow;
-%unignore tensorflow::profiler;
-%unignore tensorflow::profiler::PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::Enter;
-%unignore tensorflow::profiler::PythonTraceMe::Exit;
-%unignore tensorflow::profiler::PythonTraceMe::~PythonTraceMe;
-%unignore tensorflow::profiler::PythonTraceMe::IsEnabled;
-
-%include "tensorflow/core/profiler/internal/python_traceme.h"
-
-%unignoreall
+/**
+ * Processes T object with prepared {@link Operator<T>}.
+ */
+public interface Processor<T> {
+  T process(T input);
+}

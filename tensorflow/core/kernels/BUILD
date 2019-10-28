@@ -1718,9 +1718,12 @@ tf_cuda_cc_test(
         "nomac",  # b/132448918
     ],
     deps = [
+        ":bias_op",
         ":conv_ops",
+        ":fused_batch_norm_op",
         ":ops_testutil",
         ":ops_util",
+        ":relu_op",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -2582,6 +2585,30 @@ tf_kernel_library(
     ],
     prefix = "dynamic_stitch_op",
     deps = DYNAMIC_DEPS,
+)
+
+cc_library(
+    name = "tensor_cord",
+    srcs = ["tensor_cord.cc"],
+    hdrs = ["tensor_cord.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_cord_test",
+    srcs = ["tensor_cord_test.cc"],
+    deps = [
+        ":tensor_cord",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:cord",
+    ],
 )
 
 LOOKUP_DEPS = [

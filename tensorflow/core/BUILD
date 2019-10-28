@@ -2314,6 +2314,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",

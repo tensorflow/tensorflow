@@ -169,6 +169,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;
+  specs.upgrade_legacy = true;
   WarningUnusedFlags(model_flags, toco_flags);
 
   TF_ASSIGN_OR_RETURN(

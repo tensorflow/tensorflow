@@ -68,7 +68,7 @@ class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
 class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
-  def __init__(self):
+  def __init__(self, import_rename=False):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     # If the new argument is None, it will be removed.
@@ -512,8 +512,21 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     # Mapping from function to the new name of the function
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
     self.symbol_renames = all_renames_v2.symbol_renames
-
-    self.import_renames = {}
+    self.import_rename = import_rename
+    if self.import_rename:
+      self.import_renames = {
+          "tensorflow":
+              ast_edits.ImportRename(
+                  "tensorflow.compat.v2",
+                  excluded_prefixes=[
+                      "tensorflow.contrib", "tensorflow.flags",
+                      "tensorflow.compat.v1", "tensorflow.compat.v2",
+                      "tensorflow.google"
+                  ],
+              )
+      }
+    else:
+      self.import_renames = {}
 
     # Variables that should be changed to functions.
     self.change_to_function = {}

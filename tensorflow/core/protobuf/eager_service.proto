@@ -153,6 +153,7 @@ message KeepAliveResponse {
 
 message CloseContextRequest {
   fixed64 context_id = 1;
+  fixed64 context_view_id = 2;
 }
 
 message CloseContextResponse {}

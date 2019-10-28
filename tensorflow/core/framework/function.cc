@@ -704,7 +704,16 @@ Status AddDefaultAttrs(const string& op,
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(4) << "Instantiation Function: " << Print(fdef);
+  if (VLOG_IS_ON(5)) {
+    const auto& signature = fdef.signature();
+    VLOG(5) << "Instantiate function definition: name=" << signature.name()
+            << " #input_args=" << signature.input_arg_size()
+            << " #output_args=" << signature.output_arg_size()
+            << " #control_output=" << signature.control_output_size();
+    for (const auto& line : str_util::Split(Print(fdef), '\n')) {
+      VLOG(5) << "|| " << line;
+    }
+  }
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));

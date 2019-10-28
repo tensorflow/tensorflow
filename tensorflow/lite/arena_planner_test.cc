@@ -182,6 +182,14 @@ class ArenaPlannerTest : public ::testing::Test {
     CHECK(planner_->ExecuteAllocations(start, end) == kTfLiteOk);
   }
 
+  void ReleaseNonPersistentMemory() {
+    CHECK(planner_->ReleaseNonPersistentMemory() == kTfLiteOk);
+  }
+
+  void AcquireNonPersistentMemory() {
+    CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
+  }
+
   // Returns the actual offset of a given tensor, relative to the start of its
   // arena.
   std::ptrdiff_t GetOffset(int tensor_index) {
@@ -543,6 +551,52 @@ TEST_F(ArenaPlannerTest, ModifiedGraph) {
   SwapGraph(&pruned_graph);
   Execute(0, 10);
 
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
+}
+
+TEST_F(ArenaPlannerTest, ModifiedGraph_DeallocateNonPersistentArena) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph, /*preserve_inputs=*/true);
+  Execute(0, 10);
+
+  // Should be no-ops, since ReleaseNonPersistentMemory() hasn't been called.
+  AcquireNonPersistentMemory();
+  AcquireNonPersistentMemory();
+
+  // Release non-persistent arena.
+  ReleaseNonPersistentMemory();
+  // Offsets should be zero.
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(3), 0);
+
+  // Now update the graph data used by the existing allocator. It should behave
+  // as if it had been recreated with the new graph.
+  TestGraph pruned_graph({0, 1},
+                         {
+                             /* in, out, tmp */
+                             {{0, 1}, {3}, {}},  // First op
+                         },
+                         {3});
+  SwapGraph(&pruned_graph);
+  Execute(0, 10);
+
+  // Should be a no-op.
+  AcquireNonPersistentMemory();
+
+  // Release & acquire non-persistent memory.
+  ReleaseNonPersistentMemory();
+  AcquireNonPersistentMemory();
+  // Offset checks from previous test should still apply.
   EXPECT_EQ(GetOffset(0), 0);
   EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
   EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));

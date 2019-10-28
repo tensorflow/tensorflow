@@ -815,6 +815,30 @@ class MicroBenchmarks(test.Benchmark):
     m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
     self._benchmark_tf_zeros_like(m, device=GPU)
 
+  def _benchmark_tf_random_uniform_2_by_2(self,
+                                          shape=(2, 2),
+                                          dtype=dtypes.int32,
+                                          device=CPU):
+    with context.device(device):
+
+      def func():
+        return random_ops.random_uniform(shape, maxval=3, dtype=dtype)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_random_uniform_2_by_2_integer_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2()
+
+  def benchmark_tf_random_uniform_2_by_2_integer_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(device=GPU)
+
+  def benchmark_tf_random_uniform_2_by_2_float_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32)
+
+  def benchmark_tf_random_uniform_2_by_2_float_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(
+        dtype=dtypes.float32, device=GPU)
+
   def _benchmark_transpose(self,
                            m,
                            num_iters,

@@ -8,41 +8,9 @@ run on systems with small amounts of memory such as microcontrollers and DSPs.
 -   [Getting started](#getting-started)
 -   [Running on Arduino](#running-on-arduino)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
+-   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Debugging image capture](#debugging-image-capture)
 -   [Training your own model](#training-your-own-model)
-
-## Getting started
-
-To compile and test this example on a desktop Linux or MacOS machine, download
-[the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
-into the source directory from a terminal, and then run the following command:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile
-```
-
-This will take a few minutes, and downloads frameworks the code uses like
-[CMSIS](https://developer.arm.com/embedded/cmsis) and
-[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
-finished, run:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_person_detection_test
-```
-
-You should see a series of files get compiled, followed by some logging output
-from a test, which should conclude with `~~~ALL TESTS PASSED~~~`. If you see
-this, it means that a small program has been built and run that loads a trained
-TensorFlow model, runs some example images through it, and got the expected
-outputs. This particular test runs images with a and without a person in them,
-and checks that the network correctly identifies them.
-
-To understand how TensorFlow Lite does this, you can look at the `TestInvoke()`
-function in
-[person_detection_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/person_detection/person_detection_test.cc).
-It's a fairly small amount of code, creating an interpreter, getting a handle to
-a model that's been compiled into the program, and then invoking the interpreter
-with the model and sample inputs.
 
 ## Running on Arduino
 
@@ -72,17 +40,13 @@ Connect the Arducam pins as follows:
 |SDA|A4|
 |SCL|A5|
 
-### Obtain and import the library
+### Install the Arduino_TensorFlowLite library
 
-To use this sample application with Arduino, we've created an Arduino library
-that includes it as an example that you can open in the Arduino IDE.
+This example application is included as part of the official TensorFlow Lite
+Arduino library. To install it, open the Arduino library manager in
+`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
 
-Download the current nightly build of the library: [micro_speech.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech/micro_speech.zip)
-
-Next, import this zip file into the Arduino IDE by going to
-`Sketch -> Include Library -> Add .ZIP Library...`.
-
-### Install libraries
+### Install other libraries
 
 In addition to the TensorFlow library, you'll also need to install two
 libraries:
@@ -332,6 +296,39 @@ screen ${DEVICENAME} 115200
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Run the tests on a development machine
+
+To compile and test this example on a desktop Linux or MacOS machine, download
+[the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
+into the source directory from a terminal, and then run the following command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile
+```
+
+This will take a few minutes, and downloads frameworks the code uses like
+[CMSIS](https://developer.arm.com/embedded/cmsis) and
+[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
+finished, run:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_person_detection_test
+```
+
+You should see a series of files get compiled, followed by some logging output
+from a test, which should conclude with `~~~ALL TESTS PASSED~~~`. If you see
+this, it means that a small program has been built and run that loads a trained
+TensorFlow model, runs some example images through it, and got the expected
+outputs. This particular test runs images with a and without a person in them,
+and checks that the network correctly identifies them.
+
+To understand how TensorFlow Lite does this, you can look at the `TestInvoke()`
+function in
+[person_detection_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/person_detection/person_detection_test.cc).
+It's a fairly small amount of code, creating an interpreter, getting a handle to
+a model that's been compiled into the program, and then invoking the interpreter
+with the model and sample inputs.
 
 ## Debugging image capture
 When the sample is running, check the LEDs to determine whether the inference is

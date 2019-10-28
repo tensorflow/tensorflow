@@ -19,6 +19,7 @@ load(
     "tf_additional_test_srcs",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
+    "tf_fingerprint_deps",
 )
 load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
@@ -210,6 +211,15 @@ cc_library(
 )
 
 cc_library(
+    name = "fingerprint",
+    hdrs = ["fingerprint.h"],
+    deps = [
+        ":stringpiece",
+        ":types",
+    ] + tf_fingerprint_deps(),
+)
+
+cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
@@ -258,6 +268,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -601,6 +612,7 @@ cc_binary(
         ":dynamic_annotations",
         ":env_time",
         ":file_statistics",
+        ":fingerprint",
         ":gif",
         ":jpeg",
         ":macros",

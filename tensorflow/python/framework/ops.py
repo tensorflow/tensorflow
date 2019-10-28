@@ -569,14 +569,6 @@ class Tensor(_TensorLike):
     """
     return self.shape.ndims
 
-  def _maybe_constant_shape(self, gen_array_ops):
-    """The shape tuple if fully defined, otherwise op to get shape."""
-
-    shape = self._shape_as_list()
-    if shape is not None and all(x is not None for x in shape):
-      return shape
-    return gen_array_ops.shape(self)
-
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -970,9 +962,6 @@ class _EagerTensorBase(Tensor):
       tuple with the shape.
     """
     raise NotImplementedError()
-
-  def _maybe_constant_shape(self, _):
-    return self.shape
 
   def _rank(self):
     """Integer rank of this Tensor.

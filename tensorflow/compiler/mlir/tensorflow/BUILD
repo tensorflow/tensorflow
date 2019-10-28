@@ -227,11 +227,13 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
+        ":tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
@@ -849,6 +851,7 @@ cc_library(
     deps = [
         ":lower_tf_inc_gen",
         ":tensorflow",
+        "//tensorflow/core:framework",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

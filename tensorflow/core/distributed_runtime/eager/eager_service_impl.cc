@@ -459,8 +459,16 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
     // Swallow the error here.
     return Status::OK();
   }
-
   core::ScopedUnref context_unref(context);
+
+  if (request->context_view_id() < context->Context()->GetContextViewId()) {
+    // Swallow the error here.
+    LOG(INFO) << "Ignoring CloseContext request with a stale context_view_id "
+              << request->context_view_id() << "  for context_id "
+              << request->context_id() << ". The current context_view_id is "
+              << context->Context()->GetContextViewId() << ".";
+    return Status::OK();
+  }
 
   mutex_lock l(contexts_mu_);
   contexts_.erase(request->context_id());

@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+from absl import logging
 import numpy as np
 import six
 
@@ -588,8 +589,11 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    # TODO(b/129298253): Allow creating datasets/tensors before enabling
+    # collective ops.
     if self._context_handle is not None:
-      raise RuntimeError("Collective ops must be enabled at program startup")
+      logging.warning("Enabling collective ops after program startup may cause "
+                      "error when accessing previously created tensors.")
 
     self._collective_ops_server_def = server_def
 

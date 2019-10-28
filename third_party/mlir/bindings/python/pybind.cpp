@@ -196,8 +196,8 @@ struct PythonMLIRModule {
   // transformations and codegen. -1 means ExecutionEngine default.
   void compile(int optLevel, int codegenOptLevel) {
     PassManager manager(module->getContext());
-    manager.addPass(mlir::createCanonicalizerPass());
-    manager.addPass(mlir::createCSEPass());
+    manager.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    manager.addNestedPass<FuncOp>(mlir::createCSEPass());
     manager.addPass(mlir::createLowerAffinePass());
     manager.addPass(mlir::createLowerToLLVMPass());
     if (failed(manager.run(*module))) {

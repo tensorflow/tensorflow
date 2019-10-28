@@ -259,9 +259,7 @@ class _SaveableView(object):
         # created component variables.
         new_vars = []
         for v in obj.values:
-          # Ensure the variables are created with device attribute set.
-          with ops.device(v.device):
-            new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
+          new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
           object_map[v] = new_variable
           new_vars.append(new_variable)
           resource_map[v.handle] = new_variable.handle

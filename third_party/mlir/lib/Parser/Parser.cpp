@@ -3115,43 +3115,40 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();
-  SmallVector<std::pair<StringRef, SMLoc>, 1> resultIDs;
-  size_t numExpectedResults;
+  SmallVector<std::tuple<StringRef, unsigned, SMLoc>, 1> resultIDs;
+  size_t numExpectedResults = 0;
   if (getToken().is(Token::percent_identifier)) {
-    // Parse the first result id.
-    resultIDs.emplace_back(getTokenSpelling(), loc);
-    consumeToken(Token::percent_identifier);
+    // Parse the group of result ids.
+    auto parseNextResult = [&]() -> ParseResult {
+      // Parse the next result id.
+      if (!getToken().is(Token::percent_identifier))
+        return emitError("expected valid ssa identifier");
 
-    // If the next token is a ':', we parse the expected result count.
-    if (consumeIf(Token::colon)) {
-      // Check that the next token is an integer.
-      if (!getToken().is(Token::integer))
-        return emitError("expected integer number of results");
+      Token nameTok = getToken();
+      consumeToken(Token::percent_identifier);
 
-      // Check that number of results is > 0.
-      auto val = getToken().getUInt64IntegerValue();
-      if (!val.hasValue() || val.getValue() < 1)
-        return emitError("expected named operation to have atleast 1 result");
-      consumeToken(Token::integer);
-      numExpectedResults = *val;
-    } else {
-      // Otherwise, this is a comma separated list of result ids.
-      if (consumeIf(Token::comma)) {
-        auto parseNextResult = [&]() -> ParseResult {
-          // Parse the next result id.
-          if (!getToken().is(Token::percent_identifier))
-            return emitError("expected valid ssa identifier");
+      // If the next token is a ':', we parse the expected result count.
+      size_t expectedSubResults = 1;
+      if (consumeIf(Token::colon)) {
+        // Check that the next token is an integer.
+        if (!getToken().is(Token::integer))
+          return emitError("expected integer number of results");
 
-          resultIDs.emplace_back(getTokenSpelling(), getToken().getLoc());
-          consumeToken(Token::percent_identifier);
-          return success();
-        };
-
-        if (parseCommaSeparatedList(parseNextResult))
-          return failure();
+        // Check that number of results is > 0.
+        auto val = getToken().getUInt64IntegerValue();
+        if (!val.hasValue() || val.getValue() < 1)
+          return emitError("expected named operation to have atleast 1 result");
+        consumeToken(Token::integer);
+        expectedSubResults = *val;
       }
-      numExpectedResults = resultIDs.size();
-    }
+
+      resultIDs.emplace_back(nameTok.getSpelling(), expectedSubResults,
+                             nameTok.getLoc());
+      numExpectedResults += expectedSubResults;
+      return success();
+    };
+    if (parseCommaSeparatedList(parseNextResult))
+      return failure();
 
     if (parseToken(Token::equal, "expected '=' after SSA name"))
       return failure();
@@ -3178,19 +3175,14 @@ ParseResult OperationParser::parseOperation() {
              << op->getNumResults() << " results but was provided "
              << numExpectedResults << " to bind";
 
-    // If the number of result names matches the number of operation results, we
-    // can directly use the provided names.
-    if (resultIDs.size() == op->getNumResults()) {
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
-                          op->getResult(i)))
+    // Add definitions for each of the result groups.
+    unsigned opResI = 0;
+    for (std::tuple<StringRef, unsigned, SMLoc> &resIt : resultIDs) {
+      for (unsigned subRes : llvm::seq<unsigned>(0, std::get<1>(resIt))) {
+        if (addDefinition({std::get<0>(resIt), subRes, std::get<2>(resIt)},
+                          op->getResult(opResI++)))
           return failure();
-    } else {
-      // Otherwise, we use the same name for all results.
-      StringRef name = resultIDs.front().first;
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({name, i, loc}, op->getResult(i)))
-          return failure();
+      }
     }
   }
 

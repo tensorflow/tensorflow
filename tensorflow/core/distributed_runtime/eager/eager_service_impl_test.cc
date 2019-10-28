@@ -312,6 +312,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));
@@ -379,6 +380,7 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));
@@ -473,6 +475,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
 
     CloseContextRequest close_context_request;
     close_context_request.set_context_id(context_id_);
+    close_context_request.set_context_view_id(0);
     CloseContextResponse close_context_response;
     TF_ASSERT_OK(eager_service_impl_.CloseContext(&close_context_request,
                                                   &close_context_response));
@@ -640,6 +643,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));

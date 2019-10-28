@@ -54,3 +54,23 @@ func @compare(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2x
   tensor_store %tensor_result, %result : memref<2x2xi1>
   "xla_lhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @broadcast
+func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
+  %tensor_operand = tensor_load %operand : memref<5xf32>
+  %tensor_result = "xla_hlo.broadcast_in_dim"(%tensor_operand)
+      {broadcast_dimensions = dense<1>
+      : tensor<1xi64>} : (tensor<5xf32>) -> tensor<10x5xf32>
+  // CHECK-NEXT: "xla_lhlo.broadcast_in_dim"(%{{.*}}, %{{.*}}) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  tensor_store %tensor_result, %result : memref<10x5xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @iota
+func @iota(%result: memref<10xi32>) {
+  %tensor_result = "xla_hlo.iota"()
+      {iota_dimension = 0 : i64} : () -> tensor<10xi32>
+  // CHECK-NEXT: "xla_lhlo.iota"(%{{.*}}) {iota_dimension = 0 : i64}
+  tensor_store %tensor_result, %result : memref<10xi32>
+  "xla_lhlo.terminator"() : () -> ()
+}

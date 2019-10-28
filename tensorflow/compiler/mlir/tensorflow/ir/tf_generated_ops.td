@@ -480,6 +480,10 @@ the feature dimension is the third-to-last.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -2072,7 +2076,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -3988,7 +3992,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
@@ -4010,6 +4014,28 @@ For each batch `i` and class `j` we have
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_SoftmaxCrossEntropyWithLogitsOp : TF_Op<"SoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_FpTensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
