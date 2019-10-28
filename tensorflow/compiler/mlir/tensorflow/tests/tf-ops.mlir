@@ -51,21 +51,6 @@ func @testTFVariant(tensor<*x!tf.variant>) -> () {
   return
 }
 
-// Test of parsing tf_complex type
-// CHECK-LABEL: func @testTFComplex(%arg0: tensor<*x!tf.complex64>, %arg1: tensor<*x!tf.complex128>)
-func @testTFComplex(tensor<*x!tf.complex64>, tensor<*x!tf.complex128>) -> (!tf.complex64, !tf.complex128) {
-^bb0(%arg0: tensor<*x!tf.complex64>, %arg1: tensor<*x!tf.complex128>):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_COMPLEX64", name = "Const"} : () -> (!tf.complex64, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_COMPLEX64"} : () -> (!tf.complex64, !_tf.control)
-  // CHECK: %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_COMPLEX128", name = "Const"} : () -> (!tf.complex128, !_tf.control)
-  %1:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_COMPLEX128"} : () -> (!tf.complex128, !_tf.control)
-  // CHECK: %2:2 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex64>, !tf.complex64) -> (!tf.complex64, !_tf.control)
-  %2:2 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex64>, !tf.complex64) -> (!tf.complex64, !_tf.control)
-  // CHECK: %3:2 = "_tf.AssignAddVariableOp"(%arg1, %1#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex128>, !tf.complex128) -> (!tf.complex128, !_tf.control)
-  %3:2 = "_tf.AssignAddVariableOp"(%arg1, %1#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex128>, !tf.complex128) -> (!tf.complex128, !_tf.control)
-  return %2#0, %3#0 : !tf.complex64, !tf.complex128
-}
-
 //===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
