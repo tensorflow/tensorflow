@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "BatchGemm"
+  summary: "Multiplies slices of two tensors in batches."
+  description: <<END
+END
+}
