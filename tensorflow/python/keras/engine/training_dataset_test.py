@@ -123,7 +123,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     # Test with sample weight.
     sample_weight = np.random.random((10,))
     with self.assertRaisesRegexp(
-        ValueError, r'`sample_weight` argument is not supported .+dataset'):
+        ValueError, '`sample_weight` argument is not supported '
+        'when input `x` is a dataset or a dataset iterator'):
       model.fit(
           dataset,
           epochs=1,
@@ -144,9 +145,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         ValueError, 'The `batch_size` argument must not be specified'):
       model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
 
-    with self.assertRaisesRegexp(
-        ValueError, '(you should not specify a target)|'
-        '(`y` argument is not supported when using dataset as input.)'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'you should not specify a target'):
       model.fit(dataset, dataset,
                 epochs=1, steps_per_epoch=2, verbose=0)
 

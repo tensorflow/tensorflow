@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import itertools
 import math
-import random
 
 import numpy as np
 import six
@@ -30,7 +29,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.ops import composite_tensor
-from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
@@ -227,13 +225,16 @@ class TensorLikeDataAdapter(DataAdapter):
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
-    sample_weight_modes = broadcast_sample_weight_modes(
-        sample_weights, sample_weight_modes)
+
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
 
     # If sample_weights are not specified for an output use 1.0 as weights.
-    (sample_weights, any_sample_weight, _
-    ) = training_utils.handle_partial_sample_weights(
-        y, sample_weights, sample_weight_modes, check_all_flat=True)
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
 
     if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
@@ -535,13 +536,17 @@ class CompositeTensorDataAdapter(DataAdapter):
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
-    sample_weight_modes = broadcast_sample_weight_modes(
-        sample_weights, sample_weight_modes)
 
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
+
+    # Handle partial sample weights.
     # If sample_weights are not specified for an output use 1.0 as weights.
-    (sample_weights, any_sample_weight, _
-    ) = training_utils.handle_partial_sample_weights(
-        y, sample_weights, sample_weight_modes, check_all_flat=True)
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
 
     if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
@@ -620,7 +625,6 @@ class ListsOfScalarsDataAdapter(DataAdapter):
                sample_weight_modes=None,
                batch_size=None,
                shuffle=False,
-               standardize_function=None,
                **kwargs):
     super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
     x = np.asarray(x)
@@ -628,12 +632,6 @@ class ListsOfScalarsDataAdapter(DataAdapter):
       y = np.asarray(y)
     if sample_weights is not None:
       sample_weights = np.asarray(sample_weights)
-    sample_weight_modes = broadcast_sample_weight_modes(
-        sample_weights, sample_weight_modes)
-
-    if standardize_function is not None:
-      x, y, sample_weights = standardize_function(
-          x=x, y=y, sample_weight=sample_weights)
 
     self._internal_adapter = TensorLikeDataAdapter(
         x,
@@ -667,8 +665,7 @@ class DatasetAdapter(DataAdapter):
   def can_handle(x, y=None):
     return isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
 
-  def __init__(self, x, y=None, sample_weights=None, standardize_function=None,
-               **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, **kwargs):
     super(DatasetAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
@@ -676,10 +673,6 @@ class DatasetAdapter(DataAdapter):
     if not is_none_or_empty(sample_weights):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "dataset as input.")
-
-    if standardize_function is not None:
-      x = standardize_function(x)
-
     # Note that the dataset instance is immutable, its fine to reusing the user
     # provided dataset.
     self._dataset = x
@@ -709,127 +702,29 @@ class GeneratorDataAdapter(DataAdapter):
     return ((hasattr(x, "__next__") or hasattr(x, "next"))
             and hasattr(x, "__iter__"))
 
-  def __init__(self, x, y=None, sample_weights=None, standardize_function=None,
-               workers=1, use_multiprocessing=False, max_queue_size=10,
-               **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
+    super(GeneratorDataAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
                        "python generator as input.")
     if not is_none_or_empty(sample_weights):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "python generator as input.")
-    super(GeneratorDataAdapter, self).__init__(x, y, **kwargs)
 
     # Since we have to know the dtype of the python generator when we build the
-    # dataset, we have to look at a batch to infer the structure.
-    peek, x = self._peek_and_restore(x)
-
-    (peek, wrap_in_tuple, elements_to_keep, partial_sample_weight,
-     sample_weight_modes, nested_shape, nested_dtypes
-    ) = self._canonicalize_peek(peek, kwargs.get("sample_weight_modes"))
-
-    # Note that dataset API takes a callable that creates a generator object,
-    # rather than generator itself, which is why we define a function here.
-    generator_fn = self._make_callable(x, workers, use_multiprocessing,
-                                       max_queue_size)
-
-    generator_fn = self._make_bridging_callable(
-        generator_fn, wrap_in_tuple, peek, elements_to_keep,
-        partial_sample_weight, sample_weight_modes)
-
-    dataset = dataset_ops.DatasetV2.from_generator(
-        generator_fn, nested_dtypes, output_shapes=nested_shape)
-
-    if standardize_function is not None:
-      dataset = standardize_function(dataset)
-
-    if kwargs.get("shuffle", False) and self.get_size() is not None:
-      dataset = dataset.shuffle(self.get_size())
-
-    if workers == 1 and not use_multiprocessing:
-      dataset = dataset.prefetch(1)
-
-    self._dataset = dataset
-
-  def _canonicalize_peek(self, peek, sample_weight_modes):
-    """Map the peeked batch into a regular form.
-
-    This function serves two purposes. First, it determines if per-batch
-    transformations are needed. Second, it extracts the structre to be used
-    by Dataset.from_generator.
-
-    Args:
-      peek: The first batch of the user's data
-      sample_weight_modes: Optional structure indicating how to handle sample
-        weights. If it is a string, it will be mapped to match the target
-        structure.
-
-    Returns:
-      An updated peek and various inspection results.
-    """
-    wrap_in_tuple = False
-    if not isinstance(peek, tuple):
-      peek, wrap_in_tuple = (peek,), True
-
-    if len(peek) not in (1, 2, 3):
-      raise ValueError(
-          "Output of generator should be a tuple of 1 or 2 or 3 elements: "
-          "(input,) or (input, target) or (input, target, sample_weights). "
-          "Received {}".format(peek))
-
-    x_peek, y_peek, sample_weights_peek = list(peek) + [None] * (3 - len(peek))
-
-    any_sample_weight, partial_sample_weight = False, False
-    sample_weight_modes = broadcast_sample_weight_modes(
-        sample_weights_peek if sample_weights_peek is not None else y_peek,
-        sample_weight_modes)
-
-    if len(peek) == 3:
-      (sample_weights_peek, any_sample_weight, partial_sample_weight
-      ) = training_utils.handle_partial_sample_weights(
-          y_peek, sample_weights_peek, sample_weight_modes, check_all_flat=True)
-      peek = (x_peek, y_peek, sample_weights_peek)
-
-    # Users often return None for fields which are not used. For instance:
-    # (x, y, None) to indicate no sample weights.
-    if len(peek) >= 2 and y_peek is None:
-      if any_sample_weight:
-        raise ValueError("Found sample weights, but not targets.")
-      elements_to_keep = 1
-    elif len(peek) == 3 and not any_sample_weight:
-      elements_to_keep = 2
-    else:
-      elements_to_keep = len(peek)
-
+    # dataset, we have to take a peek for the python generator first. Since the
+    # peeked data cannot be push back to generator, we create a new generator by
+    # adding the peeked data at head.
     def dynamic_shape_like(t):
       return tuple(None for _ in t.shape)
 
-    def convert_for_inspection(t):
-      if getattr(t, "shape", None) and getattr(t, "dtype", None):
-        return t
-      return np.array(t, dtype=backend.floatx())
-
-    canonicalized_peek = nest._list_to_tuple(
-        nest.map_structure(convert_for_inspection, peek[:elements_to_keep]))
-    nested_dtypes = nest.map_structure(lambda t: t.dtype, canonicalized_peek)
-    nested_shape = nest.map_structure(dynamic_shape_like, canonicalized_peek)
-
-    try:
-      self._first_batch_size = int(nest.flatten(canonicalized_peek)[0].shape[0])
-    except IndexError:
-      raise IndexError("Could not infer batch size from: {}".format(peek))
-
-    return (peek, wrap_in_tuple, elements_to_keep, partial_sample_weight,
-            sample_weight_modes, nested_shape, nested_dtypes)
-
-  @staticmethod
-  def _peek_and_restore(x):
     peek = next(x)
-    return peek, itertools.chain([peek], x)
-
-  def _make_callable(self, x, workers, use_multiprocessing, max_queue_size):
-    """Create a callable, and possilbly include an Enqueuer."""
-    if workers > 1 or (workers > 0 and use_multiprocessing):
+    nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
+    # Note that dataset API takes a callable that creates a generator object,
+    # rather than generator itself, which is why we define a function here.
+    if workers > 0:
       if use_multiprocessing:
         logging.warning(
             UserWarning("Using a generator with `use_multiprocessing=True` "
@@ -837,50 +732,16 @@ class GeneratorDataAdapter(DataAdapter):
                         "Please consider using the `tf.data.Dataset`."))
       def generator_fn():
         enqueuer = data_utils.GeneratorEnqueuer(
-            x, use_multiprocessing=use_multiprocessing)
+            itertools.chain([peek], x), use_multiprocessing=use_multiprocessing)
         enqueuer.start(workers=workers, max_queue_size=max_queue_size)
         return enqueuer.get()
     else:
-      generator_fn = lambda: x
-    return generator_fn
+      def generator_fn():
+        return itertools.chain([peek], x)
 
-  @staticmethod
-  def _make_bridging_callable(
-      generator_fn, wrap_in_tuple, peek, elements_to_keep,
-      partial_sample_weight, sample_weight_modes):
-    """Optional compatibility layer between user's data and Dataset."""
-    must_prune_nones = (elements_to_keep != len(peek))
-    try:
-      nest.assert_same_structure(peek, nest._list_to_tuple(peek))
-      must_extract_lists = False
-    except TypeError:
-      must_extract_lists = True
-
-    # No additional transformations are needed.
-    if not (wrap_in_tuple or must_extract_lists or must_prune_nones or
-            partial_sample_weight):
-      return generator_fn
-
-    def wrapped_generator():
-      """Remove Nones and lists before invoking Dataset.from_generator."""
-      for batch in generator_fn():
-        if wrap_in_tuple:
-          batch = (batch,)
-
-        if must_extract_lists:
-          batch = nest._list_to_tuple(batch)
-
-        if must_prune_nones:
-          batch = batch[:elements_to_keep]
-
-        if partial_sample_weight:
-          sample_weights, _, _ = training_utils.handle_partial_sample_weights(
-              batch[1], batch[2], sample_weight_modes, check_all_flat=False)
-          batch = batch[:2] + (sample_weights,)
-
-        yield batch
-
-    return wrapped_generator
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
+    self._dataset = dataset_ops.DatasetV2.from_generator(
+        generator_fn, nested_dtypes, output_shapes=nested_shape)
 
   def get_dataset(self):
     return self._dataset
@@ -901,60 +762,64 @@ class GeneratorDataAdapter(DataAdapter):
     return None
 
 
-class KerasSequenceAdapter(GeneratorDataAdapter):
+class KerasSequenceAdapter(DataAdapter):
   """Adapter that handles `keras.utils.Sequence`."""
 
   @staticmethod
   def can_handle(x, y=None):
     return isinstance(x, data_utils.Sequence)
 
-  def __init__(self, x, y=None, sample_weights=None, standardize_function=None,
-               shuffle=False, workers=1, use_multiprocessing=False,
-               max_queue_size=10, **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, shuffle=False, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
+    super(KerasSequenceAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
                        "`keras.utils.Sequence` as input.")
     if not is_none_or_empty(sample_weights):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "`keras.utils.Sequence` as input.")
-    self._size = len(x)
-    self._shuffle_sequence = shuffle
-    super(KerasSequenceAdapter, self).__init__(
-        x,
-        standardize_function=standardize_function,
-        shuffle=False,  # Shuffle is handed in the _make_callable override.
-        workers=workers,
-        use_multiprocessing=use_multiprocessing,
-        max_queue_size=max_queue_size,
-        **kwargs)
+    def dynamic_shape_like(t):
+      return tuple(None for _ in t.shape)
 
-  @staticmethod
-  def _peek_and_restore(x):
-    return x[0], x
+    peek = x[0]
+    nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
 
-  def _make_callable(self, x, workers, use_multiprocessing, max_queue_size):
-    if workers > 1 or (workers > 0 and use_multiprocessing):
+    if workers > 0:
       def generator_fn():
         enqueuer = data_utils.OrderedEnqueuer(
-            x, use_multiprocessing=use_multiprocessing,
-            shuffle=self._shuffle_sequence)
+            x, use_multiprocessing=use_multiprocessing)
         enqueuer.start(workers=workers, max_queue_size=max_queue_size)
         return enqueuer.get()
     else:
       def generator_fn():
-        order = range(len(x))
-        if self._shuffle_sequence:
-          # Match the shuffle convention in OrderedEnqueuer.
-          order = list(order)
-          random.shuffle(order)
-
-        for i in order:
+        for i in range(len(x)):
           yield x[i]
+    dataset = dataset_ops.DatasetV2.from_generator(generator_fn, nested_dtypes,
+                                                   output_shapes=nested_shape)
+    if shuffle:
+      dataset = dataset.shuffle(len(x))
+    self._dataset = dataset
+    self._size = len(x)
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
 
-    return generator_fn
+  def get_dataset(self):
+    return self._dataset
 
   def get_size(self):
     return self._size
+
+  def batch_size(self):
+    return None
+
+  def representative_batch_size(self):
+    return self._first_batch_size
+
+  def has_partial_batch(self):
+    return False
+
+  def partial_batch_size(self):
+    return
 
 
 ALL_ADAPTER_CLS = [
@@ -1038,37 +903,27 @@ def is_none_or_empty(inputs):
   return inputs is None or not nest.flatten(inputs)
 
 
-def broadcast_sample_weight_modes(target_structure, sample_weight_modes):
-  """Match sample_weigt_modes structure with output structure."""
-  if target_structure is None or not nest.flatten(target_structure):
-    return sample_weight_modes
+def handle_partial_sample_weights(outputs, sample_weights, sample_weight_modes):
+  """Adds 1.0 as sample weights for the outputs for which there is no weight.
 
-  if isinstance(sample_weight_modes, str):
-    if isinstance(target_structure, dict):
-      return {key: sample_weight_modes for key in target_structure.keys()}
-    return [sample_weight_modes for _ in target_structure]
+  Args:
+    outputs: List of model outputs.
+    sample_weights: List of sample weight inputs.
+    sample_weight_modes: List of sample weight modes or None.
 
-  if sample_weight_modes:
-    try:
-      nest.assert_same_structure(
-          training_utils.list_to_tuple(target_structure),
-          training_utils.list_to_tuple(sample_weight_modes))
-    except (ValueError, TypeError):
-      target_str = str(nest.map_structure(lambda _: "...", target_structure))
-      mode_str = str(nest.map_structure(lambda _: "...", sample_weight_modes))
-
-      # Attempt to coerce sample_weight_modes to the target structure. This
-      # implicitly depends on the fact that Model flattens outputs for its
-      # internal representation.
-      try:
-        sample_weight_modes = nest.pack_sequence_as(
-            target_structure, nest.flatten(sample_weight_modes))
-        logging.warning(
-            "sample_weight modes were coerced from\n  {}\n    to  \n  {}"
-            .format(target_str, mode_str))
-      except (ValueError, TypeError):
-        raise ValueError(
-            "Unable to match target structure and sample_weight_modes "
-            "structure:\n  {}\n    to  \n  {}".format(target_str, mode_str))
-
-  return sample_weight_modes
+  Returns:
+    Tuple of sample weights, one sample weight for every output.
+  """
+  new_sample_weights = []
+  for i, sw in enumerate(sample_weights):
+    if sw is None:
+      output_shape = outputs[i].shape
+      is_temporal = (
+          sample_weight_modes is not None and
+          sample_weight_modes[i] == "temporal")
+      sw_shape = (output_shape[0],
+                  output_shape[1]) if is_temporal else (output_shape[0],)
+      new_sample_weights.append(array_ops.ones(sw_shape))
+    else:
+      new_sample_weights.append(sw)
+  return training_utils.list_to_tuple(new_sample_weights)

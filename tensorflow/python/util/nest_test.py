@@ -144,12 +144,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        "nest cannot guarantee that it is safe to map one to the other."):
+    with self.assertRaisesRegexp(ValueError, "Structure is a scalar"):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, "but found incompatible type"):
+    with self.assertRaisesRegexp(TypeError, "flat_sequence"):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
@@ -269,10 +267,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(structure, unflattened)
 
   def testPackSequenceAs_notIterableError(self):
-    with self.assertRaisesRegexp(
-        TypeError,
-        "Attempted to pack value:\n  bye\ninto a sequence, but found "
-        "incompatible type `<(type|class) 'str'>` instead."):
+    with self.assertRaisesRegexp(TypeError,
+                                 "flat_sequence must be a sequence"):
       nest.pack_sequence_as("hi", "bye")
 
   def testPackSequenceAs_wrongLengthsError(self):
@@ -1215,14 +1211,6 @@ class NestTest(parameterized.TestCase, test.TestCase):
     seq = _CustomSequenceThatRaisesException()
     with self.assertRaisesRegexp(ValueError, "Cannot get item"):
       nest.flatten(seq)
-
-  def testListToTuple(self):
-    input_sequence = [1, (2, {3: [4, 5, (6,)]}, None, 7, [[[8]]])]
-    expected = (1, (2, {3: (4, 5, (6,))}, None, 7, (((8,),),)))
-    nest.assert_same_structure(
-        nest.list_to_tuple(input_sequence),
-        expected,
-    )
 
 
 class NestBenchmark(test.Benchmark):

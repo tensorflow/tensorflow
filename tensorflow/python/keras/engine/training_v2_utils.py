@@ -171,6 +171,29 @@ def _make_replica_execution_function(model, mode):
   return func
 
 
+def _prepare_model_with_inputs(model, dataset):
+  """Use the data from the adapter to config the model.
+
+  Model need to be properly configured before training, eg build with inputs, or
+  compile with inputs for subclass model.
+
+  Args:
+    model: a Keras model object.
+    dataset: a eager dataset instance where the data will be extracted.
+  """
+  if not model.inputs:
+    inputs, target, _ = model._build_model_with_inputs(dataset, targets=None)
+  else:
+    inputs, target, _ = _get_input_from_iterator(iter(dataset))
+
+  if not model._is_compiled and model.optimizer:
+    model._compile_from_inputs(inputs, target, dataset, None)
+
+  if target is not None:
+    training_utils.prepare_sample_weight_modes(model._training_endpoints,
+                                               model.sample_weight_mode)
+
+
 def train_on_batch(
     model,
     x,

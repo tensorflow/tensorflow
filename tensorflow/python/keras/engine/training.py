@@ -62,7 +62,6 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
@@ -1058,7 +1057,7 @@ class Model(network.Network):
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
-      ins = x + list(y or []) + list(sample_weights or [])
+      ins = x + (y or []) + (sample_weights or [])
 
       if not isinstance(K.symbolic_learning_phase(), int):
         ins += [True]  # Add learning phase value.
@@ -1149,7 +1148,7 @@ class Model(network.Network):
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
-      inputs = x + list(y or []) + list(sample_weights or [])
+      inputs = x + (y or []) + (sample_weights or [])
 
       self._update_sample_weight_modes(sample_weights=sample_weights)
       self._make_test_function()
@@ -1210,8 +1209,6 @@ class Model(network.Network):
       return outputs[0]
     return outputs
 
-  @deprecation.deprecated(
-      None, 'Please use Model.fit, which supports generators.')
   def fit_generator(self,
                     generator,
                     steps_per_epoch=None,
@@ -1229,12 +1226,109 @@ class Model(network.Network):
                     initial_epoch=0):
     """Fits the model on data yielded batch-by-batch by a Python generator.
 
-    DEPRECATED:
-      `Model.fit` now supports generators, so there is no longer any need to use
-      this endpoint.
+    The generator is run in parallel to the model, for efficiency.
+    For instance, this allows you to do real-time data augmentation
+    on images on CPU in parallel to training your model on GPU.
+
+    The use of `keras.utils.Sequence` guarantees the ordering
+    and guarantees the single use of every input per epoch when
+    using `use_multiprocessing=True`.
+
+    Arguments:
+        generator: A generator or an instance of `Sequence`
+          (`keras.utils.Sequence`)
+            object in order to avoid duplicate data
+            when using multiprocessing.
+            The output of the generator must be either
+            - a tuple `(inputs, targets)`
+            - a tuple `(inputs, targets, sample_weights)`.
+            This tuple (a single output of the generator) makes a single batch.
+            Therefore, all arrays in this tuple must have the same length (equal
+            to the size of this batch). Different batches may have different
+              sizes.
+            For example, the last batch of the epoch is commonly smaller than
+              the
+            others, if the size of the dataset is not divisible by the batch
+              size.
+            The generator is expected to loop over its data
+            indefinitely. An epoch finishes when `steps_per_epoch`
+            batches have been seen by the model.
+        steps_per_epoch: Total number of steps (batches of samples)
+            to yield from `generator` before declaring one epoch
+            finished and starting the next epoch. It should typically
+            be equal to the number of samples of your dataset
+            divided by the batch size.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
+        epochs: Integer, total number of iterations on the data.
+        verbose: Verbosity mode, 0, 1, or 2.
+        callbacks: List of callbacks to be called during training.
+        validation_data: This can be either
+            - a generator for the validation data
+            - a tuple (inputs, targets)
+            - a tuple (inputs, targets, sample_weights).
+        validation_steps: Only relevant if `validation_data`
+            is a generator. Total number of steps (batches of samples)
+            to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(validation_data)` as a number of steps.
+        validation_freq: Only relevant if validation data is provided. Integer
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
+            validation every 2 epochs. If a Container, specifies the epochs on
+            which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+            validation at the end of the 1st, 2nd, and 10th epochs.
+        class_weight: Dictionary mapping class indices to a weight
+            for the class.
+        max_queue_size: Integer. Maximum size for the generator queue.
+            If unspecified, `max_queue_size` will default to 10.
+        workers: Integer. Maximum number of processes to spin up
+            when using process-based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
+        shuffle: Boolean. Whether to shuffle the order of the batches at
+            the beginning of each epoch. Only used with instances
+            of `Sequence` (`keras.utils.Sequence`).
+            Has no effect when `steps_per_epoch` is not `None`.
+        initial_epoch: Epoch at which to start training
+            (useful for resuming a previous training run)
+
+    Returns:
+        A `History` object.
+
+    Example:
+
+    ```python
+        def generate_arrays_from_file(path):
+            while 1:
+                f = open(path)
+                for line in f:
+                    # create numpy arrays of input data
+                    # and labels, from each line in the file
+                    x1, x2, y = process_line(line)
+                    yield ({'input_1': x1, 'input_2': x2}, {'output': y})
+                f.close()
+
+        model.fit_generator(generate_arrays_from_file('/my_file.txt'),
+                            steps_per_epoch=10000, epochs=10)
+    ```
+    Raises:
+        ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`fit_generator` is not supported for '
+                                'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('fit_generator').set(True)
-    return self.fit(
+    self._check_call_args('fit_generator')
+    return training_generator.fit_generator(
+        self,
         generator,
         steps_per_epoch=steps_per_epoch,
         epochs=epochs,
@@ -1248,10 +1342,9 @@ class Model(network.Network):
         workers=workers,
         use_multiprocessing=use_multiprocessing,
         shuffle=shuffle,
-        initial_epoch=initial_epoch)
+        initial_epoch=initial_epoch,
+        steps_name='steps_per_epoch')
 
-  @deprecation.deprecated(
-      None, 'Please use Model.evaluate, which supports generators.')
   def evaluate_generator(self,
                          generator,
                          steps=None,
@@ -1262,14 +1355,55 @@ class Model(network.Network):
                          verbose=0):
     """Evaluates the model on a data generator.
 
-    DEPRECATED:
-      `Model.evaluate` now supports generators, so there is no longer any need
-      to use this endpoint.
+    The generator should return the same kind of data
+    as accepted by `test_on_batch`.
+
+    Arguments:
+        generator: Generator yielding tuples (inputs, targets)
+            or (inputs, targets, sample_weights)
+            or an instance of `keras.utils.Sequence`
+            object in order to avoid duplicate data
+            when using multiprocessing.
+        steps: Total number of steps (batches of samples)
+            to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during evaluation.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
+        max_queue_size: maximum size for the generator queue
+        workers: Integer. Maximum number of processes to spin up
+            when using process-based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
+        verbose: Verbosity mode, 0 or 1.
+
+    Returns:
+        Scalar test loss (if the model has a single output and no metrics)
+        or list of scalars (if the model has multiple outputs
+        and/or metrics). The attribute `model.metrics_names` will give you
+        the display labels for the scalar outputs.
+
+    Raises:
+        ValueError: in case of invalid arguments.
+
+    Raises:
+        ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`evaluate_generator` is not supported for '
+                                'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('evaluate_generator').set(True)
     self._check_call_args('evaluate_generator')
 
-    return self.evaluate(
+    return training_generator.evaluate_generator(
+        self,
         generator,
         steps=steps,
         max_queue_size=max_queue_size,
@@ -1278,8 +1412,6 @@ class Model(network.Network):
         verbose=verbose,
         callbacks=callbacks)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.predict, which supports generators.')
   def predict_generator(self,
                         generator,
                         steps=None,
@@ -1290,12 +1422,45 @@ class Model(network.Network):
                         verbose=0):
     """Generates predictions for the input samples from a data generator.
 
-    DEPRECATED:
-      `Model.predict` now supports generators, so there is no longer any need
-      to use this endpoint.
+    The generator should return the same kind of data as accepted by
+    `predict_on_batch`.
+
+    Arguments:
+        generator: Generator yielding batches of input samples
+            or an instance of `keras.utils.Sequence` object in order to
+            avoid duplicate data when using multiprocessing.
+        steps: Total number of steps (batches of samples)
+            to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during prediction.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
+        max_queue_size: Maximum size for the generator queue.
+        workers: Integer. Maximum number of processes to spin up
+            when using process-based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
+        verbose: verbosity mode, 0 or 1.
+
+    Returns:
+        Numpy array(s) of predictions.
+
+    Raises:
+        ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`predict_generator` is not supported for '
+                                'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('predict_generator').set(True)
-    return self.predict(
+    return training_generator.predict_generator(
+        self,
         generator,
         steps=steps,
         max_queue_size=max_queue_size,
@@ -2314,21 +2479,13 @@ class Model(network.Network):
 
     # self.run_eagerly is not free to compute, so we want to reuse the value.
     run_eagerly = self.run_eagerly
-
     if (not run_eagerly and is_build_called and is_compile_called and
         not is_dataset  and any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], None
 
-    return self._standardize_tensors(
-        x, y, sample_weight,
-        run_eagerly=run_eagerly,
-        dict_inputs=dict_inputs,
-        is_dataset=is_dataset,
-        class_weight=class_weight,
-        batch_size=batch_size)
+    # What follows is input validation and standardization to list format,
+    # in the case where all inputs are value arrays.
 
-  def _standardize_tensors(self, x, y, sample_weight, run_eagerly, dict_inputs,
-                           is_dataset, class_weight=None, batch_size=None):
     if run_eagerly:
       # In eager mode, do not do shape validation
       # since the network has no input nodes (placeholders) to be fed.
@@ -2419,7 +2576,6 @@ class Model(network.Network):
           sample_weight, feed_output_names)
       class_weights = training_utils.standardize_class_weights(
           class_weight, feed_output_names)
-
       sample_weights = [
           training_utils.standardize_weights(ref, sw, cw, mode)
           for (ref, sw, cw, mode) in zip(y, sample_weights, class_weights,
@@ -2433,8 +2589,14 @@ class Model(network.Network):
           training_utils.check_loss_and_target_compatibility(
               y, self._feed_loss_fns, feed_output_shapes)
 
-      sample_weights, _, _ = training_utils.handle_partial_sample_weights(
-          y, sample_weights, feed_sample_weight_modes, check_all_flat=True)
+      # If sample weight mode has not been set and weights are None for all the
+      # model outputs, return None (we do not create placeholders for
+      # sample weights) so we do not want to feed any value.
+      is_sample_weight_mode_set = any(
+          s is not None for s in feed_sample_weight_modes)
+      if (not is_sample_weight_mode_set and
+          all(s is None for s in sample_weights)):
+        sample_weights = None  # If the list contains only None, return None
     else:
       y = []
       sample_weights = None
@@ -2501,11 +2663,6 @@ class Model(network.Network):
     # placeholders will be created to match the value shapes.
     if isinstance(orig_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
                                 iterator_ops.Iterator)):
-      if not self.inputs:
-        # For subclassed models, a robust input spec is not available so we
-        # must cast to the model dtype.
-        inputs = training_utils.cast_if_floating_dtype(inputs, self.dtype)
-
       def create_tensor_spec(t):
         return tensor_spec.TensorSpec(t.shape, t.dtype)
 
@@ -2657,8 +2814,6 @@ class Model(network.Network):
   @trackable.no_automatic_dependency_tracking
   def _set_output_attrs(self, outputs):
     """Sets attributes related to the outputs of the Model."""
-    # NOTE(taylorrobie): This convention cannot be changed without updating the
-    #                    data adapter since it assumes nest.flatten ordering.
     outputs = nest.flatten(outputs)
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)

@@ -1680,32 +1680,6 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
       model.predict(DummySequence(), batch_size=2)
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_non_returning_sequence(self):
-    if not testing_utils.should_run_tf_function():
-      self.skipTest('This case is only handled in the new execution path.')
-
-    class DummySequence(data_utils.Sequence):
-
-      def __getitem__(self, idx):
-        return
-
-      def __len__(self):
-        return 10
-
-    model = testing_utils.get_small_mlp(
-        num_hidden=10, num_classes=1, input_dim=10)
-
-    model.compile(
-        'adam',
-        'binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-
-    with self.assertRaisesRegexp(IndexError, 'Could not infer batch size'):
-      model.fit(DummySequence(), epochs=2)
-
-  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_sparse_op_with_op_layer(self):
     inputs = keras.layers.Input(shape=(2,), sparse=True, name='sparse_tensor')
