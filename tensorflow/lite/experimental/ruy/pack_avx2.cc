@@ -48,10 +48,6 @@ void PackFloatAvx2(const float* src_ptr, const float* zerobuf, int src_stride,
 
 #else  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-static constexpr int kAvxFloatBlockSize = 8;
-static constexpr int kAvx8bitBlockSize = 8;
-static constexpr int kAvx8bitInnerSize = 4;
-
 // The first int8_t template parameter is arbitrary: this routine is common to
 // all 8-bit source matrix types.
 using PackImpl8bitAvx2 =
@@ -553,9 +549,8 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
                                 int src_stride, int remaining_src_cols,
                                 int src_rows, float* packed_ptr,
                                 float* trailing_buf) {
-  using Layout = PackImplFloatAvx2::Layout;
-  RUY_DCHECK_EQ(Layout::kCols, 8);
-  RUY_DCHECK_EQ(Layout::kRows, 1);
+  RUY_DCHECK_EQ(PackImplFloatAvx2::Layout::kCols, 8);
+  RUY_DCHECK_EQ(PackImplFloatAvx2::Layout::kRows, 1);
 
   // This packing amounts to tranposition of 8x8 blocks.
   static constexpr int kPackCols = 8;  // Source cols packed together.

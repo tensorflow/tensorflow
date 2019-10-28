@@ -42,7 +42,6 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
 
 #else  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-static constexpr int kAvxFloatBlockSize = 8;
 static constexpr int kAvx8bitBlockSize = 8;
 static constexpr int kAvx8bitInnerSize = 4;
 
@@ -1147,7 +1146,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   const std::int64_t rhs_stride = params.rhs_stride >> 2;
   //
   int bias_ptr_block_increment = params.flags & RUY_ASM_FLAG_HAS_BIAS ? 1 : 0;
-  // kAvxFloatBlockSize = 8.
+  // AVX2 float block size = 8.
   const int end_row = std::min(params.dst_rows, params.last_row + 8);
   const int end_col = std::min(params.dst_cols, params.last_col + 8);
   //
@@ -1163,7 +1162,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   const __m256 clamp_min_v = _mm256_set1_ps(params.clamp_min);
 
   int col = params.start_col;
-  // Loop through cols by kAvxFloatBlockSize, leaving incomplete remainder
+  // Loop through cols by float block size, leaving incomplete remainder
   for (; col <= end_col - 8; col += 8) {
     __m256 accum_data_v[8];
 
@@ -1224,7 +1223,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   }    // End col-block loop.
 
   if (col < end_col) {
-    // Remaining cols in [0, kAvxFloatBlockSize).
+    // Remaining cols in [0, float block size).
     RUY_DCHECK_GE(end_col - col, 0);
     RUY_DCHECK_LT(end_col - col, 8);
 
