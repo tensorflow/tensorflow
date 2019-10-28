@@ -102,6 +102,7 @@ tf_cc_test(
 tf_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -134,6 +135,7 @@ tf_cc_test(
 tf_cc_test(
     name = "cpu_profiling_test",
     srcs = ["cpu_profiling_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
