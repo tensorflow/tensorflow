@@ -42,37 +42,6 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-namespace {
-namespace intrin_utils {
-
-inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
-  __m256i a =
-      i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
-  switch (i & ~8) {
-    case 0:
-      return _mm256_extract_epi32(a, 0);
-    case 1:
-      return _mm256_extract_epi32(a, 1);
-    case 2:
-      return _mm256_extract_epi32(a, 2);
-    case 3:
-      return _mm256_extract_epi32(a, 3);
-    case 4:
-      return _mm256_extract_epi32(a, 4);
-    case 5:
-      return _mm256_extract_epi32(a, 5);
-    case 6:
-      return _mm256_extract_epi32(a, 6);
-    case 7:
-      return _mm256_extract_epi32(a, 7);
-    default:
-      RUY_DCHECK_LT(i, 16);
-      return 0;
-  }
-}
-}  // namespace intrin_utils
-}  // namespace
-
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
 
