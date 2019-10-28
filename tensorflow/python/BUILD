@@ -410,7 +410,10 @@ cc_library(
 
 cc_library(
     name = "pybind11_status",
-    hdrs = ["lib/core/pybind11_status.h"],
+    hdrs = [
+        "lib/core/pybind11_status.h",
+        "//tensorflow/c:headers",
+    ],
     features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:lib_internal",
