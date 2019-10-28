@@ -212,6 +212,25 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+void AbsOp::build(Builder* builder, OperationState& result, Value* operand) {
+  auto shaped_type = operand->getType().cast<ShapedType>();
+  Type new_type;
+  if (!shaped_type.getElementType().isa<ComplexType>()) {
+    new_type = operand->getType();
+  } else if (shaped_type.hasRank()) {
+    new_type =
+        mlir::RankedTensorType::get(shaped_type.getShape(), operand->getType());
+  } else {
+    new_type = mlir::UnrankedTensorType::get(operand->getType());
+  }
+
+  return AbsOp::build(builder, result, new_type, operand);
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 

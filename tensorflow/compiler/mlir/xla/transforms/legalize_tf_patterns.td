@@ -339,6 +339,7 @@ def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
                    [TF_CeilOp, HLO_CeilOp],
+                   [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
