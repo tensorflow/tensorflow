@@ -1544,10 +1544,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << " major: " << cc_major
-              << " minor: " << cc_minor
-              << " memoryClockRate(GHz): " << description->clock_rate_ghz()
-              << "\npciBusID: " << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << " computeCapability: " << cc_major << "." << cc_minor
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description->rocm_amdgpu_isa_version(&isa_version)) {
@@ -1555,10 +1562,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << "\nAMDGPU ISA: gfx"
-              << isa_version << "\nmemoryClockRate (GHz) "
-              << description->clock_rate_ghz() << "\npciBusID "
-              << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << "     ROCm AMD GPU ISA: gfx" << isa_version
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #endif
   }
 
