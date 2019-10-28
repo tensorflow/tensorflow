@@ -151,6 +151,8 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   patterns
       ->insert<HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
                HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
+               HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
+                                    xla_lhlo::BroadcastInDimOp>,
                HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
                HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
                HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
