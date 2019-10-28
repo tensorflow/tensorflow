@@ -29,6 +29,15 @@ message Operation {
   repeated int64 control_op_ids = 4;
   map<string, AttrValue> attrs = 5;
   string device = 6;
+
+  // Indicates whether the op is a component of a multi-device function.
+  bool is_component_function = 7;
+  // Set when is_component_function is true. It's initially generated
+  // when we create an FunctionLibraryRuntime::Options (negative value) and used
+  // to create Rendezvous for function execution. All components of a
+  // multi-device function should use the same step id to make sure that they
+  // can communicate through Send/Recv ops.
+  int64 func_step_id = 8;
 }
 
 message QueueItem {
@@ -41,6 +50,7 @@ message QueueItem {
     SendTensorOp send_tensor = 3;
     // Takes a FunctionDef and makes it enqueable on the remote worker.
     RegisterFunctionOp register_function = 4;
+    CleanupFunctionOp cleanup_function = 5;
   }
 }
 
@@ -143,6 +153,7 @@ message KeepAliveResponse {
 
 message CloseContextRequest {
   fixed64 context_id = 1;
+  fixed64 context_view_id = 2;
 }
 
 message CloseContextResponse {}
@@ -153,6 +164,12 @@ message RegisterFunctionOp {
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
   bool is_component_function = 2;
+}
+
+// Cleanup the step state of a multi-device function (e.g. tensors buffered by
+// a `Send` op but not picked up by its corresponding `Recv` op).
+message CleanupFunctionOp {
+  int64 step_id = 1;
 }
 
 message SendTensorOp {

@@ -205,6 +205,7 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Attr("tpu_embedding_config: string = ''")
     .Attr("is_global_init: bool = false")
     .Attr("enable_whole_mesh_compilations: bool = false")
+    .Attr("compilation_failure_closes_chips: bool = true")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

@@ -7471,6 +7471,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "compilation_failure_closes_chips"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7587,6 +7594,7 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
       }
     }
   }
@@ -7759,6 +7767,7 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
       }
     }
   }
@@ -27645,6 +27654,13 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "ensure_minimum_range"
+    type: "float"
+    default_value {
+      f: 0.01
     }
   }
 }

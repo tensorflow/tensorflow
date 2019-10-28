@@ -23,10 +23,7 @@ from __future__ import print_function
 
 from tensorflow.python import tf2
 
-from tensorflow.python.keras import estimator
 from tensorflow.python.keras import layers
-from tensorflow.python.keras import premade
-from tensorflow.python.keras import preprocessing
 from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential

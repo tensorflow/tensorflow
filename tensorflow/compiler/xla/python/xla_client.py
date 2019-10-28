@@ -1678,6 +1678,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Complex',
+    'NextAfter',
 ]
 
 _OTHER_OPS = [

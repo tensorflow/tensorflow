@@ -180,6 +180,8 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       if (use.getOwner()->getDialect() != tf_dialect) use.set(get_cast_op());
     }
 
+    if (result->getType() == new_type) continue;
+
     // Finally we inferred the shape and replace the type for this result.
     result->setType(new_type);
     changed = true;
@@ -208,7 +210,13 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
         changed |= InferShapeForSingleOperation(op, tf_dialect, graph_version);
     });
   }
-  return success(!changed);
+  if (changed) {
+    region->getParentOp()->emitWarning()
+        << "Shape inference did not reach stable state after " << max_iteration
+        << " iterations";
+    return failure();
+  }
+  return success();
 }
 
 LogicalResult InferShapeForFunction(FuncOp op,

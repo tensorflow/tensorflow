@@ -103,6 +103,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"_DeviceArg", NC_ARG},
         {"_Retval", NC_RETVAL},
         {"_DeviceRetval", NC_RETVAL},
+        {"_XlaMerge", NC_MERGE},
     });
 
 #undef REF_CLASS

@@ -730,7 +730,7 @@ tf_module {
   }
   member_method {
     name: "ConfigureDistributedTPU"
-    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'enable_whole_mesh_compilations\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'enable_whole_mesh_compilations\', \'compilation_failure_closes_chips\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "ConfigureTPUEmbedding"
@@ -2702,7 +2702,7 @@ tf_module {
   }
   member_method {
     name: "QuantizeV2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'narrow_range\', \'axis\', \'ensure_minimum_range\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'-1\', \'0.01\', \'None\'], "
   }
   member_method {
     name: "QuantizedAdd"

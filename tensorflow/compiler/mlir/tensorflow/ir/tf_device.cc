@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <utility>
@@ -256,6 +257,37 @@ LogicalResult Verify(ReplicateOp op) {
 
   return success();
 }
+
+template <typename OperandsTy, typename ResultsTy>
+void BuildReplicateOp(
+    Builder* builder, OperationState* state, int n,
+    llvm::ArrayRef<llvm::StringRef> devices,
+    llvm::ArrayRef<std::pair<OperandsTy, Type>> replicated_inputs,
+    ResultsTy replica_output_types) {
+  DCHECK_GE(n, 2);
+  state->addAttribute("n", builder->getI32IntegerAttr(n));
+  if (!devices.empty()) {
+    DCHECK_EQ(devices.size(), n);
+    state->addAttribute("devices", builder->getStrArrayAttr(devices));
+  }
+
+  Region* region = state->addRegion();
+  region->push_back(new Block);
+  Block& block = region->front();
+
+  for (auto& replicated_input : replicated_inputs) {
+    DCHECK_EQ(llvm::size(replicated_input.first), n);
+    for (auto* input : replicated_input.first) {
+      DCHECK(succeeded(
+          VerifyCompatibleTypes(input->getType(), replicated_input.second)));
+      state->addOperands(input);
+    }
+    block.addArgument(replicated_input.second);
+  }
+
+  for (const auto& output_type : replica_output_types)
+    state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
+}
 }  // anonymous namespace
 
 void ReplicateOp::build(
@@ -263,29 +295,17 @@ void ReplicateOp::build(
     llvm::ArrayRef<llvm::StringRef> devices,
     llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
-  DCHECK_GE(n, 2);
-  state.addAttribute("n", builder->getI32IntegerAttr(n));
-  if (!devices.empty()) {
-    DCHECK_EQ(devices.size(), n);
-    state.addAttribute("devices", builder->getStrArrayAttr(devices));
-  }
+  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+                   replica_output_types);
+}
 
-  Region* region = state.addRegion();
-  region->push_back(new Block);
-  Block& block = region->front();
-
-  for (auto& replicated_input : replicated_inputs) {
-    DCHECK_EQ(replicated_input.first.size(), n);
-    for (auto& input : replicated_input.first) {
-      DCHECK(succeeded(
-          VerifyCompatibleTypes(input->getType(), replicated_input.second)));
-      state.addOperands(input);
-    }
-    block.addArgument(replicated_input.second);
-  }
-
-  for (const auto& output_type : replica_output_types)
-    state.addTypes(llvm::SmallVector<Type, 8>(n, output_type));
+void ReplicateOp::build(
+    Builder* builder, OperationState& state, int n,
+    llvm::ArrayRef<llvm::StringRef> devices,
+    llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
+    Operation::result_type_range replica_output_types) {
+  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+                   replica_output_types);
 }
 
 //===----------------------------------------------------------------------===//

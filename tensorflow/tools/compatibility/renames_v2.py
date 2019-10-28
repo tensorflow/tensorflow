@@ -514,6 +514,10 @@ renames = {
         'tf.compat.v1.keras.backend.get_session',
     'tf.keras.backend.set_session':
         'tf.compat.v1.keras.backend.set_session',
+    'tf.keras.experimental.export_saved_model':
+        'tf.compat.v1.keras.experimental.export_saved_model',
+    'tf.keras.experimental.load_from_saved_model':
+        'tf.compat.v1.keras.experimental.load_from_saved_model',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':

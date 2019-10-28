@@ -209,5 +209,13 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   return result;
 }
 
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed) {
+  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
+  return ComputeTransitiveFanin(graph, terminal_nodes, &name_to_fanin_node,
+                                ill_formed);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -1934,27 +1934,23 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
     A transposed `Tensor`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
-    transpose_fn = (
-        gen_array_ops.conjugate_transpose if
-        (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
-    if perm is None:
+    if not tensor_util.is_tensor(a):
       a = ops.convert_to_tensor(a, name="a")
-      if not a.get_shape().ndims:
-        rank = gen_array_ops.rank(a)
-        perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
-      else:
-        rank = a.get_shape().ndims
-        perm = (rank - 1) - np.arange(rank)
-      ret = transpose_fn(a, perm, name=name)
-      # NOTE(mrry): Setting the shape explicitly because
-      #   reverse is not handled by the shape function.
-      if not context.executing_eagerly():
-        input_shape = ret.op.inputs[0].get_shape().dims
-        if input_shape is not None:
-          ret.set_shape(input_shape[::-1])
+
+    if conjugate and a.dtype.is_complex:
+      transpose_fn = gen_array_ops.conjugate_transpose
     else:
-      ret = transpose_fn(a, perm, name=name)
-    return ret
+      transpose_fn = gen_array_ops.transpose
+
+    if perm is not None:
+      return transpose_fn(a, perm, name=name)
+
+    rank = a.shape.rank
+    if rank is None:
+      perm = gen_math_ops._range(gen_array_ops.rank(a) - 1, -1, -1)
+    else:
+      perm = np.arange(rank - 1, -1, -1, dtype=np.int32)
+    return transpose_fn(a, perm, name=name)
 
 
 # pylint: disable=invalid-name
@@ -2525,10 +2521,13 @@ def zeros_like_v2(
 def zeros_like_impl(tensor, dtype, name, optimize=True):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
-    tensor = ops.convert_to_tensor(tensor, name="tensor")
+    if not tensor_util.is_tensor(tensor):
+      tensor = ops.convert_to_tensor(tensor, name="tensor")
+    tensor_shape = tensor.shape
+    tensor_dtype = tensor.dtype
 
     if context.executing_eagerly():
-      if dtype is not None and dtype != tensor.dtype:
+      if dtype is not None and dtype != tensor_dtype:
         return zeros(
             shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
       return gen_array_ops.zeros_like(tensor, name=name)
@@ -2536,13 +2535,13 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.
 
-    if (optimize and tensor.shape.is_fully_defined() and
-        tensor.dtype != dtypes.variant):
+    if (optimize and tensor_shape.is_fully_defined() and
+        tensor_dtype != dtypes.variant):
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
-      return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
+      return zeros(tensor_shape, dtype=dtype or tensor_dtype, name=name)
 
-    if dtype is not None and dtype != tensor.dtype and dtype != dtypes.variant:
+    if dtype is not None and dtype != tensor_dtype and dtype != dtypes.variant:
       return zeros(
           shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
     else:
@@ -4534,7 +4533,8 @@ def quantize_v2(
     name=None,
     round_mode="HALF_AWAY_FROM_ZERO",
     narrow_range=False,
-    axis=None):
+    axis=None,
+    ensure_minimum_range=0.01):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4542,7 +4542,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0 or narrow_range:
+  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4552,7 +4552,8 @@ def quantize_v2(
         name=name,
         round_mode=round_mode,
         narrow_range=narrow_range,
-        axis=axis)
+        axis=axis,
+        ensure_minimum_range=ensure_minimum_range)
   return gen_array_ops.quantize_v2(
       input,
       min_range,
@@ -4560,7 +4561,9 @@ def quantize_v2(
       T=T,
       mode=mode,
       name=name,
-      round_mode=round_mode)
+      round_mode=round_mode,
+      narrow_range=narrow_range,
+      axis=axis)
 
 
 quantize_v2.__doc__ = """Please use `tf.quantization.quantize` instead."""
@@ -4580,10 +4583,10 @@ def quantize(
     round_mode="HALF_AWAY_FROM_ZERO",
     name=None,
     narrow_range=False,
-    axis=None):
+    axis=None,
+    ensure_minimum_range=0.01):
   """Quantize the input tensor."""
-  if (compat.forward_compatible(2019, 9, 25) or narrow_range or
-      axis is not None):
+  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
     return quantize_v2(
         input,
         min_range,
@@ -4593,7 +4596,8 @@ def quantize(
         round_mode=round_mode,
         name=name,
         narrow_range=narrow_range,
-        axis=axis)
+        axis=axis,
+        ensure_minimum_range=ensure_minimum_range)
   return quantize_v2(
       input,
       min_range,
@@ -4601,7 +4605,9 @@ def quantize(
       T,
       mode=mode,
       round_mode=round_mode,
-      name=name)
+      name=name,
+      narrow_range=narrow_range,
+      axis=axis)
 
 
 @tf_export("quantization.dequantize", v1=["quantization.dequantize",

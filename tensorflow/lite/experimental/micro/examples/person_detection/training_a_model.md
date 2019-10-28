@@ -1,16 +1,16 @@
-== Training a model
+## Training a model
 
 The following document will walk you through the process of training your own
 250 KB embedded vision model using scripts that are easy to run. You can use
-either the https://arxiv.org/abs/1906.05721[Visual Wake Words dataset] for
-person detection, or choose one of the http://cocodataset.org/#explore[80
-categories from the MSCOCO dataset].
+either the [Visual Wake Words dataset](https://arxiv.org/abs/1906.05721) for
+person detection, or choose one of the [80
+categories from the MSCOCO dataset](http://cocodataset.org/#explore).
 
 This model will take several days to train on a powerful machine with GPUs. We
-recommend using a https://cloud.google.com/deep-learning-vm/[Google Cloud Deep
-Learning VM].
+recommend using a [Google Cloud Deep
+Learning VM](https://cloud.google.com/deep-learning-vm/).
 
-=== Training framework choice
+### Training framework choice
 
 Keras is the recommended interface for building models in TensorFlow, but when
 the person detector model was being created it didn't yet support all the
@@ -20,7 +20,7 @@ future versions of TensorFlow may not support this approach. We hope to publish
 Keras instructions in the future.
 
 The model definitions for Slim are part of the
-https://github.com/tensorflow/models[TensorFlow models repository], so to get
+[TensorFlow models repository](https://github.com/tensorflow/models), so to get
 started you'll need to download it from GitHub using a command like this:
 
 ```
@@ -55,16 +55,16 @@ source ~/.bashrc
 If you see import errors running the slim scripts, you should make sure the
 `PYTHONPATH` is set up correctly, and that contextlib2 has been installed. You
 can find more general information on tf.slim in the
-https://github.com/tensorflow/models/tree/master/research/slim[repository's
-README].
+[repository's
+README](https://github.com/tensorflow/models/tree/master/research/slim).
 
-=== Building the dataset
+### Building the dataset
 
 In order to train a person detector model, we need a large collection of images
 that are labeled depending on whether or not they have people in them. The
 ImageNet one-thousand class data that's widely used for training image
 classifiers doesn't include labels for people, but luckily the
-http://cocodataset.org/#home[COCO dataset] does. You can also download this
+[COCO dataset](http://cocodataset.org/#home) does. You can also download this
 data without manually registering too, and Slim provides a convenient script to
 grab it automatically:
 
@@ -103,13 +103,13 @@ Slim contains a script to convert the bounding box into labels:
 Don't be surprised if this takes up to twenty minutes to complete. When it's
 done, you'll have a set of TFRecords in `coco/processed` holding the labeled
 image information. This data was created by Aakanksha Chowdhery and is known as
-the https://arxiv.org/abs/1906.05721[Visual Wake Words dataset]. It's designed
+the [Visual Wake Words dataset](https://arxiv.org/abs/1906.05721). It's designed
 to be useful for benchmarking and testing embedded computer vision, since it
 represents a very common task that we need to accomplish with tight resource
 constraints. We're hoping to see it drive even better models for this and
 similar tasks.
 
-=== Training the model
+### Training the model
 
 One of the nice things about using tf.slim to handle the training is that the
 parameters you commonly need to modify are available as command line arguments,
@@ -158,7 +158,7 @@ since we want to reduce the compute requirements). It also scales the pixel
 values from 0 to 255 integers into -1.0 to +1.0 floating point numbers (though
 we'll be quantizing those after training).
 - The
-https://himax.com.tw/products/cmos-image-sensor/image-sensors/hm01b0/[HM01B0]
+[HM01B0](https://himax.com.tw/products/cmos-image-sensor/image-sensors/hm01b0/)
 camera we're using on the SparkFun Edge board is monochrome, so to get the best
 results we have to train our model on black and white images too, so we pass in
 the `--input_grayscale` flag to enable that preprocessing.
@@ -204,7 +204,7 @@ working well you should see a noticeable drop if you wait an hour or so and
 check back. This kind of variation is a lot easier to see in a graph, which is
 one of the main reasons to try TensorBoard.
 
-=== TensorBoard
+### TensorBoard
 
 TensorBoard is a web application that lets you view data visualizations from
 TensorFlow training sessions, and it's included by default in most cloud
@@ -220,36 +220,24 @@ you'll have to pass in this path as the `--logdir` argument to the tensorboard
 command line tool, and point your browser to http://localhost:6006 (or the
 address of the machine you're running it on).
 
-After navigating to the tensorboard address or opening the session through
-Google Cloud, you should see a page that looks something like this. It may take
-a little while for the graphs to have anything useful in them, since the script
-only saves summaries every five minutes. This screenshot shows the results
-after training for over a day. The most important graph is called 'clone_loss',
-and this shows the progression of the same loss value that's displayed on the
-logging output. As you can see in this example it fluctuates a lot, but the
+It may take a little while for the graphs to have anything useful in them, since
+the script only saves summaries every five minutes. The most important graph is
+called 'clone_loss', and this shows the progression of the same loss value
+that's displayed on the logging output. It fluctuates a lot, but the
 overall trend is downwards over time. If you don't see this sort of progression
 after a few hours of training, it's a good sign that your model isn't
 converging to a good solution, and you may need to debug what's going wrong
 either with your dataset or the training parameters.
 
-[[tensorboard_graphs]]
-.Example screenshot of graphs in Tensorboard
-image::images/ch10/tensorboard_graphs.png["Training graphs in Tensorboard"]
-
 Tensorboard defaults to the 'Scalars' tab when it opens, but the other section
-that can be useful during training is 'Images' (Figure 9-13). This shows a
+that can be useful during training is 'Images'. This shows a
 random selection of the pictures the model is currently being trained on,
-including any distortions and other preprocessing. In this screenshot you can
-see that the image has been flipped, and that it's been converted to grayscale
-before being fed to the model. This information isn't as essential as the loss
-graphs, but it can be useful to ensure the dataset is what you expect, and it
-is interesting to see the examples updating as training progresses.
+including any distortions and other preprocessing. This information isn't as
+essential as the loss graphs, but it can be useful to ensure the dataset is what
+you expect, and it is interesting to see the examples updating as training
+progresses.
 
-[[tensorboard_images]]
-.Example screenshot of images in Tensorboard
-image::images/ch10/tensorboard_images.png["Training images in Tensorboard"]
-
-=== Evaluating the model
+### Evaluating the model
 
 The loss function correlates with how well your model is training, but it isn't
 a direct, understandable metric. What we really care about is how many people
@@ -288,14 +276,14 @@ converting to a percentage. If you follow the example script, you should expect
 a fully-trained model to achieve an accuracy of around 84% after one million
 steps, and show a loss of around 0.4.
 
-=== Exporting the model to TensorFlow Lite
+### Exporting the model to TensorFlow Lite
 
 When the model has trained to an accuracy you're happy with, you'll need to
 convert the results from the TensorFlow training environment into a form you
 can run on an embedded device. As we've seen in previous chapters, this can be
 a complex process, and tf.slim adds a few of its own wrinkles too.
 
-==== Exporting to a GraphDef protobuf file
+#### Exporting to a GraphDef protobuf file
 
 Slim generates the architecture from the model_name every time one of its
 scripts is run, so for a model to be used outside of Slim it needs to be saved
@@ -316,7 +304,7 @@ If this succeeds, you should have a new 'vww_96_grayscale_graph.pb' file in
 your home folder. This contains the layout of the operations in the model, but
 doesn't yet have any of the weight data.
 
-==== Freezing the weights
+#### Freezing the weights
 
 The process of storing the trained weights together with the operation graph is
 known as freezing. This converts all of the variables in the graph to
@@ -337,7 +325,7 @@ this command.
 
 After this, you should see a file called 'vww_96_grayscale_frozen.pb'.
 
-==== Quantizing and converting to TensorFlow Lite
+#### Quantizing and converting to TensorFlow Lite
 
 Quantization is a tricky and involved process, and it's still very much an
 active area of research, so taking the float graph that we've trained so far
@@ -389,7 +377,7 @@ tflite_quant_model = converter.convert()
 open("vww_96_grayscale_quantized.tflite", "wb").write(tflite_quant_model)
 ```
 
-==== Converting into a C source file
+#### Converting into a C source file
 
 The converter writes out a file, but most embedded devices don't have a file
 system. To access the serialized data from our program, we have to compile it
@@ -406,7 +394,7 @@ convert the file into a C data array.
 You can now replace the existing person_detect_model_data.cc file with the
 version you've trained, and be able to run your own model on embedded devices.
 
-=== Training for other categories
+### Training for other categories
 
 There are over 60 different object types in the MS-COCO dataset, so an easy way
 to customize your model would be to choose one of those instead of 'person'
@@ -433,9 +421,9 @@ able to use transfer learning to help you train on a custom dataset you've
 gathered, even if it's much smaller. We don't have an example of this
 yet, but we hope to share one soon.
 
-=== Understanding the architecture
+### Understanding the architecture
 
-https://arxiv.org/abs/1704.04861[MobileNets] are a family of architectures
+[MobileNets](https://arxiv.org/abs/1704.04861) are a family of architectures
 designed to provide good accuracy for as few weight parameters and arithmetic
 operations as possible. There are now multiple versions, but in our case we're
 using the original v1 since it required the smallest amount of RAM at runtime.

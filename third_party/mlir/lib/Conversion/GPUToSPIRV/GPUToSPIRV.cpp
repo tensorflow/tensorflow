@@ -149,11 +149,12 @@ void GPUToSPIRVPass::runOnModule() {
   OwningRewritePatternList patterns;
   patterns.insert<
       KernelFnConversion,
-      LaunchConfigConversion<gpu::BlockDim, spirv::BuiltIn::WorkgroupSize>,
-      LaunchConfigConversion<gpu::BlockId, spirv::BuiltIn::WorkgroupId>,
-      LaunchConfigConversion<gpu::GridDim, spirv::BuiltIn::NumWorkgroups>,
-      LaunchConfigConversion<gpu::ThreadId, spirv::BuiltIn::LocalInvocationId>>(
-      context, typeConverter);
+      LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
+      LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
+      LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,
+      LaunchConfigConversion<gpu::ThreadIdOp,
+                             spirv::BuiltIn::LocalInvocationId>>(context,
+                                                                 typeConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);

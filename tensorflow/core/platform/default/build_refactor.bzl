@@ -210,6 +210,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+        "alwayslink": 1,
     },
     "notification": {
         "name": "notification_impl",
@@ -298,6 +299,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
+        "alwayslink": 1,
     },
     "test": {
         "name": "test_impl",
@@ -310,11 +312,11 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@com_google_googletest//:gtest",
-            "//tensorflow/core/lib/strings:string_utils",
             "//tensorflow/core/platform",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:net",
+            "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:types",
         ],
         "tags": ["no_oss", "manual"],

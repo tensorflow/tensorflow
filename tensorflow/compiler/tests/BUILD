@@ -312,23 +312,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "matrix_solve_op_test",
-    size = "small",
-    timeout = "moderate",
-    srcs = ["matrix_solve_op_test.py"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-tf_xla_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     timeout = "moderate",
@@ -1028,6 +1011,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1035,7 +1019,10 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
-    tags = ["nomsan"],  # b/142562986
+    tags = [
+        "noasan",  # b/143400367
+        "nomsan",  # b/142562986
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1425,7 +1412,9 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",

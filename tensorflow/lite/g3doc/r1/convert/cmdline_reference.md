@@ -4,8 +4,6 @@ This page is complete reference of command-line flags used by the TensorFlow
 Lite Converter's command line starting from TensorFlow 1.9 up until the most
 recent build of TensorFlow.
 
-[TOC]
-
 ## High-level flags
 
 The following high level flags specify the details of the input and output

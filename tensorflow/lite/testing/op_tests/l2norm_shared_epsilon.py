@@ -36,7 +36,7 @@ def make_l2norm_shared_epsilon_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     epsilon = tf.constant(parameters["epsilon"])
     out1 = tf.nn.l2_normalize(input_tensor, parameters["dim"], epsilon=epsilon)

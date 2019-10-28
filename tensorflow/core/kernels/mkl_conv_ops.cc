@@ -1002,9 +1002,6 @@ class MklConvOp : public OpKernel {
       output_tf_shape = output_mkl_shape->GetTfShape();
     }
 
-    AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                              output_tf_shape, *output_mkl_shape, eager_mode);
-
     if (fuse_add_) {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
@@ -1012,11 +1009,13 @@ class MklConvOp : public OpKernel {
 
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape) {
-        OP_REQUIRES(
-            context, (*output_tensor)->CopyFrom(add_tensor, output_tf_shape),
-            errors::Internal("MklConvOp: AddN fusion: Failed to forward "
-                             "input tensor to output"));
+        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
+                                            kOutputIndex_Dst, add_mkl_shape);
+        *output_tensor = context->mutable_output(kOutputIndex_Dst);
       } else {
+        AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                  output_tf_shape, *output_mkl_shape,
+                                  eager_mode);
 #ifdef ENABLE_MKLDNN_V1
         auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
             output_mkl_shape->GetTfDataFormat());
@@ -1044,6 +1043,9 @@ class MklConvOp : public OpKernel {
             REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
         CreateAndExecuteReorder(reorder_desc, *add, *dst, this->cpu_engine_);
       }
+    } else {
+      AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                output_tf_shape, *output_mkl_shape, eager_mode);
     }
   }
 

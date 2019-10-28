@@ -41,12 +41,12 @@ class GPU_IndexOp<string mnemonic, list<OpTrait> traits = []> :
   let verifier = [{ return ::verifyIndexOp(*this); }];
 }
 
-def gpu_BlockDim : GPU_IndexOp<"block_dim">;
-def gpu_BlockId : GPU_IndexOp<"block_id">;
-def gpu_GridDim : GPU_IndexOp<"grid_dim">;
-def gpu_ThreadId : GPU_IndexOp<"thread_id">;
+def GPU_BlockDimOp : GPU_IndexOp<"block_dim">;
+def GPU_BlockIdOp : GPU_IndexOp<"block_id">;
+def GPU_GridDimOp : GPU_IndexOp<"grid_dim">;
+def GPU_ThreadIdOp : GPU_IndexOp<"thread_id">;
 
-def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
+def GPU_ReturnOp : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
     Results<(outs)> {
   let summary = "Terminator for GPU launch regions.";
   let description = [{
@@ -59,7 +59,7 @@ def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
   let printer = [{ p << getOperationName(); }];
 }
 
-def gpu_Yield : GPU_Op<"yield", [Terminator]>,
+def GPU_YieldOp : GPU_Op<"yield", [Terminator]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "GPU yield operation";
   let description = [{
@@ -74,20 +74,20 @@ def gpu_Yield : GPU_Op<"yield", [Terminator]>,
 }
 
 // These mirror the XLA ComparisonDirection enum.
-def gpu_AllReduceOpAdd : StrEnumAttrCase<"add">;
-def gpu_AllReduceOpMul : StrEnumAttrCase<"mul">;
+def GPU_AllReduceOpAdd : StrEnumAttrCase<"add">;
+def GPU_AllReduceOpMul : StrEnumAttrCase<"mul">;
 
-def gpu_AllReduceOperationAttr : StrEnumAttr<"AllReduceOperationAttr",
+def GPU_AllReduceOperationAttr : StrEnumAttr<"AllReduceOperationAttr",
     "built-in reduction operations supported by gpu.allreduce.",
     [
-      gpu_AllReduceOpAdd,
-      gpu_AllReduceOpMul,
+      GPU_AllReduceOpAdd,
+      GPU_AllReduceOpMul,
     ]>;
 
-def gpu_AllReduce : GPU_Op<"all_reduce",
+def GPU_AllReduceOp : GPU_Op<"all_reduce",
     [SameOperandsAndResultType, IsolatedFromAbove]>,
     Arguments<(ins AnyType:$value,
-               OptionalAttr<gpu_AllReduceOperationAttr>:$op)>,
+               OptionalAttr<GPU_AllReduceOperationAttr>:$op)>,
     Results<(outs AnyType)> {
   let summary = "Reduce values among workgroup.";
   let description = [{
@@ -115,7 +115,7 @@ def gpu_AllReduce : GPU_Op<"all_reduce",
   let verifier = [{ return ::verifyAllReduce(*this); }];
 }
 
-def gpu_Barrier : GPU_Op<"barrier"> {
+def GPU_BarrierOp : GPU_Op<"barrier"> {
   let summary = "Synchronizes all work items of a workgroup.";
   let description = [{
     The "barrier" op synchronizes all work items of a workgroup. It is used

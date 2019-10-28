@@ -426,6 +426,7 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
         return WorkerCacheFactory(options, worker_cache);
       });
   master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   return Status::OK();
 }
 

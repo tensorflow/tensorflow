@@ -23,6 +23,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -425,6 +426,11 @@ class RNN(Layer):
     self._num_constants = 0
     self._supports_ragged_inputs = True
 
+    if stateful:
+      if ds_context.has_strategy():
+        raise ValueError('RNNs with stateful=True not yet supported with '
+                         'tf.distribute.Strategy.')
+
   @property
   def states(self):
     if self._states is None:
@@ -655,9 +661,12 @@ class RNN(Layer):
       ]
       self._num_constants = len(constants)
       additional_specs += self.constants_spec
-    # at this point additional_inputs cannot be empty
-    is_keras_tensor = K.is_keras_tensor(nest.flatten(additional_inputs)[0])
-    for tensor in nest.flatten(additional_inputs):
+    # additional_inputs can be empty if initial_state or constants are provided
+    # but empty (e.g. the cell is stateless).
+    flat_additional_inputs = nest.flatten(additional_inputs)
+    is_keras_tensor = K.is_keras_tensor(
+        flat_additional_inputs[0]) if flat_additional_inputs else True
+    for tensor in flat_additional_inputs:
       if K.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'

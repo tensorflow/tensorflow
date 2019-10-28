@@ -32,7 +32,7 @@ def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
   result = tflite_convert_function(*args, **kwargs)
   tflite_model_binary = result[0]
   if not result[0]:
-    tf.logging.error(result[1])  # stderr from running tflite_convert.
+    tf.compat.v1.logging.error(result[1])  # stderr from running tflite_convert.
     raise RuntimeError("Failed to bulid model: \n\n" + result[1])
   interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
   interpreter.allocate_tensors()
@@ -54,7 +54,7 @@ def make_hardswish_tests(options):
   }]
 
   def build_graph(parameters):
-    inp = tf.placeholder(
+    inp = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = inp * tf.nn.relu6(inp + np.float32(3)) * np.float32(1. / 6.)
 

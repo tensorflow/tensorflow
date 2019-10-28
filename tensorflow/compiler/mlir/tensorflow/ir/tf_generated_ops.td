@@ -480,6 +480,10 @@ the feature dimension is the third-to-last.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -766,8 +770,8 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 
   let arguments = (ins
-    TF_FpTensor:$input,
-    TF_FpTensor:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -778,7 +782,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -788,17 +792,17 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 }
 
-def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect]> {
   let summary = [{
-Computes the gradients of convolution with respect to the input.
+Computes the gradients of convolution with respect to the filter.
   }];
 
   let description = [{
   }];
 
   let arguments = (ins
-    I32Tensor:$input_sizes,
-    TF_FpTensor:$filter,
+    TF_FpTensor:$input,
+    I32Tensor:$filter_sizes,
     TF_FpTensor:$out_backprop,
 
     I64ArrayAttr:$strides,
@@ -813,7 +817,39 @@ Computes the gradients of convolution with respect to the input.
     TF_FpTensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the input.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$input_sizes,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
+  );
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {
@@ -2040,7 +2076,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -2849,12 +2885,12 @@ output =
     TF_Tensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
+
   let verifier = [{
     return Verify(*this);
   }];
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
@@ -3242,13 +3278,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F32, F64, I32, I64]>:$start,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$limit,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$delta
+    TF_FpOrI32OrI64Tensor:$start,
+    TF_FpOrI32OrI64Tensor:$limit,
+    TF_FpOrI32OrI64Tensor:$delta
   );
 
   let results = (outs
-    TensorOf<[BF16, F32, F64, I32, I64]>:$output
+    TF_FpOrI32OrI64Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -3956,7 +3992,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
@@ -3978,6 +4014,28 @@ For each batch `i` and class `j` we have
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_SoftmaxCrossEntropyWithLogitsOp : TF_Op<"SoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_FpTensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
@@ -4799,6 +4857,8 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Broadcastable, NoSideEffect]>,

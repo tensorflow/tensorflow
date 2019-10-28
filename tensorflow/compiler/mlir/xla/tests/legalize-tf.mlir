@@ -1272,7 +1272,7 @@ func @mean(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK:  "xla_hlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[DIVISOR:.*]] = xla_hlo.constant dense<8.000000e+00> : tensor<f32>
-  // CHECK: %[[MEAN:.*]] = "xla_hlo.div"(%[[REDUCED]], %[[DIVISOR]]) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK: %[[MEAN:.*]] = "xla_hlo.div"(%[[REDUCED]], %[[DIVISOR]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[CAST_BACK:.*]] = "xla_hlo.convert"(%[[MEAN]]) : (tensor<4xf32>) -> tensor<4xf16>
   // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
@@ -1527,5 +1527,41 @@ func @conv2d_backprop_input(
     strides = [1, 1, 1, 1],
     use_cudnn_on_gpu = true
   } : (tensor<4xi32>, tensor<3x3x1x32xf32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
+  return %result : tensor<100x28x28x1xf32>
+}
+
+// CHECK-LABEL: @conv2d_backprop_filter
+func @conv2d_backprop_filter(
+    %input: tensor<100x28x28x1xf32>,
+    %out_backprop: tensor<100x26x26x32xf32>
+  ) -> tensor<100x28x28x1xf32> {
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.conv"(%arg0, %arg1) {
+  // CHECK-SAME:  batch_group_count = 1 : i64,
+  // CHECK-SAME:  dimension_numbers = {
+  // CHECK-SAME:    input_batch_dimension = 3 : i64,
+  // CHECK-SAME:    input_feature_dimension = 0 : i64,
+  // CHECK-SAME:    input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+  // CHECK-SAME:    kernel_input_feature_dimension = 0 : i64,
+  // CHECK-SAME:    kernel_output_feature_dimension = 3 : i64,
+  // CHECK-SAME:    kernel_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+  // CHECK-SAME:    output_batch_dimension = 2 : i64,
+  // CHECK-SAME:    output_feature_dimension = 3 : i64,
+  // CHECK-SAME:    output_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:  },
+  // CHECK-SAME:  feature_group_count = 1 : i64,
+  // CHECK-SAME:  lhs_dilation = dense<1> : tensor<2xi64>,
+  // CHECK-SAME:  padding = dense<0> : tensor<2x2xi64>,
+  // CHECK-SAME:  rhs_dilation = dense<1> : tensor<2xi64>,
+  // CHECK-SAME:  window_strides = dense<1> : tensor<2xi64>
+  // CHECK: return %[[RESULT]]
+  %filter_sizes = "tf.Const" () { value = dense<[3,3,1,32]> : tensor<4xi32> } : () -> tensor<4xi32>
+  %result = "tf.Conv2DBackpropFilter"(%input, %filter_sizes, %out_backprop) {
+    data_format = "NHWC",
+    dilations = [1, 1, 1, 1],
+    explicit_paddings = [],
+    padding = "VALID",
+    strides = [1, 1, 1, 1],
+    use_cudnn_on_gpu = true
+  } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
   return %result : tensor<100x28x28x1xf32>
 }
