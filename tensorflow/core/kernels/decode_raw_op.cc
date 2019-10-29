@@ -89,8 +89,8 @@ class DecodeRawOp : public OpKernel {
       // direct copy, we need to reverse the byte ordering of each element.
       int64 element_size;
       if (DataTypeString(out_type_) == "complex64" || DataTypeString(out_type_) == "complex128") {
-       // For Complex data type, real and imaginary parts needs to be swapped separately
-       element_size = sizeof(T)/2;
+        // For Complex data type, real and imaginary parts need to be swapped separately
+        element_size = sizeof(T)/2;
       } else {
         element_size = sizeof(T);
       }
