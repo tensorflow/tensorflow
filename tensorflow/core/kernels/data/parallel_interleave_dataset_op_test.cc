@@ -44,7 +44,7 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
         type_arguments_(std::move(type_arguments)),
         sloppy_(sloppy) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    op_version_ = 2;
+    op_version_ = kOpVersion;
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     iterator_prefix_ = name_utils::IteratorPrefix(
@@ -90,8 +90,6 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
-
-  bool sloppy() const override { return sloppy_; }
 
  private:
   std::vector<Tensor> other_arguments_;
@@ -446,58 +444,67 @@ ParallelInterleaveDatasetParamsWithInvalidNumParallelCalls() {
 
 std::vector<GetNextTestCase<ParallelInterleaveDatasetParams>>
 GetNextTestCases() {
-  return {
-      {/*dataset_params=*/ParallelInterleaveDatasetParams1(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"d"}, {"e"}, {"c"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams6(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams7(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"d"}, {"e"}, {"g"}, {"h"}, {"c"}, {"f"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams8(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams9(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams10(),
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})}};
+  return {{/*dataset_params=*/ParallelInterleaveDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"d"}, {"e"}, {"c"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams6(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams7(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"d"}, {"e"}, {"g"}, {"h"}, {"c"}, {"f"}, {"i"}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams8(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams9(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams10(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ParallelInterleaveDatasetOpTest,
@@ -582,117 +589,88 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorPrefix) {
 
 std::vector<IteratorSaveAndRestoreTestCase<ParallelInterleaveDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
-  return {
-      {/*dataset_params=*/ParallelInterleaveDatasetParams1(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{1},
-                            {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}})},
-      {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"d"}, {"e"}, {"c"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams6(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams7(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"d"}, {"e"}, {"g"}, {"h"}, {"c"}, {"f"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams8(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams9(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})},
-      {/*dataset_params=*/
-       ParallelInterleaveDatasetParams10(),
-       /*breakpoints=*/{0, 4, 11},
-       /*expected_outputs=*/
-       CreateTensors<tstring>(
-           TensorShape{1},
-           {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}})}};
+  return {{/*dataset_params=*/ParallelInterleaveDatasetParams1(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{1},
+                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"d"}, {"e"}, {"c"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams6(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams7(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"d"}, {"e"}, {"g"}, {"h"}, {"c"}, {"f"}, {"i"}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams8(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams9(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false},
+          {/*dataset_params=*/
+           ParallelInterleaveDatasetParams10(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_outputs=*/
+           CreateTensors<tstring>(
+               TensorShape{1},
+               {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
+           /*compare_order=*/false}};
 }
 
-class ParameterizedIteratorSaveAndRestoreTest
-    : public ParallelInterleaveDatasetOpTest,
-      public ::testing::WithParamInterface<
-          IteratorSaveAndRestoreTestCase<ParallelInterleaveDatasetParams>> {};
-
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(test_case.dataset_params));
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  int cur_iteration = 0;
-  for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
-                                 test_case.dataset_params.iterator_prefix(),
-                                 *dataset_, &iterator_));
-
-    while (cur_iteration <= breakpoint) {
-      std::vector<Tensor> next;
-      TF_EXPECT_OK(
-          iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
-      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-      cur_iteration++;
-    }
-  }
-
-  TF_EXPECT_OK(
-      ExpectEqual(out_tensors, test_case.expected_outputs,
-                  /*compare_order=*/!test_case.dataset_params.sloppy()));
-}
-
-INSTANTIATE_TEST_CASE_P(ParallelInterleaveDatasetOpTest,
-                        ParameterizedIteratorSaveAndRestoreTest,
-                        ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelInterleaveDatasetOpTest,
+                                 ParallelInterleaveDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
 TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
   std::vector<ParallelInterleaveDatasetParams> invalid_params = {
+      ParallelInterleaveDatasetParamsWithInvalidCycleLength(),
       ParallelInterleaveDatasetParamsWithInvalidBlockLength(),
-      ParallelInterleaveDatasetParamsWithInvalidBlockLength(),
-      ParallelInterleaveDatasetParamsWithInvalidBlockLength()};
+      ParallelInterleaveDatasetParamsWithInvalidNumParallelCalls()};
   for (auto& dataset_params : invalid_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
               tensorflow::error::INVALID_ARGUMENT);

@@ -84,8 +84,6 @@ class ParallelMapDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  bool sloppy() const override { return sloppy_; }
-
  private:
   std::vector<Tensor> other_arguments_;
   int num_parallel_calls_;
@@ -265,23 +263,29 @@ ParallelMapDatasetParams ParallelMapDatasetParamsWithInvalidNumParallelCalls() {
 std::vector<GetNextTestCase<ParallelMapDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})}};
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/true}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ParallelMapDatasetOpTest, ParallelMapDatasetParams,
@@ -355,71 +359,39 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}})}};
+           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/true}};
 }
 
-class ParameterizedIteratorSaveAndRestoreTest
-    : public ParallelMapDatasetOpTest,
-      public ::testing::WithParamInterface<
-          IteratorSaveAndRestoreTestCase<ParallelMapDatasetParams>> {};
-
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(test_case.dataset_params));
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  int cur_iteration = 0;
-  for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
-                                 test_case.dataset_params.iterator_prefix(),
-                                 *dataset_, &iterator_));
-
-    while (cur_iteration <= breakpoint) {
-      std::vector<Tensor> next;
-      TF_EXPECT_OK(
-          iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
-      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-      cur_iteration++;
-    }
-  }
-
-  TF_EXPECT_OK(
-      ExpectEqual(out_tensors, test_case.expected_outputs,
-                  /*compare_order=*/!test_case.dataset_params.sloppy()));
-}
-
-INSTANTIATE_TEST_CASE_P(ParallelMapDatasetOpTest,
-                        ParameterizedIteratorSaveAndRestoreTest,
-                        ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelMapDatasetOpTest,
+                                 ParallelMapDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
 TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {
   auto dataset_params = ParallelMapDatasetParamsWithInvalidNumParallelCalls();
