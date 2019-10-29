@@ -456,7 +456,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     graphviz_output = converter.convert()
     self.assertTrue(graphviz_output)
 
-  def testDumpGraphviz(self):
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testDumpGraphviz(self, enable_mlir):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
           shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -466,6 +469,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = enable_mlir
     graphviz_dir = self.get_temp_dir()
     converter.dump_graphviz_dir = graphviz_dir
     tflite_model = converter.convert()
@@ -477,19 +481,26 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     num_items_graphviz = len(os.listdir(graphviz_dir))
     self.assertTrue(num_items_graphviz)
+    self.assertTrue(
+        os.path.exists(os.path.join(graphviz_dir, 'toco_AT_IMPORT.dot')))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(graphviz_dir, 'toco_AFTER_TRANSFORMATIONS.dot')))
 
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    graphviz_dir = self.get_temp_dir()
-    converter.dump_graphviz_dir = graphviz_dir
-    converter.dump_graphviz_video = True
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # new converter doesn't support `dump_graphviz_video` flag
+    if not enable_mlir:
+      # Convert model and ensure model is not None.
+      converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                    [out_tensor])
+      graphviz_dir = self.get_temp_dir()
+      converter.dump_graphviz_dir = graphviz_dir
+      converter.dump_graphviz_video = True
+      tflite_model = converter.convert()
+      self.assertTrue(tflite_model)
 
-    # Ensure graphviz folder has more data after using video flag.
-    num_items_graphviz_video = len(os.listdir(graphviz_dir))
-    self.assertTrue(num_items_graphviz_video > num_items_graphviz)
+      # Ensure graphviz folder has more data after using video flag.
+      num_items_graphviz_video = len(os.listdir(graphviz_dir))
+      self.assertGreater(num_items_graphviz_video, num_items_graphviz)
 
   def testInferenceInputType(self):
     with ops.Graph().as_default():

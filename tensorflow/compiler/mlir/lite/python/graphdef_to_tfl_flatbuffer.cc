@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <ostream>
 
+#include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "mlir/Transforms/ViewOpGraph.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -34,6 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -78,9 +83,6 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
   if (model_flags.change_concat_input_ranges()) {
     LOG(WARNING) << "Ignored change_concat_input_ranges.";
   }
-  if (toco_flags.dump_graphviz_dir().empty()) {
-    LOG(WARNING) << "Ignored dump_graphviz_dir.";
-  }
   if (toco_flags.dump_graphviz_include_video()) {
     LOG(WARNING) << "Ignored dump_graphviz_video.";
   }
@@ -88,6 +90,24 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
     LOG(WARNING) << "Allow allow_nonexistent_arrays.";
   }
 }
+
+// Dumps the op graph of the `module` to `filename` in DOT format.
+Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
+  std::string error_message;
+  auto output = mlir::openOutputFile(filename, &error_message);
+  if (!error_message.empty()) {
+    return errors::InvalidArgument("Failed to open file in %s.", filename);
+  }
+  mlir::PassManager pm(module.getContext());
+  pm.addPass(mlir::createPrintOpGraphPass(output->os()));
+  if (failed(pm.run(module))) {
+    return errors::Unknown("Failed to dump Op Graph from MLIR module.");
+  }
+  output->keep();
+  return Status::OK();
+}
+
+}  // namespace
 
 Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const toco::TocoFlags& toco_flags,
@@ -175,6 +195,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
+  if (toco_flags.has_dump_graphviz_dir()) {
+    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
+        module.get(),
+        // rename once we enable the new converter feature flag.
+        absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
+  }
+
   mlir::PassManager pm(module->getContext());
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
@@ -182,10 +209,19 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
-  return ConvertTFExecutorToTFLOrFlatbuffer(
+  auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
       /*lower_tensor_list_ops=*/true, quant_specs, result, &pm);
+
+  if (toco_flags.has_dump_graphviz_dir()) {
+    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
+        // rename once we enable the new converter feature flag.
+        module.get(), absl::StrCat(toco_flags.dump_graphviz_dir(),
+                                   "/toco_AFTER_TRANSFORMATIONS.dot")));
+  }
+
+  return status;
 }
 
 }  // namespace tensorflow
