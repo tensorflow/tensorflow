@@ -982,6 +982,47 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
   }
 };
 
+/// Converts the RangeOp tensorflow op to a xla_hlo.iota op with a scaling and
+/// offset applied to generate the range values. The output tensor needs to
+/// have a static shape.
+///
+/// For example an op like the following:
+///   %result = "tf.Range"(%start, %limit, %delta) {Tidx = "tfdtype$DT_FLOAT"}
+///      : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
+///
+/// Output would be:
+///   %iota = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xf32>
+///   %scaled = "xla_hlo.mul"(%iota, %delta)
+///       {broadcast_dimensions = dense<[]> : tensor<0xi64>} :
+///       (tensor<5xf32>, tensor<f32>) -> tensor<5xf32>
+///   %result = "xla_hlo.add"(%scaled, %offset)
+///       {broadcast_dimensions = dense<[]> : tensor<0xi64>} :
+///       (tensor<5xf32>, tensor<f32>) -> tensor<5xf32>
+///
+/// Implementation is defined in C++ due to no type interface for the iota op.
+class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
+  using OpRewritePattern<TF::RangeOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::RangeOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result->getType();
+    if (!result_type.cast<ShapedType>().hasStaticShape()) {
+      return matchFailure();
+    }
+
+    auto iota = rewriter.create<xla_hlo::IotaOp>(op.getLoc(), result_type,
+                                                 rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), result_type, iota, op.delta(),
+        getBroadcastDimensionsAttr(rewriter, iota, op.delta()));
+    rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(
+        op, result_type, scaled, op.start(),
+        getBroadcastDimensionsAttr(rewriter, scaled, op.start()));
+    return matchSuccess();
+  }
+};
+
 /// Converts a generic OpTy tensorflow op to a xla_hlo.reduce op over
 /// ReductionOp.
 /// `is_accumulation` controls whether it uses higher precision for the actual
@@ -1748,7 +1789,7 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertBF16FloorDivOp,
                   mlir::xla::ConvertConv2D, mlir::xla::ConvertMaxPoolOp,
-                  mlir::xla::ConvertSigmoidOp,
+                  mlir::xla::ConvertRangeOp, mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,

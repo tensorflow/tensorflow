@@ -1468,6 +1468,24 @@ func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x12x64xf32> {
 }
 
 //===----------------------------------------------------------------------===//
+// Range op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: range
+func @range() -> tensor<5xf32> {
+  %0 = "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "range/start", value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  %1 = "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "range/limit", value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  %2 = "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "range/delta", value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: [[START:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[DELTA:%.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[IOTA:%.*]] = "xla_hlo.iota"
+  // CHECK-DAG: [[MUL:%.*]] = "xla_hlo.mul"([[IOTA]], [[DELTA]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK: "xla_hlo.add"([[MUL]], [[START]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %3 = "tf.Range"(%0, %1, %2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
+  return %3 : tensor<5xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Conv op legalizations.
 //===----------------------------------------------------------------------===//
 
