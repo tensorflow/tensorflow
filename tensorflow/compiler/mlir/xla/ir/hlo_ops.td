@@ -138,22 +138,33 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_CosOp: HLO_UnaryElementwiseOp<"cos", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
+def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
 
-def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
+def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 
-def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
+def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
 
-def HLO_LogOp: HLO_UnaryElementwiseOp<"log", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
+def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
 
-def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
+def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
 
-def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
+def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
-def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
+
+def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SqrtOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
+    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>,
+    BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.

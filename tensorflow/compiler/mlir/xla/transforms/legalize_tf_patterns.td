@@ -346,6 +346,7 @@ foreach Mapping = [
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
+                   [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
