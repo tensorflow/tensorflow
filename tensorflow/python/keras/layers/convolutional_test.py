@@ -308,15 +308,6 @@ class ConvSequentialTest(keras_parameterized.TestCase):
     self._run_test(keras.layers.Conv3D, kwargs, input_shape1, input_shape2,
                    expected_output_shape1, expected_output_shape2)
 
-  def test_invalid_channel_dim(self):
-    with self.cached_session(use_gpu=True):
-      layer = keras.layers.Conv1D(1, 3, dilation_rate=2, padding='valid')
-      output1 = layer(np.zeros((1, 8, 2)))
-      self.assertEqual(output1.shape, (1, 4, 1))
-      with self.assertRaisesRegexp(
-          ValueError, 'Expected input data with 2 channels'):
-        layer(np.zeros((1, 5, 3)))
-
 
 @keras_parameterized.run_all_keras_modes
 class ZeroPaddingTest(keras_parameterized.TestCase):
