@@ -68,6 +68,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "BiasAddV1",
           "BroadcastArgs",
           "BroadcastGradientArgs",
+          "BroadcastTo",
           "Cast",
           "Ceil",
           "CheckNumerics",
