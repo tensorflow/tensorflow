@@ -95,6 +95,9 @@ static void emitOpDocForDialect(const Dialect &dialect,
   emitIfNotEmpty(dialect.getSummary(), os);
   emitIfNotEmpty(dialect.getDescription(), os);
 
+  // TODO(b/143543720) Generate TOC where extension is not supported.
+  os << "[TOC]\n\n";
+
   // TODO(antiagainst): Add link between use and def for types
   if (!types.empty())
     os << "## Type definition\n";
