@@ -127,8 +127,11 @@ function install_pip_deps {
     shift
   done
 
-  # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
+  # TODO(hyey): Add back IfChange lint check (b/143530103).
+  # ===================================================================
+  # Please change dependencies in `install_ubuntu_16_pip_deps` as well.
+  # ===================================================================
   ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
@@ -142,7 +145,7 @@ function install_pip_deps {
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
-  # LINT.ThenChange(:ubuntu_16_pip_installations)
+  # ===================================================================
 }
 
 function install_ubuntu_16_pip_deps {
@@ -158,7 +161,10 @@ function install_ubuntu_16_pip_deps {
     shift
   done
 
-  # LINT.IfChange(ubuntu_16_pip_installations)
+  # TODO(hyey): Add back IfChange lint check (b/143530103).
+  # ===================================================================
+  # Please change dependencies in `install_pip_deps` as well.
+  # ===================================================================
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_applications==1.0.8 --no-deps --user
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
@@ -173,7 +179,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
-  # LINT.ThenChange(:ubuntu_pip_installations)
+  # ===================================================================
 }
 
 function install_macos_pip_deps {
