@@ -846,12 +846,8 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     // the maximum input value is zero. It can be shown that softmax computed
     // after adding or subtracting all inputs in a batch using a common value
     // gives mathematically equivalent result.
-    Type element_type = type.getElementType();
-    ArrayRef<int64_t> reduce_shape = type.getShape().drop_back();
-    RankedTensorType reduce_out_type =
-        RankedTensorType::get(reduce_shape, element_type);
     auto max_logits =
-        rewriter.create<TF::MaxOp>(loc, reduce_out_type, logits, reduce_dim,
+        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
                                    /*keep_dims=*/rewriter.getBoolAttr(false));
     auto shifted_logits = rewriter.create<xla_hlo::SubOp>(
         loc, type, logits, max_logits, batch_dims);
@@ -861,12 +857,12 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 
     // Compute summation of the exponentials.
     auto exp_sum =
-        rewriter.create<TF::SumOp>(loc, reduce_out_type, exp, reduce_dim,
+        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
                                    /*keep_dims=*/rewriter.getBoolAttr(false));
     Value *sum = exp_sum.getResult();
 
     if (use_log) {
-      Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
+      Value *log = rewriter.create<xla_hlo::LogOp>(loc, sum);
       rewriter.replaceOpWithNewOp<xla_hlo::SubOp>(op, shifted_logits, log,
                                                   batch_dims);
     } else {

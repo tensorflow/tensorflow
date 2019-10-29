@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -134,6 +135,60 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     }
   }
   return result_type;
+}
+
+// Returns dimension index for the given TensorFlow axis that supports negative
+// indexing.
+static int64_t GetDimForAxis(int64_t axis, int64_t rank) {
+  return axis >= 0 ? axis : axis + rank;
+}
+
+// Infers output type for reduction ops such as SumOp, MaxOp etc.
+// TODO(b/e667204a): Move this logic to shape inference once it supports custom
+// inference functions.
+static Type InferReductionOpType(Value *input, Value *reduction_indices,
+                                 BoolAttr keep_dims, Builder *builder) {
+  Type input_ty = input->getType();
+  Type element_ty = getElementTypeOrSelf(input_ty);
+
+  // Output type is unranked if input type is not ranked.
+  auto ranked_ty = input_ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return UnrankedTensorType::get(element_ty);
+  int64_t rank = ranked_ty.getRank();
+
+  DenseIntElementsAttr indices;
+  if (!matchPattern(reduction_indices, m_Constant(&indices))) {
+    // Output type is unranked if reduction indices are not constant and reduced
+    // dimensions are not kept.
+    if (!keep_dims.getValue()) return UnrankedTensorType::get(element_ty);
+
+    // Otherwise, output type has same rank as the input.
+    return RankedTensorType::get(SmallVector<int64_t, 4>(rank, -1), element_ty);
+  }
+
+  int64_t num_reduce_dim = 0;
+  llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
+  for (APInt index : indices.getValues<APInt>()) {
+    int64_t dim = GetDimForAxis(index.getSExtValue(), rank);
+    // Invalid input.
+    if (dim < 0 || dim >= rank) return UnrankedTensorType::get(element_ty);
+
+    if (!is_reduce_dim[dim]) {
+      is_reduce_dim[dim] = true;
+      num_reduce_dim++;
+    }
+  }
+
+  ArrayRef<int64_t> shape = ranked_ty.getShape();
+  SmallVector<int64_t, 4> out_shape;
+  out_shape.reserve(rank - (keep_dims.getValue() ? 0 : num_reduce_dim));
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!is_reduce_dim[i])
+      out_shape.push_back(shape[i]);
+    else if (keep_dims.getValue())
+      out_shape.push_back(1);
+  }
+  return RankedTensorType::get(out_shape, element_ty);
 }
 
 // Verifies that the given types are cast compatible. If not, emits appropriate
@@ -841,6 +896,17 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MaxOp
+//===----------------------------------------------------------------------===//
+
+void MaxOp::build(Builder *builder, OperationState &result, Value *input,
+                  Value *reduction_indices, BoolAttr keep_dims) {
+  Type out_ty =
+      InferReductionOpType(input, reduction_indices, keep_dims, builder);
+  build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+//===----------------------------------------------------------------------===//
 // MaxPoolGradOp
 //===----------------------------------------------------------------------===//
 
@@ -1387,6 +1453,17 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<SubOfNeg>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SumOp
+//===----------------------------------------------------------------------===//
+
+void SumOp::build(Builder *builder, OperationState &result, Value *input,
+                  Value *reduction_indices, BoolAttr keep_dims) {
+  Type out_ty =
+      InferReductionOpType(input, reduction_indices, keep_dims, builder);
+  build(builder, result, out_ty, input, reduction_indices, keep_dims);
 }
 
 //===----------------------------------------------------------------------===//

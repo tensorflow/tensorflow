@@ -2429,6 +2429,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
@@ -4622,6 +4627,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
