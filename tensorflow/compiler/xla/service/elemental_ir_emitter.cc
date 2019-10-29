@@ -2372,15 +2372,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
-    case HloOpcode::kReplicaId:
-      return [this, hlo](const IrArray::Index&) -> StatusOr<llvm::Value*> {
-        if (hlo_module_config_.replica_count() != 1) {
-          return Unimplemented("Replication is not implemented on CPU/GPU.");
-        }
-        llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        return llvm::ConstantInt::getNullValue(type);
-      };
     default:
       return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
