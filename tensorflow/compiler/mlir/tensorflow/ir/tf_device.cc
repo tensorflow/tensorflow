@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
@@ -306,6 +307,40 @@ void ReplicateOp::build(
     Operation::result_type_range replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
+}
+
+//===----------------------------------------------------------------------===//
+// Canonicalization patterns
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// tf_device.launch
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches LaunchOps with only one ReturnOp (empty) and remaps the
+// results of the LaunchOp to the operands of the ReturnOp.
+struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
+  using OpRewritePattern<LaunchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(LaunchOp op,
+                                     PatternRewriter& rewriter) const override {
+    Block& block = op.GetBody();
+    // Check if launch only has a return.
+    if (&block.front() != &block.back()) return matchFailure();
+
+    // Map launch results to return operands.
+    llvm::SmallVector<Value*, 8> new_rets(block.front().getOperands());
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<DropEmptyLaunch>(context);
 }
 
 //===----------------------------------------------------------------------===//
