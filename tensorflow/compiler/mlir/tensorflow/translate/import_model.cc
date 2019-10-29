@@ -374,12 +374,17 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
         "Placeholder node");
   }
 
+  DataType dtype = it->second.imported_dtype;
+  // Uses the existing output type if it isn't specified by the user.
+  if (dtype == DT_INVALID) {
+    dtype = node->attr().at("output_types").list().type(0);
+  }
   // Update op name, drop inputs and set attributes required by the Placeholder
   // op.
   *node->mutable_op() = "Placeholder";
   node->clear_attr();
   node->clear_input();
-  AddNodeAttr("dtype", it->second.imported_dtype, node);
+  AddNodeAttr("dtype", dtype, node);
   AddNodeAttr("shape", it->second.shape, node);
   return Status::OK();
 }
