@@ -15,15 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
-#include <map>
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -103,7 +102,7 @@ class HloParserImpl : public HloParser {
 
  private:
   using InstrNameTable =
-      std::unordered_map<std::string, std::pair<HloInstruction*, LocTy>>;
+      absl::flat_hash_map<std::string, std::pair<HloInstruction*, LocTy>>;
 
   // Returns the map from the instruction name to the instruction itself and its
   // location in the current scope.
@@ -230,7 +229,7 @@ class HloParserImpl : public HloParser {
   //
   // Example usage:
   //
-  //  std::unordered_map<std::string, AttrConfig> attrs;
+  //  absl::flat_hash_map<std::string, AttrConfig> attrs;
   //  optional<int64> foo;
   //  attrs["foo"] = {/*required=*/false, AttrTy::kInt64, &foo};
   //  optional<Window> bar;
@@ -242,36 +241,36 @@ class HloParserImpl : public HloParser {
   //  if (foo) { // If attr foo is seen, do something with 'foo'. }
   //
   bool ParseAttributes(
-      const std::unordered_map<std::string, AttrConfig>& attrs);
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs);
 
   // sub_attributes ::= '{' (','? attribute)* '}'
   //
   // Usage is the same as ParseAttributes. See immediately above.
   bool ParseSubAttributes(
-      const std::unordered_map<std::string, AttrConfig>& attrs);
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs);
 
   // Parses one attribute. If it has already been seen, return error. Returns
   // true and adds to seen_attrs on success.
   //
   // Do not call this except in ParseAttributes or ParseSubAttributes.
   bool ParseAttributeHelper(
-      const std::unordered_map<std::string, AttrConfig>& attrs,
-      std::unordered_set<std::string>* seen_attrs);
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      absl::flat_hash_set<std::string>* seen_attrs);
 
   // Copy attributes from `attrs` to `message`, unless the attribute name is in
-  // `ignored_attrs`.
+  // `non_proto_attrs`.
   bool CopyAttributeToProtoMessage(
-      std::vector<std::string> ignored_attrs,
-      const std::unordered_map<std::string, AttrConfig>& attrs,
+      absl::flat_hash_set<std::string> non_proto_attrs,
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
       tensorflow::protobuf::Message* message);
 
   // Parses an attribute string into a protocol buffer `message`.
   // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
   // set of mandatory attributes.
-  // `ignored_attrs` specifies attributes the parser ignores, without writing
-  // them into the proto, but without giving the error either.
+  // `non_proto_attrs` specifies attributes that are not written to the proto,
+  // but added to the HloInstruction.
   bool ParseAttributesAsProtoMessage(
-      const std::unordered_map<std::string, AttrConfig>& ignored_attrs,
+      const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
       tensorflow::protobuf::Message* message);
 
   // Parses a name and finds the corresponding hlo computation.
@@ -386,7 +385,7 @@ class HloParserImpl : public HloParser {
   };
 
   // Map from the computation name to the computation itself and its location.
-  std::unordered_map<std::string, std::pair<HloComputation*, LocTy>>
+  absl::flat_hash_map<std::string, std::pair<HloComputation*, LocTy>>
       computation_pool_;
 
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -516,7 +515,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   }
 
   absl::optional<bool> is_scheduled;
-  std::unordered_map<std::string, AttrConfig> attrs;
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   if (!ParseAttributes(attrs)) {
     return false;
@@ -691,8 +690,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     return false;
   }
 
-  // Add optional attributes.
-  std::unordered_map<std::string, AttrConfig> attrs;
+  // Add optional attributes. These are added to any HloInstruction type if
+  // present.
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   optional<OpSharding> sharding;
   optional<FrontendAttributes> frontend_attributes;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
@@ -1169,7 +1169,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       TriangularSolveOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributesAsProtoMessage(
-              /*ignored_attrs=*/attrs, &options)) {
+              /*non_proto_attrs=*/attrs, &options)) {
         return false;
       }
       instruction =
@@ -1193,7 +1193,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       CholeskyOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributesAsProtoMessage(
-              /*ignored_attrs=*/attrs, &options)) {
+              /*non_proto_attrs=*/attrs, &options)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -2070,7 +2070,7 @@ bool HloParserImpl::ParseReplicaGroupsOnly(
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
 //            'exit=' exit_sharding '}'
 bool HloParserImpl::ParseDomain(DomainData* domain) {
-  std::unordered_map<std::string, AttrConfig> attrs;
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   optional<std::string> kind;
   optional<OpSharding> entry_sharding;
   optional<OpSharding> exit_sharding;
@@ -2755,12 +2755,12 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
 
 // sub_attributes ::= '{' (','? attribute)* '}'
 bool HloParserImpl::ParseSubAttributes(
-    const std::unordered_map<std::string, AttrConfig>& attrs) {
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs) {
   LocTy loc = lexer_.GetLoc();
   if (!ParseToken(TokKind::kLbrace, "expects '{' to start sub attributes")) {
     return false;
   }
-  std::unordered_set<std::string> seen_attrs;
+  absl::flat_hash_set<std::string> seen_attrs;
   if (lexer_.GetKind() == TokKind::kRbrace) {
     // empty
   } else {
@@ -2784,9 +2784,9 @@ bool HloParserImpl::ParseSubAttributes(
 
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributes(
-    const std::unordered_map<std::string, AttrConfig>& attrs) {
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs) {
   LocTy loc = lexer_.GetLoc();
-  std::unordered_set<std::string> seen_attrs;
+  absl::flat_hash_set<std::string> seen_attrs;
   while (EatIfPresent(TokKind::kComma)) {
     if (!ParseAttributeHelper(attrs, &seen_attrs)) {
       return false;
@@ -2804,8 +2804,8 @@ bool HloParserImpl::ParseAttributes(
 }
 
 bool HloParserImpl::ParseAttributeHelper(
-    const std::unordered_map<std::string, AttrConfig>& attrs,
-    std::unordered_set<std::string>* seen_attrs) {
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    absl::flat_hash_set<std::string>* seen_attrs) {
   LocTy loc = lexer_.GetLoc();
   std::string name;
   if (!ParseAttributeName(&name)) {
@@ -3074,15 +3074,15 @@ bool HloParserImpl::ParseAttributeHelper(
 }
 
 bool HloParserImpl::CopyAttributeToProtoMessage(
-    std::vector<std::string> ignored_attrs,
-    const std::unordered_map<std::string, AttrConfig>& attrs,
+    absl::flat_hash_set<std::string> non_proto_attrs,
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
     tensorflow::protobuf::Message* message) {
   const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
   const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
 
   for (const auto& p : attrs) {
     const std::string& name = p.first;
-    if (absl::c_count(ignored_attrs, name)) {
+    if (non_proto_attrs.find(name) != non_proto_attrs.end()) {
       continue;
     }
     const tensorflow::protobuf::FieldDescriptor* fd =
@@ -3132,14 +3132,18 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
 
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributesAsProtoMessage(
-    const std::unordered_map<std::string, AttrConfig>& ignored_attrs,
+    const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
     tensorflow::protobuf::Message* message) {
   const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  std::unordered_map<std::string, AttrConfig> attrs;
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
 
   // Storage for attributes.
-  std::map<std::string, optional<bool>> bool_params;
-  std::map<std::string, optional<std::string>> string_params;
+  std::vector<optional<bool>> bool_params;
+  std::vector<optional<std::string>> string_params;
+  // Reserve enough capacity to make sure that the vector is not growing, so we
+  // can rely on the pointers to stay valid.
+  bool_params.reserve(descriptor->field_count());
+  string_params.reserve(descriptor->field_count());
 
   // Populate the storage of expected attributes from the protobuf description.
   for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
@@ -3148,15 +3152,15 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
     const std::string& field_name = fd->name();
     switch (fd->type()) {
       case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-        auto p = bool_params.emplace(field_name, absl::nullopt);
+        bool_params.emplace_back(absl::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
-                             &p.first->second};
+                             &bool_params.back()};
         break;
       }
       case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        auto p = string_params.emplace(field_name, absl::nullopt);
+        string_params.emplace_back(absl::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
-                             &p.first->second};
+                             &string_params.back()};
         break;
       }
       default:
@@ -3165,21 +3169,24 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
     }
   }
 
-  std::vector<std::string> ignored_attrs_names;
-  ignored_attrs_names.reserve(ignored_attrs.size());
-  for (const auto& p : ignored_attrs) {
+  absl::flat_hash_set<std::string> non_proto_attrs_names;
+  non_proto_attrs_names.reserve(non_proto_attrs.size());
+  for (const auto& p : non_proto_attrs) {
     const std::string& attr_name = p.first;
+    // If an attribute is both specified within 'non_proto_attrs' and an
+    // attribute of the proto message, we prefer the attribute of the proto
+    // message.
     if (attrs.find(attr_name) == attrs.end()) {
-      ignored_attrs_names.push_back(attr_name);
+      non_proto_attrs_names.insert(attr_name);
+      attrs[attr_name] = p.second;
     }
-    attrs[attr_name] = p.second;
   }
 
   if (!ParseAttributes(attrs)) {
     return false;
   }
 
-  return CopyAttributeToProtoMessage(ignored_attrs_names, attrs, message);
+  return CopyAttributeToProtoMessage(non_proto_attrs_names, attrs, message);
 }
 
 bool HloParserImpl::ParseComputationName(HloComputation** value) {
@@ -3958,7 +3965,7 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
 
 // '{' metadata_string '}'
 bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
-  std::unordered_map<std::string, AttrConfig> attrs;
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   optional<std::string> op_type;
   optional<std::string> op_name;
   optional<std::string> source_file;

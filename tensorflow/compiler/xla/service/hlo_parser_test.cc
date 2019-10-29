@@ -1807,6 +1807,16 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_name());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_type());
 }
 
 TEST_F(HloParserTest, WrongShape) {
