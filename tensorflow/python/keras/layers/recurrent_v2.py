@@ -716,13 +716,6 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
           time_major=time_major,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
-    # Note that mask is a boolean tensor, which doesn't need to do gradient
-    # calculation, when using tf.cond, a default gradient is added for it,
-    # which then cause the backward function to have a signature mismatch.
-    # Force the mask to not generate gradient to allow implementation_selector
-    # to work properly.
-    # TODO(b/80444525): Remove the stop_gradient().
-    mask = array_ops.stop_gradient(mask)
 
     def input_right_padded():
       return cudnn_gru(
@@ -1467,13 +1460,6 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
           time_major=time_major,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
-    # Note that mask is a boolean tensor, which doesn't need to do gradient
-    # calculation, when using tf.cond, a default gradient is added for it,
-    # which then cause the backward function to have a signature mismatch.
-    # Force the mask to not generate gradient to allow implementation_selector
-    # to work properly.
-    # TODO(b/80444525): Remove the stop_gradient().
-    mask = array_ops.stop_gradient(mask)
 
     def input_right_padded():
       return cudnn_lstm(

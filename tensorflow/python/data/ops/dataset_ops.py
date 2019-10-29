@@ -368,7 +368,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     """
     if (context.executing_eagerly()
         or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -928,6 +928,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def list_files(file_pattern, shuffle=None, seed=None):
     """A dataset of all files matching one or more glob patterns.
 
+    The `file_pattern` argument should be a small number of glob patterns.
+    If your filenames have already been globbed, use
+    `Dataset.from_tensor_slices(filenames)` instead, as re-globbing every
+    filename with `list_files` may result in poor performance with remote
+    storage systems.
+
     NOTE: The default behavior of this method is to return filenames in
     a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
     to get results in a deterministic order.
@@ -985,7 +991,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       return dataset
 
   def repeat(self, count=None):
-    """Repeats this dataset `count` times.
+    """Repeats this dataset so each original value is seen `count` times.
+
+    For example, the following code will evaluate to [0, 1, 0, 1]:
+
+    ```python
+    dataset = tf.data.Dataset.range(2)
+    [int(x.numpy()) for x in dataset.repeat(2)]
+    ```
 
     NOTE: If this dataset is a function of global state (e.g. a random number
     generator), then different repetitions may produce different elements.
@@ -1841,7 +1854,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2330,7 +2343,7 @@ def get_legacy_output_classes(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_classes` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
     A nested structure of Python `type` objects matching the structure of the
@@ -2447,16 +2460,6 @@ class Options(options_lib.OptionsBase):
       "The threading options associated with the dataset. See "
       "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
-
-  experimental_allow_stateful = options_lib.create_option(
-      name="experimental_allow_stateful",
-      ty=bool,
-      docstring="By default, tf.data will refuse to serialize a dataset or "
-      "checkpoint its iterator if the dataset contains a stateful op as the "
-      "serialization / checkpointing won't be able to capture its state. "
-      "Users can -- at their own risk -- override this restriction by "
-      "explicitly specifying that they are fine throwing away the state "
-      "in these ops when they turn this option on.")
 
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
@@ -2792,7 +2795,7 @@ class StructuredFunctionWrapper(object):
       input_structure: (Optional.) A `Structure` object. If given, this argument
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
-        default graph.
+        default graph, if it exists.
       use_legacy_function: (Optional.) A boolean that determines whether the
         function be created using `tensorflow.python.eager.function.defun`
         (default behavior) or `tensorflow.python.framework.function.Defun`
@@ -2828,6 +2831,12 @@ class StructuredFunctionWrapper(object):
       self._input_structure = input_structure
 
     self._func = func
+
+    # There is no graph to add in eager mode.
+    add_to_graph &= not context.executing_eagerly()
+    # There are some lifetime issues when a legacy function is not added to a
+    # out-living graph. It's already deprecated so de-priotizing the fix.
+    add_to_graph |= use_legacy_function
 
     if defun_kwargs is None:
       defun_kwargs = {}

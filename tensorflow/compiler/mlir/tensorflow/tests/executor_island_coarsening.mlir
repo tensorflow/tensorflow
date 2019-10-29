@@ -68,10 +68,7 @@ func @empty_islands(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tens
     %4:2 = tf_executor.island {
       tf_executor.yield %2#0 : tensor<i1>
     }
-    %5:3 = tf_executor.island {
-      %10:2 = "tf.opA"(%3#0, %4#0) : (tensor<i1>, tensor<i1>) -> (tensor<i1>, tensor<i1>)
-      tf_executor.yield %10#0, %10#1 : tensor<i1>, tensor<i1>
-    }
+    %5:3 = tf_executor.island wraps "tf.opA"(%3#0, %4#0) : (tensor<i1>, tensor<i1>) -> (tensor<i1>, tensor<i1>)
     %6:2 = tf_executor.island {
       tf_executor.yield %5#0 : tensor<i1>
     }
@@ -89,7 +86,8 @@ func @empty_islands(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tens
   return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
-// CHECK:        %[[ISLAND:[0-9]*]]:3 = tf_executor.island wraps "tf.opA"(%[[ARG_1]], %[[ARG_0]])
+// CHECK:        %[[ISLAND:[0-9]*]]:3 = tf_executor.island
+// CHECK-NEXT:     "tf.opA"(%[[ARG_1]], %[[ARG_0]])
 // CHECK:        tf_executor.fetch %[[ISLAND]]#0, %[[ISLAND]]#1 : tensor<i1>, tensor<i1>
 
 
@@ -98,14 +96,8 @@ func @empty_islands(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tens
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>, %[[ARG_1:[a-z0-9]*]]: tensor<i1>)
 func @multiple_outputs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
   %0:2 = tf_executor.graph {
-    %1:2 = tf_executor.island {
-      %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %3 : tensor<i1>
-    }
-    %2:2 = tf_executor.island(%1#1) {
-      %4 = "tf.opB"(%arg1) : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %4 : tensor<i1>
-    }
+    %1:2 = tf_executor.island wraps "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+    %2:2 = tf_executor.island(%1#1) wraps "tf.opB"(%arg1) : (tensor<i1>) -> tensor<i1>
     tf_executor.fetch %1#0, %2#0 : tensor<i1>, tensor<i1>
   }
   return %0#0, %0#1 : tensor<i1>, tensor<i1>
@@ -188,30 +180,12 @@ func @transitive_preserve_order(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> ten
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i32>, %[[ARG_1:[a-z0-9]*]]: tensor<i32>)
 func @islands_interleaved(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   %0:2 = tf_executor.graph {
-    %1:2 = tf_executor.island {
-      %7 = "tf.opA"(%arg0) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %7 : tensor<i32>
-    }
-    %2:2 = tf_executor.island {
-      %8 = "tf.opB"(%arg1) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %8 : tensor<i32>
-    }
-    %3:2 = tf_executor.island {
-      %9 = "tf.opC"(%1#0) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %9 : tensor<i32>
-    }
-    %4:2 = tf_executor.island {
-      %10 = "tf.opD"(%2#0) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %10 : tensor<i32>
-    }
-    %5:2 = tf_executor.island(%3#1) {
-      %11 = "tf.opE"(%arg0) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %11 : tensor<i32>
-    }
-    %6:2 = tf_executor.island {
-      %12 = "tf.opF"(%arg1) : (tensor<i32>) -> tensor<i32>
-      tf_executor.yield %12 : tensor<i32>
-    }
+    %1:2 = tf_executor.island wraps "tf.opA"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %2:2 = tf_executor.island wraps "tf.opB"(%arg1) : (tensor<i32>) -> tensor<i32>
+    %3:2 = tf_executor.island wraps "tf.opC"(%1#0) : (tensor<i32>) -> tensor<i32>
+    %4:2 = tf_executor.island wraps "tf.opD"(%2#0) : (tensor<i32>) -> tensor<i32>
+    %5:2 = tf_executor.island(%3#1) wraps "tf.opE"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %6:2 = tf_executor.island wraps "tf.opF"(%arg1) : (tensor<i32>) -> tensor<i32>
     tf_executor.fetch %4#0, %3#0 : tensor<i32>, tensor<i32>
   }
   return %0#0, %0#1 : tensor<i32>, tensor<i32>
@@ -232,40 +206,19 @@ func @islands_interleaved(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i
 // CHECK-LABEL: func @merge_islands_only
 func @merge_islands_only() {
   tf_executor.graph {
-    %0:2 = tf_executor.island {
-      %14 = "tf.opA"() : () -> tensor<i32>
-      tf_executor.yield %14 : tensor<i32>
-    }
+    %0:2 = tf_executor.island wraps "tf.opA"() : () -> tensor<i32>
     %1:2 = tf_executor.Enter %0#0 frame "while/while_context" : (tensor<i32>) -> (tensor<*xi32>, !tf_executor.control)
-    %2 = tf_executor.island {
-      "tf.opB"() : () -> ()
-      tf_executor.yield
-    }
+    %2 = tf_executor.island wraps "tf.opB"() : () -> ()
     %3:3 = tf_executor.NextIteration.Source : tensor<*xi32>
     %4:3 = tf_executor.Merge %3#0, %1#0 : tensor<*xi32>
-    %5:2 = tf_executor.island(%4#2) {
-      %15 = "tf.opC"() : () -> tensor<i32>
-      tf_executor.yield %15 : tensor<i32>
-    }
-    %6:2 = tf_executor.island {
-      %16 = "tf.opD"(%4#0, %5#0) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-      tf_executor.yield %16 : tensor<*xi1>
-    }
+    %5:2 = tf_executor.island(%4#2) wraps "tf.opC"() : () -> tensor<i32>
+    %6:2 = tf_executor.island wraps "tf.opD"(%4#0, %5#0) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
     %7:2 = tf_executor.LoopCond %6#0 : (tensor<*xi1>) -> (tensor<i1>, !tf_executor.control)
     %8:3 = tf_executor.Switch %4#0, %7#0 : tensor<*xi32>
     %9:2 = tf_executor.Exit %8#0 : tensor<*xi32>
-    %10:2 = tf_executor.island {
-      %17 = "tf.opE"(%8#1) : (tensor<*xi32>) -> tensor<*xi32>
-      tf_executor.yield %17 : tensor<*xi32>
-    }
-    %11:2 = tf_executor.island(%10#1) {
-      %18 = "tf.opF"() : () -> tensor<i32>
-      tf_executor.yield %18 : tensor<i32>
-    }
-    %12:2 = tf_executor.island {
-      %19 = "tf.opG"(%10#0, %11#0) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-      tf_executor.yield %19 : tensor<*xi32>
-    }
+    %10:2 = tf_executor.island wraps "tf.opE"(%8#1) : (tensor<*xi32>) -> tensor<*xi32>
+    %11:2 = tf_executor.island(%10#1) wraps "tf.opF"() : () -> tensor<i32>
+    %12:2 = tf_executor.island wraps "tf.opG"(%10#0, %11#0) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
     %13 = tf_executor.ControlTrigger %2, %12#1, %9#1
     tf_executor.NextIteration.Sink [%3#1] %12#0, %13 : tensor<*xi32>
     tf_executor.fetch
@@ -298,10 +251,7 @@ func @merge_islands_only() {
 // CHECK-LABEL: func @simple_potential_cycle
 func @simple_potential_cycle() {
   tf_executor.graph {
-    %0:2 = tf_executor.island {
-      %3 = "tf.opA"() : () -> tensor<1xf32>
-      tf_executor.yield %3 : tensor<1xf32>
-    }
+    %0:2 = tf_executor.island wraps "tf.opA"() : () -> tensor<1xf32>
     %1 = tf_executor.ControlTrigger %0#1
     %2:3 = tf_executor.island(%1) {
       %4 = "tf.opB"() : () -> tensor<1xf32>
@@ -348,17 +298,11 @@ func @merge_into_result() {
 // CHECK-LABEL: func @merge_into_nested_data_result
 func @merge_into_nested_data_result() {
   tf_executor.graph {
-    %0:2 = tf_executor.island {
-      %1 = "tf.opA"() : () -> tensor<1xf32>
-      tf_executor.yield %1 : tensor<1xf32>
-    }
+    %0:2 = tf_executor.island wraps "tf.opA"() : () -> tensor<1xf32>
     %2:2 = tf_executor.island {
       %3 = tf_executor.graph {
         %4 = tf_executor.ControlTrigger {}
-        %5:2 = tf_executor.island(%4) {
-          %6 = "tf.opB"(%0#0) : (tensor<1xf32>) -> tensor<1xf32>
-          tf_executor.yield %6 : tensor<1xf32>
-        }
+        %5:2 = tf_executor.island(%4) wraps "tf.opB"(%0#0) : (tensor<1xf32>) -> tensor<1xf32>
         tf_executor.fetch %5#0 : tensor<1xf32>
       }
       tf_executor.yield %3 : tensor<1xf32>
@@ -372,7 +316,8 @@ func @merge_into_nested_data_result() {
 // CHECK-NEXT:     [[OP_A:[0-9*]]] = "tf.opA"
 // CHECK-NEXT:     [[INNER_GRAPH:[0-9]*]] = tf_executor.graph {
 // CHECK-NEXT:       [[CT:[0-9]*]] = tf_executor.ControlTrigger
-// CHECK-NEXT:       [[ISLAND_1:[0-9]*]]:2 = tf_executor.island(%[[CT]]) wraps "tf.opB"(%[[OP_A]])
+// CHECK-NEXT:       [[ISLAND_1:[0-9]*]]:2 = tf_executor.island(%[[CT]])
+// CHECK-NEXT:         "tf.opB"(%[[OP_A]])
 // CHECK:            tf_executor.fetch %[[ISLAND_1]]#0 : tensor<1xf32>
 // CHECK:          tf_executor.yield
 
@@ -381,24 +326,12 @@ func @merge_into_nested_data_result() {
 // CHECK-LABEL: func @merge_islands_inner_graph
 func @merge_islands_inner_graph() {
   tf_executor.graph {
-    %0:2 = tf_executor.island {
-      %1 = "tf.opA"() : () -> tensor<1xf32>
-      tf_executor.yield %1 : tensor<1xf32>
-    }
+    %0:2 = tf_executor.island wraps "tf.opA"() : () -> tensor<1xf32>
     %2:2 = tf_executor.island {
       %3 = tf_executor.graph {
-        %4:2 = tf_executor.island {
-          %5 = "tf.opB"() : () -> tensor<1xf32>
-          tf_executor.yield %5 : tensor<1xf32>
-        }
-        %6:2 = tf_executor.island {
-          %7 = "tf.opC"() : () -> tensor<1xf32>
-          tf_executor.yield %7 : tensor<1xf32>
-        }
-        %8:2 = tf_executor.island(%4#1) {
-          %9 = "tf.opD"(%6#0) : (tensor<1xf32>) -> tensor<1xf32>
-          tf_executor.yield %9 : tensor<1xf32>
-        }
+        %4:2 = tf_executor.island wraps "tf.opB"() : () -> tensor<1xf32>
+        %6:2 = tf_executor.island wraps "tf.opC"() : () -> tensor<1xf32>
+        %8:2 = tf_executor.island(%4#1) wraps "tf.opD"(%6#0) : (tensor<1xf32>) -> tensor<1xf32>
         tf_executor.fetch %8#0 : tensor<1xf32>
       }
       tf_executor.yield %3 : tensor<1xf32>
@@ -409,7 +342,8 @@ func @merge_islands_inner_graph() {
 }
 
 // CHECK:        tf_executor.island wraps "tf.opA"
-// CHECK:        tf_executor.island wraps "tf_executor.graph"() ( {
+// CHECK:        tf_executor.island
+// CHECK:          tf_executor.graph {
 // CHECK-NEXT:       [[ISLAND_1:[0-9]*]]:2 = tf_executor.island {
 // CHECK-NEXT:         "tf.opB"
 // CHECK-NEXT:         [[OP_C:[0-9]*]] = "tf.opC"
@@ -471,7 +405,10 @@ func @merge_independently_fetched_islands_data_and_control(%arg0: tensor<i32>) -
 }
 
 // CHECK:      tf_executor.graph
-// CHECK-NEXT:   %[[ISLAND:[0-9]*]]:2 = tf_executor.island wraps "tf.Const"
+// CHECK-NEXT:   %[[ISLAND:[0-9]*]]:2 = tf_executor.island {
+// CHECK-NEXT:     "tf.Const"
+// CHECK-NEXT:     tf_executor.yield
+// CHECK-NEXT:   }
 // CHECK-NEXT:   tf_executor.fetch %[[ISLAND]]#0, %[[ISLAND]]#1
 
 // Check that we merge two islands with independent fetches, when both are

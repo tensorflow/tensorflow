@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -186,6 +185,11 @@ class ImporterBase {
   // nodes.
   llvm::ArrayRef<Node*> GetOrderedNodes() const { return ordered_nodes_; }
 
+  // Returns the inferred input type at index `idx` of the `node` in the
+  // context.
+  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
+                                            mlir::Builder builder);
+
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
   StatusOr<mlir::TensorType> InferOutputType(const Node& node, int idx,
@@ -198,11 +202,6 @@ class ImporterBase {
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
   Status AddNodesToShapeRefiner();
-
-  // Returns the inferred input type at index `idx` of the `node` in the
-  // context.
-  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
-                                            mlir::Builder builder);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -463,10 +462,15 @@ StatusOr<Node*> ImporterBase::ReplaceWithPlaceholderNode(
 
   while (!input_node->out_edges().empty()) {
     const Edge* oe = *input_node->out_edges().begin();
-    TF_RETURN_IF_ERROR(graph_->UpdateEdge(
-        placeholder_node,
-        oe->src_output() == Graph::kControlSlot ? Graph::kControlSlot : 0,
-        oe->dst(), oe->dst_input()));
+    // UpdateEdge cannot be used with control edges.
+    if (oe->src_output() == Graph::kControlSlot) {
+      graph_->AddControlEdge(placeholder_node, oe->dst());
+      graph_->RemoveControlEdge(oe);
+      continue;
+    }
+
+    TF_RETURN_IF_ERROR(
+        graph_->UpdateEdge(placeholder_node, 0, oe->dst(), oe->dst_input()));
   }
 
   graph_->RemoveNode(input_node);
@@ -481,7 +485,7 @@ Status ImporterBase::GetInputOutputNodes(
     auto it = node_name_map.find(name);
     if (it == node_name_map.end()) {
       return errors::FailedPrecondition(
-          absl::StrCat("Graph does not contain node :", name));
+          absl::StrCat("Graph does not contain node: ", name));
     }
     nodes->insert(it->second);
     return Status::OK();
@@ -532,13 +536,22 @@ Status ImporterBase::AddNodesToShapeRefiner() {
               "Input arrays can only have op with single output. Node op:",
               node_name));
         }
-        // For single output nodes, replace them with Placeholder node
+        // For single output nodes, replace them with Placeholder node.
+        DataType dtype = it->second.imported_dtype;
+        // Uses the existing output type if it isn't specified by the user.
+        if (dtype == DT_INVALID) {
+          dtype = node->output_type(0);
+        }
         TF_ASSIGN_OR_RETURN(
-            node, ReplaceWithPlaceholderNode(it->second.shape,
-                                             it->second.imported_dtype, node));
+            node, ReplaceWithPlaceholderNode(it->second.shape, dtype, node));
       } else {
         node->AddAttr("shape", it->second.shape);
-        node->AddAttr("dtype", it->second.imported_dtype);
+        DataType dtype = it->second.imported_dtype;
+        // Uses the existing output type if it isn't specified by the user.
+        if (dtype == DT_INVALID) {
+          dtype = node->output_type(0);
+        }
+        node->AddAttr("dtype", dtype);
       }
     }
     // Adds the node to the shape refiner.
@@ -1295,7 +1308,6 @@ Status ImporterBase::ConvertNode(const Node& node) {
 
   const auto& node_def = node.def();
   mlir::OperationState result(GetLocation(node_def), op_name);
-
   for (int i = 0; i < node.num_outputs(); ++i) {
     // The backedge has been removed, so we shouldn't count the corresponding
     // output from the src node when converting to an operation.
@@ -1545,6 +1557,15 @@ class GraphDefImporter : public ImporterBase {
       const GraphImportConfig& specs, mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
+
+  // Returns the function signature of the main function, alongside input and
+  // output nodes, for function graphs. Arguments and return values are
+  // determined by node op type. Type and shape information of the function are
+  // inferred by the shape refiner in ImporterBase.
+  StatusOr<mlir::FunctionType> GetArgsRetsAndTypesFromFunctionGraph(
+      mlir::MLIRContext* context,
+      absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+      absl::InlinedVector<OutputTensor, 4>* ret_nodes);
 };
 
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
@@ -1559,48 +1580,41 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
                             &tf_name_to_mlir_name, &function_name_uniquifier);
 
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
+
   mlir::FunctionType func_type;
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
   absl::InlinedVector<Node*, 4> control_ret_nodes;
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
-  std::unique_ptr<FunctionBody> graph_fbody;
   if (specs.graph_as_function) {
     if (specs.prune_unused_nodes || !specs.inputs.empty() ||
         !specs.output_arrays.empty() || !specs.output_arrays_order.empty())
       return errors::InvalidArgument(
           "Pruning of graph is currently unsupported when the main graph is "
           "converted to a function.");
-    // Converts graph into a FunctionDef.
-    FunctionDef graph_fdef;
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, "main", &graph_fdef));
 
-    // Converts FunctionDef into a FunctionBody.
-    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(graph_fdef, AttrSlice(),
-                                               &flib_def, &graph_fbody));
-
-    TF_RETURN_IF_ERROR(importer.PrepareConvert(*graph_fbody->graph));
-    TF_ASSIGN_OR_RETURN(func_type, importer.InferLibFunctionType(*graph_fbody));
-    importer.GetArgsAndRetsFromFunctionBody(*graph_fbody, &arg_nodes,
-                                            &ret_nodes, &control_ret_nodes);
+    TF_ASSIGN_OR_RETURN(func_type,
+                        importer.GetArgsRetsAndTypesFromFunctionGraph(
+                            context, &arg_nodes, &ret_nodes));
 
     if (!arg_nodes.empty() || !ret_nodes.empty()) {
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      auto node_name = [&](const Node* node) { ss << node->name(); };
-      mlir::interleave(graph_fbody->arg_nodes, ss, node_name, ",");
+      auto node_name = [&](const OutputTensor& tensor) {
+        ss << tensor.node->name();
+      };
+      mlir::interleave(arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(graph_fbody->ret_nodes, ss, node_name, ",");
+      mlir::interleave(ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
                                      b.getDictionaryAttr({inputs, outputs})));
     }
   } else {
-    TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
-
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.
     TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
@@ -1619,7 +1633,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.output_arrays, ss, ",");
+      mlir::interleave(specs.output_arrays_order, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
@@ -1682,39 +1696,38 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     }
   }
 
+  // Starts to construct the function type.
+  mlir::Builder builder(context);
+  llvm::SmallVector<mlir::Type, 4> arg_types;
+  arg_types.reserve(specs.inputs.size());
   int i = 0;
   for (auto it : specs.inputs) {
     if (arg_nodes->at(i++).node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,
                                      " was not found in graph");
     }
+    mlir::Type element_type;
+    const auto& node_info = it.second;
+    DataType imported_dtype = node_info.imported_dtype;
+    // Uses the existing output type if it isn't specified by the user.
+    if (imported_dtype == DT_INVALID) {
+      imported_dtype = arg_nodes->back().node->output_type(0);
+    }
+    TF_RETURN_IF_ERROR(
+        ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
+    llvm::SmallVector<int64_t, 4> shape;
+    TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
+    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
   }
+
+  llvm::SmallVector<mlir::Type, 4> ret_types;
+  ret_types.reserve(specs.output_arrays.size());
   for (int i = 0, e = specs.output_arrays_order.size(); i != e; ++i) {
     if (ret_nodes->at(i).node == nullptr) {
       return errors::InvalidArgument("Output ", specs.output_arrays_order[i],
                                      " was not found in graph");
     }
   }
-
-  // Starts to construct the function type.
-  llvm::SmallVector<mlir::Type, 4> arg_types;
-  llvm::SmallVector<mlir::Type, 4> ret_types;
-  arg_types.reserve(specs.inputs.size());
-  ret_types.reserve(specs.output_arrays.size());
-  mlir::Builder builder(context);
-
-  // Input nodes as function arguments.
-  for (const auto& input : specs.inputs) {
-    mlir::Type element_type;
-    const auto& node_info = input.second;
-    TF_RETURN_IF_ERROR(::tensorflow::ConvertDataType(node_info.imported_dtype,
-                                                     builder, &element_type));
-    llvm::SmallVector<int64_t, 4> shape;
-    TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
-  }
-
-  // Output nodes as function returns.
   for (const auto& ret : *ret_nodes) {
     if (ret.node->num_outputs() <= ret.index) {
       return errors::InvalidArgument("Invalid output index ", ret.index,
@@ -1722,6 +1735,68 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     }
     TF_ASSIGN_OR_RETURN(auto type,
                         InferOutputType(*ret.node, ret.index, builder));
+    ret_types.push_back(type);
+  }
+
+  return builder.getFunctionType(arg_types, ret_types);
+}
+
+StatusOr<mlir::FunctionType>
+GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
+    mlir::MLIRContext* context, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+    absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
+  auto add_node = [](Node* node, absl::InlinedVector<OutputTensor, 4>* nodes) {
+    auto* attr = node->attrs().Find("index");
+    if (!attr)
+      return errors::InvalidArgument(node->type_string(), " node '",
+                                     node->name(),
+                                     "' is missing attribute 'index'");
+
+    auto index = attr->i();
+    if (nodes->size() < index + 1) nodes->resize(index + 1);
+
+    if ((*nodes)[index].node != nullptr)
+      return errors::InvalidArgument(node->type_string(), " node '",
+                                     node->name(), "' has attribute 'index' ",
+                                     index, " that conflicts with node '",
+                                     (*nodes)[index].node->name(), "'");
+    (*nodes)[index] = {node, 0};
+
+    return Status::OK();
+  };
+
+  // Collect arg and ret nodes from graph.
+  for (auto* node : GetOrderedNodes())
+    if (node->IsArg())
+      TF_RETURN_IF_ERROR(add_node(node, arg_nodes));
+    else if (node->IsRetval())
+      TF_RETURN_IF_ERROR(add_node(node, ret_nodes));
+
+  // Collect arg and ret types and create function type.
+  mlir::Builder builder(context);
+  llvm::SmallVector<mlir::Type, 4> arg_types;
+  arg_types.reserve(arg_nodes->size());
+  for (auto arg_node_and_idx : llvm::enumerate(*arg_nodes)) {
+    auto& arg_node = arg_node_and_idx.value();
+    if (arg_node.node == nullptr)
+      return errors::InvalidArgument("Graph missing _Arg at index ",
+                                     arg_node_and_idx.index());
+
+    TF_ASSIGN_OR_RETURN(auto type,
+                        InferOutputType(*arg_node.node, /*idx=*/0, builder));
+    arg_types.push_back(type);
+  }
+
+  llvm::SmallVector<mlir::Type, 4> ret_types;
+  ret_types.reserve(ret_nodes->size());
+  for (auto ret_node_and_idx : llvm::enumerate(*ret_nodes)) {
+    auto& ret_node = ret_node_and_idx.value();
+    if (ret_node.node == nullptr)
+      return errors::InvalidArgument("Graph missing _Retval at index ",
+                                     ret_node_and_idx.index());
+
+    TF_ASSIGN_OR_RETURN(auto type,
+                        InferInputType(*ret_node.node, /*idx=*/0, builder));
     ret_types.push_back(type);
   }
 

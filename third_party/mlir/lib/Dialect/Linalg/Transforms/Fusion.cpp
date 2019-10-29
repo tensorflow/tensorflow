@@ -75,10 +75,7 @@ static llvm::cl::list<unsigned> clTileSizes(
 // This is achieved by applying the `loopToOperandRangesMaps` permutation maps
 // to the `loopRanges` in order to obtain view ranges.
 static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
-                                    ArrayRef<SubViewOp::Range> loopRanges,
-                                    OperationFolder &state) {
-  ScopedContext scope(b, loc);
-
+                                    ArrayRef<SubViewOp::Range> loopRanges) {
   auto maps = loopToOperandRangesMaps(op);
   SmallVector<Value *, 8> clonedViews;
   clonedViews.reserve(op.getNumInputsAndOutputs());
@@ -152,7 +149,7 @@ static ViewDimension getViewDefiningLoopRange(LinalgOp op, unsigned loopDepth) {
 
 static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
                      unsigned consumerIdx, unsigned producerIdx,
-                     OperationFolder &state) {
+                     OperationFolder *folder) {
   auto subView = dyn_cast_or_null<SubViewOp>(
       consumer.getInput(consumerIdx)->getDefiningOp());
   auto slice = dyn_cast_or_null<SliceOp>(
@@ -192,15 +189,14 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {
       auto viewDim = getViewDefiningLoopRange(producer, i);
-      loopRanges[i] =
-          SubViewOp::Range{state.create<ConstantIndexOp>(b, loc, 0),
-                           dim(viewDim.view, viewDim.dimension),
-                           state.create<ConstantIndexOp>(b, loc, 1)};
+      loopRanges[i] = SubViewOp::Range{constant_index(folder, 0),
+                                       dim(viewDim.view, viewDim.dimension),
+                                       constant_index(folder, 1)};
       LLVM_DEBUG(llvm::dbgs() << "new LoopRange: " << loopRanges[i] << "\n");
     }
   }
 
-  return cloneWithLoopRanges(b, loc, producer, loopRanges, state);
+  return cloneWithLoopRanges(b, loc, producer, loopRanges);
 }
 
 // Encode structural fusion safety preconditions.
@@ -231,10 +227,11 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 // Only consider RAW atm.
-Optional<FusionInfo> mlir::linalg::fuseProducerOf(LinalgOp consumer,
+Optional<FusionInfo> mlir::linalg::fuseProducerOf(OpBuilder &b,
+                                                  LinalgOp consumer,
                                                   unsigned consumerIdx,
                                                   LinalgDependenceGraph &graph,
-                                                  OperationFolder &state) {
+                                                  OperationFolder *folder) {
   LLVM_DEBUG(dbgs() << "\nStart examining consumer: "
                     << *consumer.getOperation());
   for (auto dependence : graph.getDependencesInto(
@@ -270,11 +267,12 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(LinalgOp consumer,
       continue;
 
     // Fuse `producer` just before `consumer`.
-    OpBuilder builder(consumer.getOperation());
-    ScopedContext scope(builder, consumer.getLoc());
+    OpBuilder::InsertionGuard g(b);
+    b.setInsertionPoint(consumer.getOperation());
+    ScopedContext scope(b, consumer.getLoc());
     LLVM_DEBUG(dbgs() << "Fuse into consumer: " << *consumer << "\n");
-    auto fusedProducer =
-        fuse(producedView, producer, consumer, consumerIdx, producerIdx, state);
+    auto fusedProducer = fuse(producedView, producer, consumer, consumerIdx,
+                              producerIdx, folder);
 
     return FusionInfo{producer, fusedProducer};
   }
@@ -284,7 +282,8 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(LinalgOp consumer,
 static void fuseLinalgOpsGreedily(FuncOp f) {
   LLVM_DEBUG(f.print(dbgs() << "\nBefore linalg-fusion: \n"));
 
-  OperationFolder state(f.getContext());
+  OpBuilder b(f);
+  OperationFolder folder(f.getContext());
   DenseSet<Operation *> eraseSet;
 
   // Save original Linalg ops, we only want to make a pass over those.
@@ -296,7 +295,7 @@ static void fuseLinalgOpsGreedily(FuncOp f) {
   for (auto *op : llvm::reverse(linalgOps)) {
     for (unsigned consumerIdx = 0, e = LinalgOp(op).getNumInputs();
          consumerIdx < e; ++consumerIdx) {
-      if (auto fusionInfo = fuseProducerOf(op, consumerIdx, G, state))
+      if (auto fusionInfo = fuseProducerOf(b, op, consumerIdx, G, &folder))
         eraseSet.insert(fusionInfo->originalProducer.getOperation());
     }
   }

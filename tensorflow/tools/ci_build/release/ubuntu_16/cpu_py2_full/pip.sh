@@ -16,7 +16,7 @@
 set -e
 set -x
 
-source "$(cd $(dirname $0); pwd -P)/../../common.sh"
+source tensorflow/tools/ci_build/release/common.sh
 
 # Install python dependencies
 install_ubuntu_16_pip_deps pip2.7

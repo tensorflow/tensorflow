@@ -167,6 +167,7 @@ class TFLiteConverterBase(object):
     self.optimizations = []
     self.representative_dataset = None
     self.experimental_new_converter = False
+    self.experimental_new_quantizer = False
     self._debug_info = None
 
   def _grappler_config(self):
@@ -234,12 +235,12 @@ class TFLiteConverterBase(object):
             self._smallest_supported_type() != constants.FLOAT16)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type):
+                                inference_output_type, enable_mlir_quantizer):
     allow_float = not self._is_int8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float)
+        inference_output_type, allow_float, enable_mlir_quantizer)
 
   def _get_base_converter_args(self):
     """Returns the base converter args.
@@ -280,7 +281,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
       dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -462,8 +464,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
         **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT)
+      result = self._calibrate_quantize_model(
+          result, constants.FLOAT, constants.FLOAT,
+          self.experimental_new_quantizer)
 
     return result
 
@@ -546,7 +549,8 @@ class TFLiteConverter(TFLiteConverterBase):
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -1005,8 +1009,9 @@ class TFLiteConverter(TFLiteConverterBase):
           **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, inference_input_type,
-                                              inference_output_type)
+      result = self._calibrate_quantize_model(
+          result, inference_input_type, inference_output_type,
+          self.experimental_new_quantizer)
 
     return result
 

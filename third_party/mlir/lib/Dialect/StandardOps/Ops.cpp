@@ -130,7 +130,7 @@ static void printStandardUnaryOp(Operation *op, OpAsmPrinter &p) {
   assert(op->getNumOperands() == 1 && "unary op should have one operand");
   assert(op->getNumResults() == 1 && "unary op should have one result");
 
-  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
   p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0);
   p.printOptionalAttrDict(op->getAttrs());
@@ -152,7 +152,7 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
     return;
   }
 
-  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
   p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << ", " << *op->getOperand(1);
   p.printOptionalAttrDict(op->getAttrs());
@@ -164,7 +164,7 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
 /// A custom cast operation printer that omits the "std." prefix from the
 /// operation names.
 static void printStandardCastOp(Operation *op, OpAsmPrinter &p) {
-  const int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
   p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
     << op->getResult(0)->getType();

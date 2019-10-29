@@ -33,6 +33,7 @@ py_extension(
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:EDSCInterface",
         "@local_config_mlir//:ExecutionEngine",
+        "@local_config_mlir//:ExecutionEngineUtils",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMTransforms",
         "@local_config_mlir//:Pass",

@@ -32,6 +32,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -479,7 +480,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
       # test get_source_inputs
-      self._assertAllIs(keras.engine.get_source_inputs(c), [a, b])
+      self._assertAllIs(layer_utils.get_source_inputs(c), [a, b])
 
       # serialization / deserialization
       json_config = model.to_json()

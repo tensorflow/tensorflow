@@ -158,7 +158,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_MAXIMUM:
-      property.inputs = {{0, {}}, {1, {}}};
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
@@ -169,7 +169,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_MINIMUM:
-      property.inputs = {{0, {}}, {1, {}}};
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;

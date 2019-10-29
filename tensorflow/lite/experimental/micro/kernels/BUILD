@@ -14,6 +14,7 @@ package(
 cc_library(
     name = "micro_ops",
     srcs = [
+        "activations.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -75,6 +76,7 @@ cc_library(
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
+        "activations.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -499,5 +501,18 @@ tflite_micro_cc_test(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
         "//tensorflow/lite/kernels/internal:tensor",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "activations_test",
+    srcs = [
+        "activations_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )

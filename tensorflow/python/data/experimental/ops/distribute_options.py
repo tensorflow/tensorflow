@@ -30,6 +30,7 @@ class AutoShardPolicy(enum.IntEnum):
   Please see the DistributeOptions.auto_shard_policy documentation for more
   information on each type of autosharding.
   """
+  OFF = -1
   AUTO = 0
   FILE = 1
   DATA = 2
@@ -45,21 +46,10 @@ class DistributeOptions(options.OptionsBase):
 
   ```python
   options = tf.data.Options()
-  options.experimental_distribute.auto_shard = False
+  options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
   dataset = dataset.with_options(options)
   ```
   """
-
-  auto_shard = options.create_option(
-      name="auto_shard",
-      ty=bool,
-      docstring="Whether the dataset should be automatically sharded when "
-      "processed in a distributed fashion. This is applicable when using Keras "
-      "with multi-worker/TPU distribution strategy, and by "
-      "using strategy.experimental_distribute_dataset(). You can control the "
-      "behavior of the auto sharder via the `auto_shard_policy` option. In "
-      "other cases, this option does nothing. If None, defaults to True.",
-      default_factory=lambda: True)
 
   auto_shard_policy = options.create_option(
       name="auto_shard_policy",
@@ -70,10 +60,12 @@ class DistributeOptions(options.OptionsBase):
       "to shard for at least one file per worker, we will error out. When this "
       "option is selected, make sure that you have enough files so that each "
       "worker gets at least one file. There will be a runtime error thrown if "
-      "there are insufficient files."
+      "there are insufficient files. "
       "If this is set to DATA, then we will shard by elements produced by the "
       "dataset, and each worker will process the whole dataset and discard the "
       "portion that is not for itself. "
+      "If this is set to OFF, then we will not autoshard, and each worker will "
+      "receive a copy of the full dataset. "
       "This option is set to AUTO by default, AUTO will attempt to first shard "
       "by FILE, and fall back to sharding by DATA if we cannot find a set of "
       "files to shard.",

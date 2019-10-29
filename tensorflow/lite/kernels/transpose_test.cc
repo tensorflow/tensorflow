@@ -346,6 +346,167 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
+TEST(TransposeTest, Test1DNotShrinked) {
+  TransposeOpConstModel m({1}, {1}, {0});
+  m.SetInput({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
+}
+
+TEST(TransposeTest, Test2DShrinkedOneTime) {
+  TransposeOpConstModel m({2, 1}, {2}, {1, 0});
+  m.SetInput({0, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
+}
+
+TEST(TransposeTest, Test2DShrinkedTwoTimes) {
+  TransposeOpConstModel m({1, 1}, {2}, {1, 0});
+  m.SetInput({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
+}
+
+TEST(TransposeTest, Test3DShrinkedOneTime) {
+  TransposeOpConstModel m({2, 1, 3}, {3}, {0, 2, 1});
+  m.SetInput({0, 1, 2, 3, 4, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
+}
+
+TEST(TransposeTest, Test3DShrinkedTwoTimes) {
+  TransposeOpConstModel m({1, 1, 3}, {3}, {1, 2, 0});
+  m.SetInput({0, 1, 2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2}));
+}
+
+TEST(TransposeTest, Test3DShrinkedAll) {
+  TransposeOpConstModel m({1, 1, 1}, {3}, {1, 2, 0});
+  m.SetInput({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
+}
+
+TEST(TransposeTest, Test4DShrinkedOneTimes) {
+  TransposeOpConstModel m({2, 2, 3, 1}, {4}, {3, 0, 1, 2});
+  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 3}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+}
+
+TEST(TransposeTest, Test4DShrinkedTwoTimes) {
+  TransposeOpConstModel m({2, 1, 3, 1}, {4}, {0, 3, 1, 2});
+  m.SetInput({0, 1, 2, 3, 4, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 1, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
+}
+
+TEST(TransposeTest, Test4DShrinkedThirdTimes) {
+  TransposeOpConstModel m({2, 1, 1, 1}, {4}, {3, 2, 1, 0});
+  m.SetInput({0, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
+}
+
+TEST(TransposeTest, Test4DShrinkedFourTimes) {
+  TransposeOpConstModel m({1, 1, 1, 1}, {4}, {2, 3, 1, 0});
+  m.SetInput({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
+}
+
+TEST(TransposeTest, Test3DFlatten) {
+  TransposeOpConstModel m({2, 2, 3}, {3}, {0, 2, 1});
+  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 3, 1, 4, 2, 5, 6, 9, 7, 10, 8, 11}));
+}
+
+TEST(TransposeTest, Test4DFlattenOne) {
+  TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 1, 3, 2});
+  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9,
+                                               11, 12, 14, 13, 15}));
+}
+
+TEST(TransposeTest, Test4DFlattenTwo) {
+  TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 2, 3, 1});
+  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9,
+                                               13, 10, 14, 11, 15}));
+}
+
+TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
+  std::vector<float> out;
+  RunTestPermutation({2, 3, 4}, {1, 2, 0}, &out);
+  TransposeOpConstModel m({2, 3, 4}, {3}, {1, 2, 0});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.Invoke();
+  EXPECT_EQ(m.GetOutput(), out);
+}
+
+TEST(TransposeTest, 3DDividedIntoTwo2DsTwo) {
+  std::vector<float> out;
+  RunTestPermutation({2, 3, 4}, {2, 0, 1}, &out);
+  TransposeOpConstModel m({2, 3, 4}, {3}, {2, 0, 1});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.Invoke();
+  EXPECT_EQ(m.GetOutput(), out);
+}
+
+TEST(TransposeTest, 4DDividedIntoTwo2DsOne) {
+  std::vector<float> out;
+  RunTestPermutation({2, 3, 4, 2}, {1, 2, 3, 0}, &out);
+  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {1, 2, 3, 0});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.Invoke();
+  EXPECT_EQ(m.GetOutput(), out);
+}
+
+TEST(TransposeTest, 4DDividedIntoTwo2DsTwo) {
+  std::vector<float> out;
+  RunTestPermutation({2, 3, 4, 2}, {2, 3, 0, 1}, &out);
+  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {2, 3, 0, 1});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.Invoke();
+  EXPECT_EQ(m.GetOutput(), out);
+}
+
+TEST(TransposeTest, 4DDividedIntoTwo2DsThird) {
+  std::vector<float> out;
+  RunTestPermutation({2, 3, 4, 2}, {3, 0, 1, 2}, &out);
+  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {3, 0, 1, 2});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.Invoke();
+  EXPECT_EQ(m.GetOutput(), out);
+}
+
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test5DInputTensor) {
   EXPECT_DEATH(TransposeOpConstModel({1, 2, 3, 4, 5}, {5}, {0, 1, 2, 3, 4}),

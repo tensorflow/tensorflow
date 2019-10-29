@@ -127,6 +127,14 @@ cc_library(
 )
 
 cc_library(
+    name = "threadpool",
+    hdrs = ["threadpool.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
+    ],
+)
+
+cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
     deps = [

@@ -38,11 +38,11 @@ def make_embedding_lookup_tests(options):
 
   def build_graph(parameters):
     """Build the gather op testing graph."""
-    params = tf.placeholder(
+    params = tf.compat.v1.placeholder(
         dtype=parameters["params_dtype"],
         name="params",
         shape=parameters["params_shape"])
-    ids = tf.placeholder(
+    ids = tf.compat.v1.placeholder(
         dtype=parameters["ids_dtype"],
         name="ids",
         shape=parameters["ids_shape"])

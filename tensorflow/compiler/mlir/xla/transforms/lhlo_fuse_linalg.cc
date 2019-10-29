@@ -46,14 +46,15 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
-    OperationFolder state(func.getContext());
+    OpBuilder b(func);
+    OperationFolder folder(func.getContext());
     func.walk([&](linalg::GenericOp generic_op) {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value* result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(op, tile_sizes, state)) {
+        if (linalg::tileLinalgOp(b, op, tile_sizes, &folder)) {
           generic_op.erase();
           return;
         }
@@ -68,7 +69,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
     for (auto* op : llvm::reverse(linalg_ops)) {
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
-        if (auto info = fuseProducerOf(op, id, graph, state)) {
+        if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
           erase_set.insert(info->originalProducer.getOperation());
         }
       }

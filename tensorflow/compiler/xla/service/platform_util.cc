@@ -45,12 +45,13 @@ constexpr char kInterpreter[] = "interpreter";
 
 namespace {
 
-string CanonicalPlatformName(const string& name) {
-  string platform_str = absl::AsciiStrToLower(name);
+string CanonicalPlatformName(const string& platform_name) {
+  string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
   // "cpu" and "host" mean the same thing.
-  if (platform_str == "cpu") {
-    platform_str = "host";
+  if (lowercase_platform_name == "cpu") {
+    return "host";
   }
+<<<<<<< HEAD
   // "gpu" and "cuda" mean the same thing.
   if (platform_str == "gpu") {
 #if TENSORFLOW_USE_ROCM
@@ -58,8 +59,18 @@ string CanonicalPlatformName(const string& name) {
 #else 
     platform_str = "cuda";
 #endif 
+=======
+  // When configured on CUDA, "gpu" and "cuda" mean the same thing.
+  // When configured on ROCm, "gpu" and "rocm" mean the same thing.
+  if (lowercase_platform_name == "gpu") {
+#if TENSORFLOW_USE_ROCM
+    return "rocm";
+#else
+    return "cuda";
+#endif
+>>>>>>> upstream/master
   }
-  return platform_str;
+  return lowercase_platform_name;
 }
 
 }  // namespace

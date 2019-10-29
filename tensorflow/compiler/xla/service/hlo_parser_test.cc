@@ -1707,8 +1707,7 @@ class HloParameterizedParserTest
           /*verifier_layout_sensitive=*/false,
           /*allow_mixed_precision_in_hlo_verifier=*/true,
           ShapeUtil::ByteSizeOfElements);
-      TF_ASSERT_OK(ParseHloString(original, verified_module.get()));
-      TF_ASSERT_OK(verified_module->Verify());
+      TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(original));
       module = std::move(verified_module);
     } else {
       TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnUnverifiedModule(original));
@@ -1768,8 +1767,7 @@ class HloParserTest : public ::testing::Test {
         /*verifier_layout_sensitive=*/false,
         /*allow_mixed_precision_in_hlo_verifier=*/true,
         ShapeUtil::ByteSizeOfElements);
-    TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
-    TF_RETURN_IF_ERROR(module->Verify());
+    TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
     return std::move(module);
   }
 };
@@ -1798,6 +1796,17 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, MetadataWithCholesky) {
+  const string original = R"(HloModule metadata_with_cholesky
+ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, WrongShape) {

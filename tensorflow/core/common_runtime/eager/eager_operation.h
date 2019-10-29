@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -28,9 +30,10 @@ class EagerOperation {
   EagerOperation(tensorflow::EagerContext* ctx, const char* op,
                  bool is_function, const tensorflow::AttrTypeMap* t,
                  EagerExecutor* executor = nullptr,
-                 const absl::optional<int64> op_id = absl::nullopt)
+                 const absl::optional<EagerRemoteFunctionParams>
+                     remote_func_params = absl::nullopt)
       : ctx_(nullptr) {
-    Reset(ctx, op, is_function, t, executor, op_id);
+    Reset(ctx, op, is_function, t, executor, remote_func_params);
   }
 
   ~EagerOperation() {
@@ -52,7 +55,8 @@ class EagerOperation {
 
   void Reset(tensorflow::EagerContext* ctx, const char* op, bool is_function,
              const tensorflow::AttrTypeMap* t, EagerExecutor* executor,
-             const absl::optional<int64> op_id = absl::nullopt) {
+             const absl::optional<EagerRemoteFunctionParams>
+                 remote_func_params = absl::nullopt) {
     DCHECK(ctx_ == nullptr) << "Calling Reset without first calling Release";
     DCHECK(inputs_.empty());
     ctx_ = ctx;
@@ -68,7 +72,7 @@ class EagerOperation {
     is_function_ = is_function;
     cancellation_manager_ = nullptr;
     executor_ = executor ? executor : (ctx ? &ctx->Executor() : nullptr);
-    op_id_ = op_id;
+    remote_func_params_ = remote_func_params;
 #ifdef TENSORFLOW_MEM_DEBUG
     op_name_ = op;
 #endif
@@ -120,7 +124,9 @@ class EagerOperation {
 
   string DebugString() const;
 
-  const absl::optional<int64>& op_id() const { return op_id_; }
+  const absl::optional<EagerRemoteFunctionParams>& remote_func_params() const {
+    return remote_func_params_;
+  }
 
 #ifdef TENSORFLOW_MEM_DEBUG
   const char* op_name() const { return op_name_; }
@@ -138,7 +144,7 @@ class EagerOperation {
   bool is_function_;  // Conceptually const, but can't be because of Reset
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
   EagerExecutor* executor_;                              // Not owned.
-  absl::optional<int64> op_id_;
+  absl::optional<EagerRemoteFunctionParams> remote_func_params_;
 };
 
 inline void EagerOperation::AddInput(tensorflow::TensorHandle* h) {

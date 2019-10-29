@@ -96,6 +96,11 @@ Simple usage:
             "input files."),
       action="store_true")
   parser.add_argument(
+      "--import_rename",
+      dest="import_rename",
+      help=("Whether to rename import to compact.v2 explicitly."),
+      action="store_true")
+  parser.add_argument(
       "--reportfile",
       dest="report_filename",
       help=("The name of the file where the report log is "
@@ -123,7 +128,7 @@ Simple usage:
   if args.mode == _SAFETY_MODE:
     change_spec = tf_upgrade_v2_safety.TFAPIChangeSpec()
   else:
-    change_spec = tf_upgrade_v2.TFAPIChangeSpec()
+    change_spec = tf_upgrade_v2.TFAPIChangeSpec(args.import_rename)
   upgrade = ast_edits.ASTCodeUpgrader(change_spec)
 
   report_text = None

@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <type_traits>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -37,6 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -45,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -59,6 +65,9 @@ constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kPaddingMapAttr[] = "padding_map";
+constexpr char kDeviceAttr[] = "device";
+constexpr char kDevicesAttr[] = "devices";
+constexpr char kVersionsAttr[] = "tf.versions";
 
 // Rewrites `tf_device.launch_func` operations assigned to TPU into actual TPU
 // jit-compile runtime ops.
@@ -80,48 +89,26 @@ struct TPURewritePass : public ModulePass<TPURewritePass> {
   void runOnModule() override;
 };
 
-// Recursively visits all attributes of `op` to find any Attribute of type
-// `SymbolRefAttr`.
-llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
-  llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
-
-  llvm::SmallVector<Attribute, 8> worklist;
-  for (auto named_attr : op->getAttrs()) {
-    worklist.push_back(named_attr.second);
-  }
-
-  while (!worklist.empty()) {
-    Attribute attr = worklist.pop_back_val();
-
-    if (SymbolRefAttr symbol_ref_attr = attr.dyn_cast<SymbolRefAttr>()) {
-      // Found a SymbolRefAttr, add it to result list.
-      symbol_ref_attrs.push_back(symbol_ref_attr);
-    } else if (ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>()) {
-      // Found an ArrayAttr, add its nested Attributes to worklist for further
-      // inspection.
-      worklist.append(array_attr.begin(), array_attr.end());
-    } else if (DictionaryAttr dict_attr = attr.dyn_cast<DictionaryAttr>()) {
-      // Found a DictionaryAttr, add its nested value Attributes to worklist for
-      // further inspection.
-      for (NamedAttribute named_attr : dict_attr.getValue()) {
-        worklist.push_back(named_attr.second);
-      }
-    }
-  }
-
-  return symbol_ref_attrs;
+// Creates a missing attribute error message.
+std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
+  return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-// Creates a new self-contained module that contains `entry_func` and all
-// referenced functions in `entry_func`. entry_func is renamed to "main".
-// Return value is serialized text formate of newly-created module.
-std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
+LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+                                          std::string* serialized_func_module) {
   ModuleOp module = entry_func.getParentOfType<ModuleOp>();
+  SymbolTable entry_module_table(module);
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningModuleRef module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
+  auto parent_module = entry_func.getParentOfType<ModuleOp>();
+  auto versions_attr = parent_module.getAttr(kVersionsAttr);
+  if (!versions_attr)
+    return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
+
+  module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
   ModuleManager module_manager(module_for_func.get());
 
   while (!referenced.empty()) {
@@ -133,17 +120,17 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    func.walk([&](Operation* op) {
-      for (auto symbol_ref_attr : GetAllSymbolRefAttrs(op)) {
-        FuncOp referenced_func =
-            module.lookupSymbol<FuncOp>(symbol_ref_attr.getValue());
+    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    assert(uses && "expected to be able to collect symbol uses");
+    for (SymbolTable::SymbolUse use : *uses) {
+      FuncOp referenced_func =
+          entry_module_table.lookup<FuncOp>(use.getSymbolRef().getValue());
 
-        // Skip Symbols that do not map to a function.
-        if (!referenced_func) continue;
+      // Skip Symbols that do not map to a function.
+      if (!referenced_func) continue;
 
-        referenced.emplace_back(referenced_func);
-      }
-    });
+      referenced.emplace_back(referenced_func);
+    }
 
     auto clone = func.clone();
     if (clone.getName() == entry_func.getName()) {
@@ -155,39 +142,22 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
   }
 
   // Serialize module and return.
-  std::string txt_module;
   {
-    llvm::raw_string_ostream os(txt_module);
+    llvm::raw_string_ostream os(*serialized_func_module);
     module_for_func.get().print(os);
   }
-  return txt_module;
-}
-
-// Creates a missing attribute error message.
-std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
-  return llvm::formatv("requires attribute '{0}'", attribute).str();
+  return success();
 }
 
 // Populates a TPUCompileMetadataProto from attributes of a
 // `tf_device::LaunchFuncOp`. If any necessary attributes are missing from the
 // op, a failure will be returned.
-// TODO(lyandy): Propagate and support device assignment.
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromLaunchFuncOp(
-    tf_device::LaunchFuncOp op,
+    tf_device::LaunchFuncOp op, int num_replicas, int num_cores_per_replica,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
-  auto num_replicas = op.getAttrOfType<IntegerAttr>(kNumReplicasAttr);
-  if (!num_replicas)
-    return op.emitOpError(CreateMissingAttributeMsg(kNumReplicasAttr));
-
-  metadata->set_num_replicas(num_replicas.getInt());
-
-  auto num_cores_per_replica =
-      op.getAttrOfType<IntegerAttr>(kNumCoresPerReplicaAttr);
-  if (!num_cores_per_replica)
-    return op.emitOpError(CreateMissingAttributeMsg(kNumCoresPerReplicaAttr));
-
-  metadata->set_num_cores_per_replica(num_cores_per_replica.getInt());
+  metadata->set_num_replicas(num_replicas);
+  metadata->set_num_cores_per_replica(num_cores_per_replica);
 
   auto step_marker_location =
       op.getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
@@ -281,14 +251,17 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
 // Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by launch_func.
-Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
+Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
+                          int num_cores_per_replica,
+                          llvm::StringRef compilation_device,
                           OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
   OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
-  if (failed(SetMetadataProtoFromLaunchFuncOp(launch_func, &metadata)))
+  if (failed(SetMetadataProtoFromLaunchFuncOp(
+          launch_func, num_replicas, num_cores_per_replica, &metadata)))
     return nullptr;
 
   std::string txt_metadata;
@@ -332,9 +305,13 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
   FuncOp func = launch_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       func_attr.getValue());
 
-  std::string txt_module = EncapsulateFuncAndSerialize(func);
+  std::string txt_module;
+  if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
   compile_op_state.addAttribute("mlir_module",
                                 builder->getStringAttr(txt_module));
+
+  compile_op_state.addAttribute(kDeviceAttr,
+                                builder->getStringAttr(compilation_device));
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(
@@ -402,15 +379,98 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 
 // Rewrites a `tf_device.launch_func` operation into a set of TPU Runtime
 // Operations that jit-compiles and executes function in `tf_device.launch_func`
-// on TPU. If it is not possible to rewrite the operation, a failure will be
-// returned.
-LogicalResult Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
+// on TPU. Device assignment is determined from available devices in `devices`.
+// If it is not possible to rewrite the operation or device assignment fails, a
+// failure will be returned.
+//
+// For example, a non replicated `tf_device.launch_func`:
+//
+// func @main(%arg0: tensor<i1>) {
+//   %0 = "tf_device.launch_func"(%arg0)
+//          {_tpu_replicate = "cluster0", device = "", func = @_func} :
+//          (tensor<i1>) -> tensor<i1>
+//   return
+// }
+//
+// will be rewritten as:
+//
+// func @main(%arg0: tensor<i1>) {
+//   %0 = "tf.Shape"(%arg0) : (tensor<i1>) -> tensor<?xi32>
+//   %1:2 = "tf._TPUCompileMlir"(%0) {device = "/CPU:0"} :
+//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//   %2 = "tf.TPUExecute"(%arg0, %1#0) {device = "/TPU:0"} :
+//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//   return
+// }
+//
+// and a replicated `tf_device.launch_func`:
+//
+// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
+//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
+//                              {n = 2 : i32} {
+//     %1 = "tf_device.launch_func"(%ri)
+//            {_tpu_replicate = "cluster0", device = "", func = @_func} :
+//            (tensor<i1>) -> tensor<i1>
+//     tf_device.return %1 : tensor<i1>
+//   }
+//   return
+// }
+//
+// will be rewritten as:
+//
+// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
+//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
+//                              {n = 2 : i32, devices = ["/TPU:0", "/TPU:1"]} {
+//     %1 = "tf.Shape"(%ri) : (tensor<i1>) -> tensor<?xi32>
+//     %2:2 = "tf._TPUCompileMlir"(%1) {device = "/CPU:0"} :
+//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//     %3 = "tf.TPUExecute"(%ri, %2#0) :
+//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//     tf_device.return %3 : tensor<i1>
+//   }
+//   return
+// }
+LogicalResult Rewrite(
+    tf_device::LaunchFuncOp launch_func,
+    llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
+    OpBuilder* builder) {
   // Skip non-tpu device launch_func.
   auto replicate_attr = launch_func.getAttrOfType<StringAttr>("_tpu_replicate");
   if (!replicate_attr) return success();
 
+  // Collect `num_replicas` and `num_cores_per_replica` attributes.
+  int num_replicas = 1;
+  tf_device::ReplicateOp replicate =
+      launch_func.getParentOp()
+          ? llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
+                launch_func.getParentOp())
+          : nullptr;
+  if (replicate) num_replicas = replicate.n().getLimitedValue();
+
+  auto num_cores_per_replica_attr =
+      launch_func.getAttrOfType<IntegerAttr>(kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return launch_func.emitOpError(
+        CreateMissingAttributeMsg(kNumCoresPerReplicaAttr));
+
+  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
+
+  // Determine compilation and execution devices.
+  std::string compilation_device;
+  llvm::SmallVector<std::string, 8> execution_devices;
+  auto status = tensorflow::GetTPUCompilationAndExecutionDevices(
+      devices, num_replicas, num_cores_per_replica, &compilation_device,
+      &execution_devices);
+  if (!status.ok())
+    return launch_func.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status.error_message();
+
+  // Create compile op;
   builder->setInsertionPoint(launch_func);
-  Operation* compile_op = BuildCompileOp(launch_func, builder);
+  Operation* compile_op =
+      BuildCompileOp(launch_func, num_replicas, num_cores_per_replica,
+                     compilation_device, builder);
   if (!compile_op) return failure();
 
   // After rewrite, find if there is a TPUCompilationResultOp in the block with
@@ -422,44 +482,44 @@ LogicalResult Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
     compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
-  // TODO(ycao): Right now we only support single-core case. The right thing to
-  // do is to read from launch_func attributes to determine how many execute
-  // ops to build.
+
+  // Create execute op.
   Operation* execute_op = BuildExecuteOp(compile_op, launch_func, builder);
   launch_func.replaceAllUsesWith(execute_op);
   launch_func.erase();
+
+  // If computation is replicated, execution devices are assigned to the
+  // replicate. Otherwise there is only one execution device and the device is
+  // assigned to the execute op.
+  if (replicate) {
+    llvm::SmallVector<llvm::StringRef, 8> execution_device_refs(
+        execution_devices.begin(), execution_devices.end());
+    replicate.setAttr(kDevicesAttr,
+                      builder->getStrArrayAttr(execution_device_refs));
+  } else {
+    execute_op->setAttr(kDeviceAttr,
+                        builder->getStringAttr(execution_devices.front()));
+  }
 
   return success();
 }
 
 void TPURewritePass::runOnModule() {
+  llvm::SmallVector<tensorflow::DeviceNameUtils::ParsedName, 8> devices;
+  if (failed(tensorflow::GetDevicesFromOp(getModule(), &devices)))
+    return signalPassFailure();
+
   OpBuilder builder(&getContext());
   auto result = getModule().walk([&](tf_device::LaunchFuncOp op) {
-    if (failed(Rewrite(op, &builder))) return WalkResult::interrupt();
+    if (failed(Rewrite(op, devices, &builder))) return WalkResult::interrupt();
 
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
-  }
+  if (result.wasInterrupted()) return signalPassFailure();
 
-  // Eliminate TPUCompilationResultOp, TPUReplicatedInput and
-  // TPUReplicatedOutput now that the rewrite is complete.
-  getModule().walk([&](Operation* op) {
-    if (auto compile_result_op = dyn_cast<TF::TPUCompilationResultOp>(op)) {
-      compile_result_op.erase();
-      return;
-    }
-
-    auto op_name = op->getName().getStringRef();
-    if (op_name == "tf.TPUReplicatedInput" ||
-        op_name == "tf.TPUReplicatedOutput") {
-      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-      op->erase();
-    }
-  });
+  // Eliminate TPUCompilationResultOp now that the rewrite is complete.
+  getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }

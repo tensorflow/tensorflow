@@ -44,7 +44,7 @@ def make_fused_batch_norm_tests(options):
     variance = create_tensor_data(parameters["dtype"], scale_shape)
 
     x = create_tensor_data(parameters["dtype"], parameters["input_shape"])
-    [x_norm, _, _] = tf.nn.fused_batch_norm(
+    [x_norm, _, _] = tf.compat.v1.nn.fused_batch_norm(
         x,
         scale,
         offset,
@@ -54,7 +54,7 @@ def make_fused_batch_norm_tests(options):
         data_format="NHWC",
         is_training=False)
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])

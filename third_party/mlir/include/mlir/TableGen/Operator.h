@@ -124,6 +124,14 @@ public:
   // Returns the total number of arguments.
   int getNumArgs() const { return arguments.size(); }
 
+  using arg_iterator = const Argument *;
+  using arg_range = llvm::iterator_range<arg_iterator>;
+
+  // Op argument (attribute or operand) iterators.
+  arg_iterator arg_begin() const;
+  arg_iterator arg_end() const;
+  arg_range getArgs() const;
+
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index) const;
   StringRef getArgName(int index) const;

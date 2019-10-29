@@ -46,8 +46,7 @@ ENTRY entry {
       "TupleUtilTest", HloModuleConfig(), /*verifier_layout_sensitive=*/true,
       /*allow_mixed_precision_in_hlo_verifier=*/false,
       ShapeUtil::ByteSizeOfElements);
-  TF_RETURN_IF_ERROR(ParseHloString(hlo_string, module.get()));
-  TF_RETURN_IF_ERROR(module->Verify());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);

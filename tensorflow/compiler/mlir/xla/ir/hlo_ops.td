@@ -113,12 +113,24 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
     let results = (outs HLO_Tensor);
 }
 
-def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AbsOp;
+// Abs supports complex to real, so element type is not guaranteed to match.
+def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
+    [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_AbsOp {
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *operand"
+  >];
+}
 
 def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CeilOp;
 
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<
       "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *operand, "
+    "Type result_element_ty"
+  >];
+
   let hasFolder = 1;
 
   // TODO(b/130357376) Convert has a special constructor. Use a custom
@@ -242,6 +254,11 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   );
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
+    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+  >];
 
   let hasFolder = 1;
 
