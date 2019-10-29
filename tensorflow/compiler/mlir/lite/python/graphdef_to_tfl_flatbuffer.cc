@@ -65,9 +65,6 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const toco::ModelFlags& model_flags,
                         const toco::TocoFlags& toco_flags) {
-  if (toco_flags.inference_input_type()) {
-    LOG(WARNING) << "Ignored inference_input_type.";
-  }
   if (toco_flags.output_format()) {
     LOG(WARNING) << "Ignored output_format.";
   }
@@ -124,8 +121,15 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   std::vector<std::vector<int>> node_shapes;
   std::vector<double> node_mins;
   std::vector<double> node_maxs;
+  quant_specs.inference_input_type =
+      ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
       ConvertIODataTypeToDataType(toco_flags.inference_type());
+  // Use non-float flag `inference_input_type` to override the `inference_type`
+  // because we have to apply quantization to satisfy that.
+  if (quant_specs.inference_input_type != tensorflow::DT_FLOAT) {
+    inference_type = quant_specs.inference_input_type;
+  }
 
   // Build a map from placeholder to data types.
   llvm::StringMap<DataType> placeholder_data_type_map;
@@ -166,13 +170,17 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 
-  // Some extra flag related to post training quantization.
+  // Some extra flag related to post training quantization. If post-training
+  // quantization is enabled, `inference_type` and `inference_input_type` are
+  // not used by MLIR passes.
   if (toco_flags.post_training_quantize()) {
     quant_specs.weight_quantization = true;
     if (toco_flags.quantize_to_float16()) {
       quant_specs.inference_type = tensorflow::DT_HALF;
+      quant_specs.inference_input_type = tensorflow::DT_HALF;
     } else {
       quant_specs.inference_type = tensorflow::DT_QINT8;
+      quant_specs.inference_input_type = tensorflow::DT_QINT8;
     }
   }
 
