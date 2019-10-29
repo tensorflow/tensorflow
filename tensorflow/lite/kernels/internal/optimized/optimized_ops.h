@@ -1227,6 +1227,78 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                                    output_data);
 }
 
+inline void HybridConvPerChannel(
+    const ConvParams& params, float* scaling_factors_ptr,
+    const RuntimeShape& input_shape, const int8_t* input_data,
+    const RuntimeShape& filter_shape, const int8_t* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const RuntimeShape& im2col_shape, int8_t* im2col_data,
+    const float* per_channel_scale, int32_t* input_offset) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int batch_size = input_shape.Dims(0);
+  const int filter_width = filter_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+
+  const int8_t* gemm_input_data = nullptr;
+  int num_input;
+  const bool need_im2col = stride_width != 1 || stride_height != 1 ||
+                           filter_width != 1 || filter_height != 1;
+
+  if (need_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    Im2col(params, filter_height, filter_width, input_offset, batch_size,
+           input_shape, input_data, im2col_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    num_input = im2col_shape.FlatSize();
+  } else {
+    TFLITE_DCHECK(!im2col_data);
+    gemm_input_data = input_data;
+    num_input = input_shape.FlatSize();
+  }
+
+  const int filter_rows = filter_shape.Dims(0);
+  const int filter_cols = FlatSizeSkipDim(filter_shape, 0);
+
+  const int gemm_input_cols = filter_cols;
+  const int gemm_input_rows = num_input / gemm_input_cols;
+
+  const int output_cols = output_shape.Dims(3);
+  const int output_rows = FlatSizeSkipDim(output_shape, 3);
+  TFLITE_DCHECK_EQ(output_cols, filter_rows);
+  TFLITE_DCHECK_EQ(output_rows, gemm_input_rows);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_cols);
+
+  const int rows_per_batch = gemm_input_rows / batch_size;
+
+  // MatrixBatchVectorMultiplyAccumulate assumes that each row of the second
+  // input matrix has its own scale factor and zero point.
+  // This code duplicates the scale factors and zero point for each row in the
+  // same batch.
+  for (int i = gemm_input_rows - 1; i >= 0; --i) {
+    scaling_factors_ptr[i] = scaling_factors_ptr[i / rows_per_batch];
+    input_offset[i] = input_offset[i / rows_per_batch];
+  }
+
+  std::fill_n(output_data, output_rows * output_cols, 0.0f);
+
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+      filter_data, filter_rows, filter_cols, gemm_input_data,
+      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
+      /*result_stride=*/1, per_channel_scale, input_offset);
+
+  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
+                                   bias_shape, bias_data, output_shape,
+                                   output_data);
+}
+
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* input_data, const RuntimeShape& filter_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,

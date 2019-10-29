@@ -51,6 +51,10 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float min_value,
                              float max_value, float* scaling_factor);
 
+void AsymmetricQuantizeFloats(const float* values, const int size,
+                              int8_t* quantized_values, float scaling_factor,
+                              int32_t offset);
+
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.
@@ -95,6 +99,15 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
+
+// Same as the function above except that vector values
+// are quantized with asymmetric quantization per-batch and the matrix
+// is quantized per row.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
