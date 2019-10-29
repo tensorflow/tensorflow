@@ -1,4 +1,4 @@
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tools/build_defs/testing:bzl_library.bzl", "bzl_library")
 load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
