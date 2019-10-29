@@ -570,8 +570,16 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;
+#if CUDNN_VERSION >= 7603
+    // Use CuDNN grouped conv (input gradient) when stride = 1, input/output is
+    // NCHW and float16(half). See cudnn release note 7.6.3.
+    use_cudnn_grouped_conv_ =
+        dtype_ == DT_HALF && data_format_ == FORMAT_NCHW && stride_ == 1 &&
+        stride_w == 1;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1044,7 +1052,6 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
 
     if (std::is_same<T, Eigen::half>::value) {
       dtype_ = DT_HALF;
@@ -1055,6 +1062,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     } else {
       LOG(ERROR) << "Only half, float, and double are supported.";
     }
+#if CUDNN_VERSION >= 7603
+    // Use CuDNN grouped conv (filter gradients) when input/output is
+    // float16(half). See cudnn release note 7.6.3.
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
