@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -223,6 +222,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other

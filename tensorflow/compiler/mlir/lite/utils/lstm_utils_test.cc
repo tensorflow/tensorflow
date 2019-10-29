@@ -42,16 +42,14 @@ FuncOp createFusedFunc(mlir::Builder* builder) {
   SmallVector<int64_t, 2> projection_shape{1, 2};
   SmallVector<int64_t, 1> layer_norm_scale{4};
   SmallVector<int64_t, 2> output_shape{1, 2};
-  auto input_type = builder->getTensorType(input_shape, builder->getF32Type());
-  auto weight_type =
-      builder->getTensorType(weight_shape, builder->getF32Type());
-  auto bias_type = builder->getTensorType(bias_shape, builder->getF32Type());
+  auto input_type = RankedTensorType::get(input_shape, builder->getF32Type());
+  auto weight_type = RankedTensorType::get(weight_shape, builder->getF32Type());
+  auto bias_type = RankedTensorType::get(bias_shape, builder->getF32Type());
   auto projection_type =
-      builder->getTensorType(projection_shape, builder->getF32Type());
+      RankedTensorType::get(projection_shape, builder->getF32Type());
   auto layer_norm_scale_type =
-      builder->getTensorType(layer_norm_scale, builder->getF32Type());
-  auto output_type =
-      builder->getTensorType(output_shape, builder->getF32Type());
+      RankedTensorType::get(layer_norm_scale, builder->getF32Type());
+  auto output_type = RankedTensorType::get(output_shape, builder->getF32Type());
   SmallVector<mlir::Type, 4> input_types{input_type, weight_type, bias_type,
                                          projection_type,
                                          layer_norm_scale_type};
@@ -141,6 +139,16 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
                   .cast<RankedTensorType>()
                   .getElementType()
                   .isF32());
+
+  // output gate bias is 0 since it is out of bounds of the bias tensor, so
+  // we set its value as a const tensor of specified size and value 0.
+  EXPECT_TRUE(
+      mlir::cast<mlir::ConstantOp>(it->getOpOperand(15).get()->getDefiningOp())
+          .getValue()
+          .cast<ElementsAttr>()
+          .getValue<FloatAttr>(0)
+          .getValue()
+          .isExactlyValue(0.0f));
 
   EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getType().getResults();

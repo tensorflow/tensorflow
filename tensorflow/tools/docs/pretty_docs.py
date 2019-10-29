@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import textwrap
+import six
 
 
 def build_md_page(page_info):
@@ -83,7 +85,8 @@ def _build_class_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
   parts = ['# {page_info.full_name}\n\n'.format(page_info=page_info)]
 
-  parts.append('## Class `%s`\n\n' % page_info.full_name.split('.')[-1])
+  parts.append('## Class `%s`\n\n' %
+               six.ensure_str(page_info.full_name).split('.')[-1])
   if page_info.bases:
     parts.append('Inherits From: ')
 
@@ -222,7 +225,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -234,7 +237,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -246,7 +249,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -273,7 +276,7 @@ def _build_signature(obj_info, use_full_name=True):
         '```\n\n')
 
   parts = ['``` python']
-  parts.extend(['@' + dec for dec in obj_info.decorators])
+  parts.extend(['@' + six.ensure_str(dec) for dec in obj_info.decorators])
   signature_template = '{name}({sig})'
 
   if not obj_info.signature:
@@ -313,7 +316,7 @@ def _build_function_details(function_details):
   parts = []
   for detail in function_details:
     sub = []
-    sub.append('#### ' + detail.keyword + ':\n\n')
+    sub.append('#### ' + six.ensure_str(detail.keyword) + ':\n\n')
     sub.append(textwrap.dedent(detail.header))
     for key, value in detail.items:
       sub.append('* <b>`%s`</b>: %s' % (key, value))

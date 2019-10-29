@@ -1318,7 +1318,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
           condition, lambda: per_replica_1, lambda: per_replica_2)
 
 
-class WorkerDeviceMapTest(test.TestCase):
+class WorkerDeviceMapTest(test.TestCase, parameterized.TestCase):
 
   class ReplicaContext(object):
 
@@ -1375,6 +1375,30 @@ class WorkerDeviceMapTest(test.TestCase):
     replica_context = WorkerDeviceMapTest.ReplicaContext(3)
     self.assertEqual(
         "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"]))
+  def testExperimentalLocalResultsOrder(self, distribution):
+    # Create 2 devices in the device map, where the alphabetical order and the
+    # actual order of devices are different.
+    device_map = values.ReplicaDeviceMap(["CPU:2", "CPU:10"])
+    vals = (
+        constant_op.constant(1.),
+        constant_op.constant([5., 6.0]),
+    )
+    per_replica = values.PerReplica(device_map, vals)
+    results = self.evaluate(
+        distribution.experimental_local_results(per_replica))
+
+    # We expect the outputs order the same as the inputs order.
+    self.assertLen(results, 2)
+    self.assertAllEqual(1.0, results[0])
+    self.assertAllEqual([5., 6.], results[1])
 
 
 if __name__ == "__main__":

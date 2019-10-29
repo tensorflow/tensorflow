@@ -50,13 +50,13 @@ public:
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     patterns.insert<
-        GPUIndexIntrinsicOpLowering<gpu::ThreadId, ROCDL::ThreadIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::ThreadIdOp, ROCDL::ThreadIdXOp,
                                     ROCDL::ThreadIdYOp, ROCDL::ThreadIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockDim, ROCDL::BlockDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockDimOp, ROCDL::BlockDimXOp,
                                     ROCDL::BlockDimYOp, ROCDL::BlockDimZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockId, ROCDL::BlockIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockIdOp, ROCDL::BlockIdXOp,
                                     ROCDL::BlockIdYOp, ROCDL::BlockIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::GridDim, ROCDL::GridDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::GridDimOp, ROCDL::GridDimXOp,
                                     ROCDL::GridDimYOp, ROCDL::GridDimZOp>>(
         converter);
 

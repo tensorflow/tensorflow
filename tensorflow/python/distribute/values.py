@@ -1237,10 +1237,6 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
   def _is_mirrored(self):
-    if self.aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      # TODO(b/142440743): Remove this check once ONLY_FIRST_REPLICA aggregation
-      # works as expected.
-      return False
     return True
 
 

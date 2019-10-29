@@ -221,7 +221,7 @@ inline void Add(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("AddInt8/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);

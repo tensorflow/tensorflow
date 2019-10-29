@@ -114,8 +114,8 @@ def toco_convert_protos(model_flags_str,
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter. (default False)
+    enable_mlir_converter: Enables MLIR-based conversion instead of the default
+      TOCO conversion. (default False)
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
@@ -378,8 +378,8 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
       (default None)
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter.
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -429,8 +429,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter.
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 

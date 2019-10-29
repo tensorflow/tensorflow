@@ -528,9 +528,10 @@ def standardize_input_data(data,
       raise ValueError('Error when checking model ' + exception_prefix +
                        ': the list of Numpy arrays that you are passing to '
                        'your model is not the size the model expected. '
-                       'Expected to see ' + str(len(names)) + ' array(s), '
-                       'but instead got the following list of ' +
-                       str(len(data)) + ' arrays: ' + str(data)[:200] + '...')
+                       'Expected to see ' + str(len(names)) + ' array(s), ' +
+                       'for inputs ' + str(names) + ' but instead got the '
+                       'following list of ' + str(len(data)) + ' arrays: ' +
+                       str(data)[:200] + '...')
     elif len(names) > 1:
       raise ValueError('Error when checking model ' + exception_prefix +
                        ': you are passing a list as input to your model, '

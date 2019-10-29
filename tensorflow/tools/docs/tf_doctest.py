@@ -121,14 +121,12 @@ class CustomOutputChecker(doctest.OutputChecker):
 
   This allows it to be customized before they are compared.
   """
-  ID_RE = re.compile(r'\bid=(\d+)\b')
+
   ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
 
   def check_output(self, want, got, optionflags):
-    # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
-    # on each execution. Users may forget to use ellipsis while writing
-    # examples in docstrings, so replacing the id with `...` makes it safe.
-    want = self.ID_RE.sub('id=...', want)
+    # Replace python's addresses with ellipsis (`...`) since it can change on
+    # each execution.
     want = self.ADDRESS_RE.sub('at ...>', want)
     return doctest.OutputChecker.check_output(self, want, got, optionflags)
 

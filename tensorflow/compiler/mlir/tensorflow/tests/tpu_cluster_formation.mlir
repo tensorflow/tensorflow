@@ -14,7 +14,7 @@ func @cluster_ops_removed_attrs() {
 // CHECK-SAME: name = "name"
 // CHECK-NOT:  _tpu_replicate = "replicate"
 // CHECK-NOT:  device = "device"
-// CHECK:      "tf_device.return"
+// CHECK:      tf_device.return
 
 
 // Test TPUReplicateMetadata ops `name` attribute is not copied over to launch.
@@ -61,7 +61,7 @@ func @simple_island(%arg0 : tensor<i1>) -> tensor<i1> {
 // CHECK:          %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       "tf_device.return"(%[[OP_C]])
+// CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     num_replicas = 1
@@ -94,7 +94,7 @@ func @simple_island_separate_metadata(%arg0 : tensor<i1>) -> tensor<i1> {
 // CHECK:          %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       "tf_device.return"(%[[OP_C]])
+// CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     num_replicas = 1
@@ -133,7 +133,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
 // CHECK:          %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       "tf_device.return"(%[[OP_C]])
+// CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     num_replicas = 1
@@ -144,7 +144,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
 // CHECK:          %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]]#0)
 // CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
-// CHECK-NEXT:       "tf_device.return"(%[[OP_F]])
+// CHECK-NEXT:       tf_device.return %[[OP_F]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     num_replicas = 1
@@ -174,7 +174,7 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_C]])
 // CHECK-NEXT:   %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
-// CHECK-NEXT:   "tf_device.return"(%[[OP_C]], %[[OP_D]], %[[OP_F]])
+// CHECK-NEXT:   tf_device.return %[[OP_C]], %[[OP_D]], %[[OP_F]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: num_replicas = 1
@@ -199,7 +199,7 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK:      %[[LAUNCH:[0-9]*]]:2 = "tf_device.launch"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
-// CHECK-NEXT:   "tf_device.return"(%[[OP_A]], %[[OP_B]])
+// CHECK-NEXT:   tf_device.return %[[OP_A]], %[[OP_B]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: num_replicas = 1
@@ -226,7 +226,7 @@ func @nested_cluster_op(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"() ( {
 // CHECK-NEXT:     "tf.opC"(%[[OP_A]])
-// CHECK:        "tf_device.return"(%[[OP_B]])
+// CHECK:        tf_device.return %[[OP_B]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: num_replicas = 1
@@ -250,7 +250,7 @@ func @interleaved_clusters(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
 // CHECK:      %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:   "tf_device.return"(%[[OP_C]])
+// CHECK-NEXT:   tf_device.return %[[OP_C]]
 // CHECK-NEXT: _tpu_replicate = "replicate_0"
 // CHECK-SAME: device = "device_0"
 // CHECK-SAME: num_replicas = 0
@@ -258,7 +258,7 @@ func @interleaved_clusters(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
 // CHECK:      %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_B]])
-// CHECK-NEXT:   "tf_device.return"(%[[OP_D]])
+// CHECK-NEXT:   tf_device.return %[[OP_D]]
 // CHECK-NEXT: _tpu_replicate = "replicate_1"
 // CHECK-SAME: device = "device_1"
 // CHECK-SAME: num_replicas = 1
@@ -286,7 +286,7 @@ func @interleaved_cluster_operands_results() {
 // CHECK:      %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"
 // CHECK-NEXT:   "tf.opF"(%[[OP_E]])
-// CHECK-NEXT:   "tf_device.return"(%[[OP_A]])
+// CHECK-NEXT:   tf_device.return %[[OP_A]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: num_replicas = 1

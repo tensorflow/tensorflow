@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {
@@ -44,7 +45,12 @@ std::unique_ptr<FlatBufferModel> ReadConvModel() {
 
 using ::testing::ElementsAreArray;
 
-TEST(QuantizationUtilsTest, NumElements) {
+class QuantizationUtilsTest : public testing::Test {
+ protected:
+  tflite::TestErrorReporter error_reporter_;
+};
+
+TEST_F(QuantizationUtilsTest, NumElements) {
   TensorT tensor;
   tensor.shape = {1, 2, 3, 4};
   uint64_t num_elements;
@@ -60,7 +66,7 @@ TEST(QuantizationUtilsTest, NumElements) {
   EXPECT_EQ(num_elements, 1);
 }
 
-TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
+TEST_F(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
   const float float_min = -128.0;
   const float float_max = 127.0;
   const int quant_min = -128;
@@ -82,7 +88,8 @@ TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
   EXPECT_NEAR(scale, 1, eps);
 }
 
-TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllPositiveRange) {
+TEST_F(QuantizationUtilsTest,
+       AsymmetricQuantizationParamsWithAllPositiveRange) {
   // The min should get nudged to include 0, so the effective range is [0, 6].
   const float float_min = 1.0;
   const float float_max = 6.0;
@@ -104,7 +111,8 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllPositiveRange) {
   EXPECT_NEAR(scale, 6 / 255.0f, eps);
 }
 
-TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllNegativeRange) {
+TEST_F(QuantizationUtilsTest,
+       AsymmetricQuantizationParamsWithAllNegativeRange) {
   // The min should get nudged to include 0, so the effective range is [-6, 0].
   const float float_min = -6.0;
   const float float_max = -1.0;
@@ -126,7 +134,7 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllNegativeRange) {
   EXPECT_NEAR(scale, 6 / 255.0f, eps);
 }
 
-TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {
+TEST_F(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {
   const float float_min = -5.0;
   const float float_max = 1.0;
   const int quant_min = -128;
@@ -148,7 +156,7 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {
   EXPECT_LT(zero_point, quant_max);
 }
 
-TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroMinMax) {
+TEST_F(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroMinMax) {
   const float float_min = 0;
   const float float_max = 0;
   const int quant_min = -128;
@@ -170,23 +178,27 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroMinMax) {
   EXPECT_LT(zero_point, quant_max);
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
+TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantizationWithNullQParams) {
   // Set up an input with [3, 2, 2, 2] size and 0 is the channel index.
   const std::vector<float> input = {
       3.0, 2.0, 5.0,  -2.0, 3.0,  2.0,  5.0,  -2.0,  // Channel 1.
       1.0, 2.0, 3.0,  4.0,  5.0,  6.0,  7.0,  8.0,   // Channel 2.
       1.0, 0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0,  // Channel 3.
   };
-  const std::vector<int32_t> dimension = {3, 2, 2, 2};
   const int channel_index = 0;
 
   // Create holder for output scale and data.
   std::vector<float> output_scales(3);
   std::vector<int8_t> output_data(3 * 2 * 2 * 2);
 
-  // Call SymmetricPerChannelQuantization and verify the result.
-  SymmetricPerChannelQuantization(input.data(), dimension, channel_index,
-                                  &output_scales, &output_data);
+  // Call SymmetricPerChannelQuantization with quant_params as a null pointer
+  // and verify the result.
+  TensorT tensor = TensorT();
+  tensor.quantization = nullptr;
+  tensor.shape = {3, 2, 2, 2};
+  SymmetricPerChannelQuantization(&tensor, input.data(), channel_index,
+                                  &output_scales, &output_data,
+                                  &error_reporter_);
   const std::vector<float> expected_output_scales = {0.0393700786, 0.0629921257,
                                                      0.0472440943};
   const std::vector<int8_t> expected_output_data = {
@@ -198,7 +210,49 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
+TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
+  // Set up an input with [3, 2, 2, 2] size and 0 is the channel index.
+  const std::vector<float> input = {
+      3.0, 2.0, 5.0,  -2.0, 3.0,  2.0,  5.0,  -2.0,  // Channel 1.
+      1.0, 2.0, 3.0,  4.0,  5.0,  6.0,  7.0,  8.0,   // Channel 2.
+      1.0, 0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0,  // Channel 3.
+  };
+  const int32_t channel_index = 0;
+
+  // Create holder for output scale and data.
+  std::vector<float> output_scales(3);
+  std::vector<int8_t> output_data(3 * 2 * 2 * 2);
+
+  // Initialize pointer to quantization parameters
+  TensorT tensor = TensorT();
+  tensor.quantization = absl::make_unique<QuantizationParametersT>();
+  tensor.shape = {3, 2, 2, 2};
+  FillPerChannelMinMax(input.data(), tensor.shape, channel_index,
+                       tensor.quantization.get(), &error_reporter_);
+
+  // Test that FillPerChanneMinMax worked
+  const std::vector<float> expected_mins = {-2.0, 1.0, -6.0};
+  const std::vector<float> expected_maxs = {5.0, 8.0, 1.0};
+  EXPECT_THAT(tensor.quantization->min, ElementsAreArray(expected_mins));
+  EXPECT_THAT(tensor.quantization->max, ElementsAreArray(expected_maxs));
+
+  // Call SymmetricPerChannelQuantization with quant_params as a null pointer
+  // and verify the result.
+  SymmetricPerChannelQuantization(&tensor, input.data(), channel_index,
+                                  &output_scales, &output_data,
+                                  &error_reporter_);
+  const std::vector<float> expected_output_scales = {0.0393700786, 0.0629921257,
+                                                     0.0472440943};
+  const std::vector<int8_t> expected_output_data = {
+      76, 51, 127, -51, 76,  51,  127,  -51,   // Channel 1.
+      16, 32, 48,  64,  79,  95,  111,  127,   // Channel 2.
+      21, 0,  -21, -42, -64, -85, -106, -127,  // Channel 3.
+  };
+  EXPECT_THAT(output_scales, ElementsAreArray(expected_output_scales));
+  EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
+}
+
+TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
   // Set up an input with [3, 1, 1, 2] size and 0 is the channel index.
   const std::vector<float> input = {
       13.0, 21.0,  // Channel 1.
@@ -223,11 +277,34 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 
-TEST(QuantizationUtilsTest, SymmetricQuantizeTensorNullInputs) {
+TEST_F(QuantizationUtilsTest, FillSingleMinMax) {
+  // Set up an input with [3, 1, 1, 2] size
+  const std::vector<float> input = {
+      13.0, 21.0,  // Channel 1.
+      21.0, 22.0,  // Channel 2.
+      31.0, 40.0,  // Channel 3.
+  };
+  const uint32_t input_size = input.size();
+
+  // Initialize pointer to quantization parameters
+  QuantizationParametersT quantization_params = QuantizationParametersT();
+
+  FillSingleMinMax(input.data(), input_size, &quantization_params);
+  const std::vector<float> expected_min_max = {
+      13, 40,  // min max
+  };
+  EXPECT_EQ(quantization_params.min.size(), 1);
+  EXPECT_EQ(quantization_params.max.size(), 1);
+  EXPECT_EQ(quantization_params.min[0], expected_min_max[0]);
+  EXPECT_EQ(quantization_params.max[0], expected_min_max[1]);
+}
+
+TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensorNullInputs) {
+  tflite::TestErrorReporter error_reporter_;
   EXPECT_EQ(SymmetricQuantizeTensor(nullptr, nullptr), kTfLiteError);
 }
 
-TEST(QuantizationUtilsTest, SymmetricQuantizeTensor) {
+TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensor) {
   // Conv model has weights between 0 and 10.
   // Quantize the weights tensor.
   ASSERT_TRUE(g_test_model_dir);
@@ -259,7 +336,7 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeTensor) {
   EXPECT_EQ(quant_buffer_size * 4, float_buffer_size);
 }
 
-TEST(QuantizationUtilsTest, QuantizeFloat16) {
+TEST_F(QuantizationUtilsTest, QuantizeFloat16) {
   // Conv model has weights between 0 and 10.
   // Quantize the weights tensor.
   ASSERT_TRUE(g_test_model_dir != nullptr);
@@ -291,7 +368,7 @@ TEST(QuantizationUtilsTest, QuantizeFloat16) {
   EXPECT_EQ(quant_buffer_size * 2, float_buffer_size);
 }
 
-TEST(QuantizationUtilsTest, AddQuantizationParams) {
+TEST_F(QuantizationUtilsTest, AddQuantizationParams) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -310,11 +387,11 @@ TEST(QuantizationUtilsTest, AddQuantizationParams) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(
-      AddQuantizationParams(scales, zero_points, quantizated_dimension,
-                            buffer_data.data(), buffer_size, TensorType_INT8,
-                            model.get(), model->subgraphs[0]->tensors[0].get()),
-      kTfLiteOk);
+  EXPECT_EQ(AddQuantizationParams(
+                scales, zero_points, quantizated_dimension, buffer_data.data(),
+                buffer_size, TensorType_INT8, model.get(),
+                model->subgraphs[0]->tensors[0].get(), &error_reporter_),
+            kTfLiteOk);
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale,
               ElementsAreArray(scales));
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point,
@@ -324,7 +401,7 @@ TEST(QuantizationUtilsTest, AddQuantizationParams) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT8);
 }
 
-TEST(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
+TEST_F(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -350,7 +427,7 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
   // Call and verify.
   EXPECT_EQ(SymmetricQuantizeFloatsToInt16(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scale),
+                weight_scale, &error_reporter_),
             kTfLiteOk);
 
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],
@@ -366,7 +443,7 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT16);
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
+TEST_F(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -389,9 +466,9 @@ TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(SymmetricPerLayerBiasQuantize(model.get(),
-                                          model->subgraphs[0]->tensors[0].get(),
-                                          input_scale, weight_scale),
+  EXPECT_EQ(SymmetricPerLayerBiasQuantize(
+                model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
+                weight_scale, &error_reporter_),
             kTfLiteOk);
 
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],
@@ -403,7 +480,7 @@ TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
+TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -428,7 +505,7 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Call and verify.
   EXPECT_EQ(SymmetricPerChannelBiasQuantize(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scales.data(), 2),
+                weight_scales.data(), 2, &error_reporter_),
             kTfLiteOk);
   EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
               ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));

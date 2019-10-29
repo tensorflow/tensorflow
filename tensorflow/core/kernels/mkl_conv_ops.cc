@@ -1565,6 +1565,13 @@ class MklQuantizedConv2DOp
   Tbias* GetBiasHandle(OpKernelContext* context,
                        std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                        const Tensor& bias_tensor) override {
+    if (!bias_enabled) {
+      return nullptr;
+    }
+    if (std::is_same<Tbias, qint32>::value) {
+      return static_cast<Tbias*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+    }
     int bias_index_offset;
     bias_index_offset = bias_enabled ? 1 : 0;
 
@@ -1578,64 +1585,57 @@ class MklQuantizedConv2DOp
     const float* max_filter = max_filter_vector.flat<float>().data();
 
     std::vector<mkldnn::primitive> net;
-    if (bias_enabled) {
-      if (std::is_same<Tbias, qint32>::value) {
-        return static_cast<Tbias*>(
-            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+
+    const float int_const_scale_limit =
+        (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
+    // Re-scale bias if either of following 2 conditions are met:
+    // 1. Bias is not const;
+    // 2. Bias is const, but bias cache is empty (first iteration).
+
+    size_t depth = min_filter_vector.NumElements();
+    bool scales_are_valid = (depth == scales_.size());
+    scales_.resize(depth);
+    for (size_t i = 0; i < depth; ++i) {
+      float tmp_scale =
+          int_const_scale_limit /
+          (std::max(std::abs(max_input), std::abs(min_input)) *
+           std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+      if (scales_are_valid && std::abs(tmp_scale - scales_[i]) > 1e-6) {
+        scales_are_valid = false;
       }
-
-      const float int_const_scale_limit =
-          (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
-      // Re-scale bias if either of following 2 conditions are met:
-      // 1. Bias is not const;
-      // 2. Bias is const, but bias cache is empty (first iteration).
-
-      // TODO(intel-tf): Re-enable bias caching. Currently, the graph obtained
-      // after quantize_graph.py does not run with correct accuracy with this
-      // feature enabled.
-      is_bias_const_ = false;
-      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
-        size_t depth = min_filter_vector.NumElements();
-        std::vector<float> scales(depth);
-        for (size_t i = 0; i < depth; ++i) {
-          scales[i] =
-              int_const_scale_limit /
-              (std::max(std::abs(max_input), std::abs(min_input)) *
-               std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
-        }
-        mkldnn::primitive_attr bias_attr;
-        if (depth == 1) {
-          bias_attr.set_output_scales(0, scales);
-        } else {
-          bias_attr.set_output_scales(1, scales);
-        }
-
-        auto bias_md =
-            MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
-                                  Tbias, x, this->cpu_engine_);
-        void* bias_buf = static_cast<void*>(
-            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-        input_bias_ =
-            new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
-        scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
-            conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
-        auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-            input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
-            bias_attr);
-        CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
-                                this->cpu_engine_);
-
-        Tbias* bias_data =
-            reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
-        if (is_bias_const_)
-          CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
-
-        return bias_data;
-      }
-      return GetCachedBias(context);
-    } else {
-      return nullptr;
+      scales_[i] = tmp_scale;
     }
+    if (!is_bias_const_ || IsBiasCacheEmpty(context) || !scales_are_valid) {
+      mkldnn::primitive_attr bias_attr;
+      if (depth == 1) {
+        bias_attr.set_output_scales(0, scales_);
+      } else {
+        bias_attr.set_output_scales(1, scales_);
+      }
+
+      auto bias_md =
+          MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
+                                Tbias, x, this->cpu_engine_);
+      void* bias_buf = static_cast<void*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+      input_bias_ =
+          new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
+      scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
+          conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
+      auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
+          input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
+          bias_attr);
+      CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
+                              this->cpu_engine_);
+
+      Tbias* bias_data =
+          reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+      if (is_bias_const_)
+        CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
+
+      return bias_data;
+    }
+    return GetCachedBias(context);
   }
 
   bool is_bias_const_;
@@ -1645,6 +1645,7 @@ class MklQuantizedConv2DOp
   memory* scaled_bias_ = nullptr;
 
  private:
+  std::vector<float> scales_;
   mutex bias_cache_mu_;
   // Allocate persistent tensors for cached bias data and
   // cached bias memory descriptor (data format)

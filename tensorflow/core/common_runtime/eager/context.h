@@ -315,6 +315,7 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const DynamicDeviceMgr* remote_device_mgr,
       const std::vector<string>& remote_contexts, uint64 context_id,
+      uint64 context_view_id,
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
@@ -459,7 +460,8 @@ class EagerContext : public core::RefCounted {
 
 #if !defined(IS_MOBILE_PLATFORM)
   void CloseAndClearAllRemoteContexts();
-  void CloseRemoteContexts(const std::vector<string>& remote_contexts);
+  void CloseRemoteContexts(const std::vector<string>& remote_contexts,
+                           uint64 context_id);
 
   Status SetMasterContextState(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,

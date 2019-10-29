@@ -97,16 +97,26 @@ def NVVM_ShflBflyOp :
   Arguments<(ins LLVM_Type:$dst,
                  LLVM_Type:$val,
                  LLVM_Type:$offset,
-                 LLVM_Type:$mask_and_clamp)> {
+                 LLVM_Type:$mask_and_clamp,
+                 OptionalAttr<UnitAttr>:$return_value_and_is_valid)> {
   string llvmBuilder = [{
-      auto intId = $val->getType()->isFloatTy() ?
-          llvm::Intrinsic::nvvm_shfl_sync_bfly_f32 :
-          llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
+      auto intId = getShflBflyIntrinsicId(
+          $_resultType, static_cast<bool>($return_value_and_is_valid));
       $res = createIntrinsicCall(builder,
           intId, {$dst, $val, $offset, $mask_and_clamp});
   }];
   let parser = [{ return parseNVVMShflSyncBflyOp(parser, result); }];
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+  let verifier = [{
+    if (!getAttrOfType<UnitAttr>("return_value_and_is_valid"))
+      return success();
+    auto type = getType().cast<LLVM::LLVMType>();
+    if (!type.isStructTy() || type.getStructNumElements() != 2 ||
+        !type.getStructElementType(1).isIntegerTy(
+            /*Bitwidth=*/1))
+      return emitError("expected return type !llvm<\"{ ?, i1 }\">");
+    return success();
+  }];
 }
 
 def NVVM_VoteBallotOp :

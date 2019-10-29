@@ -602,9 +602,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
@@ -643,9 +642,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(

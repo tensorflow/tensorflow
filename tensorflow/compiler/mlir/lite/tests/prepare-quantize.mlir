@@ -31,6 +31,28 @@ func @DequantizeAndQuantize() -> tensor<2x2x!quant.uniform<u8:f32, 7.84313725490
 // CHECK:  return %2
 }
 
+// CHECK-LABEL: prepareStatistics
+func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  %1 = "quant.stats"(%0) {
+    layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>,
+    axisStats = dense<[
+      [-1.0, 1.0],
+      [-8.0, 8.0],
+      [-0.5, 0.5]
+    ]> : tensor<3x2xf32>, axis = 2 : i64
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %1 : tensor<8x4x3xf32>
+
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<8x4x3x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
+// CHECK: %[[dq1:.*]] = "tfl.dequantize"(%[[q1]])
+// CHECK: %[[q2:.*]] = "tfl.quantize"(%[[dq1]]) {qtype = tensor<8x4x3x!quant.uniform<u8:f32:2, {0.0078431372549019607:128,0.062745098039215685:128,0.0039215686274509803:128}>>}
+// CHECK: %[[dq2:.*]] = "tfl.dequantize"(%[[q2]])
+// CHECK: return %[[dq2]]
+}
+
 // CHECK-LABEL: QuantizeConv2DPerChannel
 func @QuantizeConv2DPerChannel(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 1.5>>,
                                %arg1: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<1x112x112x32xf32> {
@@ -268,6 +290,15 @@ func @QuantizeLogistic(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>
 // CHECK: %2 = "tfl.quantize"(%1) {qtype = tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>}
 // CHECK: %3 = "tfl.dequantize"(%2) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<1x6x6x16xf32>
 // CHECK: return %3 : tensor<1x6x6x16xf32>
+}
+
+// CHECK-LABEL: NotRescaleLogistic
+func @NotRescaleLogistic(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>> {
+  %0 = "tfl.logistic"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>
+  return %0 : tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>
+
+// CHECK:  %[[log:.*]] = "tfl.logistic"(%arg0)
+// CHECK: return %[[log]]
 }
 
 // CHECK-LABEL: NotQuantizeConcatConstantOperand
@@ -520,8 +551,8 @@ func @QuantizeSharedBiases(
 // CHECK: %[[cst_0:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK: %[[q_0:.*]] = "tfl.quantize"(%[[cst_0]])
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
-// CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq_0]])
 // CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
+// CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq_0]])
 }
 
 // CHECK-LABEL: QuantizeSharedBiases2

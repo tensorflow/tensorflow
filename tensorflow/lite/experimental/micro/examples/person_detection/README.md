@@ -1,16 +1,17 @@
-# Micro Vision Example
+# Person detection example
 
 This example shows how you can use Tensorflow Lite to run a 250 kilobyte neural
 network to recognize people in images captured by a camera.  It is designed to
 run on systems with small amounts of memory such as microcontrollers and DSPs.
 
-## Table of Contents
--   [Getting Started](#getting-started)
+## Table of contents
+-   [Getting started](#getting-started)
 -   [Running on Arduino](#running-on-arduino)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
--   [Debugging Image Capture](#debugging-image-capture)
+-   [Debugging image capture](#debugging-image-capture)
+-   [Training your own model](#training-your-own-model)
 
-## Getting Started
+## Getting started
 
 To compile and test this example on a desktop Linux or MacOS machine, download
 [the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
@@ -332,7 +333,7 @@ screen ${DEVICENAME} 115200
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
 
-## Debugging Image Capture
+## Debugging image capture
 When the sample is running, check the LEDs to determine whether the inference is
 running correctly.  If the red light is stuck on, it means there was an error
 communicating with the camera.  This is likely due to an incorrectly connected
@@ -356,3 +357,8 @@ Next, run the raw to bitmap converter to view captured images:
 ```
 python3 raw_to_bitmap.py -r GRAY -i <dump file>
 ```
+
+## Training your own model
+
+You can train your own model with some easy-to-use scripts. See
+[training_a_model.md](training_a_model.md) for instructions.

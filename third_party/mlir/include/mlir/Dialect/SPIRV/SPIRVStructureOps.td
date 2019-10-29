@@ -191,7 +191,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 }
 
 
-def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let summary = [{
     Allocate an object in memory at module scope. The object is
     referenced using a symbol name.
@@ -264,7 +264,8 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
 }
 
 def SPV_ModuleOp : SPV_Op<"module",
-                          [SingleBlockImplicitTerminator<"ModuleEndOp">,
+                          [IsolatedFromAbove,
+                           SingleBlockImplicitTerminator<"ModuleEndOp">,
                            NativeOpTrait<"SymbolTable">]> {
   let summary = "The top-level op that defines a SPIR-V module";
 
@@ -407,7 +408,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   let autogenSerialization = 0;
 }
 
-def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
+def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
   let summary = "The op that declares a SPIR-V specialization constant";
 
   let description = [{
@@ -425,14 +426,18 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
 
     ``` {.ebnf}
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
+                             `spec_id(` integer `)`
                              `=` attribute-value (`:` spirv-type)?
     ```
+
+    where `spec_id` specifies the SPIR-V SpecId decoration associated with
+    the op.
 
     For example:
 
     ```
     spv.specConstant @spec_const1 = true
-    spv.specConstant @spec_const2 = 42 : i32
+    spv.specConstant @spec_const2 spec_id(5) = 42 : i32
     ```
 
     TODO(antiagainst): support composite spec constants with another op

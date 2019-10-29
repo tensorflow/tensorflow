@@ -39,6 +39,10 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor);
 
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float min_value,
+                                     float max_value, float* scaling_factor);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,

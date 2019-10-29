@@ -1524,11 +1524,10 @@ class PadOperationParser : public TFLiteOperationParser {
     if (paddings.shape.h != 4 || paddings.shape.w != 2) {
       return InvalidArgumentError("Paddings tensor has unexpected shape.");
     }
-    if (paddings.data[0] != 0 || paddings.data[1] != 0) {
-      return UnimplementedError("Padding for BATCH channel is not supported.");
-    }
-    attr.prepended = HWC(paddings.data[2], paddings.data[4], paddings.data[6]);
-    attr.appended = HWC(paddings.data[3], paddings.data[5], paddings.data[7]);
+    attr.prepended = BHWC(paddings.data[0], paddings.data[2], paddings.data[4],
+                          paddings.data[6]);
+    attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
+                         paddings.data[7]);
     node->operation.attributes = attr;
     return OkStatus();
   }

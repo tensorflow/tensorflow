@@ -47,7 +47,7 @@ class AutoMixedPrecisionLists {
  public:
   // Returns the set of ops that are considered numerically-safe (for execution
   // in fp16) and performance-critical. These ops are always converted to fp16.
-  static gtl::FlatSet<string> WhiteList(int cuda_version) {
+  static gtl::FlatSet<string> WhiteList(int cuda_version, int cudnn_version) {
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD", "", &to_add));
@@ -58,13 +58,6 @@ class AutoMixedPrecisionLists {
     auto list = gtl::FlatSet<string> {
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",
-          // TODO(benbarsdell): Enable these when Tensor Core kernels are
-          // available for 3D convolutions.
-          // "Conv3D",
-          // "Conv3DBackpropFilter",
-          // "Conv3DBackpropFilterV2",
-          // "Conv3DBackpropInput",
-          // "Conv3DBackpropInputV2",
           "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
           "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
           "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",
@@ -79,6 +72,14 @@ class AutoMixedPrecisionLists {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
+    }
+    if (cudnn_version >= 7602) {
+      // Fp16 3D conv is slow before CUDNN 7.6.2.
+      list.insert("Conv3D");
+      list.insert("Conv3DBackpropFilter");
+      list.insert("Conv3DBackpropFilterV2");
+      list.insert("Conv3DBackpropInput");
+      list.insert("Conv3DBackpropInputV2");
     }
     UpdateList(&list, to_add, to_remove);
     return list;

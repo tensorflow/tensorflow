@@ -105,7 +105,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     rewriter.setInsertionPointAfter(op);
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
-                                rewriter.getTypeAttr(result_type));
+                                TypeAttr::get(result_type));
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult()->replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
@@ -287,7 +287,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
     rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
-                                   rewriter.getTypeAttr(new_output_type));
+                                   TypeAttr::get(new_output_type));
     return this->matchSuccess();
   }
 };

@@ -166,7 +166,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_enable_mlir_converter = False
+    self.experimental_new_converter = False
     self._debug_info = None
 
   def _grappler_config(self):
@@ -256,7 +256,7 @@ class TFLiteConverterBase(object):
         "quantize_to_float16": float16_quantize,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_enable_mlir_converter,
+        "enable_mlir_converter": self.experimental_new_converter,
     }
     return args
 
@@ -278,8 +278,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
+    experimental_new_converter: Experimental flag, subject to change.
+      Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:
 
@@ -383,7 +383,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Returns:
       TFLiteConverter object.
     """
-    func = _saving_utils.trace_model_call(model)
+    input_signature = None
+    # If the model's call is not a `tf.function`, then we need to first get its
+    # input signature from `model_input_signature` method. We can't directly
+    # call `trace_model_call` because otherwise the batch dimension is set
+    # to None.
+    # Once we have better support for dynamic shapes, we can remove this.
+    if not isinstance(model.call, _def_function.Function):
+      # Pass `keep_original_batch_size=True` will ensure that we get an input
+      # signature including the batch dimension specified by the user.
+      input_signature = _saving_utils.model_input_signature(
+          model, keep_original_batch_size=True)
+
+    func = _saving_utils.trace_model_call(model, input_signature)
     concrete_func = func.get_concrete_function()
     return cls([concrete_func])
 
@@ -532,8 +544,8 @@ class TFLiteConverter(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
-      Enables the MLIR converter instead of the TOCO converter.
+    experimental_new_converter: Experimental flag, subject to change.
+      Enables MLIR-based conversion instead of TOCO conversion.
 
   Example usage:
 

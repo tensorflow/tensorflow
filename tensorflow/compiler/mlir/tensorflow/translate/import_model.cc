@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <iterator>
 #include <tuple>
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -81,6 +82,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -730,7 +732,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
     mlir::Type element_type, const shape_inference::ShapeHandle& handle,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
-    return builder.getTensorType(element_type);
+    return mlir::UnrankedTensorType::get(element_type);
   }
 
   // Sentinel for an unknown dimension size. getTensorType interprets any
@@ -749,7 +751,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
       dimensions.push_back(context->Value(dim_handle));
   }
 
-  return builder.getTensorType(
+  return mlir::RankedTensorType::get(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
@@ -1169,7 +1171,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     // call sites, and then fuse them to a single fused location.
     llvm::SmallVector<mlir::Location, 4> node_call_sites;
     node_call_sites.reserve(original_nodes.size());
-    for (int i = 0, e = 0; i != e; ++i) {
+    for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_call_sites.push_back(create_location(node_name, func_name));
@@ -1709,7 +1711,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
                                                      builder, &element_type));
     llvm::SmallVector<int64_t, 4> shape;
     TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-    arg_types.push_back(builder.getTensorType(shape, element_type));
+    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
   }
 
   // Output nodes as function returns.
@@ -1988,6 +1990,169 @@ Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
   return Status::OK();
 }
 
+// Recursively traverses a StructuredValue, linearizing all the leaves.
+//
+// This currently only handles the subset of StructuredValue that is needed for
+// signatures.
+//
+// Given a StructuredValue with structure [{"x": leaf0}], the "index path"
+// needed to reach leaf0 is `[0, "x"]`, as it would be if you were operating on
+// a Python object (`obj[0]["x"] is leaf0`). Each leaf corresponds to a
+// linearized function argument or return on a FunctionDef, and hence to an
+// mlir::FuncOp argument / return.
+//
+// This must match the linearization that happens in `tf.nest.flatten`.
+// In particular, dict values should be linearized in sorted key order.
+//
+// The linearized index paths can be returned back to a structured
+// representation (e.g. to emit C structs matching a signature) with a simple
+// algorithm that recurses on each run of index paths with identical first
+// elements.
+class StructuredValueLinearizer {
+ public:
+  StructuredValueLinearizer(const StructuredValue& value,
+                            mlir::MLIRContext* context);
+
+  // Returns the list of index paths to each leaf of the StructuredValue,
+  // in a linearized order matching `tf.nest.flatten`.
+  llvm::ArrayRef<mlir::ArrayAttr> GetLeafIndexPaths() const;
+
+ private:
+  // Main function that recursively traverses the StructuredValue.
+  void RecursivelyFindLeaves(const StructuredValue& value);
+
+  mlir::Builder builder_;
+  // The current index path. We push/pop this during recursive traversal of the
+  // StructuredValue.
+  llvm::SmallVector<mlir::Attribute, 4> current_index_path_;
+  // The list of leaf index paths we have discovered so far.
+  llvm::SmallVector<mlir::ArrayAttr, 4> leaf_index_paths_;
+};
+
+StructuredValueLinearizer::StructuredValueLinearizer(
+    const StructuredValue& value, mlir::MLIRContext* context)
+    : builder_(context) {
+  RecursivelyFindLeaves(value);
+}
+
+llvm::ArrayRef<mlir::ArrayAttr> StructuredValueLinearizer::GetLeafIndexPaths()
+    const {
+  return leaf_index_paths_;
+}
+
+void StructuredValueLinearizer::RecursivelyFindLeaves(
+    const StructuredValue& value) {
+  switch (value.kind_case()) {
+    case StructuredValue::kDictValue: {
+      // Dict values must be linearized in sorted order of keys.
+      const DictValue& dict = value.dict_value();
+      using FieldTy = protobuf::MapPair<std::string, StructuredValue>;
+      llvm::SmallVector<const FieldTy*, 4> fields;
+      for (auto& field : dict.fields()) {
+        fields.push_back(&field);
+      }
+      llvm::sort(fields, [](const FieldTy* a, const FieldTy* b) {
+        return a->first < b->first;
+      });
+      for (auto& field : fields) {
+        current_index_path_.push_back(builder_.getStringAttr(field->first));
+        RecursivelyFindLeaves(field->second);
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    case StructuredValue::kTupleValue: {
+      const TupleValue& tuple = value.tuple_value();
+      for (int i = 0, e = tuple.values_size(); i < e; i++) {
+        current_index_path_.push_back(builder_.getI64IntegerAttr(i));
+        RecursivelyFindLeaves(tuple.values(i));
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    // We don't differentiate between tuples and lists.
+    case StructuredValue::kListValue: {
+      const ListValue& list = value.list_value();
+      for (int i = 0, e = list.values_size(); i < e; i++) {
+        current_index_path_.push_back(builder_.getI64IntegerAttr(i));
+        RecursivelyFindLeaves(list.values(i));
+        current_index_path_.pop_back();
+      }
+      return;
+    }
+    case StructuredValue::kTensorSpecValue: {
+      // Base case: record the current path stack as the index path needed to
+      // get to this leaf.
+      leaf_index_paths_.push_back(builder_.getArrayAttr(current_index_path_));
+      return;
+    }
+    case StructuredValue::kNoneValue: {
+      // Base case: do nothing.
+      // This arises, for example, as the top-level object of an output
+      // signature when there are no return values.
+      return;
+    }
+    default: {
+      llvm_unreachable("Unhandled StructuredValue kind!");
+    }
+  }
+}
+
+// Reorder the ops in the module to make testing easier and less dependent
+// on implementation details such as the order of functions in the
+// FunctionDefLibrary.
+//
+// The order this ensures is:
+// 1. GlobalTensorOp's
+// 2. FuncOps's.
+//
+// Within each of 1. and 2., ops are sorted by exported name (if
+// available, and only the first exported name is considered), followed by
+// non-exported ops.
+void SortSavedModelModule(mlir::ModuleOp module) {
+  struct NamedGlobalTensor {
+    llvm::StringRef name;
+    mlir::tf_saved_model::GlobalTensorOp global_tensor;
+  };
+  llvm::SmallVector<NamedGlobalTensor, 8> named_global_tensors;
+  for (auto global_tensor :
+       module.getOps<mlir::tf_saved_model::GlobalTensorOp>()) {
+    auto exported_names = mlir::tf_saved_model::GetExportedNames(global_tensor);
+    // We use stable_sort, so duplicate empty names are fine here.
+    named_global_tensors.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), global_tensor});
+  }
+  llvm::stable_sort(named_global_tensors,
+                    [](const NamedGlobalTensor& a, const NamedGlobalTensor& b) {
+                      return std::make_tuple(a.name.empty(), a.name) <
+                             std::make_tuple(b.name.empty(), b.name);
+                    });
+
+  struct NamedFunc {
+    llvm::StringRef name;
+    mlir::FuncOp func;
+  };
+  llvm::SmallVector<NamedFunc, 8> named_funcs;
+  for (auto func : module.getOps<mlir::FuncOp>()) {
+    auto exported_names = mlir::tf_saved_model::GetExportedNames(func);
+    named_funcs.push_back(
+        {exported_names.empty() ? "" : exported_names.front(), func});
+  }
+  llvm::stable_sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
+    return std::make_tuple(a.name.empty(), a.name) <
+           std::make_tuple(b.name.empty(), b.name);
+  });
+
+  // Move onto the front of the module in reverse of the final desired order.
+  for (auto named_func : llvm::reverse(named_funcs)) {
+    named_func.func.getOperation()->moveBefore(&module.getBody()->front());
+  }
+  for (auto named_global_tensor : llvm::reverse(named_global_tensors)) {
+    named_global_tensor.global_tensor.getOperation()->moveBefore(
+        &module.getBody()->front());
+  }
+}
+
 Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
@@ -2018,8 +2183,33 @@ Status CreateSavedModelIR(
       const SavedConcreteFunction& concrete_function =
           object_graph.concrete_functions().at(function.concrete_functions(0));
 
+      // We do not handle the other element of this tuple, which corresponds to
+      // Python kwonlyargs, since currently TensorFlow prohibits this in
+      // combination with input_signature:
+      // https://github.com/tensorflow/tensorflow/blob/8cb8627abb5ef83a6fba34f8fd0e4ee430562eb1/tensorflow/python/eager/function.py#L2027-L2030
+      // Our SavedModel import requires input_signature on the tf.function, so
+      // we never need to handle the kwonlyargs.
+      auto positional_arg_structure =
+          concrete_function.canonicalized_input_signature()
+              .tuple_value()
+              .values(0);
+      StructuredValueLinearizer input_linearizer(positional_arg_structure,
+                                                 builder.getContext());
+
       int bound_input_base =
           func.getNumArguments() - concrete_function.bound_inputs_size();
+      auto input_index_paths = input_linearizer.GetLeafIndexPaths();
+      if (bound_input_base != input_index_paths.size()) {
+        return errors::InvalidArgument(
+            "Argument mismatch between concrete function input signature "
+            "vs underlying FunctionDef for concrete function '",
+            function.concrete_functions(0), "' (", input_index_paths.size(),
+            " vs ", bound_input_base, ")");
+      }
+      for (auto index_path : llvm::enumerate(input_index_paths)) {
+        func.setArgAttr(index_path.index(), "tf_saved_model.index_path",
+                        index_path.value());
+      }
 
       for (auto& bound_input :
            llvm::enumerate(concrete_function.bound_inputs())) {
@@ -2027,6 +2217,21 @@ Status CreateSavedModelIR(
         auto symbol_ref = builder.getSymbolRefAttr(
             object_names.GetSymbolTableName(bound_input.value()));
         func.setArgAttr(arg_index, "tf_saved_model.bound_input", symbol_ref);
+      }
+
+      StructuredValueLinearizer output_linearizer(
+          concrete_function.output_signature(), builder.getContext());
+      auto output_index_paths = output_linearizer.GetLeafIndexPaths();
+      if (func.getNumResults() != output_index_paths.size()) {
+        return errors::InvalidArgument(
+            "Result mismatch between concrete function output signature "
+            "vs underlying FunctionDef for concrete function '",
+            function.concrete_functions(0), "' (", output_index_paths.size(),
+            " vs ", func.getNumResults(), ")");
+      }
+      for (auto index_path : llvm::enumerate(output_index_paths)) {
+        func.setResultAttr(index_path.index(), "tf_saved_model.index_path",
+                           index_path.value());
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
       const SavedVariable& variable = object.variable();
@@ -2059,6 +2264,7 @@ Status CreateSavedModelIR(
     }
   }
   module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+  SortSavedModelModule(module);
   return Status::OK();
 }
 

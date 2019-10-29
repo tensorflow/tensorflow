@@ -115,6 +115,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":tflite_convert",
@@ -173,6 +174,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -197,23 +199,6 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "lite_mlir_test",
-    srcs = ["lite_mlir_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-        "no_windows",
-    ],
-    deps = [
-        ":lite",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 

@@ -51,7 +51,7 @@ namespace {
 // all store op's that have a dependence into the load, is provably the last
 // writer to the particular memref location being loaded at the load op, and its
 // store value can be forwarded to the load. Note that the only dependences
-// that are to be considered are those that are satisifed at the block* of the
+// that are to be considered are those that are satisfied at the block* of the
 // innermost common surrounding loop of the <store, load> being considered.
 //
 // (* A dependence being satisfied at a block: a dependence that is satisfied by

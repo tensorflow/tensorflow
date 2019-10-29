@@ -28,13 +28,14 @@ namespace {
 std::string GetPaddingCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[0]);
 
+  const std::string dst_batch = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
@@ -47,15 +48,28 @@ std::string GetPaddingCode(
   c += "    int4 dst_size,      \n";
   c += "    int4 prepended      \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   c += "  FLT4 result = (FLT4)(0.0);\n";
   c += "  int s_x = X - prepended.x;\n";
   c += "  int s_y = Y - prepended.y;\n";
+  if (op_def.batch_support) {
+    c += "  int s_b = B - prepended.w;\n";
+  }
+  const std::string src_batch = op_def.batch_support ? "s_b" : "";
   c += "  bool inside_x = s_x >= 0 && s_x < src_size.x;\n";
   c += "  bool inside_y = s_y >= 0 && s_y < src_size.y;\n";
+  if (op_def.batch_support) {
+    c += "  inside_y &= (s_b >= 0 && s_b < src_size.w);\n";
+  }
   c += "  if (inside_x && inside_y) {\n";
   c += "    int start_channel = Z * 4;\n";
   for (int i = 0; i < 4; ++i) {
@@ -64,15 +78,17 @@ std::string GetPaddingCode(
     c += "    int channel = start_channel + " + std::to_string(i) + ";\n";
     c += "    int s_z = channel - prepended.z;\n";
     c += "    if (s_z >= 0 && s_z < src_channels) {\n";
-    c += "      FLT4 t = " + src_tensor.Read3D("s_x", "s_y", "s_z / 4") + ";\n";
+    c += "      FLT4 t = " +
+         src_tensor.Read4D("s_x", "s_y", "s_z / 4", src_batch) + ";\n";
     c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
     c += "      result" + s + " = t_ar[s_z % 4];\n";
     c += "    }\n";
     c += "    }\n";
   }
   c += "  }\n";
-  c += PostProcess(linked_operations, {"result", "X", "Y", "Z"});
-  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
+  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  c += PostProcess(linked_operations, {"result", x_3dcoord, "Y", "Z"});
+  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", dst_batch);
   c += "}\n";
 
   return c;
@@ -80,9 +96,9 @@ std::string GetPaddingCode(
 }  // namespace
 
 Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
-    : GPUOperation(definition) {
-  SetPrepended(int3(attr.prepended.w, attr.prepended.h, attr.prepended.c));
-}
+    : GPUOperation(definition),
+      prepended_(attr.prepended.w, attr.prepended.h, attr.prepended.c,
+                 attr.prepended.b) {}
 
 Padding::Padding(Padding&& kernel)
     : GPUOperation(std::move(kernel)),
@@ -100,13 +116,6 @@ Padding& Padding::operator=(Padding&& kernel) {
   return *this;
 }
 
-void Padding::SetPrepended(const int3& prepended) {
-  prepended_.x = prepended.x;
-  prepended_.y = prepended.y;
-  prepended_.z = prepended.z;
-  prepended_.w = 0;
-}
-
 Status Padding::Compile(const CreationContext& creation_context) {
   const auto code = GetPaddingCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -119,12 +128,10 @@ Status Padding::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int4(prepended_.x * src_[0]->Batch(), prepended_.y,
-                                prepended_.z, prepended_.w)));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(prepended_));
   return OkStatus();
 }
 

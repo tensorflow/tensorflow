@@ -109,10 +109,10 @@ mlir::Value* NormalizeMlirShapeToLogicalNchw(
 
   return builder.createOrFold<mlir::MemRefCastOp>(
       builder.getUnknownLoc(),
-      builder.getMemRefType(
+      mlir::MemRefType::get(
           type.getShape(), type.getElementType(),
           mlir::AffineMap(type.getAffineMaps()[0])
-              .compose(builder.getAffineMap(exprs.size(), 0, exprs))),
+              .compose(mlir::AffineMap::get(exprs.size(), 0, exprs))),
       buffer);
 }
 
@@ -276,6 +276,24 @@ void ToStringImpl(mlir::Operation* node, NameLookupTable* names,
     constant.getValue().print(p);
     return;
   }
+  if (auto convert = mlir::dyn_cast<mlir::FPExtOp>(node)) {
+    p << names->FindOrCreate(convert.getResult());
+    p << " = convert(";
+    p << names->FindOrCreate(convert.in());
+    p << ", ";
+    convert.getType().print(p);
+    p << ")";
+    return;
+  }
+  if (auto convert = mlir::dyn_cast<mlir::FPTruncOp>(node)) {
+    p << names->FindOrCreate(convert.getResult());
+    p << " = convert(";
+    p << names->FindOrCreate(convert.in());
+    p << ", ";
+    convert.getType().print(p);
+    p << ")";
+    return;
+  }
   CHECK(false);
 }
 
@@ -349,7 +367,7 @@ void SetBoundForSimpleLoop(mlir::AffineForOp loop, mlir::AffineExpr new_bound,
                            mlir::OpBuilder builder) {
   CHECK(IsSimpleLoop(loop));
 
-  loop.setUpperBoundMap(builder.getAffineMap(
+  loop.setUpperBoundMap(mlir::AffineMap::get(
       loop.getUpperBoundMap().getNumDims(),
       loop.getUpperBoundMap().getNumSymbols(), {new_bound}));
 }
@@ -493,7 +511,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     ancestor_dimensions.insert(ancestor_dimensions.end(),
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
-        builder.getMemRefType(ancestor_dimensions, type.getElementType());
+        mlir::MemRefType::get(ancestor_dimensions, type.getElementType());
     auto new_alloc =
         builder.create<mlir::AllocOp>(builder.getUnknownLoc(), new_type);
 
@@ -602,6 +620,10 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   CHECK(filter_shape.hasStaticShape());
   CHECK(output_shape.hasStaticShape());
 
+  CHECK(input_shape.getElementType() == builder.getF16Type());
+  CHECK(filter_shape.getElementType() == builder.getF16Type());
+  CHECK(output_shape.getElementType() == builder.getF16Type());
+
   names->Insert(input, "input");
   names->Insert(filter, "filter");
   names->Insert(output, "output");
@@ -620,7 +642,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   builder = cartesian_product_loops.back().getBodyBuilder();
 
   mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
-      location, builder.getMemRefType({}, builder.getF32Type()));
+      location, mlir::MemRefType::get({}, builder.getF32Type()));
 
   builder.create<mlir::AffineStoreOp>(
       location,
@@ -682,10 +704,13 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     input_vars.insert(input_vars.end(), filter_spatial_indvars.begin(),
                       filter_spatial_indvars.end());
 
-    return builder.createOrFold<mlir::AffineLoadOp>(
-        location, input,
-        builder.getAffineMap(2 + num_spatial_dims * 2, 0, input_indices),
-        input_vars);
+    return builder.create<mlir::FPExtOp>(
+        location,
+        builder.createOrFold<mlir::AffineLoadOp>(
+            location, input,
+            mlir::AffineMap::get(2 + num_spatial_dims * 2, 0, input_indices),
+            input_vars),
+        builder.getF32Type());
   }();
 
   mlir::Value* loaded_filter = [&] {
@@ -695,8 +720,10 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     filter_vars.insert(filter_vars.end(), filter_spatial_indvars.begin(),
                        filter_spatial_indvars.end());
 
-    return builder.createOrFold<mlir::AffineLoadOp>(location, filter,
-                                                    filter_vars);
+    return builder.create<mlir::FPExtOp>(
+        location,
+        builder.createOrFold<mlir::AffineLoadOp>(location, filter, filter_vars),
+        builder.getF32Type());
   }();
 
   builder.createOrFold<mlir::AffineStoreOp>(
@@ -716,8 +743,11 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                        output_spatial_indvars.end());
     builder.createOrFold<mlir::AffineStoreOp>(
         location,
-        builder.createOrFold<mlir::AffineLoadOp>(location, output_acc), output,
-        output_vars);
+        builder.create<mlir::FPTruncOp>(
+            location,
+            builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
+            builder.getF16Type()),
+        output, output_vars);
   }
 
   return InitialMlirConvAnchors{cartesian_product_loops, reduction_loops,

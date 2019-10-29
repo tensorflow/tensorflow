@@ -584,8 +584,8 @@ static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
 
   // Ignore all the characters that are valid in an identifier in the symbol
   // name.
-  symName =
-      symName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
+  symName = symName.drop_while(
+      [](char c) { return llvm::isAlnum(c) || c == '.' || c == '_'; });
   if (symName.empty())
     return true;
 
@@ -746,7 +746,13 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
     os << '{';
     interleaveComma(attr.cast<DictionaryAttr>().getValue(),
                     [&](NamedAttribute attr) {
-                      os << attr.first << " = ";
+                      os << attr.first;
+
+                      // The value of a UnitAttr is elided within a dictionary.
+                      if (attr.second.isa<UnitAttr>())
+                        return;
+
+                      os << " = ";
                       printAttribute(attr.second);
                     });
     os << '}';
@@ -1519,23 +1525,24 @@ void OperationPrinter::numberValueID(Value *value) {
   }
 
   if (specialNameBuffer.empty()) {
-    switch (value->getKind()) {
-    case Value::Kind::BlockArgument:
-      // If this is an argument to the entry block of a region, give it an 'arg'
-      // name.
-      if (auto *block = cast<BlockArgument>(value)->getOwner()) {
-        auto *parentRegion = block->getParent();
-        if (parentRegion && block == &parentRegion->front()) {
-          specialName << "arg" << nextArgumentID++;
-          break;
-        }
-      }
-      // Otherwise number it normally.
+    auto *blockArg = dyn_cast<BlockArgument>(value);
+    if (!blockArg) {
+      // This is an uninteresting operation result, give it a boring number and
+      // be done with it.
       valueIDs[value] = nextValueID++;
       return;
-    case Value::Kind::OpResult:
-      // This is an uninteresting result, give it a boring number and be
-      // done with it.
+    }
+
+    // Otherwise, if this is an argument to the entry block of a region, give it
+    // an 'arg' name.
+    if (auto *block = blockArg->getOwner()) {
+      auto *parentRegion = block->getParent();
+      if (parentRegion && block == &parentRegion->front())
+        specialName << "arg" << nextArgumentID++;
+    }
+
+    // Otherwise number it normally.
+    if (specialNameBuffer.empty()) {
       valueIDs[value] = nextValueID++;
       return;
     }
@@ -1860,14 +1867,11 @@ void IntegerSet::print(raw_ostream &os) const {
 }
 
 void Value::print(raw_ostream &os) {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    // TODO: Improve this.
-    os << "<block argument>\n";
-    return;
-  case Value::Kind::OpResult:
-    return getDefiningOp()->print(os);
-  }
+  if (auto *op = getDefiningOp())
+    return op->print(os);
+  // TODO: Improve this.
+  assert(isa<BlockArgument>(*this));
+  os << "<block argument>\n";
 }
 
 void Value::dump() {

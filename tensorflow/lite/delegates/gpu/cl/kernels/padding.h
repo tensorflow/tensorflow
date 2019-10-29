@@ -43,7 +43,6 @@ class Padding : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
-  void SetPrepended(const int3& prepended);
   int4 prepended_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);

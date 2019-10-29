@@ -55,8 +55,8 @@ opt<bool> output_mlir(
 // going forward.
 // NOLINTNEXTLINE
 llvm::cl::list<std::string> custom_opdefs(
-    "tf-custom-opdefs", llvm::cl::desc("List of extra opdefs when importing "
-                                       "graphdef (testing purposes only)"));
+    "tf-custom-opdefs", llvm::cl::desc("List of custom opdefs when importing "
+                                       "graphdef"));
 
 // Quantize and Dequantize ops pair can be optionally emitted before and after
 // the quantized model as the adaptors to receive and produce floating point

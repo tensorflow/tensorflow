@@ -44,6 +44,17 @@ static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
   return builder.CreateCall(fn, args);
 }
 
+static llvm::Intrinsic::ID getShflBflyIntrinsicId(llvm::Type *resultType,
+                                                  bool withPredicate) {
+  if (withPredicate) {
+    resultType = cast<llvm::StructType>(resultType)->getElementType(0);
+    return resultType->isFloatTy() ? llvm::Intrinsic::nvvm_shfl_sync_bfly_f32p
+                                   : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32p;
+  }
+  return resultType->isFloatTy() ? llvm::Intrinsic::nvvm_shfl_sync_bfly_f32
+                                 : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
+}
+
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:

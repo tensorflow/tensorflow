@@ -579,7 +579,7 @@ ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // `types` already contains the type for the data, add an i32 for the
   // output_index, and then the optional control inputs.
   auto builder = parser.getBuilder();
-  types.push_back(builder.getTensorType({}, builder.getIntegerType(32)));
+  types.push_back(RankedTensorType::get({}, builder.getIntegerType(32)));
   Type control_type = ControlType::get(builder.getContext());
   types.append(op_infos.size() - 2, control_type);
 

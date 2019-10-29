@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
@@ -318,6 +319,7 @@ Status XlaCompilationCache::CompileImpl(
           << current_request_count << " and compile threshold "
           << compile_threshold.value_or(0);
   if (!entry->compiled) {
+    XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
     const bool should_compile = [&] {
       if (!compile_threshold.has_value()) {
         // Lazy compilation is disabled.

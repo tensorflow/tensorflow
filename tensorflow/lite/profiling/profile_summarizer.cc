@@ -24,6 +24,8 @@ namespace profiling {
 namespace {
 
 struct OperatorDetails {
+  uint32_t subgraph_index;
+  uint32_t node_index;
   std::string name;
   std::vector<std::string> inputs;
   std::vector<std::string> outputs;
@@ -64,8 +66,11 @@ std::string ToString(const std::vector<std::string>& str_vector) {
 }
 
 OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
-                                   int node_index) {
-  auto node_reg = interpreter.node_and_registration(node_index);
+                                   uint32_t subgraph_index,
+                                   uint32_t node_index) {
+  auto subgraph =
+      const_cast<tflite::Interpreter&>(interpreter).subgraph(subgraph_index);
+  auto node_reg = subgraph->node_and_registration(node_index);
   auto inputs = node_reg->first.inputs;
   auto outputs = node_reg->first.outputs;
   int code = node_reg->second.builtin_code;
@@ -90,16 +95,20 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
 
 tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
   auto options = tensorflow::StatSummarizerOptions();
-  options.show_summary = true;
+  // Summary will be manually handled per subgraphs in order to keep the
+  // compatibility.
+  options.show_summary = false;
   options.show_memory = false;
   return options;
 }
 
 }  // namespace
 
-ProfileSummarizer::ProfileSummarizer()
-    : stats_calculator_(
-          new ::tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {}
+ProfileSummarizer::ProfileSummarizer() {
+  // Create stats calculator for the primary graph.
+  stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
+      new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+}
 
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,
@@ -122,25 +131,76 @@ void ProfileSummarizer::ProcessProfiles(
 
   int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
-  int64_t curr_total_us = 0;
   auto tag_string = [](const string& s, const string& t) {
-    return t == "OpInvoke" ? s : s + "/" + t;
+    return t == "OpInvoke" || t == "DelegateOpInvoke" ? s : s + "/" + t;
   };
+
+  // Total time will be accumulated per subgraph.
+  std::map<uint32_t, int64_t> total_us_per_subgraph_map;
+
   for (auto event : events) {
-    auto op_details = GetOperatorDetails(interpreter, event->event_metadata);
+    auto stats_calculator = GetStatsCalculator(event->event_subgraph_index);
+    auto op_details = GetOperatorDetails(
+        interpreter, event->event_subgraph_index, event->event_metadata);
     auto node_name = ToString(op_details.outputs);
     int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
         event->end_timestamp_us - event->begin_timestamp_us;
-    stats_calculator_->AddNodeStats(tag_string(node_name, event->tag),
-                                    tag_string(op_details.name, event->tag),
-                                    node_num, start_us, node_exec_time,
-                                    0 /*memory */);
+    stats_calculator->AddNodeStats(tag_string(node_name, event->tag),
+                                   tag_string(op_details.name, event->tag),
+                                   node_num, start_us, node_exec_time,
+                                   0 /*memory */);
 
-    curr_total_us += node_exec_time;
+    // Add total time except actual delegate ops since the elapsed time of the
+    // delegate ops inside are already combined at a fused DELEGATE op.
+    if (strcmp(event->tag, "DelegateOpInvoke") != 0) {
+      total_us_per_subgraph_map[event->event_subgraph_index] += node_exec_time;
+    }
     ++node_num;
   }
-  stats_calculator_->UpdateRunTotalUs(curr_total_us);
+
+  for (auto& total_us_per_subgraph_pair : total_us_per_subgraph_map) {
+    auto stats_calculator =
+        GetStatsCalculator(total_us_per_subgraph_pair.first);
+    stats_calculator->UpdateRunTotalUs(total_us_per_subgraph_pair.second);
+  }
 }
+
+tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
+    uint32_t subgraph_index) {
+  if (stats_calculator_map_.count(subgraph_index) == 0) {
+    stats_calculator_map_[subgraph_index] =
+        std::unique_ptr<tensorflow::StatsCalculator>(
+            new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+  }
+  return stats_calculator_map_[subgraph_index].get();
+}
+
+std::string ProfileSummarizer::GenerateReport(std::string tag,
+                                              bool include_output_string) {
+  std::stringstream stream;
+  bool has_non_primary_graph =
+      (stats_calculator_map_.size() - stats_calculator_map_.count(0)) > 0;
+  for (auto& stats_calc : stats_calculator_map_) {
+    auto subgraph_index = stats_calc.first;
+    auto subgraph_stats = stats_calc.second.get();
+    if (has_non_primary_graph) {
+      if (subgraph_index == 0)
+        stream << "Primary graph " << tag << ":" << std::endl;
+      else
+        stream << "Subgraph (index: " << subgraph_index << ") " << tag << ":"
+               << std::endl;
+    }
+    if (include_output_string) {
+      stream << subgraph_stats->GetOutputString();
+    }
+    if (subgraph_index != 0) {
+      stream << "Subgraph (index: " << subgraph_index << ") ";
+    }
+    stream << subgraph_stats->GetShortSummary() << std::endl;
+  }
+  return stream.str();
+}
+
 }  // namespace profiling
 }  // namespace tflite

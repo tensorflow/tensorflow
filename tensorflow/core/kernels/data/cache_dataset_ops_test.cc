@@ -32,8 +32,9 @@ class CacheDatasetParams : public DatasetParams {
                       std::move(node_name)),
         filename_(filename) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -53,7 +54,7 @@ class CacheDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return CacheDatasetOp::kDatasetType; }
+  string dataset_type() const override { return CacheDatasetOp::kDatasetType; }
 
   string filename() const { return filename_; }
 

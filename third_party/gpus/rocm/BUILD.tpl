@@ -119,13 +119,21 @@ filegroup(
     ]),
 )
 
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+)
+
 cc_library(
     name = "rocprim",
     srcs = [
         "rocm/include/hipcub/hipcub_version.hpp",
         "rocm/include/rocprim/rocprim_version.hpp",
     ],
-    hdrs = [":rocprim_headers"],
+    hdrs = glob([
+        "rocm/include/hipcub/**",
+        "rocm/include/rocprim/**",
+    ]),
     includes = [
         ".",
         "rocm/include/hipcub",
@@ -135,11 +143,6 @@ cc_library(
     deps = [
         "@local_config_rocm//rocm:rocm_headers",
     ],
-)
-
-bzl_library(
-    name = "build_defs_bzl",
-    srcs = ["build_defs.bzl"],
 )
 
 %{copy_rules}

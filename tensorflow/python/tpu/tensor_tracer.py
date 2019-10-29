@@ -43,6 +43,7 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import analytics
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
@@ -81,12 +82,12 @@ _TENSOR_TRACER_STORAGE = 'tensor_tracer_storage'
 _TT_SNAPSHOT = 'tensor_tracer_snapshot'
 _REPLICA_ID_TAG = '#replica-id: '
 
-_TT_SUMMARY_NORM = 'tensor_tracer_norm'
-_TT_SUMMARY_MAX = 'tensor_tracer_max'
-_TT_SUMMARY_MIN = 'tensor_tracer_min'
-_TT_SUMMARY_MEAN = 'tensor_tracer_mean'
-_TT_SUMMARY_VAR = 'tensor_tracer_var'
-_TT_SUMMARY_SIZE = 'tensor_tracer_size'
+_TT_SUMMARY_NORM = tensor_tracer_flags.TT_SUMMARY_NORM
+_TT_SUMMARY_MAX = tensor_tracer_flags.TT_SUMMARY_MAX
+_TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
+_TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
+_TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
+_TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
 _TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
@@ -94,6 +95,48 @@ _TT_HOSTCALL_KEY = 'tensor_tracer_host_call'
 _TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 
 _TT_SUMMARY_MAX_QUEUE = 100
+
+
+def op_priority(op_type):
+  """Returns the priority of the op.
+
+  If the priority of the op is k, it will be traced if trace_level>=k.
+  Args:
+    op_type: String name of the operation type.
+  Returns:
+    Integer value corresponding the priority of the op.
+  """
+  if op_type in ('Const', 'Shape', 'BroadcastGradientArgs', 'Range',
+                 'VariableShape', 'Fill', 'OneHot'):
+    # Lowest priority ops, e.g., constant ops accross different steps,
+    # They will be traced only if trace_level>=7
+    return 7
+
+  if op_type in ('Identity', 'Cast', 'Reshape', 'ExpandDims', 'StopGradient',
+                 'PreventGradient', 'Squeeze'):
+    # Operations without numerical effects.
+    # They will be only if trace_level>=6
+    return 6
+  if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile'):
+    # Operations that merge or slice an input, will be traced if trace_level>=5
+    return 5
+  if op_type in ('Pad', 'RandomUniformInt', 'GreaterEqual'):
+    # Operations less likely to provide useful information,
+    # will be traced if trace_level>=4
+    return 4
+  if op_type in ('Sum', 'AddV2', 'Add', 'AddN', 'BiasAdd', 'CrossReplicaSum'):
+    # Add operations that are less likely create any issues, will be traced
+    # if trace_level>=3 (default=3)
+    return 3
+  if op_type in ('Neg', 'Sub'):
+    # Sub operations that are less likely create any issues, will be traced
+    # trace_level>=2
+    return 2
+  if op_type in ('Mul', 'Square', 'MatMul', 'RandomUniform', 'Select',
+                 'Maximum', 'Mean', 'Variance'):
+    # Multiplication and some other operations, will be traced if trace_level>=1
+    return 1
+  return 0
 
 
 def read_tensor_tracer_event_file(event_file):
@@ -310,13 +353,12 @@ class TensorTracer(object):
       return True
     return False
 
-  def _less_interesting_op(self, op):
+  def _is_interesting_op(self, op):
     """Returns True if the given op is not an interesting one to be traced."""
     # If flag is set to include less interesting ops, then include everything.
     if self._parameters.include_less_interesting_ops:
-      return False
-    # Following ops are highly unlikey to cause bugs.
-    return op.type in ('Const', 'Identity', 'Cast', 'Shape')
+      return True
+    return op_priority(op.type) <= self._parameters.trace_level
 
   @staticmethod
   def reason(op_idx, details):
@@ -365,14 +407,17 @@ class TensorTracer(object):
       if shape is None:
         raise ValueError('shape must be provided at cache creation.')
       graph = graph or ops.get_default_graph()
+      if dtype.is_integer:
+        init_val = int(_COMPACT_TRACE_ENTRY_INIT_VALUE)
+      else:
+        init_val = _COMPACT_TRACE_ENTRY_INIT_VALUE
 
       # Create in proper graph and base name_scope.
       with graph.as_default() as g, g.name_scope(None):
         self._cache_variables[cache_name] = variable_scope.get_variable(
             _TT_SNAPSHOT + '_' + _escape_namescopes(cache_name),
             shape=shape, dtype=dtype,
-            initializer=init_ops.constant_initializer(
-                _COMPACT_TRACE_ENTRY_INIT_VALUE),
+            initializer=init_ops.constant_initializer(init_val),
             trainable=False,
             use_resource=True,
             collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
@@ -463,8 +508,7 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return {self._parameters.trace_mode: 0}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
-      return {_TT_SUMMARY_NORM: 0, _TT_SUMMARY_MAX: 1, _TT_SUMMARY_MIN: 2,
-              _TT_SUMMARY_MEAN: 3, _TT_SUMMARY_VAR: 4, _TT_SUMMARY_SIZE: 5}
+      return self._parameters.summary_signatures
     return {}
 
   def _num_signature_dimensions(self):
@@ -636,16 +680,35 @@ class TensorTracer(object):
       return {self._parameters.trace_mode: _show_norm(tensor)}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return {self._parameters.trace_mode: _show_max_abs(tensor)}
+
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
       tensor = math_ops.cast(tensor, dtypes.float32)
-      tsize = _show_size(tensor)
-      tnorm = _show_norm(tensor, cast_to_f32=False)
-      tmax = _show_max(tensor, cast_to_f32=False)
-      tmin = _show_min(tensor, cast_to_f32=False)
-      tmean, tvar = _show_mean_and_variance(tensor, cast_to_f32=False)
-      return {_TT_SUMMARY_NORM: tnorm, _TT_SUMMARY_MAX: tmax,
-              _TT_SUMMARY_MIN: tmin, _TT_SUMMARY_MEAN: tmean,
-              _TT_SUMMARY_VAR: tvar, _TT_SUMMARY_SIZE: tsize}
+      result_dict = {}
+      # Call mean and variance computation here to avoid adding the same nodes
+      # twice.
+      if (_TT_SUMMARY_MEAN in self._signature_types() or
+          _TT_SUMMARY_VAR in self._signature_types()):
+        mean, variance = _show_mean_and_variance(tensor, cast_to_f32=False)
+
+      for signature_name, _ in sorted(self._signature_types().items(),
+                                      key=lambda x: x[1]):
+        if signature_name == _TT_SUMMARY_NORM:
+          signature_result_tensor = _show_norm(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MAX:
+          signature_result_tensor = _show_max(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MIN:
+          signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SIZE:
+          signature_result_tensor = _show_size(tensor)
+        elif signature_name == _TT_SUMMARY_MEAN:
+          signature_result_tensor = mean
+        elif signature_name == _TT_SUMMARY_VAR:
+          signature_result_tensor = variance
+        else:
+          raise ValueError('Unknown signature type :%s.' % signature_name)
+
+        result_dict[signature_name] = signature_result_tensor
+      return result_dict
 
     raise RuntimeError(
         'Tensor trace fun for %s is not yet implemented'
@@ -790,18 +853,19 @@ class TensorTracer(object):
           op, TensorTracer.reason(op_id, _REASON_NOT_EXECUTED))
       return True
 
-    if not self._inside_op_range(op_id):
-      report_handler.instrument_op(
-          op, TensorTracer.reason(op_id, _REASON_OUTSIDE_OP_RANGE))
-      return True
-    if self._less_interesting_op(op):
-      report_handler.instrument_op(
-          op, TensorTracer.reason(op_id, _REASON_LESS_INTERESTING_OP))
-      return True
     if self._is_user_included_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_INCLUDED))
       return False
+
+    if not self._inside_op_range(op_id):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_OUTSIDE_OP_RANGE))
+      return True
+    if not self._is_interesting_op(op):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_LESS_INTERESTING_OP))
+      return True
     if self._is_user_excluded_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_EXCLUDED))
@@ -1025,7 +1089,6 @@ class TensorTracer(object):
     return self._parameters.trace_mode in (
         tensor_tracer_flags.TRACE_MODE_SUMMARY,
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)
-
 
   def _generate_flush_cache_op(self, num_replicas, on_tpu):
     """Generates an Op that will flush the cache to file.
@@ -1302,9 +1365,12 @@ class TensorTracer(object):
         return math_ops.cast(tensor, dtypes.float32)
       return tensor
 
-    TensorTracer.check_device_type(self._tt_config.device_type)
-    TensorTracer.check_trace_mode(self._tt_config.device_type,
-                                  self._parameters.trace_mode)
+    trace_mode = self._parameters.trace_mode
+    device_type = self._tt_config.device_type
+
+    analytics.track_usage('tensor_tracer', [trace_mode, device_type])
+    TensorTracer.check_device_type(device_type)
+    TensorTracer.check_trace_mode(device_type, trace_mode)
     # Check in_tensor_fetches, and op_fetches and convert them to lists.
     processed_t_fetches = self._process_tensor_fetches(tensor_fetches)
     op_fetches = self._process_op_fetches(op_fetches)
@@ -1468,7 +1534,6 @@ class TensorTracer(object):
       RuntimeError: If num_replicas_per_host > 8.
       RuntimeError: If tensor_fetches is None or empty.
     """
-
     if graph in TensorTracer._traced_graphs:
       logging.warning('Graph is already rewritten with tensor tracer, ignoring '
                       'multiple calls.')
