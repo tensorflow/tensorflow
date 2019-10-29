@@ -853,6 +853,31 @@ func @testSoftmax(%arg0 : tensor<f32>) -> tensor<f32> {
 
 // -----
 
+// Test valid tf.SoftmaxCrossEntropyWithLogits
+// CHECK-LABEL: func @testSoftmaxCrossEntropyWithLogits
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<2x3xf32>) {
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<2x3xf32>
+}
+
+// -----
+
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>) {
+  // expected-error @+1 {{requires features and labels to be broadcast compatible to rank two}}
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<2xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<3xf32>
+}
+
+// -----
+
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>) {
+  // expected-error @+1 {{requires features and labels to be broadcast compatible to rank two}}
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<3xf32>
+}
+
+// -----
+
 func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
 func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
 

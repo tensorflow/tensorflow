@@ -1438,6 +1438,26 @@ static LogicalResult Verify(SoftmaxOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SoftmaxCrossEntropyWithLogitsOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// * Input types are broadcast compatible and the broadcasted type has rank two.
+//
+static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
+  auto broadcasted_ty = OpTrait::util::getBroadcastedType(
+                            op.features()->getType(), op.labels()->getType())
+                            .dyn_cast_or_null<ShapedType>();
+  if (!broadcasted_ty ||
+      (broadcasted_ty.hasRank() && broadcasted_ty.getRank() != 2))
+    return op.emitOpError(
+        "requires features and labels to be broadcast compatible to rank two");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SquareOp
 //===----------------------------------------------------------------------===//
 
