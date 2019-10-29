@@ -306,15 +306,10 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
   }
 
-  // First try keeping the allocation entirely in the alternate memory.
-  if (!definition_requires_buffer_in_default_mem &&
-      !use_requires_buffer_in_default_mem &&
-      TryAllocatingInAlternateMemoryNoCopy(
-          start_time, end_time, last_use_time, defining_position, use,
-          alternate_mem_interval, non_bitcast_operand, allocations)) {
-    return true;
-  }
-
+  // TODO(berkin): This is curently overly restrictive and will fail using
+  // alternate memory for any buffer that might leak into a different
+  // computation (e.g., while body). Enable more usage of alternate memory
+  // across computations.
   if (defining_position.instruction->parent() != use.instruction->parent() ||
       (!use.instruction->called_computations().empty() &&
        use.instruction->opcode() != HloOpcode::kFusion)) {
@@ -322,6 +317,15 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     // Fail because we do not allow asynchronous copies while in the bodies of
     // other computation.
     return false;
+  }
+
+  // First try keeping the allocation entirely in the alternate memory.
+  if (!definition_requires_buffer_in_default_mem &&
+      !use_requires_buffer_in_default_mem &&
+      TryAllocatingInAlternateMemoryNoCopy(
+          start_time, end_time, last_use_time, defining_position, use,
+          alternate_mem_interval, non_bitcast_operand, allocations)) {
+    return true;
   }
 
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;

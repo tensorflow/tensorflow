@@ -41,7 +41,8 @@ _call_context = threading.local()
 
 
 def create_mean_metric(value, name=None):
-  # TODO(psv): Remove this import when b/110718070 is fixed.
+  # import keras will import base_layer and then this module, and metric relies
+  # on base_layer, which result into a cyclic dependency.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
   return metric_obj, metric_obj(value)

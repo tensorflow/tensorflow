@@ -848,6 +848,18 @@ func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 
 //===----------------------------------------------------------------------===//
+// Fast Fourier Transform op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @rfft_1D
+func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
+  %fftlength = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+  // CHECK: "xla_hlo.fft"(%arg0) {fft_length = dense<8> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<8xf32>
+  %0 = "tf.RFFT"(%arg0, %fftlength) : (tensor<8xf32>, tensor<1xi32>) -> tensor<8xcomplex<f32>>
+  return %0 : tensor<8xcomplex<f32>>
+}
+
+//===----------------------------------------------------------------------===//
 // Transpose op legalization.
 //===----------------------------------------------------------------------===//
 
@@ -932,9 +944,9 @@ func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 }
 
 // CHECK-LABEL: func @cast_c2f
-func @cast_c2f(%arg0: tensor<2x!tf.complex64>) -> tensor<2xf32> {
-  // CHECK: "tf.Cast"
-  %0 = "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
+func @cast_c2f(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
+  //CHECK: "xla_hlo.convert"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  %0 = "tf.Cast"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
@@ -957,6 +969,13 @@ func @ceil_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  "xla_hlo.ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: @complex_abs
+func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  %0 = "tf.ComplexAbs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: @cos

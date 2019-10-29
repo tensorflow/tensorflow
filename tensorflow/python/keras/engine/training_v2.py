@@ -23,11 +23,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 import numpy as np
 
-from tensorflow.python.data.ops import dataset_ops
+
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import callbacks as cbks
@@ -55,6 +53,7 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter,
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
     data_adapter.TensorLikeDataAdapter,
     data_adapter.GenericArrayLikeDataAdapter,
+    data_adapter.DatasetAdapter,
     data_adapter.CompositeTensorDataAdapter
 ]
 
@@ -628,60 +627,26 @@ def _process_inputs(model,
                     use_multiprocessing=False):
   """Process the inputs for fit/eval/predict()."""
   adapter_cls = data_adapter.select_data_adapter(x, y)
-  standardize = functools.partial(
-      model._standardize_user_data,
-      class_weight=class_weights,
-      batch_size=batch_size,
-      check_steps=False,
-      steps=steps)
   if adapter_cls in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
-    standardize_function = None
-    x, y, sample_weights = standardize(
-        x, y, sample_weight=sample_weights)
-  elif adapter_cls is data_adapter.ListsOfScalarsDataAdapter:
-    standardize_function = standardize
-  else:
-    def standardize_function(dataset):
-      """Data adapters can standardize when appropriate."""
-      # First we call _standardize_user_data with the dataset since that has
-      # enough structure to build the model.
-      if not model._is_compiled:
-        # We don't actually care about the values of these attributes, but they
-        # are only created in compile and are accessed in _standardize_user_data
-        model._training_endpoints = getattr(model, '_training_endpoints', [])
-        model.sample_weight_mode = getattr(model, 'sample_weight_mode', None)
-
-      standardize(dataset, extract_tensors_from_dataset=False)
-
-      # Then we map using only the tensor standardization portion.
-      def map_fn(x, y=None, sample_weights=None):
-        """Tensor manipulation portion of standardization for Dataset.map."""
-        standardized = model._standardize_tensors(
-            x, y, sample_weights,
-            run_eagerly=False,
-            dict_inputs=isinstance(x, dict),
-            is_dataset=False,
-            class_weight=class_weights,
-            batch_size=None)
-        x, y, sample_weights = nest._list_to_tuple(standardized)
-        if y is None:
-          return (x,)
-        if sample_weights is None:
-          return x, y
-        return x, y, sample_weights
-      return dataset.map(map_fn, num_parallel_calls=dataset_ops.AUTOTUNE)
+    x, y, sample_weights = model._standardize_user_data(
+        x,
+        y,
+        sample_weight=sample_weights,
+        class_weight=class_weights,
+        batch_size=batch_size,
+        check_steps=False,
+        steps=steps)
 
   if mode == ModeKeys.PREDICT:
     sample_weight_modes = None
   else:
     sample_weight_modes = [
         e.sample_weight_mode for e in model._training_endpoints
-    ] or model.sample_weight_mode
+    ]
 
   adapter = adapter_cls(
       x,
       y,
-      standardize_function=standardize_function,
       batch_size=batch_size,
       epochs=epochs,
       steps=steps,
@@ -692,7 +657,10 @@ def _process_inputs(model,
       max_queue_size=max_queue_size,
       workers=workers,
       use_multiprocessing=use_multiprocessing)
-
+  # As a fallback for the data type that does not work with
+  # _standardize_user_data, use the _prepare_model_with_inputs.
+  if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
+    training_v2_utils._prepare_model_with_inputs(model, adapter.get_dataset())
   return adapter
 
 

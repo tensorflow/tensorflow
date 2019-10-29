@@ -1844,6 +1844,11 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 // spv.Select
 //===----------------------------------------------------------------------===//
 
+void spirv::SelectOp::build(Builder *builder, OperationState &state,
+                            Value *cond, Value *trueValue, Value *falseValue) {
+  build(builder, state, trueValue->getType(), cond, trueValue, falseValue);
+}
+
 static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &state) {
   OpAsmParser::OperandType condition;
   SmallVector<OpAsmParser::OperandType, 2> operands;

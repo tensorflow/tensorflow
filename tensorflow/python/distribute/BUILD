@@ -1269,6 +1269,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:cross_device_utils",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     ],
     tags = [
         "multi_and_single_gpu",

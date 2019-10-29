@@ -20,7 +20,7 @@ especially around:
     *   [Basic image manipulation and conversion](#Basic-image-manipulation-and-conversion)
     *   [Create output objects and run the model](#Create-output-objects-and-run-the-model)
     *   [Accessing the result](#Accessing-the-result)
-    *   [Optional: Mapping results to labels](#Optional:-Mapping-results-to-labels)
+    *   [Optional: Mapping results to labels](#Optional-Mapping-results-to-labels)
 *   [Current use-case coverage](#Current-use-case-coverage)
 *   [ImageProcessor Architecture](#ImageProcessor-Architecture)
 *   [Quantization](#Quantization)

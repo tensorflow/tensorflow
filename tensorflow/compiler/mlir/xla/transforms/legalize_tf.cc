@@ -86,6 +86,17 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
       .cast<DenseIntElementsAttr>();
 }
 
+// Converts a ElementsAttr to a 1D 64-bit dense elements attribute.
+static DenseIntElementsAttr ConvertAttrToI64(ElementsAttr attr) {
+  llvm::function_ref<APInt(const APInt &)> conversion_func =
+      [](const APInt &int_value) -> APInt {
+    return APInt(64, int_value.getSExtValue(), /*isSigned=*/true);
+  };
+  return attr
+      .mapValues(IntegerType::get(64, attr.getContext()), conversion_func)
+      .cast<DenseIntElementsAttr>();
+}
+
 static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
                                         Builder *b) {
   SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);

@@ -46,7 +46,7 @@ using edsc::op::operator==;
 
 static SmallVector<ValueHandle, 8>
 foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
-                    ArrayRef<Value *> vals, OperationFolder &folder) {
+                    ArrayRef<Value *> vals, OperationFolder *folder) {
   assert(map.getNumSymbols() == 0);
   assert(map.getNumInputs() == vals.size());
   SmallVector<ValueHandle, 8> res;
@@ -63,10 +63,10 @@ foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
 
 static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
                                           Optional<AffineMap> permutation,
-                                          OperationFolder &state) {
+                                          OperationFolder *folder) {
   return permutation ? applyMapToValues(ScopedContext::getBuilder(),
                                         ScopedContext::getLocation(),
-                                        permutation.getValue(), ivs, state)
+                                        permutation.getValue(), ivs, folder)
                      : SmallVector<Value *, 4>(ivs.begin(), ivs.end());
 }
 
@@ -76,7 +76,7 @@ static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
 static SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
                                               AffineMap map,
                                               ArrayRef<Value *> allViewSizes,
-                                              OperationFolder &folder) {
+                                              OperationFolder *folder) {
   // Apply `map` to get view sizes in loop order.
   auto sizes = applyMapToValues(b, loc, map, allViewSizes, folder);
   // Create a new range with the applied tile sizes.
@@ -94,7 +94,7 @@ template <typename LinalgOpType> class LinalgScopedEmitter {};
 template <> class LinalgScopedEmitter<CopyOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, CopyOp copyOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto nPar = copyOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto inputIvs =
@@ -116,7 +116,7 @@ public:
 template <> class LinalgScopedEmitter<FillOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, FillOp fillOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto nPar = fillOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto ivs =
@@ -132,7 +132,7 @@ public:
 template <> class LinalgScopedEmitter<DotOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, DotOp dotOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 1);
     IndexHandle r_i(allIvs[0]);
     IndexedLinalgValue A(dotOp.getInput(0)), B(dotOp.getInput(1)),
@@ -146,7 +146,7 @@ template <> class LinalgScopedEmitter<MatvecOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        MatvecOp matvecOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 2);
     IndexHandle i(allIvs[0]), r_j(allIvs[1]);
     IndexedLinalgValue A(matvecOp.getInput(0)), B(matvecOp.getInput(1)),
@@ -160,7 +160,7 @@ template <> class LinalgScopedEmitter<MatmulOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        MatmulOp matmulOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 3);
     IndexHandle i(allIvs[0]), j(allIvs[1]), r_k(allIvs[2]);
     IndexedLinalgValue A(matmulOp.getInput(0)), B(matmulOp.getInput(1)),
@@ -173,7 +173,7 @@ public:
 template <> class LinalgScopedEmitter<ConvOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, ConvOp convOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     auto maps = loopToOperandRangesMaps(convOp);
@@ -224,7 +224,7 @@ template <> class LinalgScopedEmitter<GenericOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        GenericOp genericOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     using edsc::intrinsics::detail::ValueHandleArray;
@@ -307,7 +307,7 @@ public:
         inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp)));
     if (!invertedMap) {
       LinalgScopedEmitter<ConcreteOp>::emitScalarImplementation({}, linalgOp,
-                                                                folder);
+                                                                &folder);
       rewriter.eraseOp(op);
       return matchSuccess();
     }
@@ -325,7 +325,7 @@ public:
 
     auto loopRanges =
         emitLoopRanges(scope.getBuilder(), scope.getLocation(), invertedMap,
-                       getViewSizes(linalgOp), folder);
+                       getViewSizes(linalgOp), &folder);
     assert(loopRanges.size() == pivs.size() + rivs.size() + wivs.size());
 
     // clang-format off
@@ -336,7 +336,7 @@ public:
           [&linalgOp, &allIvs, this] {
             auto allIvValues = extractValues(allIvs);
             LinalgScopedEmitter<ConcreteOp>::emitScalarImplementation(
-                allIvValues, linalgOp, folder);
+                allIvValues, linalgOp, &folder);
         });
       });
     });

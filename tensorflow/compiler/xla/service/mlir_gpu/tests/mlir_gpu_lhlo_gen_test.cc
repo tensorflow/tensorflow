@@ -290,5 +290,65 @@ ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
       )");
 }
 
+TEST_F(LhloGenTest, Broadcast) {
+  CompileAndVerifyIr(R"(
+HloModule Broadcast
+
+ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
+  %x = f32[10]{0} parameter(0)
+  ROOT %broadcast = f32[10, 5]{1,0} broadcast(f32[10]{0} %x), dimensions={0}
+})",
+                     R"(
+;CHECK: func @broadcast(%[[IN:.*]]: [[IN_T:.*]],  %[[OUT:.*]]: [[OUT_T:.*]]) {
+;CHECK:   "xla_lhlo.broadcast_in_dim"(%[[IN]], %[[OUT]])
+;CHECK:   {broadcast_dimensions = dense<0> : tensor<1xi64>, name = "broadcast"}
+;CHECK:   : ([[IN_T]], [[OUT_T]]) -> ()
+;CHECK: }
+)");
+}
+
+TEST_F(LhloGenTest, Iota) {
+  CompileAndVerifyIr(R"(
+HloModule Iota
+
+ENTRY %Iota() -> s64[10, 5] {
+  ROOT %iota = s64[10, 5]{1,0} iota(), iota_dimension=0
+})",
+                     R"(
+;CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
+;CHECK:   "xla_lhlo.iota"(%[[OUT]])
+;CHECK:   {iota_dimension = 0 : i64, name = "iota"} : ([[OUT_T]]) -> ()
+;CHECK: }
+)");
+}
+
+TEST_F(LhloGenTest, AddReduce) {
+  CompileAndVerifyIr(R"(
+HloModule AddReduce
+
+%add (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %AddReduce (x: f32[100,10], c: f32[]) -> f32[100] {
+  %x = f32[100,10]{1,0} parameter(0)
+  %c = f32[] parameter(1)
+  ROOT %reduce = f32[100]{0} reduce(f32[100,10]{1,0} %x, f32[] %c), dimensions={1}, to_apply=%add
+})",
+                     R"(
+;CHECK: func @reduce(%[[ARG:.*]]: [[ARGT:.*]], %[[CST:.*]]: memref<f32>, %[[RES:.*]]: [[REST:.*]]) {
+;CHECK:   "xla_lhlo.reduce"(%[[ARG]], %[[CST]], %[[RES]]) ( {
+;CHECK:   ^bb0(%[[FARG0:.*]]: memref<f32>, %[[FARG1:.*]]: memref<f32>, %[[FRES:.*]]: memref<f32>):
+;CHECK:      %[[LHS:.*]] = tensor_load %[[FARG0]] : memref<f32>
+;CHECK:      %[[RHS:.*]] = tensor_load %[[FARG1]] : memref<f32>
+;CHECK:      %[[RES:.*]] = "xla_hlo.add"(%[[LHS]], %[[RHS]]) {name = "add"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+;CHECK:      tensor_store %[[RES]], %[[FRES]] : memref<f32>
+;CHECK:     "xla_lhlo.terminator"() : () -> ()
+;CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>, name = "reduce"} : ([[ARGT]], memref<f32>, [[REST]]) -> ()
+      )");
+}
+
 }  // namespace mlir_gpu
 }  // namespace xla

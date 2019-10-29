@@ -493,6 +493,7 @@ edgetpu_ops = [
     "max_pool",
     "mul",
     "pad",  # high error
+    "relu6",
     "reshape",
     "resize_bilinear",
     "sigmoid",

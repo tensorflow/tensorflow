@@ -1,5 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
-
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -308,4 +306,23 @@ py_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],
+)
+
+py_binary(
+    name = "convert_file_to_c_source",
+    srcs = ["convert_file_to_c_source.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite",
+        ":util",
+        "@six_archive//:six",
+    ],
+)
+
+sh_test(
+    name = "convert_file_to_c_source_test",
+    srcs = ["convert_file_to_c_source_test.sh"],
+    data = [":convert_file_to_c_source"],
 )
