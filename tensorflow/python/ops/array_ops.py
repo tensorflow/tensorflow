@@ -2064,7 +2064,7 @@ def matrix_diag(diagonal,
   ```
   output[i, j, ..., l, m, n]
     = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
-      output[i, j, ..., l, m, n]                ; otherwise
+      padding_value                             ; otherwise
   ```
 
   Otherwise, `M` is treated as the number of diagonals for the matrix in the
@@ -2072,10 +2072,11 @@ def matrix_diag(diagonal,
 
   ```
   output[i, j, ..., l, m, n]
-    = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
-      input[i, j, ..., l, m, n]                   ; otherwise
+    = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+      padding_value                                     ; otherwise
   ```
-  where `d = n - m`
+  where `d = n - m`, `diag_index = k[1] - d`, and
+  `index_in_diag = n - max(d, 0)`.
 
   For example:
 
@@ -2125,8 +2126,8 @@ def matrix_diag(diagonal,
          [1, 0, 0, 0],
          [0, 2, 0, 0]]
 
-  # Rectangular matrix with inferred num_cols and padding = 9.
-  tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
+  # Rectangular matrix with inferred num_cols and padding_value = 9.
+  tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
     ==> [[9, 9],  # Output shape: (3, 2)
          [1, 9],
          [9, 2]]
@@ -2195,8 +2196,8 @@ def matrix_diag_part(
 
   ```
   diagonal[i, j, ..., l, n]
-    = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
-      0                             ; otherwise.
+    = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+      padding_value                 ; otherwise.
   ```
   where `y = max(-k[1], 0)`, `x = max(k[1], 0)`.
 
@@ -2205,8 +2206,8 @@ def matrix_diag_part(
 
   ```
   diagonal[i, j, ..., l, m, n]
-    = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
-      0                             ; otherwise.
+    = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+      padding_value                 ; otherwise.
   ```
   where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
 
@@ -2240,8 +2241,8 @@ def matrix_diag_part(
           [5, 2, 7],
           [1, 6, 0]]]
 
-  # Padding = 9
-  tf.matrix_diag_part(input, k = (1, 3), padding = 9)
+  # Padding value = 9
+  tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
     ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
           [3, 8, 9],
           [2, 7, 6]],
@@ -2305,17 +2306,18 @@ def matrix_set_diag(
   ```
   output[i, j, ..., l, m, n]
     = diagonal[i, j, ..., l, n-max(k[1], 0)] ; if n - m == k[1]
-      output[i, j, ..., l, m, n]             ; otherwise
+      input[i, j, ..., l, m, n]              ; otherwise
   ```
 
   Otherwise,
 
   ```
   output[i, j, ..., l, m, n]
-    = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
-      input[i, j, ..., l, m, n]                   ; otherwise
+    = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+      input[i, j, ..., l, m, n]                         ; otherwise
   ```
-  where `d = n - m`
+  where `d = n - m`, `diag_index = k[1] - d`, and
+  `index_in_diag = n - max(d, 0)`.
 
   For example:
 
@@ -2329,15 +2331,15 @@ def matrix_set_diag(
                      [7, 7, 7, 7]]])
   diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
                        [4, 5, 6]])
-  tf.matrix_diag(diagonal) ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
-                                 [7, 2, 7, 7],
-                                 [7, 7, 3, 7]],
-                                [[4, 7, 7, 7],
-                                 [7, 5, 7, 7],
-                                 [7, 7, 6, 7]]]
+  tf.matrix_set_diag(diagonal) ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+                                     [7, 2, 7, 7],
+                                     [7, 7, 3, 7]],
+                                    [[4, 7, 7, 7],
+                                     [7, 5, 7, 7],
+                                     [7, 7, 6, 7]]]
 
   # A superdiagonal (per batch).
-  tf.matrix_diag(diagonal, k = 1)
+  tf.matrix_set_diag(diagonal, k = 1)
     ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
           [7, 7, 2, 7],
           [7, 7, 7, 3]],
@@ -2350,7 +2352,7 @@ def matrix_set_diag(
                          [4, 5, 0]],
                         [[6, 1, 2],
                          [3, 4, 0]]])
-  tf.matrix_diag(diagonals, k = (-1, 0))
+  tf.matrix_set_diag(diagonals, k = (-1, 0))
     ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
           [4, 2, 7, 7],
           [0, 5, 3, 7]],
