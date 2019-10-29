@@ -1584,15 +1584,3 @@ func @conv2d_backprop_filter(
   } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
   return %result : tensor<100x28x28x1xf32>
 }
-
-// CHECK-LABEL: @cross_replica_sum
-func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
-  %replica_groups = "tf.Const" () {
-    value = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi32>
-  } : () -> tensor<2x4xi32>
-
-  // CHECK: xla_hlo.cross-replica-sum
-  // CHECK-SAME: replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
-  %result = "tf.CrossReplicaSum" (%input, %replica_groups) : (tensor<10xf32>, tensor<2x4xi32>) -> tensor<10xf32>
-  return %result : tensor<10xf32>
-}

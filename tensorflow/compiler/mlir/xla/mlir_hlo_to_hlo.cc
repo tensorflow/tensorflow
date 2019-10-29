@@ -362,10 +362,6 @@ LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(CrossReplicaSumOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
 LogicalResult ExportXlaOp(DynamicSliceOp op, OpLoweringContext ctx) {
   return failure();
 }
