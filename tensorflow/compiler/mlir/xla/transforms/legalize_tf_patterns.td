@@ -226,6 +226,18 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
+// CrossReplicaSum op patterns.
+//===----------------------------------------------------------------------===//
+
+def CastElementsToI64Elements : NativeCodeCall<
+  "::xla::ConvertElementsAttr("
+    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
+def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
+          (HLO_CrossReplicaSumOp $input,
+            (CastElementsToI64Elements $group_assignment))>;
+
+//===----------------------------------------------------------------------===//
 // Fft op patterns.
 //===----------------------------------------------------------------------===//
 

@@ -457,6 +457,20 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
 // TODO(hinsu): Make this struct dialect independent so that it can be shared
 // between HLO and LHLO dialect.
 def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
