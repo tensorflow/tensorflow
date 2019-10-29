@@ -214,6 +214,24 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
 }
 
 template <typename T>
+inline void ReluX(const tflite::ReluParams& params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 val = static_cast<int32_t>(input_data[i]);
+    int32 clamped = params.output_offset +
+                    MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                  params.output_multiplier,
+                                                  params.output_shift);
+    clamped = std::max(params.quantized_activation_min, clamped);
+    clamped = std::min(params.quantized_activation_max, clamped);
+    output_data[i] = static_cast<T>(clamped);
+  }
+}
+
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
