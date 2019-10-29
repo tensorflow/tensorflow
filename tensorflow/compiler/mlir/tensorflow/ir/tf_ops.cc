@@ -1218,24 +1218,29 @@ static LogicalResult Verify(ShapeOp op) {
   return VerifyShapeOperandAndResult(op, op.input()->getType(), op.getType());
 }
 
-OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
-  auto inputType = getOperand()->getType();
-  auto rankedTensorType = inputType.dyn_cast<RankedTensorType>();
-  if (!rankedTensorType || !rankedTensorType.hasStaticShape()) return {};
+// Converts shape of the given type to attribute if it is of ranked tensor type.
+// Returned attribute has integer elements of the given width.
+static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
+  auto ranked_ty = input_ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty || !ranked_ty.hasStaticShape()) return {};
 
-  auto shape = rankedTensorType.getShape();
+  auto shape = ranked_ty.getShape();
   int rank = shape.size();
 
-  Builder b(getContext());
-  auto elementType = getType().cast<ShapedType>().getElementType();
-
-  SmallVector<Attribute, 4> dimensions;
+  SmallVector<APInt, 4> dimensions;
   dimensions.reserve(rank);
   for (int i = 0; i < rank; ++i)
-    dimensions.push_back(b.getIntegerAttr(elementType, shape[i]));
+    dimensions.push_back(APInt(out_width, shape[i]));
 
-  auto resultType = RankedTensorType::get({rank}, elementType);
-  return DenseElementsAttr::get(resultType, dimensions);
+  auto result_type = RankedTensorType::get(
+      {rank}, IntegerType::get(out_width, input_ty.getContext()));
+  return DenseElementsAttr::get(result_type, dimensions);
+}
+
+OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  return ConvertShapeToAttr(getOperand()->getType(), width);
 }
 
 void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
@@ -1271,6 +1276,25 @@ static LogicalResult Verify(ShapeNOp op) {
 
   return success();
 }
+
+LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult> &results) {
+  if (getNumOperands() == 0) return success();
+  int width =
+      getType(0).cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+
+  for (Type input_ty : getOperandTypes()) {
+    OpFoldResult result = ConvertShapeToAttr(input_ty, width);
+    if (!result) return failure();
+
+    results.push_back(result);
+  }
+  return success();
+}
+
+// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+// static input shapes. Replacing output values corresponding to static input
+// types may enable optimizations in users of the values.
 
 //===----------------------------------------------------------------------===//
 // SliceOp

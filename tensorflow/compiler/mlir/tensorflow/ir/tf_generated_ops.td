@@ -3968,6 +3968,8 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
