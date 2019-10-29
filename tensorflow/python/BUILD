@@ -3809,6 +3809,7 @@ cuda_py_test(
     additional_deps = [
         ":stateful_random_ops",
         ":client_testlib",
+        ":config",
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
