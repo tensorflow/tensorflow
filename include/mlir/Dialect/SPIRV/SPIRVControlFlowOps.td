@@ -36,7 +36,7 @@ include "mlir/Analysis/CallInterfaces.td"
 
 // -----
 
-def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
+def SPV_BranchOp : SPV_Op<"Branch", [InFunctionScope, Terminator]> {
   let summary = "Unconditional branch to target block.";
 
   let description = [{
@@ -90,7 +90,8 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
 // -----
 
-def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
+def SPV_BranchConditionalOp : SPV_Op<"BranchConditional",
+                                     [InFunctionScope, Terminator]> {
   let summary = [{
     If Condition is true, branch to true block, otherwise branch to false
     block.
@@ -265,7 +266,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
 
 // -----
 
-def SPV_LoopOp : SPV_Op<"loop"> {
+def SPV_LoopOp : SPV_Op<"loop", [InFunctionScope]> {
   let summary = "Define a structured loop.";
 
   let description = [{
@@ -402,7 +403,7 @@ def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   let results = (outs);
 }
 
-def SPV_SelectionOp : SPV_Op<"selection"> {
+def SPV_SelectionOp : SPV_Op<"selection", [InFunctionScope]> {
   let summary = "Define a structured selection.";
 
   let description = [{
