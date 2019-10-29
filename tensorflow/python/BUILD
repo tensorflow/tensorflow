@@ -103,6 +103,7 @@ py_library(
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
         ":_pywrap_scoped_annotation",
+        ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_traceme",
@@ -568,6 +569,17 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_stacktrace_handler",
+    srcs = ["platform/stacktrace_handler_wrapper.cc"],
+    hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
+    module_name = "_pywrap_stacktrace_handler",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_scoped_annotation",
     srcs = ["util/scoped_annotation_wrapper.cc"],
     hdrs = [
@@ -991,6 +1003,7 @@ py_library(
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_quantize_training",
         ":_pywrap_scoped_annotation",
+        ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_traceme",
@@ -1634,6 +1647,7 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
+        ":_pywrap_stacktrace_handler",
         ":array_ops",
         ":client",
         ":errors",
@@ -5256,7 +5270,6 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
-        "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "util/py_checkpoint_reader.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
