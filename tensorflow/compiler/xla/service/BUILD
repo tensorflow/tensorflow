@@ -2953,6 +2953,7 @@ cc_library(
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
+        ":hlo_cost_analysis",
     ],
 )
 

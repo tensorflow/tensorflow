@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 namespace xla {
 
@@ -51,6 +52,55 @@ class PresetAssignments {
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, int64>> sizes_;
+};
+
+// A wrapper class around HloCostAnalysis with additional knowledge about the
+// bandwidths of different memory spaces.
+class MemorySpaceAssignmentCostAnalysis {
+ public:
+  MemorySpaceAssignmentCostAnalysis(
+      const HloCostAnalysis& cost_analysis,
+      float async_copy_bandwidth_bytes_per_second,
+      float alternate_mem_bandwidth_bytes_per_second)
+      : cost_analysis_(cost_analysis),
+        async_copy_bandwidth_bytes_per_second_(
+            async_copy_bandwidth_bytes_per_second),
+        alternate_mem_bandwidth_bytes_per_second_(
+            alternate_mem_bandwidth_bytes_per_second) {}
+
+  const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
+
+  // Returns the elapsed time in seconds due to compute only.
+  float GetInstructionElapsedDueToCompute(
+      const HloInstruction& instruction) const;
+
+  // Returns the elapsed time in seconds due to memory only. If
+  // operand_in_alternate_mem is provided or if output_in_alternate_mem is true,
+  // it will assume that operand or output will be in the alternate memory
+  // space. This is useful for calculating the benefit of placing the buffer in
+  // alternate memory.
+  float GetInstructionElapsedDueToMemory(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
+      bool output_in_alternate_mem = false) const;
+
+  // Returns the estimated elapsed duration of the instruction in seconds.  It
+  // assumes all operands and outputs of the instruction are in the default
+  // memory, except for the operand number that is in the alternate memory, if
+  // provided, or output if output_in_alternate_mem is true.
+  float GetInstructionElapsed(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
+      bool output_in_alternate_mem = false) const;
+
+  // Returns the elapsed time it would take to asynchronously copy the shape
+  // from default to alternate memory space (or vice versa).
+  float GetAsyncCopyElapsed(const Shape& shape) const;
+
+ private:
+  const HloCostAnalysis& cost_analysis_;
+  float async_copy_bandwidth_bytes_per_second_;
+  float alternate_mem_bandwidth_bytes_per_second_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -118,6 +168,55 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 max_overlap_count_;
   int64 end_time_;
   int64 current_prefetch_time_;
+};
+
+// Prefetch interval picker that uses cost analysis to overlap asynchronous
+// copies with independent computation. It uses min/max (asynchronous copy
+// duration) / (independent computation duration) ratios to guide whether the
+// prefetch is within those bounds. It starts with the maximum allowed ratio
+// (earliest prefetch) in Begin() and works its way for later and later prefetch
+// with each Next() call until hitting the minimum ratio, in order not to hurt
+// the critical path.
+class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
+ public:
+  CostAnalysisPrefetchIntervalPicker(
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      float min_async_copy_to_overlap_ratio,
+      float max_async_copy_to_overlap_ratio)
+      : cost_analysis_(cost_analysis),
+        min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
+        max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {}
+
+  void SetInstructionSchedule(
+      const absl::flat_hash_map<const HloInstruction*, int64>&
+          instruction_schedule) override;
+
+  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
+                                          int64 end_time) const override;
+
+  void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
+
+  int64 Next() override;
+  bool Done() const override;
+
+ private:
+  // Returns the elapsed time in seconds between the logical interval that
+  // corresponds to the instruction schedule.
+  float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
+
+  // For performance reasons, we calculate the prefix sum of the elapsed time so
+  // that it's efficient to find the elapsed time in seconds in any logical
+  // interval.
+  std::vector<float> elapsed_time_cumsum_;
+
+  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
+  float min_async_copy_to_overlap_ratio_;
+  float max_async_copy_to_overlap_ratio_;
+
+  float async_copy_elapsed_;
+  float inst_elapsed_reduction_;
+  int64 end_logical_time_;
+  int64 current_logical_prefetch_time_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each

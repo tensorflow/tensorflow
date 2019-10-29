@@ -24,12 +24,42 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
+constexpr int64 kPointerSize = 8;
+constexpr float kAsyncCopyBandwidth = 100;
+constexpr float kAlternateMemBandwidth = 1000;
+constexpr float kBytesPerSecond = 100;
+constexpr float kFlopsPerSecond = 1000;
+constexpr float kTranscendentalsPerSecond = 10;
+
+int64 ShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+}
+
 class MemorySpaceAssignmentTest : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
   const int64 kDefaultMemorySpace = 0;
   const int64 kAlternateMemorySpace = 1;
+
+  std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
+      HloModule* module) {
+    HloCostAnalysis hlo_cost_analysis(ShapeSize);
+    hlo_cost_analysis.set_flops_per_second(kFlopsPerSecond);
+    hlo_cost_analysis.set_bytes_per_second(kBytesPerSecond);
+    hlo_cost_analysis.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    for (HloComputation* computation : module->MakeNonfusionComputations()) {
+      TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
+    }
+    MemorySpaceAssignmentCostAnalysis cost_analysis(
+        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth);
+    CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
+        CostAnalysisPrefetchIntervalPicker(
+            cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
+            /*max_async_copy_to_overlap_ratio=*/10.0));
+    return AssignMemorySpace(module, /*max_outstanding_async_copies=*/-1,
+                             &prefetch_interval_picker);
+  }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
@@ -1556,6 +1586,58 @@ TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
             kDefaultMemorySpace);
   EXPECT_EQ(p->shape().tuple_shapes(1).layout().memory_space(),
             kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, CostAnalysis) {
+  // This is mostly a smoke test since it's difficult and brittle to work out
+  // the cost of the HLO instructions.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
 }  // namespace
