@@ -10,10 +10,7 @@ package(
 
 py_library(
     name = "xla_client",
-    srcs = [
-        "xla_client.py",
-        "xrt.py",
-    ],
+    srcs = ["xla_client.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
@@ -69,33 +66,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "xrt",
-    srcs = ["xrt.cc"],
-    hdrs = ["xrt.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":types",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xrt/client:xrt_client",
-        "//tensorflow/compiler/xrt/client:xrt_grpc_eager_client",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
@@ -254,7 +224,6 @@ pybind_extension(
         ":shared_device_buffer",
         ":python_ref_manager",
         ":types",
-        ":xrt",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
@@ -300,16 +269,3 @@ pybind_extension(
         "//tensorflow/stream_executor:device_memory_allocator",
     ] + xla_python_default_plugins(),
 )
-
-# TODO(phawkins): enable this test.
-# py_test(
-#     name = "xrt_test",
-#     srcs = ["xrt_test.py"],
-#     deps = [
-#         ":xla_client",
-#         "//third_party/py/numpy",
-#         "//tensorflow/compiler/jit:xla_cpu_device",
-#         "//tensorflow/compiler/xrt:xrt_server",
-#         "//tensorflow/python:client_testlib",
-#     ],
-# )

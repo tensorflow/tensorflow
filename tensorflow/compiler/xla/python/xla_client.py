@@ -614,8 +614,7 @@ class Computation(object):
 #       sole, zero'th replica's output is returned instead, as a Buffer.
 #     """
 #
-# There are different implementations of Executable for the Local and XRT
-# backends.
+# There are different implementations of Executable for different backends.
 
 
 def execute_with_python_values(executable, arguments=(), backend=None):
