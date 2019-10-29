@@ -10,8 +10,8 @@ TensorFlow Lite models, and make the TensorFlow Lite interpreter easier to use.
 We welcome feedback from the community as we develop this support library,
 especially around:
 
-*   `Use-cases we should support including data types and operations`
-*   `Ease of use - does the APIs make sense to the community`
+*   Use-cases we should support including data types and operations
+*   Ease of use - does the APIs make sense to the community
 
 ## Table of Contents
 
@@ -170,10 +170,10 @@ if (null != associatedAxisLabels) {
 
 The current experimental version of the TensorFlow Lite Support Library covers:
 
-*   `common data types (float, uint8, images and array of these objects) as
-    inputs and outputs of tflite models.`
-*   `basic image operations (crop image, resize and rotate).`
-*   `quantized and float models.`
+*   common data types (float, uint8, images and array of these objects) as
+    inputs and outputs of tflite models.
+*   basic image operations (crop image, resize and rotate).
+*   quantized and float models.
 
 Future versions will improve support for text-related applications.
 
