@@ -696,7 +696,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_ordinal();
-  LOG(ERROR) << "device_ordinal = " << device_ordinal;
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
   VLOG(3) << "Replica " << replica
           << " mapped to device ordinal for execution: " << device_ordinal;
