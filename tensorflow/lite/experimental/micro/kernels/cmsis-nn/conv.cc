@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 
+#include "arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/micro/kernels/cmsis-nn/scratch_buffer.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
@@ -33,9 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 256;
-
-// This file has 2 implementation of Conv.
+constexpr int kMaxChannels = 64;
 
 const int kTensorNotAllocated = -1;
 
@@ -115,11 +115,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                   TfLiteConvParams* params, OpData* data,
-                   const TfLiteTensor* input, const TfLiteTensor* filter,
-                   const TfLiteTensor* bias, TfLiteTensor* im2col,
-                   TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
+TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                           TfLiteConvParams* params, OpData* data,
+                           const TfLiteTensor* input,
+                           const TfLiteTensor* filter, const TfLiteTensor* bias,
+                           TfLiteTensor* im2col, TfLiteTensor* hwcn_weights,
+                           TfLiteTensor* output) {
   const int32_t input_offset = -input->params.zero_point;
   const int32_t filter_offset = -filter->params.zero_point;
   const int32_t output_offset = output->params.zero_point;
@@ -145,14 +146,14 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<int32_t>(bias), GetTensorShape(output),
                       GetTensorData<uint8_t>(output), GetTensorShape(im2col),
                       GetTensorData<uint8_t>(im2col), nullptr);
+  return kTfLiteOk;
 }
 
-void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteConvParams* params, OpData* data,
-                             const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output,
-                             TfLiteTensor* im2col) {
+TfLiteStatus EvalQuantizedPerChannel(
+    TfLiteContext* context, TfLiteNode* node, TfLiteConvParams* params,
+    OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
+    const TfLiteTensor* bias, TfLiteTensor* output, TfLiteTensor* im2col) {
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -163,20 +164,87 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
 
-  reference_integer_ops::ConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+  RuntimeShape filter_shape = GetTensorShape(filter);
+  RuntimeShape input_shape = GetTensorShape(input);
+  RuntimeShape output_shape = GetTensorShape(output);
+  RuntimeShape bias_shape = GetTensorShape(bias);
+
+  // TODO(b/130439627): Use calculated value for clamping.
+  const int32 output_activation_min = std::numeric_limits<int8_t>::min();
+  const int32 output_activation_max = std::numeric_limits<int8_t>::max();
+
+  // Sanity check.
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
+  if (GetTensorData<int8_t>(bias)) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
+
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  int16_t* buf = nullptr;
+
+  if (op_params.padding_values.width == 0 &&
+      op_params.padding_values.height == 0 && (input_depth % 4 == 0) &&
+      (output_depth % 2 == 0) && op_params.stride_width == 1 &&
+      op_params.stride_height == 1 && filter_width == 1 && filter_height == 1) {
+    const int32_t buf_size =
+        arm_convolve_1x1_s8_fast_get_buffer_size(input_depth);
+    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+    if (arm_convolve_1x1_s8_fast(
+            GetTensorData<int8_t>(input), input_width, input_height,
+            input_depth, batches, GetTensorData<int8_t>(filter), output_depth,
+            op_params.padding_values.width, op_params.padding_values.height,
+            op_params.stride_width, op_params.stride_height,
+            GetTensorData<int32>(bias), GetTensorData<int8_t>(output),
+            data->per_channel_output_shift, data->per_channel_output_multiplier,
+            op_params.output_offset, op_params.input_offset,
+            output_activation_min, output_activation_max, output_width,
+            output_height, buf) != ARM_MATH_SUCCESS) {
+      return kTfLiteError;
+    }
+  } else {
+    const int32_t buf_size = arm_convolve_s8_get_buffer_size(
+        input_depth, filter_width, filter_height);
+    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+    if (arm_convolve_s8(
+            GetTensorData<int8_t>(input), input_width, input_height,
+            input_depth, batches, GetTensorData<int8_t>(filter), output_depth,
+            filter_width, filter_height, op_params.padding_values.width,
+            op_params.padding_values.height, op_params.stride_width,
+            op_params.stride_height, GetTensorData<int32>(bias),
+            GetTensorData<int8_t>(output), data->per_channel_output_shift,
+            data->per_channel_output_multiplier, op_params.output_offset,
+            op_params.input_offset, output_activation_min,
+            output_activation_max, output_width, output_height,
+            buf) != ARM_MATH_SUCCESS) {
+      return kTfLiteError;
+    }
+  }
+#else
+#error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
+#endif
+  return kTfLiteOk;
 }
 
-void EvalFloat(TfLiteContext* context, TfLiteNode* node,
-               TfLiteConvParams* params, OpData* data,
-               const TfLiteTensor* input, const TfLiteTensor* filter,
-               const TfLiteTensor* bias, TfLiteTensor* im2col,
-               TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
+TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteConvParams* params, OpData* data,
+                       const TfLiteTensor* input, const TfLiteTensor* filter,
+                       const TfLiteTensor* bias, TfLiteTensor* im2col,
+                       TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -198,6 +266,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<float>(bias), GetTensorShape(output),
                       GetTensorData<float>(output), GetTensorShape(im2col),
                       GetTensorData<float>(im2col));
+  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -216,9 +285,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int output_height = output->dims->data[1];
 
   OpData data;
-
-  // All per-channel quantized tensors need valid zero point and scale arrays.
-  if (input->type == kTfLiteInt8) {
+  if (input->type != kTfLiteFloat32) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -227,13 +294,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
-    TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Conv is quantized along dimension 0:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
-                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(
@@ -242,16 +302,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      EvalFloat(context, node, params, &data, input, filter, bias, nullptr,
-                nullptr, output);
+      return EvalFloat(context, node, params, &data, input, filter, bias,
+                       nullptr, nullptr, output);
       break;
     case kTfLiteInt8:
-      EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
-                              output, nullptr);
+      return EvalQuantizedPerChannel(context, node, params, &data, input,
+                                     filter, bias, output, nullptr);
       break;
     case kTfLiteUInt8:
-      EvalQuantized(context, node, params, &data, input, filter, bias, nullptr,
-                    nullptr, output);
+      return EvalQuantized(context, node, params, &data, input, filter, bias,
+                           nullptr, nullptr, output);
       break;
     default:
       context->ReportError(context, "Type %s (%d) not supported.",
