@@ -181,6 +181,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleRng(HloInstruction* rng) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status FinishVisit(HloInstruction* root) override;

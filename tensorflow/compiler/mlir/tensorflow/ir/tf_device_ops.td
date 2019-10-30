@@ -82,6 +82,8 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
       }]
     >
   ];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {

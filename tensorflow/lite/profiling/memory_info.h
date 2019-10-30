@@ -20,6 +20,7 @@ limitations under the License.
 namespace tflite {
 namespace profiling {
 namespace memory {
+
 struct MemoryUsage {
   static const int kValueNotSet;
 
@@ -52,6 +53,8 @@ struct MemoryUsage {
 };
 
 // Return the memory usage from the system.
+// Note: this currently only works on Linux-based systems. Support on other
+// systems will be added later.
 MemoryUsage GetMemoryUsage();
 
 }  // namespace memory

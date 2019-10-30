@@ -21,6 +21,13 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
+// This pass is used in preparation for Graph export.
+// The GraphDef exporter expects each op to be in its own island.
+// This pass puts the IR in that form.
+//
+// We do this as an IR->IR transform to keep the Graph exporter as simple as
+// possible.
+
 namespace mlir {
 
 namespace {
@@ -59,7 +66,6 @@ void BreakUpIslands::runOnOperation() {
 void BreakUpIslands::BreakUpIsland(tf_executor::IslandOp op) {
   OpBuilder builder(op);
   OpBuilder island_builder(op);
-  auto loc = op.getLoc();
   auto control_type = tf_executor::ControlType::get(&getContext());
   Value* previous_island = nullptr;
   auto tmp_control_inputs = llvm::to_vector<4>(op.controlInputs());
@@ -67,6 +73,7 @@ void BreakUpIslands::BreakUpIsland(tf_executor::IslandOp op) {
   // For each operator in the island,
   for (Operation& sub_op :
        llvm::make_early_inc_range(op.GetBody().without_terminator())) {
+    auto loc = sub_op.getLoc();
     auto island = builder.create<tf_executor::IslandOp>(
         loc, llvm::to_vector<4>(sub_op.getResultTypes()), control_type,
         previous_control);

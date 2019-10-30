@@ -27,8 +27,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-float GetiOsSystemVersion() { return [[[UIDevice currentDevice] systemVersion] floatValue]; }
-
 int GetAppleSocVersion() {
   int max_feature_set = 0;
 #if defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0

@@ -2889,7 +2889,6 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentMean", {true, {}}},
           {"SparseSegmentSqrtN", {true, {}}},
           {"UnsortedSegmentSum", {true, {}}},
-          {"UnsortedSegmentMax", {true, {}}},
           {"Abs", {true, {}}},
           {"Neg", {true, {}}},
           {"ReciprocalGrad", {true, {}}},

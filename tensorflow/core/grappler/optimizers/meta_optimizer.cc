@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -539,6 +540,7 @@ Status MetaOptimizer::RunOptimizer(
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   const uint64 end_us = Env::Default()->NowMicros();
   const float duration_ms = (end_us - start_us) / 1000.0f;
+  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
 
   string message;
   if (!status.ok()) {

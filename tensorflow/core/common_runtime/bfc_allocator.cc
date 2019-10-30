@@ -1006,7 +1006,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   mas->set_bytes_in_use(stats_.bytes_in_use);
   mas->set_peak_bytes_in_use(stats_.peak_bytes_in_use);
   mas->set_largest_alloc_size(stats_.largest_alloc_size);
-  double frag_m_sum = 0.0;
+  int64 largest_free_chunk = 0;
   int64 free_bytes = 0;
 
   // Record summary data for every bin.
@@ -1045,13 +1045,19 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       }
       if (!c->in_use()) {
         free_bytes += c->size;
-        frag_m_sum += pow(c->size, 1.1);
+        if (c->size > largest_free_chunk) {
+          largest_free_chunk = c->size;
+        }
       }
       h = c->next;
     }
   }
-  mas->set_fragmentation_metric(
-      1.0 - (frag_m_sum / pow(static_cast<double>(free_bytes), 1.1)));
+  double frag_metric = 0.0;
+  if (free_bytes > 0) {
+    frag_metric =
+        (free_bytes - largest_free_chunk) / static_cast<double>(free_bytes);
+  }
+  mas->set_fragmentation_metric(frag_metric);
 
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history

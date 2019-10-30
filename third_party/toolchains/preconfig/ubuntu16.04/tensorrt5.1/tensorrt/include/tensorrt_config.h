@@ -13,15 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_XRT_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_XRT_H_
+#ifndef TENSORRT_TENSORRT_INCLUDE_CONFIG_H_
+#define TENSORRT_TENSORRT_INCLUDE_CONFIG_H_
 
-#include "include/pybind11/pybind11.h"
+#define TF_TENSORRT_VERSION "5"
 
-namespace tensorflow {
-
-void AddXrtSubmodule(pybind11::module* module);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_XRT_H_
+#endif  // TENSORRT_TENSORRT_INCLUDE_CONFIG_H_

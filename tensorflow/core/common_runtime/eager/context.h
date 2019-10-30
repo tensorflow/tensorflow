@@ -186,7 +186,15 @@ class EagerContext : public core::RefCounted {
 
   EagerExecutor& Executor();
 
+  // Add the given `fdef` to the local FunctionLibraryDefinition. And add an
+  // entry to the KernelAndDevice cache for it if it's not exist.
+  Status AddFunctionDef(const FunctionDef& fdef);
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
   Status AddFunctionDef(const FunctionDef& fdef,
+                        const FunctionDefLibrary& library,
                         const bool add_to_local_only = false);
 
   Status RemoveFunction(const string& func);

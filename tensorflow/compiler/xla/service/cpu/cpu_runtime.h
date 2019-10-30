@@ -67,7 +67,7 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
-
+extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
 
@@ -153,6 +153,10 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length);
+
+// Write the replica ID into the output buffer.
+extern void __xla_cpu_runtime_ReplicaId(
+    const xla::ExecutableRunOptions* run_options, void* output_buffer);
 
 }  // extern "C"
 

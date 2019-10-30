@@ -72,6 +72,13 @@ cc_test(
     name = "memory_info_test",
     srcs = ["memory_info_test.cc"],
     copts = common_copts,
+    tags = [
+        # Some low-level checks, like heap size check, may break in asan, msan
+        # and tsan. So, disable such tests.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":memory_info",
         "//tensorflow/lite/testing:util",

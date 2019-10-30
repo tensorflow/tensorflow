@@ -186,10 +186,10 @@ func @testAddV2OfNegRight(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> t
 }
 
 // CHECK-LABEL: testDoubleConj
-func @testDoubleConj(%arg0: tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64> {
-  %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64>
-  %1 = "tf.Conj"(%0) : (tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64>
-  return %1: tensor<8x16x32x64x!tf.complex64>
+func @testDoubleConj(%arg0: tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>> {
+  %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
+  %1 = "tf.Conj"(%0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
+  return %1: tensor<8x16x32x64xcomplex<f32>>
 
 // CHECK: return %arg0
 }

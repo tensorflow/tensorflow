@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <cstring>
 #include <functional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -98,6 +100,7 @@ extern const char* const kTracingStartSymbolName =
     "__xla_cpu_runtime_TracingStart";
 extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
+extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 
 }  // namespace runtime
 }  // namespace cpu
@@ -233,4 +236,20 @@ __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
+}
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
+    const xla::ExecutableRunOptions* run_options, void* output_buffer) {
+  int device_ordinal = [&]() {
+    if (run_options->stream()) {
+      return run_options->stream()->parent()->device_ordinal();
+    } else {
+      return run_options->device_ordinal();
+    }
+  }();
+
+  xla::int32 replica_id = run_options->device_assignment()
+                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
+                              .ValueOrDie();
+  std::memcpy(output_buffer, &replica_id, 4);
 }

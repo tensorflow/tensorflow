@@ -41,13 +41,15 @@ echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DI
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   rpi)
-    ${PYTHON} setup.py bdist_wheel --plat-name=linux-armv7l
+    ${PYTHON} setup.py bdist --plat-name=linux-armv7l \
+                       bdist_wheel --plat-name=linux-armv7l
     ;;
   aarch64)
-    ${PYTHON} setup.py bdist_wheel --plat-name=linux-aarch64
+    ${PYTHON} setup.py bdist --plat-name=linux-aarch64 \
+                       bdist_wheel --plat-name=linux-aarch64
     ;;
   *)
-    ${PYTHON} setup.py bdist_wheel
+    ${PYTHON} setup.py bdist bdist_wheel
     ;;
 esac
 

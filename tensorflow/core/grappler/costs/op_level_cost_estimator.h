@@ -61,6 +61,10 @@ class OpLevelCostEstimator {
     int n;
     int k;
   };
+  struct BatchMatMulDimensions {
+    std::vector<int> batch_dims;
+    MatMulDimensions matmul_dims;
+  };
   struct ConvolutionDimensions {
     int64 batch;      // Batch size.
     int64 ix;         // Input size x.
@@ -87,6 +91,9 @@ class OpLevelCostEstimator {
   int64 CountMatMulOperations(const OpInfo& op_info, MatMulDimensions* mat_mul,
                               bool* found_unknown_shapes) const;
   int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const;
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   BatchMatMulDimensions* batch_mat_mul,
                                    bool* found_unknown_shapes) const;
   int64 CountConv2DBackpropInputOperations(
       const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,

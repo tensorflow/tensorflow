@@ -734,6 +734,13 @@ struct ActivationParams {
   int32 quantized_activation_max;
 };
 
+struct ReluParams : public ActivationParams {
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
+};
+
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
 enum class ResizingCategory : uint8 {

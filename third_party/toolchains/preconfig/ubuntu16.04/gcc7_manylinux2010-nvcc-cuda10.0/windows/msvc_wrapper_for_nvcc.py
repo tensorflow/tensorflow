@@ -28,6 +28,7 @@ import subprocess
 import re
 import sys
 import pipes
+import tempfile
 
 # Template values set by cuda_autoconf.
 CPU_COMPILER = ('/dt7/usr/bin/gcc')
@@ -36,14 +37,7 @@ GCC_HOST_COMPILER_PATH = ('/dt7/usr/bin/gcc')
 NVCC_PATH = '/usr/local/cuda-10.0/bin/nvcc'
 NVCC_VERSION = '10.0'
 NVCC_TEMP_DIR = "C:\\Windows\\Temp\\nvcc_inter_files_tmp_dir"
-DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
-
-# Taken from environment variable for supported TF CUDA Compute Capabilities
-# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
-supported_cuda_compute_capabilities = os.environ.get(
-    'TF_CUDA_COMPUTE_CAPABILITIES',
-    DEFAULT_CUDA_COMPUTE_CAPABILITIES).split(',')
-
+supported_cuda_compute_capabilities = [ "3.0", "6.0" ]
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -152,15 +146,17 @@ def InvokeNvcc(argv, log=False):
   nvccopts += m_options
   nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
-  # If we don't specify --keep-dir, nvcc will generate intermediate files under TEMP
-  # Put them under NVCC_TEMP_DIR instead, then Bazel can ignore files under NVCC_TEMP_DIR during dependency check
+  # Specify a unique temp directory for nvcc to generate intermediate files,
+  # then Bazel can ignore files under NVCC_TEMP_DIR during dependency check
   # http://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver
   # Different actions are sharing NVCC_TEMP_DIR, so we cannot remove it if the directory already exists.
   if os.path.isfile(NVCC_TEMP_DIR):
     os.remove(NVCC_TEMP_DIR)
   if not os.path.exists(NVCC_TEMP_DIR):
     os.makedirs(NVCC_TEMP_DIR)
-  nvccopts += ['--keep', '--keep-dir', NVCC_TEMP_DIR]
+  # Provide a unique dir for each compiling action to avoid conflicts.
+  tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
+  nvccopts += ['--keep', '--keep-dir', tempdir]
   cmd = [NVCC_PATH] + nvccopts
   if log:
     Log(cmd)

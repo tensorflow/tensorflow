@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -83,6 +84,17 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
       RankedTensorType::get(static_cast<int64_t>(attr.size()),
                             IntegerType::get(64, attr.getContext()));
   return DenseElementsAttr::get(ty, attr.getValue())
+      .cast<DenseIntElementsAttr>();
+}
+
+// Converts a ElementsAttr to a 1D 64-bit dense elements attribute.
+static DenseIntElementsAttr ConvertAttrToI64(ElementsAttr attr) {
+  llvm::function_ref<APInt(const APInt &)> conversion_func =
+      [](const APInt &int_value) -> APInt {
+    return APInt(64, int_value.getSExtValue(), /*isSigned=*/true);
+  };
+  return attr
+      .mapValues(IntegerType::get(64, attr.getContext()), conversion_func)
       .cast<DenseIntElementsAttr>();
 }
 
@@ -835,12 +847,8 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     // the maximum input value is zero. It can be shown that softmax computed
     // after adding or subtracting all inputs in a batch using a common value
     // gives mathematically equivalent result.
-    Type element_type = type.getElementType();
-    ArrayRef<int64_t> reduce_shape = type.getShape().drop_back();
-    RankedTensorType reduce_out_type =
-        RankedTensorType::get(reduce_shape, element_type);
     auto max_logits =
-        rewriter.create<TF::MaxOp>(loc, reduce_out_type, logits, reduce_dim,
+        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
                                    /*keep_dims=*/rewriter.getBoolAttr(false));
     auto shifted_logits = rewriter.create<xla_hlo::SubOp>(
         loc, type, logits, max_logits, batch_dims);
@@ -850,12 +858,12 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 
     // Compute summation of the exponentials.
     auto exp_sum =
-        rewriter.create<TF::SumOp>(loc, reduce_out_type, exp, reduce_dim,
+        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
                                    /*keep_dims=*/rewriter.getBoolAttr(false));
     Value *sum = exp_sum.getResult();
 
     if (use_log) {
-      Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
+      Value *log = rewriter.create<xla_hlo::LogOp>(loc, sum);
       rewriter.replaceOpWithNewOp<xla_hlo::SubOp>(op, shifted_logits, log,
                                                   batch_dims);
     } else {
@@ -971,6 +979,47 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // Reshape slice result so that the shape is updated depending on
     // 'new_axis_mask' or 'shrink_axis_mask' attributes.
     rewriter.replaceOpWithNewOp<xla_hlo::ReshapeOp>(op, op.getType(), sliced);
+    return matchSuccess();
+  }
+};
+
+/// Converts the RangeOp tensorflow op to a xla_hlo.iota op with a scaling and
+/// offset applied to generate the range values. The output tensor needs to
+/// have a static shape.
+///
+/// For example an op like the following:
+///   %result = "tf.Range"(%start, %limit, %delta) {Tidx = "tfdtype$DT_FLOAT"}
+///      : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
+///
+/// Output would be:
+///   %iota = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xf32>
+///   %scaled = "xla_hlo.mul"(%iota, %delta)
+///       {broadcast_dimensions = dense<[]> : tensor<0xi64>} :
+///       (tensor<5xf32>, tensor<f32>) -> tensor<5xf32>
+///   %result = "xla_hlo.add"(%scaled, %offset)
+///       {broadcast_dimensions = dense<[]> : tensor<0xi64>} :
+///       (tensor<5xf32>, tensor<f32>) -> tensor<5xf32>
+///
+/// Implementation is defined in C++ due to no type interface for the iota op.
+class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
+  using OpRewritePattern<TF::RangeOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::RangeOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result->getType();
+    if (!result_type.cast<ShapedType>().hasStaticShape()) {
+      return matchFailure();
+    }
+
+    auto iota = rewriter.create<xla_hlo::IotaOp>(op.getLoc(), result_type,
+                                                 rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), result_type, iota, op.delta(),
+        getBroadcastDimensionsAttr(rewriter, iota, op.delta()));
+    rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(
+        op, result_type, scaled, op.start(),
+        getBroadcastDimensionsAttr(rewriter, scaled, op.start()));
     return matchSuccess();
   }
 };
@@ -1741,7 +1790,7 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertBF16FloorDivOp,
                   mlir::xla::ConvertConv2D, mlir::xla::ConvertMaxPoolOp,
-                  mlir::xla::ConvertSigmoidOp,
+                  mlir::xla::ConvertRangeOp, mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
