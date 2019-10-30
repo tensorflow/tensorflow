@@ -24,7 +24,6 @@ def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
-def ConvertAttrToI64 : NativeCodeCall<"ConvertAttrToI64($0)">;
 
 class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
@@ -246,7 +245,7 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
 
 def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
           (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
-           (ConvertAttrToI64 $fft_length))>;
+           (CastElementsToI64Elements $fft_length))>;
 
 //===----------------------------------------------------------------------===//
 // Pad op patterns.
