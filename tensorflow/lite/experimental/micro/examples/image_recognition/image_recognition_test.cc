@@ -81,7 +81,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
     }
 
     TfLiteTensor* output = interpreter.output(0);
-    int guess = get_top_prediction(output->data.uint8);
+    int guess = get_top_prediction(output->data.uint8, 10);
 
     if (correct_label == guess) {
       num_correct++;
