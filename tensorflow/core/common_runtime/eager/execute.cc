@@ -208,12 +208,15 @@ Status ValidateInputTypeAndPlacement(
     return errors::InvalidArgument("expected ", kernel->num_inputs(),
                                    " inputs, got ", n_inputs);
   }
+  const bool skip_remote_copy =
+      ctx->LazilyCopyFunctionRemoteInputs() && kernel->IsFunction();
   for (int i = 0; i < n_inputs; ++i) {
     TensorHandle* handle = op->Inputs()[i];
     Device* expected_device = kernel->InputDevice(i);
     Device* handle_device = handle->DeviceOrHostCPU(ctx);
+    const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
     // If the input is already on the right device, then nothing to do.
-    if (expected_device != handle_device) {
+    if (expected_device != handle_device && maybe_copy) {
       TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
                                                    handle, i, handle_device,
                                                    expected_device, &handle));
@@ -485,17 +488,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
-    // All inputs need to be on local devices.
-    // TODO(b/134094971): This is a limitation of the current code base (but
-    // should be possible to get around).
-    // Code changes will need to be made to pass input objects to the
-    // function library runtime instead of just "Tensor"s.
-    // Once that is the case, we will be able to write a thin wrapper layer over
-    // the EagerService that behaves similar to the current
-    // ClusterFunctionLibraryRuntime/DistributedFunctionLibraryRuntime.
+    // When LazilyCopyFunctionRemoteInputs is disabled, all inputs need to be on
+    // local devices, since we execute a remote function through worker service,
+    // which doesn't accept remote inputs.
+    // TODO(b/134094971): Make resource_dtypes_and_shapes avaliable without
+    // remote tensor copy.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (input->IsRemote()) {
+      if (!ctx->LazilyCopyFunctionRemoteInputs() && input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, &executor, device == nullptr ? ctx->HostCPU() : device,
@@ -590,14 +590,18 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
                << "compile_with_xla=" << compile_with_xla
                << ". Full node_def=" << ndef.DebugString();
-      // TODO(b/134094971): Set get_op_id when
-      // EagerClusterFunctionLibraryRuntime is in use.
+      std::function<int64()> get_op_id = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+      if (ctx->LazilyCopyFunctionRemoteInputs()) {
+        get_op_id = [ctx]() { return ctx->RemoteMgr()->NextOpId(); };
+      }
+#endif  // IS_MOBILE_PLATFORM
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
           [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
-          /* get_op_id= */ nullptr));
+          get_op_id));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
                << "compile_with_xla=" << compile_with_xla
@@ -697,11 +701,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   {
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
+    const bool eagerly_copy_function_remote_inputs =
+        !ctx->LazilyCopyFunctionRemoteInputs() || !op->is_function();
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = input->device();
       const string* input_device_name = &input->DeviceOrHostCPU(ctx)->name();
-      if (op->Device() != input_device &&
+      const bool maybe_copy = eagerly_copy_function_remote_inputs ||
+                              input->DeviceOrHostCPU(ctx)->IsLocal();
+      if (maybe_copy && op->Device() != input_device &&
           // If the expected and actual devices are on the same task, don't
           // explicitly copy, and instead depend on the copy to happen locally
           // when the op is executed on the device.
