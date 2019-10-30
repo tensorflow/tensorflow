@@ -423,6 +423,9 @@ Status DirectSession::Extend(GraphDef&& graph) {
 }
 
 Status DirectSession::ExtendLocked(GraphDef graph) {
+  if (finalized_) {
+    return errors::FailedPrecondition("Session has been finalized.");
+  }
   if (!(flib_def_ && execution_state_)) {
     // If this is the first call, we can initialize the execution state
     // with `graph` and do not need to call `Extend()`.
@@ -1530,6 +1533,10 @@ Status DirectSession::CreateGraphs(
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64* collective_graph_key) {
   mutex_lock l(graph_state_lock_);
+  if (finalized_) {
+    return errors::FailedPrecondition("Session has been finalized.");
+  }
+
   std::unique_ptr<ClientGraph> client_graph;
 
   std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
@@ -1938,6 +1945,20 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     return errors::InvalidArgument("No such callable handle: ", handle);
   }
   callables_.erase(handle);
+  return Status::OK();
+}
+
+Status DirectSession::Finalize() {
+  mutex_lock l(graph_state_lock_);
+  if (finalized_) {
+    return errors::FailedPrecondition("Session already finalized.");
+  }
+  if (!graph_created_) {
+    return errors::FailedPrecondition("Session not yet created.");
+  }
+  execution_state_.reset();
+  flib_def_.reset();
+  finalized_ = true;
   return Status::OK();
 }
 
