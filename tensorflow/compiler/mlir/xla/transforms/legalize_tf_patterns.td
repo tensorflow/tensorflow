@@ -88,6 +88,9 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
+def : Pat<(TF_ComplexOp AnyTensor:$r, AnyTensor:$i),
+          (HLO_ComplexOp $r, $i)>;
+
 def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 
 // IEEE compliant floating point tensors.
@@ -343,8 +346,10 @@ foreach Mapping = [
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
+                   [TF_ImagOp, HLO_ImagOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
+                   [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],

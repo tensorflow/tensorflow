@@ -61,6 +61,8 @@ def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
 def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
+def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
+
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
@@ -165,6 +167,26 @@ def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>,
     BASE_HLO_TanhOp;
+
+//===----------------------------------------------------------------------===//
+// XLA complex unary elementwise op definitions.
+//===----------------------------------------------------------------------===//
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
+
+def HLO_ComplexOp: HLO_Op<"complex", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ComplexOp {
+    let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+    let results = (outs HLO_ComplexTensor);
+}
+
+def HLO_ImagOp: HLO_Op<"imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
+    let arguments = (ins HLO_ComplexTensor);
+    let results = (outs HLO_FpTensor);
+}
+
+def HLO_RealOp: HLO_Op<"real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
+    let arguments = (ins HLO_ComplexTensor);
+    let results = (outs HLO_FpTensor);
+}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.

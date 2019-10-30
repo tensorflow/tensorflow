@@ -452,6 +452,32 @@ func @broadcast_less_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tens
   return %0: tensor<1x2xi1>
 }
 
+
+//===----------------------------------------------------------------------===//
+// Complex op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @complex
+func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
+  // CHECK: "xla_hlo.complex"
+  %1 = "tf.Complex"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
+  return %1 : tensor<3xcomplex<f32>>
+}
+
+// CHECK-LABEL: func @imag
+func @imag(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xf32> {
+  // CHECK: "xla_hlo.imag"
+  %1 = "tf.Imag"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @real
+func @real(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xf32> {
+  // CHECK: "xla_hlo.real"
+  %1 = "tf.Real"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // Concat op legalizations.
 //===----------------------------------------------------------------------===//
