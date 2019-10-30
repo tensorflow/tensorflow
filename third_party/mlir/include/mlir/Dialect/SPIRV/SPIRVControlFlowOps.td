@@ -373,6 +373,29 @@ def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
 
 // -----
 
+def SPV_UnreachableOp : SPV_Op<"Unreachable", [InFunctionScope, Terminator]> {
+  let summary = "Declares that this block is not reachable in the CFG.";
+
+  let description = [{
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    unreachable-op ::= `spv.Unreachable`
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+}
+
+// -----
+
 def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   let summary = "Return a value from a function.";
 
