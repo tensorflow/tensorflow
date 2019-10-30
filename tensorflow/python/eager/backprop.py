@@ -116,13 +116,14 @@ class _MockOp(object):
     )
 
 
-def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
+def _gradient_function(op_name, attr_tuple, device, num_inputs, inputs, outputs,
                        out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
     op_name: the name of the op to be differentiated.
     attr_tuple: the attrs, as a tuple.
+    device: the device of the op.
     num_inputs: the number of inputs to the op.
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
@@ -138,7 +139,8 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  return grad_fn(mock_op, *out_grads)
+  with ops.device(device):
+    return grad_fn(mock_op, *out_grads)
 
 
 pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
