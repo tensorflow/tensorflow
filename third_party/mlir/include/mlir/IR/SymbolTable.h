@@ -91,27 +91,11 @@ public:
   /// This class implements a range of SymbolRef uses.
   class UseRange {
   public:
-    /// This class implements an iterator over the symbol use range.
-    class iterator final
-        : public indexed_accessor_iterator<iterator, const UseRange *,
-                                           const SymbolUse> {
-    public:
-      const SymbolUse *operator->() const { return &object->uses[index]; }
-      const SymbolUse &operator*() const { return object->uses[index]; }
-
-    private:
-      iterator(const UseRange *owner, ptrdiff_t it)
-          : indexed_accessor_iterator<iterator, const UseRange *,
-                                      const SymbolUse>(owner, it) {}
-
-      /// Allow access to the constructor.
-      friend class UseRange;
-    };
-
-    /// Contruct a UseRange from a given set of uses.
     UseRange(std::vector<SymbolUse> &&uses) : uses(std::move(uses)) {}
-    iterator begin() const { return iterator(this, /*it=*/0); }
-    iterator end() const { return iterator(this, /*it=*/uses.size()); }
+
+    using iterator = std::vector<SymbolUse>::const_iterator;
+    iterator begin() const { return uses.begin(); }
+    iterator end() const { return uses.end(); }
 
   private:
     std::vector<SymbolUse> uses;
