@@ -580,16 +580,6 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime_matvec",
-    hdrs = ["runtime_matvec.h"],
-    copts = runtime_copts(),
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
     name = "runtime_matmul",
     srcs = ["runtime_matmul.cc"],
     hdrs = ["runtime_matmul.h"],
@@ -597,7 +587,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
-        ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
@@ -658,7 +647,6 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_matvec",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//third_party/eigen3",
