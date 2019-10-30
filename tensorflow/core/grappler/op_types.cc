@@ -51,10 +51,13 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
 bool IsAnyMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -858,6 +861,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "ArgMin",
                                 "AudioSpectrogram",
                                 "BatchMatMul",
+                                "BatchMatMulV2",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
