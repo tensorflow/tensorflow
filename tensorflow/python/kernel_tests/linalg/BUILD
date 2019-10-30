@@ -272,6 +272,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = False,  # Fails in XLA b/143610154
 )
 
 cuda_py_test(
