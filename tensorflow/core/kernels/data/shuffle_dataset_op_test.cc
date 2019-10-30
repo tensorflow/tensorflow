@@ -372,13 +372,16 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
 INSTANTIATE_TEST_CASE_P(ShuffleDatasetOpTest, ParameterizedGetNextTest,
                         ::testing::ValuesIn(GetNextTestCases()));
 
-TEST_F(ShuffleDatasetOpTest, DatasetNodeName) {
-  for (auto dataset_params :
-       {ShuffleDatasetParams1(), ShuffleDatasetParams7()}) {
-    TF_ASSERT_OK(Initialize(dataset_params));
-    TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
-  }
+std::vector<DatasetNodeNameTestCase<ShuffleDatasetParams>>
+DatasetNodeNameTestCases() {
+  return {{/*dataset_params=*/ShuffleDatasetParams1(),
+           /*expected_node_name=*/kShuffleNodeName},
+          {/*dataset_params=*/ShuffleDatasetParams7(),
+           /*expected_node_name=*/kShuffleAndRepeatNodeName}};
 }
+
+DATASET_NODE_NAME_TEST_P(ShuffleDatasetOpTest, ShuffleDatasetParams,
+                         DatasetNodeNameTestCases())
 
 TEST_F(ShuffleDatasetOpTest, DatasetTypeString) {
   for (auto dataset_params :

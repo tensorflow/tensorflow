@@ -792,6 +792,11 @@ Status DatasetOpsTestBaseV2::MakeDataset(
     std::unique_ptr<OpKernelContext>* dataset_ctx,
     std::vector<std::unique_ptr<Tensor>>* created_tensors,
     DatasetBase** dataset) {
+  // If `*dataset` is not null, manually release it to avoid the memory leak.
+  if (dataset && *dataset) {
+    (*dataset)->Unref();
+  }
+
   TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, dataset_kernel,
                                   dataset_ctx_params, created_tensors,
                                   dataset_ctx));
