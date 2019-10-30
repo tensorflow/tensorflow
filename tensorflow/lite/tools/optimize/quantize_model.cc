@@ -98,8 +98,9 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
       return kTfLiteError;
     }
     return utils::SymmetricPerLayerBiasQuantize(
-        model, bias_tensor, input_tensor->quantization->scale[0],
-        weight_scales[0], error_reporter);
+        model, bias_tensor,
+        input_tensor->quantization->scale[0] * weight_scales[0],
+        error_reporter);
   }
   return kTfLiteError;
 }

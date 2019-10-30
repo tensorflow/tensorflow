@@ -96,14 +96,12 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
 
 // Symmetrically quantized float to 16bits.
 TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
-                                            float input_scale,
-                                            float weight_scale,
+                                            float scaling_factor,
                                             ErrorReporter* error_reporter);
 
 // Symmetrically quantized the bias for per-layer ops (i.e. FullyConnected).
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
-                                           float input_scale,
-                                           float weight_scale,
+                                           float scaling_factor,
                                            ErrorReporter* error_reporter);
 
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
