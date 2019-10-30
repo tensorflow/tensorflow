@@ -79,6 +79,7 @@ public:
     if (it != worklistMap.end()) {
       assert(worklist[it->second] == op && "malformed worklist data structure");
       worklist[it->second] = nullptr;
+      worklistMap.erase(it);
     }
   }
 

@@ -668,7 +668,11 @@ Status Conditional::ExtractBodies(Graph* graph) {
           // * constant nodes copy them;
           // * non-constant nodes, insert a switch along the edge;
           if (IsConstant(src)) {
-            node_map.at(src->id()) = output->CopyNode(src);
+            // Check if constant node was added already. It is possible to have
+            // multiple uses of a constant node.
+            if (node_map.at(src->id()) == nullptr) {
+              node_map.at(src->id()) = output->CopyNode(src);
+            }
           } else {
             StateMap::CondState state = *dst_id;
             state.erase(predicate_);

@@ -703,9 +703,7 @@ class OpKernelContext {
     const gtl::InlinedVector<AllocatorAttributes, 4>* input_alloc_attrs =
         nullptr;
 
-    // Device contexts.
-    const gtl::InlinedVector<DeviceContext*, 4>* input_device_contexts =
-        nullptr;
+    // Device context.
     DeviceContext* op_device_context = nullptr;
 
     // Control-flow op supports.
@@ -1059,18 +1057,6 @@ class OpKernelContext {
 
   // Returns nullptr if allocate_output() or set_output() have not been called.
   Status mutable_output(StringPiece name, Tensor** tensor);
-
-  // Records device specific state about how the input tensors were
-  // computed.
-  //
-  // If using the templated function, the type must be a subclass
-  // of DeviceContext.
-  //
-  // Get the DeviceContext used for the index input.  Returns nullptr
-  // if no DeviceContext was provided.
-  template <typename T>
-  T* input_device_context(int index);
-  DeviceContext* input_device_context(int index);
 
   // Return the DeviceContext that should be used for this Op.
   //
@@ -1703,23 +1689,6 @@ T* OpKernelContext::op_device_context() {
   static_assert(std::is_base_of<DeviceContext, T>::value,
                 "T is not a subclass of DeviceContext");
   return static_cast<T*>(op_device_context());
-}
-
-template <typename T>
-T* OpKernelContext::input_device_context(int index) {
-  DCHECK_NE(params_->input_device_contexts, nullptr);
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->input_device_contexts->size());
-  static_assert(std::is_base_of<DeviceContext, T>::value,
-                "T is not a subclass of DeviceContext");
-  return static_cast<T*>((*params_->input_device_contexts)[index]);
-}
-
-inline DeviceContext* OpKernelContext::input_device_context(int index) {
-  DCHECK_NE(params_->input_device_contexts, nullptr);
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->input_device_contexts->size());
-  return (*params_->input_device_contexts)[index];
 }
 
 inline const Tensor& OpInputList::operator[](int i) const {

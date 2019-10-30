@@ -101,7 +101,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             cls.v2_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
-      visitor.private_map["tf.compat"] = ["v1"]
+      visitor.private_map["tf.compat"] = ["v1", "v2"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
@@ -114,12 +114,14 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             cls.v1_symbols["tf." + six.ensure_str(name)] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
+      visitor.private_map["tf.compat"] = ["v1", "v2"]
       traverse.traverse(tf.compat.v1, visitor)
 
-  def _upgrade(self, old_file_text):
+  def _upgrade(self, old_file_text, import_rename=False):
     in_file = six.StringIO(old_file_text)
     out_file = six.StringIO()
-    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+    upgrader = ast_edits.ASTCodeUpgrader(
+        tf_upgrade_v2.TFAPIChangeSpec(import_rename))
     count, report, errors = (
         upgrader.process_opened_file("test.py", in_file,
                                      "test_out.py", out_file))
@@ -303,7 +305,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             if tf_name in keyword_renames:
               # If we rename arguments, new function must be available in 2.0.
               # We should not be using compat.v1 in this case.
-              self.assertFalse(
+              self.fail(
                   "Function '%s' is not in 2.0 when converting\n%s\nto\n%s" %
                   (new_function_name, text_input, text))
             continue
@@ -1206,10 +1208,14 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.contrib.saved_model.save_keras_model(model, './saved_models')\n"
         "tf.contrib.saved_model.load_keras_model(saved_model_path)\n")
     expected_text = (
-        "tf.keras.experimental.export_saved_model(model, './saved_models')\n"
-        "tf.keras.experimental.load_from_saved_model(saved_model_path)\n")
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
+        "tf.compat.v1.keras.experimental.export_saved_model(model, "
+        "'./saved_models')\ntf.compat.v1.keras.experimental."
+        "load_from_saved_model(saved_model_path)\n"
+    )
+    _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
+    expected_info = "Please use model.save"
+    self.assertIn(expected_info, report)
 
   def testStatelessMultinomial(self):
     text = (
@@ -2166,6 +2172,68 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def test_import_rename_analysis(self):
+    old_symbol = "tf.conj(a)"
+    new_symbol = "tf.math.conj(a)"
+
+    import_header = "import tensorflow as tf\n"
+    text = import_header + old_symbol
+    expected_text = "import tensorflow.compat.v2 as tf\n" + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(
+        text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = "import tensorflow as tf, other_import as y\n"
+    text = import_header + old_symbol
+    new_import_header = "import tensorflow.compat.v2 as tf, other_import as y\n"
+    expected_text = new_import_header + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(
+        text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = ("import tensorflow as tf\n"
+                     "import tensorflow.compat.v1 as tf_v1\n"
+                     "import tensorflow.compat.v2 as tf_v2\n")
+    text = import_header + old_symbol
+    expected_header = ("import tensorflow.compat.v2 as tf\n"
+                       "import tensorflow.compat.v1 as tf_v1\n"
+                       "import tensorflow.compat.v2 as tf_v2\n")
+    expected_text = expected_header + new_symbol
+    _, _, _, new_text = self._upgrade(text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = "from tensorflow import foo\n"
+    text = import_header + old_symbol
+    expected_text = "from tensorflow.compat.v2 import foo\n" + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(
+        text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = "from tensorflow import *\n"
+    text = import_header + old_symbol
+    expected_text = "from tensorflow.compat.v2 import *\n" + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(
+        text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = "from tensorflow.foo import bar\n"
+    text = import_header + old_symbol
+    expected_text = "from tensorflow.compat.v2.foo import bar\n" + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(
+        text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = ("from tensorflow import foo as tf\n"
+                     "from tensorflow.compat import v1 as tf_v1\n"
+                     "from tensorflow.compat import v2 as tf_v2\n")
+    text = import_header + old_symbol
+    expected_header = ("from tensorflow.compat.v2 import foo as tf\n"
+                       "from tensorflow.compat import v1 as tf_v1\n"
+                       "from tensorflow.compat import v2 as tf_v2\n")
+    expected_text = expected_header + new_symbol
+    _, _, _, new_text = self._upgrade(text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
   def test_import_analysis(self):
     old_symbol = "tf.conj(a)"
     new_symbol = "tf.math.conj(a)"
@@ -2256,11 +2324,19 @@ def _log_prob(self, x):
       result_a, result_b = results[0], results[1]
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
+
   def test_model_to_estimator_checkpoint_warning(self):
     text = "tf.keras.estimator.model_to_estimator(model)"
     _, report, _, _ = self._upgrade(text)
     expected_info = "will save object-based checkpoints"
     self.assertIn(expected_info, report)
+
+  def test_keras_experimental_export_warning(self):
+    text = "tf.keras.experimental.export_saved_model"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "Please use model.save"
+    self.assertIn(expected_info, report)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

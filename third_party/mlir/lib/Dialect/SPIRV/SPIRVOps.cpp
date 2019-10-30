@@ -544,6 +544,41 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
   return success();
 }
 
+namespace {
+
+// Combine chained `spirv::AccessChainOp` operations into one
+// `spirv::AccessChainOp` operation.
+struct CombineChainedAccessChain
+    : public OpRewritePattern<spirv::AccessChainOp> {
+  using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::AccessChainOp accessChainOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentAccessChainOp = dyn_cast_or_null<spirv::AccessChainOp>(
+        accessChainOp.base_ptr()->getDefiningOp());
+
+    if (!parentAccessChainOp) {
+      return matchFailure();
+    }
+
+    // Combine indices.
+    SmallVector<Value *, 4> indices(parentAccessChainOp.indices());
+    indices.append(accessChainOp.indices().begin(),
+                   accessChainOp.indices().end());
+
+    rewriter.replaceOpWithNewOp<spirv::AccessChainOp>(
+        accessChainOp, parentAccessChainOp.base_ptr(), indices);
+
+    return matchSuccess();
+  }
+};
+} // namespace
+
+void spirv::AccessChainOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<CombineChainedAccessChain>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // spv._address_of
 //===----------------------------------------------------------------------===//
@@ -804,7 +839,7 @@ static ParseResult parseCompositeExtractOp(OpAsmParser &parser,
     } else {
       return parser.emitError(
                  attrLocation,
-                 "expexted an 32-bit integer for index, but found '")
+                 "expected an 32-bit integer for index, but found '")
              << indexAttr << "'";
     }
 
@@ -838,7 +873,7 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 
   if (!indicesArrayAttr.size()) {
     return compExOp.emitOpError(
-        "expexted at least one index for spv.CompositeExtractOp");
+        "expected at least one index for spv.CompositeExtractOp");
   }
 
   int32_t index;
@@ -953,7 +988,7 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
 
   if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
       type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
-    // TODO(antiagainst): support contant struct
+    // TODO(antiagainst): support constant struct
     return type.isa<spirv::ArrayType>();
   }
 
@@ -1809,6 +1844,11 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 // spv.Select
 //===----------------------------------------------------------------------===//
 
+void spirv::SelectOp::build(Builder *builder, OperationState &state,
+                            Value *cond, Value *trueValue, Value *falseValue) {
+  build(builder, state, trueValue->getType(), cond, trueValue, falseValue);
+}
+
 static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &state) {
   OpAsmParser::OperandType condition;
   SmallVector<OpAsmParser::OperandType, 2> operands;
@@ -1976,7 +2016,8 @@ namespace {
 //                       | merge block |
 //                       +-------------+
 //
-struct SelectionOpCanonicalizer : public OpRewritePattern<spirv::SelectionOp> {
+struct ConvertSelectionOpToSelect
+    : public OpRewritePattern<spirv::SelectionOp> {
   using OpRewritePattern<spirv::SelectionOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(spirv::SelectionOp selectionOp,
@@ -2023,7 +2064,7 @@ struct SelectionOpCanonicalizer : public OpRewritePattern<spirv::SelectionOp> {
                                     selectOp.getResult(), storeOpAttributes);
 
     // `spv.selection` is not needed anymore.
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 
@@ -2071,7 +2112,7 @@ private:
   }
 };
 
-PatternMatchResult SelectionOpCanonicalizer::canCanonicalizeSelection(
+PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
     Block *trueBlock, Block *falseBlock, Block *mergeBlock) const {
   // Each block must consists of 2 operations.
   if ((std::distance(trueBlock->begin(), trueBlock->end()) != 2) ||
@@ -2110,7 +2151,7 @@ PatternMatchResult SelectionOpCanonicalizer::canCanonicalizeSelection(
 
 void spirv::SelectionOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<SelectionOpCanonicalizer>(context);
+  results.insert<ConvertSelectionOpToSelect>(context);
 }
 
 //===----------------------------------------------------------------------===//

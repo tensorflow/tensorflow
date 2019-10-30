@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -60,13 +61,43 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
        intermediate.Read4D("0", "0", "Z + state_size.w * 2", "B") + ";\n";
   c += "  FLT4 r3 = " +
        intermediate.Read4D("0", "0", "Z + state_size.w * 3", "B") + ";\n";
-  c += "  FLT4 input_gate  = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-       "* r0));\n";
-  c += "  FLT4 new_input   = tanh(r1);\n";
-  c += "  FLT4 forget_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-       "* r2));\n";
-  c += "  FLT4 output_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-       "* r3));\n";
+  if (op_def.precision != CalculationsPrecision::F32 && device.IsAdreno()) {
+    c += "  FLT4 input_gate;\n";
+    c += "  FLT4 new_input;\n";
+    c += "  FLT4 forget_gate;\n";
+    c += "  FLT4 output_gate;\n";
+    c += "  input_gate.x = native_recip(1.0h + native_exp(-r0.x));\n";
+    c += "  input_gate.y = native_recip(1.0h + native_exp(-r0.y));\n";
+    c += "  input_gate.z = native_recip(1.0h + native_exp(-r0.z));\n";
+    c += "  input_gate.w = native_recip(1.0h + native_exp(-r0.w));\n";
+    c += "  new_input.x = 1.0h - 2.0h * native_recip(1.0h + native_exp(2.0h * "
+         "r1.x));\n";
+    c += "  new_input.y = 1.0h - 2.0h * native_recip(1.0h + native_exp(2.0h * "
+         "r1.y));\n";
+    c += "  new_input.z = 1.0h - 2.0h * native_recip(1.0h + native_exp(2.0h * "
+         "r1.z));\n";
+    c += "  new_input.w = 1.0h - 2.0h * native_recip(1.0h + native_exp(2.0h * "
+         "r1.w));\n";
+    c += "  forget_gate.x = native_recip(1.0h + native_exp(-r2.x));\n";
+    c += "  forget_gate.y = native_recip(1.0h + native_exp(-r2.y));\n";
+    c += "  forget_gate.z = native_recip(1.0h + native_exp(-r2.z));\n";
+    c += "  forget_gate.w = native_recip(1.0h + native_exp(-r2.w));\n";
+    c += "  output_gate.x = native_recip(1.0h + native_exp(-r3.x));\n";
+    c += "  output_gate.y = native_recip(1.0h + native_exp(-r3.y));\n";
+    c += "  output_gate.z = native_recip(1.0h + native_exp(-r3.z));\n";
+    c += "  output_gate.w = native_recip(1.0h + native_exp(-r3.w));\n";
+  } else {
+    c +=
+        "  FLT4 input_gate  = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+        "* r0));\n";
+    c += "  FLT4 new_input   = tanh(r1);\n";
+    c +=
+        "  FLT4 forget_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+        "* r2));\n";
+    c +=
+        "  FLT4 output_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+        "* r3));\n";
+  }
   c += "  FLT4 new_st = input_gate * new_input + forget_gate * prev_st;\n";
   c += "  FLT4 activation = output_gate * tanh(new_st);\n";
   c += "  " + activation.Write4D("activation", "0", "0", "Z", "B");

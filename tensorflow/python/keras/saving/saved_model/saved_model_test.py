@@ -617,6 +617,19 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
   def testSaveInStrategyScope(self):
     self._testAddUpdate(mirrored_strategy.MirroredStrategy().scope())
 
+  def testSaveTimeDistributedLayer(self):
+    model = keras.Sequential([
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(1), input_shape=(None, 1))])
+    predictions = model.predict_on_batch(array_ops.ones((3, 2, 1)))
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
+                        predictions)
+
 
 class TestLayerCallTracing(test.TestCase):
 

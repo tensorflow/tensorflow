@@ -45,11 +45,12 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Copy and run the install scripts.
+ENV CLANG_VERSION="r373795"
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_bootstrap_deb_packages.sh
 RUN /install/install_deb_packages.sh
-RUN /install/install_clang.sh
+RUN /install/install_latest_clang.sh
 RUN /install/install_bazel.sh
 
 # Install python 3.6.
@@ -66,3 +67,7 @@ RUN /install/install_pip_packages.sh
 # forwarded when we install new packages.
 RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt7/usr/include/x86_64-linux-gnu/python3.6m"
 RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt8/usr/include/x86_64-linux-gnu/python3.6m"
+
+# Make apt work with python 3.6.
+RUN cp /usr/lib/python3/dist-packages/apt_pkg.cpython-35m-x86_64-linux-gnu.so \
+       /usr/lib/python3/dist-packages/apt_pkg.so

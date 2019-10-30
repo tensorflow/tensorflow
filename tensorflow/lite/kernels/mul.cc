@@ -146,7 +146,7 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_MUL(optimized_ops, BroadcastMulFivefold, float);
+        TF_LITE_MUL(optimized_ops, BroadcastMulDispatch, float);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, float);
       }
@@ -186,7 +186,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         }
       } else {
         if (need_broadcast) {
-          TF_LITE_MUL(optimized_integer_ops, BroadcastMulFivefold, int8_t);
+          TF_LITE_MUL(optimized_integer_ops, BroadcastMulDispatch, int8_t);
         } else {
           TF_LITE_MUL(optimized_integer_ops, Mul, int8_t);
         }
@@ -201,7 +201,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         }
       } else {
         if (need_broadcast) {
-          TF_LITE_MUL(optimized_ops, BroadcastMulFivefold, uint8_t);
+          TF_LITE_MUL(optimized_ops, BroadcastMulDispatch, uint8_t);
         } else {
           TF_LITE_MUL(optimized_ops, Mul, uint8_t);
         }

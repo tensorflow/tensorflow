@@ -26,6 +26,7 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 //===--------------------------------------------------------------------===//
@@ -38,8 +39,8 @@ namespace mlir {
 /// Function arguments or attributes that establish a symbolic connection(e.g.
 /// symbols referenced by name via a string attribute).
 class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                         OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike,
-                         CallableOpInterface::Trait> {
+                         OpTrait::IsIsolatedFromAbove, OpTrait::Symbol,
+                         OpTrait::FunctionLike, CallableOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;
@@ -136,16 +137,18 @@ public:
   }
 
 private:
-  // This trait needs access to `getNumFuncArguments` and `verifyType` hooks
-  // defined below.
+  // This trait needs access to the hooks defined below.
   friend class OpTrait::FunctionLike<FuncOp>;
 
   /// Returns the number of arguments. This is a hook for OpTrait::FunctionLike.
   unsigned getNumFuncArguments() { return getType().getInputs().size(); }
 
+  /// Returns the number of results. This is a hook for OpTrait::FunctionLike.
+  unsigned getNumFuncResults() { return getType().getResults().size(); }
+
   /// Hook for OpTrait::FunctionLike, called after verifying that the 'type'
   /// attribute is present and checks if it holds a function type.  Ensures
-  /// getType and getNumFuncArguments can be called safely.
+  /// getType, getNumFuncArguments, and getNumFuncResults can be called safely.
   LogicalResult verifyType() {
     auto type = getTypeAttr().getValue();
     if (!type.isa<FunctionType>())

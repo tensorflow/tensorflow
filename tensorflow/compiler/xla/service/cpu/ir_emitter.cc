@@ -1406,6 +1406,29 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::FunctionType* replica_id_function_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {/*run_options=*/i8_ptr_type,
+                               /*output_buffer=*/i8_ptr_type},
+                              /*isVarArg=*/false);
+  auto* replica_id_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kReplicaIdSymbolName,
+                                replica_id_function_ty)
+          .getCallee());
+  replica_id_func->setCallingConv(llvm::CallingConv::C);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(hlo, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
+  Call(replica_id_func,
+       {/*run_options=*/GetExecutableRunOptionsArgument(),
+        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)});
+
+  return Status::OK();
+}
+
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   return EmitTargetAddressForOp(parameter);

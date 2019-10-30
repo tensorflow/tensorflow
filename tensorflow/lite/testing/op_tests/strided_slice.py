@@ -30,7 +30,7 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
 
   def build_graph(parameters):
     """Build graph for stride_slice test."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -40,17 +40,17 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
       strides = parameters["strides"]
       tensors = [input_tensor]
     else:
-      begin = tf.placeholder(
+      begin = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="begin",
           shape=[len(parameters["input_shape"])])
-      end = tf.placeholder(
+      end = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="end",
           shape=[len(parameters["input_shape"])])
       strides = None
       if parameters["strides"] is not None:
-        strides = tf.placeholder(
+        strides = tf.compat.v1.placeholder(
             dtype=parameters["index_type"],
             name="strides",
             shape=[len(parameters["input_shape"])])
@@ -68,8 +68,11 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
 
   def build_inputs(parameters, sess, inputs, outputs):
     """Build inputs for stride_slice test."""
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
+    input_values = create_tensor_data(
+        parameters["dtype"],
+        parameters["input_shape"],
+        min_value=-1,
+        max_value=1)
     index_type = TF_TYPE_INFO[parameters["index_type"]][0]
     values = [input_values]
     if not parameters["constant_indices"]:
@@ -111,6 +114,7 @@ def make_strided_slice_tests(options):
           "end_mask": [None],
           "shrink_axis_mask": [None],
           "constant_indices": [False, True],
+          "fully_quantize": [False],
       },
       # 4-D with non-trivial begin & end.
       {
@@ -124,6 +128,7 @@ def make_strided_slice_tests(options):
           "end_mask": [None, 3],
           "shrink_axis_mask": [None, 15, -1],
           "constant_indices": [True],
+          "fully_quantize": [False],
       },
       # Begin, end, strides dim are different from input shape
       {
@@ -137,6 +142,7 @@ def make_strided_slice_tests(options):
           "end_mask": [0],
           "shrink_axis_mask": [1],
           "constant_indices": [True],
+          "fully_quantize": [False],
       },
       # 2-D
       {
@@ -150,6 +156,7 @@ def make_strided_slice_tests(options):
           "end_mask": [None, 1, 2],
           "shrink_axis_mask": [None, 1, 2, 3, -1],
           "constant_indices": [False, True],
+          "fully_quantize": [False],
       },
       # Negative strides
       {
@@ -163,6 +170,35 @@ def make_strided_slice_tests(options):
           "end_mask": [None, 1, 2],
           "shrink_axis_mask": [None, 1, 2, 3, -1],
           "constant_indices": [False],
+          "fully_quantize": [False],
+      },
+      # 4-D (cases with const indices and batchsize of 1).
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[1, 2, 2, 5]],
+          "strides": [None, [1, 1, 1, 1]],
+          "begin": [[0, 0, 0, 0], [0, 1, 1, 3]],
+          "end": [[1, 2, 2, 5], [1, 2, 2, 4]],
+          "begin_mask": [None],
+          "end_mask": [None],
+          "shrink_axis_mask": [None],
+          "constant_indices": [True],
+          "fully_quantize": [True],
+      },
+      # Begin, end, strides dim are different from input shape
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0]],
+          "end": [[1]],
+          "strides": [None, [1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+          "fully_quantize": [True],
       },
   ]
   _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
 import socket
 import threading
@@ -32,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -43,14 +45,21 @@ TracingConfig = collections.namedtuple(
 _state = threading.local()
 
 
+@ops.RegisterGradient("DebugIdentityV2")
+def _debug_identity_v2_grad(op, dy):
+  """Gradient function for the DebugIdentityV2 op."""
+  del op  # Unused
+  return dy
+
+
 def _get_writer():
   """Get the debug events writer for the currently configured dump root."""
   # TODO(cais): Explore caching the object for possible performance gain.
-  # TODO(cais): Rename cyclic_buffer_size to circular_buffer_size in C++ and
+  # TODO(cais): Rename circular_buffer_size to circular_buffer_size in C++ and
   #   Python-bindng code.
   return debug_events_writer.DebugEventsWriter(
       _state.config.dump_root,
-      cyclic_buffer_size=_state.config.circular_buffer_size)
+      circular_buffer_size=_state.config.circular_buffer_size)
 
 
 def _get_id():
@@ -151,30 +160,44 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
     automatic control dependencies (see `auto_control_deps.py`) instead of
     tensor overriding.
   """
-  if (_state.config.tensor_debug_mode ==
-      debug_event_pb2.TensorDebugMode.NO_TENSOR):
-    is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
-    instrumented_tensors = [] if is_v1_graph_mode else None
-    for slot, tensor in enumerate(tensors):
-      with ops.colocate_with(None, ignore_existing=True):
-        # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
-        # control dependency because it's a stateful op.
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode.
-            constant_op.constant([], dtype=dtypes.float32),
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=slot,
-            tensor_debug_mode=_state.config.tensor_debug_mode,
-            debug_urls=["file://%s" % _state.config.dump_root])
-        if is_v1_graph_mode:
-          # TODO(cais): Evaluate performance optimization options. For the
-          # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
-          # control dependency of `tensor.op` without an additional identity op.
-          identity = array_ops.identity(tensor)
-          identity.op._add_control_input(  # pylint: disable=protected-access
-              debug_tensor.op)
-          instrumented_tensors.append(identity)
+  tensor_debug_mode = _state.config.tensor_debug_mode
+  debug_urls = ["file://%s" % _state.config.dump_root]
+  is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
+  instrumented_tensors = [] if is_v1_graph_mode else None
+  if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
+    for output_slot, tensor in enumerate(tensors):
+      # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
+      # control dependency because it's a stateful op.
+      debug_tensor = gen_debug_ops.debug_identity_v2(
+          # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
+          # as a low-overhead placeholder, since no actual tensor value is
+          # traced.
+          constant_op.constant([], dtype=dtypes.float32),
+          tfdbg_context_id=tfdbg_context_id,
+          op_name=op_name,
+          output_slot=output_slot,
+          tensor_debug_mode=_state.config.tensor_debug_mode,
+          debug_urls=debug_urls)
+      if is_v1_graph_mode:
+        # TODO(cais): Evaluate performance optimization options. For the
+        # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
+        # control dependency of `tensor.op` without an additional identity op.
+        identity = array_ops.identity(tensor)
+        identity.op._add_control_input(  # pylint: disable=protected-access
+            debug_tensor.op)
+        instrumented_tensors.append(identity)
+    return instrumented_tensors
+  elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+    for output_slot, tensor in enumerate(tensors):
+      debug_tensor = gen_debug_ops.debug_identity_v2(
+          tensor,
+          tfdbg_context_id=tfdbg_context_id,
+          op_name=op_name,
+          output_slot=output_slot,
+          tensor_debug_mode=_state.config.tensor_debug_mode,
+          debug_urls=debug_urls)
+      if is_v1_graph_mode:
+        instrumented_tensors.append(debug_tensor)
     return instrumented_tensors
   else:
     raise NotImplementedError(
@@ -200,16 +223,30 @@ def _dump_eager_tensors(tensors, op_type, input_tensor_ids):
   Returns:
     A tfdbg Execution protocol buffer.
   """
-  if (_state.config.tensor_debug_mode ==
-      debug_event_pb2.TensorDebugMode.NO_TENSOR):
+  tensor_debug_mode = _state.config.tensor_debug_mode
+  output_tensor_ids = [
+      t._id for t in tensors]  # pylint:disable=protected-access
+  if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
     return debug_event_pb2.Execution(
         op_type=op_type,
         num_outputs=len(tensors),
         input_tensor_ids=input_tensor_ids,
-        output_tensor_ids=[
-            t._id for t in tensors],  # pylint:disable=protected-access
-        tensor_debug_mode=_state.config.tensor_debug_mode,
+        output_tensor_ids=output_tensor_ids,
+        tensor_debug_mode=tensor_debug_mode,
         code_location=_process_stack_frames())
+  elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+    execution_proto = debug_event_pb2.Execution(
+        op_type=op_type,
+        num_outputs=len(tensors),
+        input_tensor_ids=input_tensor_ids,
+        output_tensor_ids=output_tensor_ids,
+        tensor_debug_mode=tensor_debug_mode,
+        code_location=_process_stack_frames())
+    for tensor in tensors:
+      if tensor.dtype.is_numpy_compatible:
+        execution_proto.tensor_protos.append(
+            tensor_util.make_tensor_proto(tensor.numpy()))
+    return execution_proto
   else:
     raise NotImplementedError(
         "Tensor instrumentation is not implemented for debug mode %s yet " %
@@ -274,6 +311,10 @@ def enable_dumping(dump_root,
   Once enabled, the dumping can be disabled with the corresponding
   `disable_dumping()` method under the same Python namespace.
   Calling this method more than once with the same `dump_root` is idempotent.
+  Calling this method more than once with different `tensor_debug_mode`s
+  leads to a `ValueError`.
+  Calling this method more than once with different `circular_buffer_size`s
+  leads to a `ValueError`.
   Calling this method with a different `dump_root` abolishes the
   previously-enabled `dump_root`.
 
@@ -305,30 +346,43 @@ def enable_dumping(dump_root,
   # TODO(cais): Add Python code example to the doc string above.
   # TODO(cais): Once UIs are ready, expose this method and the associated
   # `disable_` method under the `tf.debugging.*` namespace.
-  if tensor_debug_mode not in debug_event_pb2.TensorDebugMode.keys():
+  tensor_debug_mode_keys = debug_event_pb2.TensorDebugMode.keys()
+  if tensor_debug_mode not in tensor_debug_mode_keys:
     raise ValueError(
         "Invalid value in tensor_debug_mode ('%s'). Valid options are: %s" %
-        (tensor_debug_mode, debug_event_pb2.TensorDebugMode.keys()))
+        (tensor_debug_mode, tensor_debug_mode_keys))
+
+  tensor_debug_mode = debug_event_pb2.TensorDebugMode.Value(tensor_debug_mode)
+  if tensor_debug_mode not in (debug_event_pb2.TensorDebugMode.NO_TENSOR,
+                               debug_event_pb2.TensorDebugMode.FULL_TENSOR):
+    raise NotImplementedError(
+        "tfdbg dumping: support for tensor debug mode %s is not "
+        "implemented yet" % tensor_debug_mode)
 
   if (hasattr(_state, "config") and
       _state.config.circular_buffer_size != circular_buffer_size):
-    logging.warn(
+    raise ValueError(
         "There is already a dumping callback configured with a different "
         "circular-buffer size (%d). Therefore the newly request "
-        "circular-buffer size (%d) will not be honored.",
-        _state.config.circular_buffer_size, circular_buffer_size)
+        "circular-buffer size (%d) will not be honored." %
+        (_state.config.circular_buffer_size, circular_buffer_size))
+
+  if (hasattr(_state, "config") and
+      _state.config.tensor_debug_mode != tensor_debug_mode):
+    raise ValueError(
+        "There is already a dumping callback configured for dump root "
+        "%s with a different "
+        "tensor-debug mode (%s). Therefore the newly request "
+        "tensor-debug mode (%s) size will not be honored." %
+        (_state.config.dump_root,
+         tensor_debug_mode_keys[_state.config.tensor_debug_mode],
+         tensor_debug_mode_keys[tensor_debug_mode]))
+
   if not hasattr(_state, "config") or _state.config.dump_root != dump_root:
     _state.config = TracingConfig(
         dump_root=dump_root,
-        tensor_debug_mode=debug_event_pb2.TensorDebugMode.Value(
-            tensor_debug_mode),
+        tensor_debug_mode=tensor_debug_mode,
         circular_buffer_size=int(circular_buffer_size))
-
-    if (_state.config.tensor_debug_mode !=
-        debug_event_pb2.TensorDebugMode.NO_TENSOR):
-      raise NotImplementedError(
-          "tfdbg dumping: support for tensor debug mode %s is not "
-          "implemented yet" % _state.config.tensor_debug_mode)
     _state.hostname = socket.gethostname()
     # A list of source-file paths.
     _state.source_file_paths = []
@@ -336,12 +390,15 @@ def enable_dumping(dump_root,
     _state.stack_frame_to_id = dict()
     # Mapping op context to unique ID.
     _state.context_to_id = dict()
+
   op_callbacks.add_op_callback(_dumping_callback)
   logging.info(
       "Enabled dumping callback in thread %s "
       "(dump root: %s, tensor debug mode: %s)",
       threading.current_thread().name, _state.config.dump_root,
       tensor_debug_mode)
+
+  atexit.register(disable_dumping)
   return _get_writer()
 
 
@@ -353,11 +410,10 @@ def disable_dumping():
   `enable_dumping()` has been made, calling this method is a no-op.
   Calling this method more than once is idempotent.
   """
-  try:
+  if hasattr(_state, "config"):
+    dump_root = _state.config.dump_root
+    delattr(_state, "config")
+    debug_events_writer.DebugEventsWriter(dump_root).Close()
     op_callbacks.remove_op_callback(_dumping_callback)
     logging.info("Disabled dumping callback in thread %s (dump root: %s)",
-                 threading.current_thread().name, _state.config.dump_root)
-  except KeyError:
-    # Tolerate disabling the dumping callback without enable_dumping() being
-    # called first.
-    pass
+                 threading.current_thread().name, dump_root)

@@ -453,6 +453,10 @@ class TensorOf<list<Type> allowedTypes> :
 
 def AnyTensor : TensorOf<[AnyType]>;
 
+def AnyRankedTensor :
+  ShapedContainerType<[AnyType], And<[IsTensorTypePred, HasRankPred]>,
+  "ranked tensor">;
+
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
 class StaticShapeTensorOf<list<Type> allowedTypes>
     : Type<And<[TensorOf<allowedTypes>.predicate, HasStaticShapePred]>,
@@ -1279,6 +1283,8 @@ def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
+// Op is a symbol.
+def Symbol : NativeOpTrait<"Symbol">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

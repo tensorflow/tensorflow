@@ -98,8 +98,8 @@ class EagerExecutor {
 
   ~EagerExecutor();
 
-  // Puts this in a shutdown state. In this state, Add() will return an error
-  // and not add new EagerNodes. After putting this in the shutdown state,
+  // Puts this in a shutdown state. In this state, AddOrExecute() will return an
+  // error and not add new EagerNodes. After putting this in the shutdown state,
   // blocks until all pendings nodes have finished running.
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
@@ -158,7 +158,7 @@ class EagerExecutor {
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  void NodeDone(core::RefCountPtr<NodeItem> item, const Status& status);
+  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
@@ -166,7 +166,7 @@ class EagerExecutor {
   // `status_` is not ok.
   void Run();
 
-  void RunItem(core::RefCountPtr<NodeItem> item);
+  Status RunItem(core::RefCountPtr<NodeItem> item);
 
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.

@@ -1477,7 +1477,7 @@ class RNNTest(keras_parameterized.TestCase):
               input_layer, initial_state=initial_states)
       model = keras.Model(input_layer, rnn_output)
       model.compile(
-          optimizer=keras.optimizers.RMSprop(), loss='mse',
+          optimizer='rmsprop', loss='mse',
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
       return model
@@ -1669,6 +1669,34 @@ class RNNTest(keras_parameterized.TestCase):
     output_dense = ragged_tensor.RaggedTensor.from_tensor(
         output_dense, lengths=row_lengths)
     self.assertAllClose(output_ragged, output_dense)
+
+  def test_stateless_rnn_cell(self):
+
+    class StatelessCell(keras.layers.Layer):
+
+      def __init__(self):
+        self.state_size = ((), [], ())
+        self.output_size = None
+        super(StatelessCell, self).__init__()
+
+      def build(self, input_shape):
+        self.output_size = input_shape[-1]
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    x = keras.Input((None, 5))
+    cell = StatelessCell()
+    initial_state = nest.map_structure(lambda t: None, cell.state_size)
+    layer = keras.layers.RNN(cell)
+    y = layer(x, initial_state=initial_state)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 5)))
 
 
 class RNNCellWithConstants(keras.layers.Layer):

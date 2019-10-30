@@ -1340,7 +1340,7 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
     auto *body = forOp.getBody();
     if (std::next(body->begin()) != body->end())
       return matchFailure();
-    rewriter.replaceOp(forOp, llvm::None);
+    rewriter.eraseOp(forOp);
     return matchSuccess();
   }
 };

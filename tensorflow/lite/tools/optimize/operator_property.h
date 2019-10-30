@@ -50,7 +50,7 @@ struct OperatorProperty {
   // Bias indexes.
   std::vector<int> biases = {};
 
-  // Constraints.
+  // Force output to reuse the same scale and zero point of input.
   bool restrict_same_input_output_scale = false;
 
   // Op version.

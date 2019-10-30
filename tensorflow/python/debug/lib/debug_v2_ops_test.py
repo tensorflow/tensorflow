@@ -81,10 +81,10 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
   def setUp(self):
     super(DebugIdentityV2OpTest, self).setUp()
     self.dump_root = tempfile.mkdtemp()
-    # Testing using a small cyclic-buffer size.
-    self.cyclic_buffer_size = 4
-    self.writer = debug_events_writer.DebugEventsWriter(self.dump_root,
-                                                        self.cyclic_buffer_size)
+    # Testing using a small circular-buffer size.
+    self.circular_buffer_size = 4
+    self.writer = debug_events_writer.DebugEventsWriter(
+        self.dump_root, self.circular_buffer_size)
 
   def tearDown(self):
     self.writer.Close()
@@ -93,7 +93,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     super(DebugIdentityV2OpTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
-  def testSingleTensorFullTensorDebugModeWithCyclicBufferBehavior(self):
+  def testSingleTensorFullTensorDebugModeWithCircularBufferBehavior(self):
 
     @def_function.function
     def write_debug_trace(x):
@@ -121,7 +121,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     x = np.array([3.0, 4.0])
     # Only the graph-execution trace of the last iteration should be written
     # to self.dump_root.
-    for _ in range(self.cyclic_buffer_size // 2 + 1):
+    for _ in range(self.circular_buffer_size // 2 + 1):
       self.assertAllClose(
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
@@ -141,11 +141,11 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     with self.assertRaises(StopIteration):
       next(graph_trace_iter)
 
-    # Flush the cyclic buffer.
+    # Flush the circular buffer.
     self.writer.FlushExecutionFiles()
     graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
 
-    # The cyclic buffer has a size of 4. So only the data from the
+    # The circular buffer has a size of 4. So only the data from the
     # last two iterations should have been written to self.dump_root.
     for _ in range(2):
       debug_event = next(graph_trace_iter)
@@ -219,7 +219,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     except StopIteration:
       pass
 
-    # Due to the cyclic buffer, only the last 4 iterations of
+    # Due to the circular buffer, only the last 4 iterations of
     # [10, 5, 16, 8, 4, 2] should have been written.
     self.assertAllEqual(x_values, [16, 8, 4, 2])
 

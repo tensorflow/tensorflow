@@ -43,13 +43,13 @@ struct SymbolUsesPass : public ModulePass<SymbolUsesPass> {
                           << " nested references";
 
       // Test the functionality of symbolKnownUseEmpty.
-      if (SymbolTable::symbolKnownUseEmpty(func.getName(), module)) {
+      if (func.symbolKnownUseEmpty(module)) {
         func.emitRemark() << "function has no uses";
         continue;
       }
 
       // Test the functionality of getSymbolUses.
-      symbolUses = SymbolTable::getSymbolUses(func.getName(), module);
+      symbolUses = func.getSymbolUses(module);
       assert(symbolUses.hasValue() && "expected no unknown operations");
       for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
         symbolUse.getUser()->emitRemark()
@@ -60,7 +60,26 @@ struct SymbolUsesPass : public ModulePass<SymbolUsesPass> {
     }
   }
 };
+
+/// This is a symbol test pass that tests the symbol use replacement
+/// functionality provided by the symbol table.
+struct SymbolReplacementPass : public ModulePass<SymbolReplacementPass> {
+  void runOnModule() override {
+    auto module = getModule();
+
+    for (FuncOp func : module.getOps<FuncOp>()) {
+      StringAttr newName = func.getAttrOfType<StringAttr>("sym.new_name");
+      if (!newName)
+        continue;
+      if (succeeded(func.replaceAllSymbolUses(newName.getValue(), module)))
+        func.setName(newName.getValue());
+    }
+  }
+};
 } // end anonymous namespace
 
 static PassRegistration<SymbolUsesPass> pass("test-symbol-uses",
                                              "Test detection of symbol uses");
+
+static PassRegistration<SymbolReplacementPass>
+    rauwPass("test-symbol-rauw", "Test replacement of symbol uses");

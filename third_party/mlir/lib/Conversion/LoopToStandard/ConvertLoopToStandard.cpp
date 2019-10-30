@@ -211,7 +211,7 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
                                 ArrayRef<Value *>(), endBlock,
                                 ArrayRef<Value *>());
   // Ok, we're done!
-  rewriter.replaceOp(forOp, {});
+  rewriter.eraseOp(forOp);
   return matchSuccess();
 }
 
@@ -252,7 +252,7 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
                                 /*falseArgs=*/ArrayRef<Value *>());
 
   // Ok, we're done!
-  rewriter.replaceOp(ifOp, {});
+  rewriter.eraseOp(ifOp);
   return matchSuccess();
 }
 

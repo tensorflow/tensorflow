@@ -45,7 +45,8 @@ def make_unidirectional_sequence_lstm_tests(options):
           parameters["seq_length"], parameters["batch_size"],
           parameters["units"]
       ]
-      input_value = tf.placeholder(dtype=tf.float32, name="input", shape=shape)
+      input_value = tf.compat.v1.placeholder(
+          dtype=tf.float32, name="input", shape=shape)
       input_values.append(input_value)
       lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(
           parameters["units"], use_peepholes=parameters["use_peepholes"])
@@ -55,7 +56,7 @@ def make_unidirectional_sequence_lstm_tests(options):
     else:
       shape = [parameters["batch_size"], parameters["units"]]
       for i in range(parameters["seq_length"]):
-        input_value = tf.placeholder(
+        input_value = tf.compat.v1.placeholder(
             dtype=tf.float32, name=("input_%d" % i), shape=shape)
         input_values.append(input_value)
       lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(
@@ -80,7 +81,7 @@ def make_unidirectional_sequence_lstm_tests(options):
       for _ in range(parameters["seq_length"]):
         input_value = create_tensor_data(tf.float32, shape)
         input_values.append(input_value)
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
     # Tflite fused kernel takes input as [time, batch, input].
     # For static unidirectional sequence lstm, the input is an array sized of

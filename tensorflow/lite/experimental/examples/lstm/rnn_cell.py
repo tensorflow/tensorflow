@@ -438,7 +438,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
         aggregate="first",
         index_override=18)
 
-    input_size = inputs.shape.with_rank(2)[1]
+    input_size = inputs.shape.with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.shape[-1]")
 

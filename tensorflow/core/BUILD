@@ -69,7 +69,6 @@ load(
     "if_android",
     "if_emscripten",
     "if_ios",
-    "if_linux_x86_64",
     "if_mobile",
     "if_not_windows",
     "tf_android_core_proto_headers",
@@ -352,6 +351,17 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "quantize_training_hdrs",
+    srcs = [
+        "graph/quantize_training.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "util_port",
     srcs = ["util/port.cc"],
@@ -361,6 +371,7 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
+    alwayslink = 1,
 )
 
 filegroup(
@@ -395,20 +406,6 @@ alias(
     actual = "//tensorflow/core/platform:human_readable_json",
 )
 
-cc_library(
-    name = "logger",
-    srcs = ["//tensorflow/core/platform:logger.cc"],
-    hdrs = ["//tensorflow/core/platform:logger.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_proto_parsing",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
 filegroup(
     name = "platform_env_hdrs",
     srcs = [
@@ -436,6 +433,7 @@ filegroup(
         "//tensorflow/core/platform:cpu_feature_guard.h",
         "//tensorflow/core/platform:error.h",
         "//tensorflow/core/platform:fingerprint.h",
+        "//tensorflow/core/platform:logger.h",
         "//tensorflow/core/platform:monitoring.h",
         "//tensorflow/core/platform:net.h",
         "//tensorflow/core/platform:notification.h",
@@ -446,6 +444,10 @@ filegroup(
         "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
         "//tensorflow/core/platform:stacktrace.h",
         "//tensorflow/core/platform:stacktrace_handler.h",
+        "//tensorflow/core/platform:stringpiece.h",
+        "//tensorflow/core/platform:stringprintf.h",
+        "//tensorflow/core/platform:strcat.h",
+        "//tensorflow/core/platform:str_util.h",
         "//tensorflow/core/platform:strong_hash.h",
         "//tensorflow/core/platform:subprocess.h",
     ] + tf_additional_monitoring_hdrs(),
@@ -493,12 +495,15 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/strings:numbers",
+        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:platform",
         "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -2239,16 +2244,12 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-        "//tensorflow/core/lib/hash:legacy_lib_internal_impl_srcs",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
-        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
-        "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
+        "//tensorflow/core/lib/io:legacy_lib_internal_impl_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
-        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2265,9 +2266,48 @@ cc_library(
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/lib/core:threadpool_interface",
         "//tensorflow/core/lib/core:threadpool_options",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/gtl:cleanup",
+        "//tensorflow/core/lib/gtl:compactptrset",
+        "//tensorflow/core/lib/gtl:edit_distance",
+        "//tensorflow/core/lib/gtl:flatmap",
+        "//tensorflow/core/lib/gtl:flatrep",
+        "//tensorflow/core/lib/gtl:flatset",
+        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core/lib/gtl:int_type",
+        "//tensorflow/core/lib/gtl:iterator_range",
+        "//tensorflow/core/lib/gtl:manual_constructor",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/gtl:optional",
+        "//tensorflow/core/lib/gtl:priority_queue_util",
+        "//tensorflow/core/lib/gtl:stl_util",
+        "//tensorflow/core/lib/gtl:top_n",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/lib/hash:hash",
+        "//tensorflow/core/lib/io:compression",
+        "//tensorflow/core/lib/io:inputstream_interface",
+        "//tensorflow/core/lib/io:iterator",
+        "//tensorflow/core/lib/io:path",
+        "//tensorflow/core/lib/io:proto_encode_helper",
+        "//tensorflow/core/lib/io:table_options",
         "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/lib/random:exact_uniform_int",
+        "//tensorflow/core/lib/random:philox",
+        "//tensorflow/core/lib/random:philox_random",
+        "//tensorflow/core/lib/random:random",
+        "//tensorflow/core/lib/random:weighted_picker",
+        "//tensorflow/core/lib/strings:base64",
+        "//tensorflow/core/lib/strings:numbers",
+        "//tensorflow/core/lib/strings:ordered_code",
+        "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/core/lib/strings:proto_text_util",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:annotation",
         "//tensorflow/core/platform:context",
@@ -2275,15 +2315,21 @@ cc_library(
         "//tensorflow/core/platform:cpu_feature_guard",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:load_library",
+        "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:null_file_system",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
@@ -2292,9 +2338,13 @@ cc_library(
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:subprocess",
+        "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
+        "//tensorflow/core/platform:tracing",
+        "//tensorflow/core/platform:tstring",
+        "//tensorflow/core/platform:unbounded_work_queue",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
@@ -2302,16 +2352,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
     alwayslink = 1,
-)
-
-# File compiled with extra flags to get cpu-specific acceleration.
-cc_library(
-    name = "lib_hash_crc32c_accelerate_internal",
-    srcs = [
-        "//tensorflow/core/lib/hash:legacy_crc32_accelerate_srcs",
-    ],
-    # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(
@@ -2453,7 +2493,6 @@ cc_library(
     srcs = if_android([
         "lib/gif/gif_io.cc",
         "//tensorflow/core/platform:gif.h",
-        "//tensorflow/core/lib/strings:legacy_lib_android_gif_internal_string_headers",
     ]),
     hdrs = [
         "lib/gif/gif_io.h",
@@ -2473,6 +2512,8 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/lib/strings:numbers",
+        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
         "//tensorflow/core/platform:numbers",
@@ -2559,7 +2600,10 @@ alias(
     actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
-tf_version_info_genrule()
+tf_version_info_genrule(
+    name = "version_info_gen",
+    out = "util/version_info.cc",
+)
 
 cc_library(
     name = "version_lib",
@@ -2887,6 +2931,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/device_set.h",
     "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
+    "common_runtime/metrics.h",
     "common_runtime/shape_refiner.h",
     "framework/versions.h",
     "common_runtime/process_function_library_runtime.h",
@@ -2970,7 +3015,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/lower_functional_ops.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
-    "common_runtime/metrics.h",
     "common_runtime/mkl_cpu_allocator.h",
     "common_runtime/optimization_registry.h",
     "common_runtime/pending_counts.h",

@@ -14,6 +14,7 @@ tf_kernel_library(
         "batch_norm_op.cc",
         "batchtospace_op.cc",
         "bcast_ops.cc",
+        "beta_op.cc",
         "bias_ops.cc",
         "binary_ops.cc",
         "broadcast_to_op.cc",
