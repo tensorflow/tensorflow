@@ -279,6 +279,9 @@ class BoundedTensorSpec(TensorSpec):
     return (tensor_spec_eq and np.allclose(self.minimum, other.minimum) and
             np.allclose(self.maximum, other.maximum))
 
+  def __hash__(self):
+    return hash((self._shape_tuple, self.dtype))
+
   def __reduce__(self):
     return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
                                self._maximum, self._name)
