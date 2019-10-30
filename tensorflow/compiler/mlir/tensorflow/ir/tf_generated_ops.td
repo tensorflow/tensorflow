@@ -785,7 +785,7 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   }];
 }
 
-def TF_ConjOp : TF_Op<"Conj", [NoSideEffect]> {
+def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
