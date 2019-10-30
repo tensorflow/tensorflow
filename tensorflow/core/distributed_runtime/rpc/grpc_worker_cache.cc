@@ -29,12 +29,12 @@ namespace tensorflow {
 
 namespace {
 
+// TODO(ncteisen): consider adding a config var or flag for this
+static const size_t kGrpcWorkerCacheThreadCount = 8;
+static const size_t kNumCallbackThreads = 10;
+
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
-  // TODO(ncteisen): consider adding a config var or flag for this
-  static constexpr size_t kGrpcWorkerCacheThreadCount = 8;
-  static constexpr size_t kNumCallbackThreads = 10;
-
   explicit GrpcWorkerCache(std::shared_ptr<GrpcChannelCache> channel_cache,
                            WorkerInterface* local_worker,
                            const string& local_target,
