@@ -11,6 +11,12 @@ glob_lit_tests(
     test_file_exts = [
         "pbtxt",
     ],
+    tags_override = {
+        "add.pbtxt" : ["no_rocm"],
+        "conv_2d.pbtxt" : ["no_rocm"],
+        "fake_quant_per_channel.pbtxt" : ["no_rocm"],
+        "ophint_lstm.pbtxt" : ["no_rocm"],
+    },
 )
 
 # Bundle together all of the test utilities that are used by tests.
