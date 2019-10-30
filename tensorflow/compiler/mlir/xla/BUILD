@@ -109,7 +109,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

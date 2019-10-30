@@ -255,7 +255,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
-        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@com_google_absl//absl/types:span",
     ],
 )
