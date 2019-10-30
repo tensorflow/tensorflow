@@ -78,8 +78,9 @@ function update_bazel_linux {
   popd
 
   PATH="/home/kbuilder/bin:$PATH"
-
   set_bazel_outdir
+  which bazel
+  bazel version
 }
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
@@ -99,6 +100,9 @@ function update_bazel_macos {
   run_with_retry "${BAZEL_COMMAND}"
   # Add new bazel installation to path
   PATH="/Users/kbuilder/bin:$PATH"
+  set_bazel_outdir
+  which bazel
+  bazel version
 }
 
 function install_pip2 {

@@ -18,6 +18,7 @@ limitations under the License.
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -323,6 +324,23 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   }
+}
+
+inline void BroadcastAddDispatch(const ArithmeticParams& params,
+                                 const RuntimeShape& input1_shape,
+                                 const int8* input1_data,
+                                 const RuntimeShape& input2_shape,
+                                 const int8* input2_data,
+                                 const RuntimeShape& output_shape,
+                                 int8* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_integer_ops::BroadcastAdd4DSlow(
+        params, input1_shape, input1_data, input2_shape, input2_data,
+        output_shape, output_data);
+  }
+
+  BroadcastAddFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
 }
 
 }  // namespace optimized_integer_ops
