@@ -196,6 +196,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
+  Status HandleAllReduceSingleReplica(HloInstruction* crs);
+  Status HandleAllReduceMultipleReplica(HloInstruction* crs);
+
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
