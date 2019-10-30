@@ -676,3 +676,37 @@ func @missing_entry_block() -> () {
   }
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.Unreachable
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @unreachable_no_pred
+func @unreachable_no_pred() {
+    spv.Return
+
+  ^next:
+    // CHECK: spv.Unreachable
+    spv.Unreachable
+}
+
+// CHECK-LABEL: func @unreachable_with_pred
+func @unreachable_with_pred() {
+    spv.Return
+
+  ^parent:
+    spv.Branch ^unreachable
+
+  ^unreachable:
+    // CHECK: spv.Unreachable
+    spv.Unreachable
+}
+
+// -----
+
+func @unreachable() {
+  // expected-error @+1 {{cannot be used in reachable block}}
+  spv.Unreachable
+}

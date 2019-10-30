@@ -14,4 +14,14 @@ spv.module "Logical" "GLSL450" {
     // CHECK: spv.ReturnValue {{.*}} : i32
     spv.ReturnValue %1 : i32
   }
+
+  // CHECK-LABEL: @unreachable
+  func @unreachable() {
+    spv.Return
+  // CHECK-NOT: ^bb
+  ^bb1:
+    // Unreachable blocks will be dropped during serialization.
+    // CHECK-NOT: spv.Unreachable
+    spv.Unreachable
+  }
 }
