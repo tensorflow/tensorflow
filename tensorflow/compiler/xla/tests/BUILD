@@ -18,6 +18,7 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
+    packages = ["//platforms/testing/tests/..."],
 )
 
 # Filegroup used to collect source files for dependency checking.
