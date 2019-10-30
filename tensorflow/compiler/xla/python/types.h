@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "numpy/arrayobject.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/numpy.h"
@@ -225,17 +226,32 @@ struct type_caster<xla::BorrowingLiteral> {
     if (!array) {
       return absl::nullopt;
     }
+
+    auto type_or_status = xla::DtypeToPrimitiveType(array.dtype());
+    if (!type_or_status.ok()) {
+      throw std::runtime_error(type_or_status.status().ToString());
+    }
+    xla::PrimitiveType type = type_or_status.ValueOrDie();
+
+    if (type == xla::BF16) {
+      // The NumPy array protocol has no way to describe our custom bfloat16
+      // type, so we cast to an array of uint16 instead. We are going to pass
+      // a raw buffer pointer to xla::BorrowingLiteral anyway, so it doesn't
+      // really matter what type we use here, so long as it has the correct size
+      // and alignment.
+      array = reinterpret_steal<pybind11::array>(PyArray_View(
+          reinterpret_cast<PyArrayObject*>(array.ptr()),
+          reinterpret_cast<PyArray_Descr*>(dtype::of<uint16>().release().ptr()),
+          static_cast<PyTypeObject*>(nullptr)));
+    }
+
     pybind11::buffer_info buffer_info = array.request();
 
     absl::InlinedVector<xla::int64, 4> dims(array.ndim());
     for (int i = 0; i < array.ndim(); ++i) {
       dims[i] = array.shape(i);
     }
-    auto type = xla::DtypeToPrimitiveType(array.dtype());
-    if (!type.ok()) {
-      throw std::runtime_error(type.status().ToString());
-    }
-    xla::Shape shape = xla::ShapeUtil::MakeShape(type.ValueOrDie(), dims);
+    xla::Shape shape = xla::ShapeUtil::MakeShape(type, dims);
     if (buffer_info.size * buffer_info.itemsize !=
         xla::ShapeUtil::ByteSizeOf(shape)) {
       throw std::runtime_error(absl::StrCat(
