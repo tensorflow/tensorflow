@@ -26,12 +26,12 @@ OpNameMapper::~OpNameMapper() {}
 
 std::string OpNameMapper::GetUniqueName(llvm::StringRef prefix) {
   std::string name = prefix;
-  auto& val = name_to_count_[name];
-  if (!val) {
-    ++val;
+  if (IsUnique(name)) {
+    ++name_to_count_[name];
     return name;
   }
 
+  auto& val = name_to_count_[name];
   llvm::SmallString<64> probe_name(prefix);
   while (true) {
     probe_name.resize(prefix.size());
@@ -40,8 +40,9 @@ std::string OpNameMapper::GetUniqueName(llvm::StringRef prefix) {
     // TODO(jpienaar): Switch to radix 36 and update tests.
     llvm::APInt(32, val++).toString(probe_name, /*Radix=*/10,
                                     /*Signed=*/false);
-    if (!name_to_count_.count(probe_name)) {
+    if (IsUnique(probe_name)) {
       name = llvm::StringRef(probe_name);
+      ++name_to_count_[name];
       break;
     }
   }
@@ -59,6 +60,10 @@ const std::string& OpNameMapper::GetUniqueName(Operation* op) {
 int OpNameMapper::InitOpName(mlir::Operation* op, llvm::StringRef name) {
   op_to_name_[op] = name;
   return name_to_count_[name]++;
+}
+
+bool OpNameMapper::IsUnique(llvm::StringRef name) {
+  return name_to_count_.count(name) == 0;
 }
 
 std::string OpLocNameMapper::GetName(Operation* op) {

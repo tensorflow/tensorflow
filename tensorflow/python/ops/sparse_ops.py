@@ -2574,8 +2574,12 @@ def sparse_transpose(sp_input, perm=None, name=None):
   """
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
-      rank = array_ops.rank(sp_input)
-      perm = (rank - 1) - math_ops.range(0, rank, 1)
+      if sp_input.shape.is_fully_defined():
+        rank = len(sp_input.shape)
+        perm = (rank - 1) - np.arange(0, rank, 1)
+      else:
+        rank = array_ops.rank(sp_input)
+        perm = (rank - 1) - math_ops.range(0, rank, 1)
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))

@@ -34,7 +34,9 @@ for supporting the common image classification models InceptionV3 and MobileNet.
 
 ## Get started
 
-To begin working with TensorFlow Lite, visit [Get started](get_started.md).
+To begin working with TensorFlow Lite on mobile devices, visit
+[Get started](get_started.md). If you want to deploy TensorFlow Lite models to
+microcontrollers, visit [Microcontrollers](../microcontrollers).
 
 ## Key features
 
@@ -115,7 +117,6 @@ Want to keep learning about TensorFlow Lite? Here are some next steps:
     TensorFlow Lite.
 *   If you're a mobile developer, visit [Android quickstart](android.md) or
     [iOS quickstart](ios.md).
-*   Learn about
-    [TensorFlow Lite for Microcontrollers](../microcontrollers/overview.md).
+*   Learn about [TensorFlow Lite for Microcontrollers](../microcontrollers).
 *   Explore our [pre-trained models](../models).
 *   Try our [example apps](https://www.tensorflow.org/lite/examples).

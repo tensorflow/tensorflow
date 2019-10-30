@@ -124,6 +124,19 @@ struct StdInlinerInterface : public DialectInlinerInterface {
 // StandardOpsDialect
 //===----------------------------------------------------------------------===//
 
+/// A custom unary operation printer that omits the "std." prefix from the
+/// operation names.
+static void printStandardUnaryOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumOperands() == 1 && "unary op should have one operand");
+  assert(op->getNumResults() == 1 && "unary op should have one result");
+
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
+    << *op->getOperand(0);
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << op->getOperand(0)->getType();
+}
+
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
 static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
@@ -139,7 +152,8 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
     return;
   }
 
-  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << ", " << *op->getOperand(1);
   p.printOptionalAttrDict(op->getAttrs());
 
@@ -150,7 +164,8 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
 /// A custom cast operation printer that omits the "std." prefix from the
 /// operation names.
 static void printStandardCastOp(Operation *op, OpAsmPrinter &p) {
-  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+  int stdDotLen = StandardOpsDialect::getDialectNamespace().size() + 1;
+  p << op->getName().getStringRef().drop_front(stdDotLen) << ' '
     << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
     << op->getResult(0)->getType();
 }
@@ -358,7 +373,7 @@ static LogicalResult verify(AllocOp op) {
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
   unsigned numDynamicDims = memRefType.getNumDynamicDims();
-  if (op.getOperation()->getNumOperands() != numDynamicDims + numSymbols)
+  if (op.getNumOperands() != numDynamicDims + numSymbols)
     return op.emitOpError(
         "operand count does not equal dimension plus symbol operand count");
 
@@ -440,13 +455,11 @@ struct SimplifyDeadAlloc : public OpRewritePattern<AllocOp> {
 
   PatternMatchResult matchAndRewrite(AllocOp alloc,
                                      PatternRewriter &rewriter) const override {
-    // Check if the alloc'ed value has any uses.
-    if (!alloc.use_empty())
-      return matchFailure();
-
-    // If it doesn't, we can eliminate it.
-    alloc.erase();
-    return matchSuccess();
+    if (alloc.use_empty()) {
+      rewriter.eraseOp(alloc);
+      return matchSuccess();
+    }
+    return matchFailure();
   }
 };
 } // end anonymous namespace.
@@ -474,11 +487,9 @@ static void print(OpAsmPrinter &p, BranchOp op) {
   p.printSuccessorAndUseList(op.getOperation(), 0);
 }
 
-Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
+Block *BranchOp::getDest() { return getSuccessor(0); }
 
-void BranchOp::setDest(Block *block) {
-  return getOperation()->setSuccessor(block, 0);
-}
+void BranchOp::setDest(Block *block) { return setSuccessor(block, 0); }
 
 void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
@@ -642,11 +653,11 @@ static Type getCheckedI1SameShape(Builder *build, Type type) {
   if (type.isIntOrIndexOrFloat())
     return i1Type;
   if (auto tensorType = type.dyn_cast<RankedTensorType>())
-    return build->getTensorType(tensorType.getShape(), i1Type);
+    return RankedTensorType::get(tensorType.getShape(), i1Type);
   if (type.isa<UnrankedTensorType>())
-    return build->getTensorType(i1Type);
+    return UnrankedTensorType::get(i1Type);
   if (auto vectorType = type.dyn_cast<VectorType>())
-    return build->getVectorType(vectorType.getShape(), i1Type);
+    return VectorType::get(vectorType.getShape(), i1Type);
   return Type();
 }
 
@@ -1283,7 +1294,7 @@ struct SimplifyDeadDealloc : public OpRewritePattern<DeallocOp> {
         return matchFailure();
 
     // Erase the dealloc operation.
-    rewriter.replaceOp(dealloc, llvm::None);
+    rewriter.eraseOp(dealloc);
     return matchSuccess();
   }
 };
@@ -1685,7 +1696,7 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
-  assert(!operands.empty() && "extract_element takes atleast one operand");
+  assert(!operands.empty() && "extract_element takes at least one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();
@@ -1754,17 +1765,9 @@ static LogicalResult verify(LoadOp op) {
   if (op.getType() != op.getMemRefType().getElementType())
     return op.emitOpError("result type must match element type of memref");
 
-  if (op.getMemRefType().getRank() != op.getNumOperands() - 1)
+  if (op.getNumOperands() != 1 + op.getMemRefType().getRank())
     return op.emitOpError("incorrect number of indices for load");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 
@@ -2133,14 +2136,6 @@ static LogicalResult verify(StoreOp op) {
   if (op.getNumOperands() != 2 + op.getMemRefType().getRank())
     return op.emitOpError("store index operand count not equal to memref rank");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 
@@ -2233,24 +2228,7 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
   if (aT.getElementType() != bT.getElementType())
     return false;
 
-  // If the either are unranked, then the cast is valid.
-  auto aRType = aT.dyn_cast<RankedTensorType>();
-  auto bRType = bT.dyn_cast<RankedTensorType>();
-  if (!aRType || !bRType)
-    return true;
-
-  // If they are both ranked, they have to have the same rank, and any specified
-  // dimensions must match.
-  if (aRType.getRank() != bRType.getRank())
-    return false;
-
-  for (unsigned i = 0, e = aRType.getRank(); i != e; ++i) {
-    int64_t aDim = aRType.getDimSize(i), bDim = bRType.getDimSize(i);
-    if (aDim != -1 && bDim != -1 && aDim != bDim)
-      return false;
-  }
-
-  return true;
+  return succeeded(verifyCompatibleShape(aT, bT));
 }
 
 OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
@@ -2263,7 +2241,7 @@ OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
 
 static Type getTensorTypeFromMemRefType(Builder &b, Type type) {
   if (auto memref = type.dyn_cast<MemRefType>())
-    return b.getTensorType(memref.getShape(), memref.getElementType());
+    return RankedTensorType::get(memref.getShape(), memref.getElementType());
   return b.getNoneType();
 }
 
@@ -2354,6 +2332,28 @@ static LogicalResult verify(ZeroExtendIOp op) {
            << dstType << " must be wider than operand type " << srcType;
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FPExtOp
+//===----------------------------------------------------------------------===//
+
+bool FPExtOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() < fb.getWidth();
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// FPTruncOp
+//===----------------------------------------------------------------------===//
+
+bool FPTruncOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() > fb.getWidth();
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

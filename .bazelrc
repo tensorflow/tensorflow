@@ -30,7 +30,7 @@ build:ios_arm64 --cpu=ios_arm64
 build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
-build:ios_fat --ios_multi_cpus=armv7,arm64
+build:ios_fat --ios_multi_cpus=armv7,arm64,x86_64
 build:ios_fat --copt -Wno-c++11-narrowing
 
 # Config to use a mostly-static build and disable modular op registration
@@ -47,6 +47,10 @@ build --define framework_shared_object=true
 # Flags for open source build, always set to be true.
 build --define open_source_build=true
 test --define open_source_build=true
+
+# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
+build --java_toolchain=//third_party/toolchains/java:tf_java_toolchain
+build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -133,6 +137,9 @@ build --announce_rc
 # Other build flags.
 build --define=grpc_no_ares=true
 
+# Prevent regression of https://github.com/bazelbuild/bazel/issues/7362
+build --incompatible_remove_legacy_whole_archive
+
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
@@ -162,13 +169,21 @@ build:rbe --remote_cache=remotebuildexecution.googleapis.com
 build:rbe --remote_executor=remotebuildexecution.googleapis.com
 build:rbe --remote_local_fallback=false
 build:rbe --remote_timeout=600
-build:rbe --spawn_strategy=remote
-build:rbe --strategy=Genrule=remote
-build:rbe --strategy=Closure=remote
-build:rbe --strategy=Javac=remote
-build:rbe --strategy=TestRunner=remote
+build:rbe --spawn_strategy=remote,worker,sandboxed,local
+build:rbe --strategy=Genrule=remote,worker,sandboxed,local
+build:rbe --strategy=Closure=remote,worker,sandboxed,local
+build:rbe --strategy=Javac=remote,worker,sandboxed,local
+build:rbe --strategy=TestRunner=remote,worker,sandboxed,local
 build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
+
+# Options to build TensorFlow 1.x or 2.x.
+build:v1 --define=tf_api_version=1
+build:v2 --define=tf_api_version=2
+build:v1 --action_env=TF2_BEHAVIOR=0
+build:v2 --action_env=TF2_BEHAVIOR=1
+build --config=v2
+test --config=v2
 
 # Default options should come above this line
 

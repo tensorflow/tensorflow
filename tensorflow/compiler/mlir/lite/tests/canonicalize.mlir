@@ -1,4 +1,4 @@
-// RUN: tf-opt -canonicalize %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s --dump-input-on-failure
 
 // Checks that tfl.reshape should be removed if its output's only user is
 // another tfl.reshape
@@ -110,4 +110,27 @@ func @fakequant_notdropfakequant(tensor<i32>, f32, f32) -> tensor<i32> {
 // CHECK-LABEL: fakequant_notdropfakequant
 // CHECK:  %0 = "tfl.fake_quant"(%arg0) {minmax = [], name = 0 : i64, narrow_range = false, num_bits = 4 : i32} : (tensor<i32>) -> tensor<i32>
 // CHECK:  %3 = "tfl.fake_quant"(%arg0) {minmax = [1.000000e-01, 2.000000e-01], name = 1 : i64, narrow_range = false, num_bits = 4 : i32} : (tensor<i32>) -> tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: @RemoveRedunantUnpackPack
+func @RemoveRedunantUnpackPack(%arg0: tensor<2x5xf32>) -> tensor<2x5xf32> {
+  %0:2 = "tfl.unpack"(%arg0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x5xf32>) -> (tensor<5xf32>, tensor<5xf32>)
+  %1 = "tfl.pack"(%0#0, %0#1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<5xf32>, tensor<5xf32>) -> (tensor<2x5xf32>)
+  return %1: tensor<2x5xf32>
+  // CHECK-NOT: pack
+  // CHECK: return %arg0 : tensor<2x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @RemoveRedunantPack
+func @RemoveRedunantPack(%arg0: tensor<2x5xf32>) -> (tensor<2x5xf32>, tensor<5xf32>) {
+  %0:2 = "tfl.unpack"(%arg0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x5xf32>) -> (tensor<5xf32>, tensor<5xf32>)
+  %1 = "tfl.pack"(%0#0, %0#1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<5xf32>, tensor<5xf32>) -> (tensor<2x5xf32>)
+  return %1, %0#0: tensor<2x5xf32>, tensor<5xf32>
+  // CHECK: %[[UNPACK:.*]]:2 = "tfl.unpack"
+  // CHECK-NOT: pack
+  // CHECK: return %arg0, %[[UNPACK]]#0 : tensor<2x5xf32>, tensor<5xf32>
 }

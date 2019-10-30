@@ -89,7 +89,7 @@ class Masking(Layer):
   ```
 
   See [the masking and padding
-  guide](https://www.tensorflow.org/beta/guide/keras/masking_and_padding)
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 
@@ -621,12 +621,13 @@ class Flatten(Layer):
     return outputs
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tensor_shape.as_shape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
-    output_shape = [input_shape[0]]
+    else:
+      output_shape = [input_shape[0]]
     if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
+      output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)
@@ -688,13 +689,16 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, subclassing
-  `keras.layers.Layer` is preferred. One reason for this is that
-  when saving a Model, `Lambda` layers are saved by serializing the
-  Python bytecode, whereas subclassed Layers are saved via overriding
-  their `get_config` method and are thus more portable. Models that rely
-  on subclassed Layers are also often easier to visualize and reason
-  about.
+  quick experimentation. For more advanced usecases, follow 
+  [this guide](https://www.tensorflow.org/alpha/guide/keras/custom_layers_and_models) 
+  for subclassing `tf.keras.layers.Layer`. 
+  
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
+  are saved by serializing the Python bytecode, whereas subclassed 
+  Layers can be saved via overriding their `get_config` method. Overriding 
+  `get_config` improves the portability of Models. Models that rely on 
+  subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
 
@@ -773,6 +777,7 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    self._supports_ragged_inputs = True
     self._output_shape = output_shape
     self._variable_dict = {}
     # These attributes are inherited from `Layer`.

@@ -55,7 +55,7 @@ def pack_tangents(tensors):
         appended to `tensors`.
   """
   return TangentInfo(
-      *pywrap_tensorflow.TFE_Py_PackForwardGradients(tensors))
+      *pywrap_tensorflow.TFE_Py_PackJVPs(tensors))
 
 
 @contextlib.contextmanager

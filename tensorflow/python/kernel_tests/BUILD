@@ -167,7 +167,7 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bincount_op_test",
     size = "small",
     srcs = ["bincount_op_test.py"],
@@ -295,16 +295,34 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "cudnn_determinism_test",
-    size = "small",
-    srcs = ["cudnn_determinism_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+py_library(
+    name = "cudnn_deterministic_base",
+    srcs = ["cudnn_deterministic_base.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "cudnn_deterministic_ops_test",
+    size = "small",
+    srcs = ["cudnn_deterministic_ops_test.py"],
+    additional_deps = [
+        ":cudnn_deterministic_base",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "cudnn_deterministic_test",
+    size = "small",
+    srcs = ["cudnn_deterministic_test.py"],
+    additional_deps = [
+        ":cudnn_deterministic_base",
     ],
 )
 
@@ -766,7 +784,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "parsing_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["parsing_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1272,7 +1290,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_oss",  # TODO(b/142818120): Re-enable.
+        "no_rocm",
+    ],
 )
 
 tf_py_test(
@@ -1376,7 +1397,6 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1636,18 +1656,36 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "bias_op_test",
-    size = "medium",
-    srcs = ["bias_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+py_library(
+    name = "bias_op_base",
+    srcs = ["bias_op_base.py"],
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "bias_op_deterministic_test",
+    size = "medium",
+    srcs = ["bias_op_deterministic_test.py"],
+    additional_deps = [
+        ":bias_op_base",
+    ],
+    xla_enable_strict_auto_jit = False,
+)
+
+cuda_py_test(
+    name = "bias_op_test",
+    size = "medium",
+    srcs = ["bias_op_test.py"],
+    additional_deps = [
+        ":bias_op_base",
     ],
 )
 
@@ -3356,6 +3394,28 @@ cuda_py_test(
     shard_count = 20,
 )
 
+tf_py_test(
+    name = "eig_op_test",
+    size = "medium",
+    srcs = ["eig_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+    ],
+    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
+    shard_count = 20,
+    tags = [
+        "no_rocm",  # flaky test
+        "no_windows",
+        "nomsan",  # TODO(b/143081496)
+    ],
+    # b/127344411: xla_enable_strict_auto_jit = True,
+)
+
 cuda_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
@@ -3757,6 +3817,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
     ],
     main = "sparse_csr_matrix_ops_test.py",
+    shard_count = 10,
     tags = ["no_rocm"],
 )
 

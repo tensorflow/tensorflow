@@ -49,16 +49,8 @@ public:
   explicit SPIRVTypeConverter(SPIRVBasicTypeConverter *basicTypeConverter)
       : basicTypeConverter(basicTypeConverter) {}
 
-  /// Convert types to SPIR-V types using the basic type converter.
-  Type convertType(Type t) override {
-    return basicTypeConverter->convertType(t);
-  }
-
-  /// Method to convert argument of a function. The `type` is converted to
-  /// spv.ptr<type, Uniform>.
-  // TODO(ravishankarm) : Support other storage classes.
-  LogicalResult convertSignatureArg(unsigned inputNo, Type type,
-                                    SignatureConversion &result) override;
+  /// Converts types to SPIR-V types using the basic type converter.
+  Type convertType(Type t) override;
 
   /// Gets the basic type converter.
   SPIRVBasicTypeConverter *getBasicTypeConverter() const {
@@ -143,11 +135,10 @@ private:
     case spirv::BuiltIn::LocalInvocationId:
     case spirv::BuiltIn::GlobalInvocationId: {
       auto ptrType = spirv::PointerType::get(
-          builder.getVectorType({3}, builder.getIntegerType(32)),
+          VectorType::get({3}, builder.getIntegerType(32)),
           spirv::StorageClass::Input);
       newVarOp = builder.create<spirv::GlobalVariableOp>(
-          loc, builder.getTypeAttr(ptrType), builder.getStringAttr(name),
-          nullptr);
+          loc, TypeAttr::get(ptrType), builder.getStringAttr(name), nullptr);
       newVarOp.setAttr(
           convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn)),
           builder.getStringAttr(stringifyBuiltIn(builtin)));
@@ -163,16 +154,19 @@ private:
 };
 
 /// Legalizes a function as a non-entry function.
-LogicalResult lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                            SPIRVTypeConverter *typeConverter,
+LogicalResult lowerFunction(FuncOp funcOp, SPIRVTypeConverter *typeConverter,
                             ConversionPatternRewriter &rewriter,
                             FuncOp &newFuncOp);
 
 /// Legalizes a function as an entry function.
-LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
+LogicalResult lowerAsEntryFunction(FuncOp funcOp,
                                    SPIRVTypeConverter *typeConverter,
                                    ConversionPatternRewriter &rewriter,
                                    FuncOp &newFuncOp);
+
+/// Finalizes entry function legalization. Inserts the spv.EntryPoint and
+/// spv.ExecutionMode ops.
+LogicalResult finalizeEntryFunction(FuncOp newFuncOp, OpBuilder &builder);
 
 /// Appends to a pattern list additional patterns for translating StandardOps to
 /// SPIR-V ops.

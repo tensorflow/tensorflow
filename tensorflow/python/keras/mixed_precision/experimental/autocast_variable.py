@@ -91,11 +91,7 @@ class AutoCastVariable(variables.Variable):
     val = self._variable.value()
     if not self._should_cast():
       return val
-    # We colocate_with(None) to ignore the existing device constraints, so that
-    # the cast is always done on the variable's device
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self.dtype)
 
   def read_value(self):
     val = self._variable.read_value()
@@ -117,20 +113,16 @@ class AutoCastVariable(variables.Variable):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts this variable to a tensor."""
     if not self._should_cast():
-      return ops.internal_convert_to_tensor(self._variable, dtype, name,
-                                            as_ref)
+      return ops.convert_to_tensor(self._variable, dtype, name, as_ref)
     # TODO(reedwm): Support as_ref?
     assert not as_ref
     if dtype is not None and not dtype.is_compatible_with(self.dtype):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.internal_convert_to_tensor(self._variable,
-                                         self._variable.dtype, name,
-                                         as_ref=False)
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    val = ops.convert_to_tensor(
+        self._variable, self._variable.dtype, name, as_ref=False)
+    return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -270,54 +262,56 @@ class AutoCastVariable(variables.Variable):
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.
+  # Also note: We call read_value() instead of value(), because value() causes
+  # gradients not to work properly when TPUStrategy is used: b/143380936
 
-  def __add__(self, o): return self.value() + o
-  def __radd__(self, o): return o + self.value()
-  def __sub__(self, o): return self.value() - o
-  def __rsub__(self, o): return o - self.value()
-  def __mul__(self, o): return self.value() * o
-  def __rmul__(self, o): return o * self.value()
-  def __truediv__(self, o): return self.value() / o
-  def __rtruediv__(self, o): return o / self.value()
-  def __floordiv__(self, o): return self.value() // o
+  def __add__(self, o): return self.read_value() + o
+  def __radd__(self, o): return o + self.read_value()
+  def __sub__(self, o): return self.read_value() - o
+  def __rsub__(self, o): return o - self.read_value()
+  def __mul__(self, o): return self.read_value() * o
+  def __rmul__(self, o): return o * self.read_value()
+  def __truediv__(self, o): return self.read_value() / o
+  def __rtruediv__(self, o): return o / self.read_value()
+  def __floordiv__(self, o): return self.read_value() // o
 
-  def __rfloordiv__(self, o): return o // self.value()
-  def __mod__(self, o): return self.value() % o
-  def __rmod__(self, o): return o % self.value()
-  def __lt__(self, o): return self.value() < o
-  def __le__(self, o): return self.value() <= o
-  def __gt__(self, o): return self.value() > o
-  def __ge__(self, o): return self.value() >= o
-  def __getitem__(self, o): return self.value()[o]
-  def __pow__(self, o, modulo=None): return pow(self.value(), o, modulo)
-  def __rpow__(self, o): return pow(o, self.value())
-  def __neg__(self): return -self.value()
-  def __abs__(self): return abs(self.value())
+  def __rfloordiv__(self, o): return o // self.read_value()
+  def __mod__(self, o): return self.read_value() % o
+  def __rmod__(self, o): return o % self.read_value()
+  def __lt__(self, o): return self.read_value() < o
+  def __le__(self, o): return self.read_value() <= o
+  def __gt__(self, o): return self.read_value() > o
+  def __ge__(self, o): return self.read_value() >= o
+  def __getitem__(self, o): return self.read_value()[o]
+  def __pow__(self, o, modulo=None): return pow(self.read_value(), o, modulo)
+  def __rpow__(self, o): return pow(o, self.read_value())
+  def __neg__(self): return -self.read_value()
+  def __abs__(self): return abs(self.read_value())
 
   def __div__(self, o):
     try:
-      return self.value().__div__(o)
+      return self.read_value().__div__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __rdiv__(self, o):
     try:
-      return self.value().__rdiv__(o)
+      return self.read_value().__rdiv__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __matmul__(self, o):
     try:
-      return self.value().__matmul__(o)
+      return self.read_value().__matmul__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __rmatmul__(self, o):
     try:
-      return self.value().__rmatmul__(o)
+      return self.read_value().__rmatmul__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
@@ -329,21 +323,50 @@ ops.register_tensor_conversion_function(
 ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
-# We have DistributedVariable subclass to pass
-# isinstance(..., DistributedVariable) checks when wrapping a
-# DistributedVariable.
-# TODO(reedwm): We should not wrap DistributedVariable, but instead have
-# DistributedVariable wrap AutoCastVariable. Subclassing DistributedVariable is
-# messy, because we do not fully implement the interface of DistributedVariable.
-class AutoCastDistributedVariable(AutoCastVariable,
-                                  distribute_values.DistributedVariable):
-  """Version of AutoCastVariable that subclasses DistributedVariable."""
+def create_autocast_variable(variable):
+  """Creates an AutoCastVariable that wraps another variable.
 
-  def __init__(self, variable):
-    if not isinstance(variable, distribute_values.DistributedValues):
-      raise ValueError('variable must be of type DistributedValues, '
-                       'but got: %s' % variable)
-    super(AutoCastDistributedVariable, self).__init__(variable)
+  This typically just returns `AutoCastVariable(variable)`. But, if the variable
+  is a DistributedVariable or one of its subclasses, we instead dynamically
+  create a class that subclasses from both AutoCastVariable and
+  variable.__class__. This is so the returned variable will still pass
+  `isinstance(variable, variable.__class__)`, which is required for
+  DistributedVariables and its subclasses to work properly.
 
-  def __repr__(self):
-    return distribute_values.DistributedVariable.__repr__(self)
+  Args:
+    variable: A floating-point resource variable to wrap.
+
+  Returns:
+    An AutoCastVariable that wraps the variable.
+  """
+  if not isinstance(variable, distribute_values.DistributedVariable):
+    return AutoCastVariable(variable)
+
+  class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
+    """An AutoCastVariable that also subclasses from DistributedVariable."""
+
+    def __init__(self, maybe_variable, *args, **kwargs):
+      if not args and not kwargs:
+        # The common case: We call the super constructor with a single argument,
+        # which is a variable.
+        super(AutoCastDistributedVariable, self).__init__(maybe_variable)
+      else:
+        # This 'else' branch is needed, as distribution strategies sometimes
+        # clone a distributed variable by doing the following:
+        #
+        #    var = type(var)(var._distribute_strategy, var._device_map, ...)
+        #
+        # In this case, `maybe_variable` will instead be a distribution
+        # strategy. We create the DistributedVariable before wrapping it.
+        distribution_strategy = maybe_variable
+        inner_var = variable.__class__(distribution_strategy, *args, **kwargs)
+        super(AutoCastDistributedVariable, self).__init__(inner_var)
+
+    def __repr__(self):
+      # pylint: disable=missing-format-attribute
+      return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
+              'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'
+             ).format(v=self)
+      # pylint: enable=missing-format-attribute
+
+  return AutoCastDistributedVariable(variable)

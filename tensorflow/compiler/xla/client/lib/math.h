@@ -108,6 +108,9 @@ XlaOp BesselI0e(XlaOp x);
 // at x.
 XlaOp BesselI1e(XlaOp x);
 
+// Computes the Regularized Incomplete Beta function.
+XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_

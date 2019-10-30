@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 import numpy as np
@@ -37,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -829,6 +831,7 @@ def disable_v2_dtype_behavior(fn):
 
 def _set_v2_dtype_behavior(fn, enabled):
   """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  @functools.wraps(fn)
   def wrapper(*args, **kwargs):
     v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
     base_layer_utils.V2_DTYPE_BEHAVIOR = enabled
@@ -837,4 +840,4 @@ def _set_v2_dtype_behavior(fn, enabled):
     finally:
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
-  return wrapper
+  return tf_decorator.make_decorator(fn, wrapper)

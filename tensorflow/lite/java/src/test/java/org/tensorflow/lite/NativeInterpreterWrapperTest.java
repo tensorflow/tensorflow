@@ -352,7 +352,7 @@ public final class NativeInterpreterWrapperTest {
             .hasMessageThat()
             .contains(
                 "Cannot convert between a TensorFlowLite buffer with 768 bytes and a "
-                    + "ByteBuffer with 3072 bytes.");
+                    + "Java Buffer with 3072 bytes.");
       }
       int[] inputDims = {4, 8, 8, 3};
       wrapper.resizeInput(0, inputDims);
@@ -380,7 +380,7 @@ public final class NativeInterpreterWrapperTest {
             .hasMessageThat()
             .contains(
                 "Cannot convert between a TensorFlowLite buffer with 192 bytes and a "
-                    + "ByteBuffer with 336 bytes.");
+                    + "Java Buffer with 336 bytes.");
       }
     }
   }

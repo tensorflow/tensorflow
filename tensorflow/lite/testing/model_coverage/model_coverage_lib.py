@@ -118,12 +118,17 @@ def _get_input_data_map(tflite_model, input_data):
   }
 
 
-def _generate_random_input_data(tflite_model, seed=None):
+def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
   """Generates input data based on the input tensors in the TFLite model.
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
     seed: Integer seed for the random generator. (default None)
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
 
   Returns:
     ([np.ndarray], {str : [np.ndarray]}).
@@ -134,11 +139,20 @@ def _generate_random_input_data(tflite_model, seed=None):
 
   if seed:
     np.random.seed(seed=seed)
-  input_data = [
-      np.array(
-          np.random.random_sample(input_tensor["shape"]),
-          dtype=input_tensor["dtype"]) for input_tensor in input_details
-  ]
+
+  # Generate random input data. If a tensor's value range is specified, say
+  # [a, b), then the generated value will be (b - a) * Unif[0.0, 1.0) + a,
+  # otherwise it's Unif[0.0, 1.0).
+  input_data = []
+  for input_tensor in input_details:
+    val = np.random.random_sample(input_tensor["shape"])
+    if (input_data_range is not None and
+        input_tensor["name"] in input_data_range):
+      val = (input_data_range[input_tensor["name"]][1] -
+             input_data_range[input_tensor["name"]][0]
+            ) * val + input_data_range[input_tensor["name"]][0]
+    input_data.append(np.array(val, dtype=input_tensor["dtype"]))
+
   input_data_map = _get_input_data_map(tflite_model, input_data)
   return input_data, input_data_map
 
@@ -248,7 +262,11 @@ def evaluate_keras_model(filename):
   return lambda input_data: [keras_model.predict(input_data)]
 
 
-def compare_models(tflite_model, tf_eval_func, input_data=None, tolerance=5):
+def compare_models(tflite_model,
+                   tf_eval_func,
+                   input_data=None,
+                   input_data_range=None,
+                   tolerance=5):
   """Compares TensorFlow and TFLite models.
 
   Unless the input data is provided, the models are compared with random data.
@@ -258,17 +276,27 @@ def compare_models(tflite_model, tf_eval_func, input_data=None, tolerance=5):
     tf_eval_func: Lambda function that takes in input data and outputs the
       results of the TensorFlow model ([np.ndarray data] : [np.ndarray result]).
     input_data: np.ndarray to pass into models during inference. (default None)
-    tolerance: Decimal place to check accuracy to. (default 5)
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
+    tolerance: Decimal place to check accuracy to. (default 5).
   """
   if input_data is None:
-    input_data, _ = _generate_random_input_data(tflite_model)
+    input_data, _ = _generate_random_input_data(
+        tflite_model=tflite_model, input_data_range=input_data_range)
   tf_results = tf_eval_func(input_data)
   tflite_results, _ = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
 
-def compare_models_v2(tflite_model, tf_eval_func, input_data=None, tolerance=5):
+def compare_models_v2(tflite_model,
+                      tf_eval_func,
+                      input_data=None,
+                      input_data_range=None,
+                      tolerance=5):
   """Compares TensorFlow and TFLite models for TensorFlow 2.0.
 
   Unless the input data is provided, the models are compared with random data.
@@ -279,12 +307,18 @@ def compare_models_v2(tflite_model, tf_eval_func, input_data=None, tolerance=5):
     tf_eval_func: Function to evaluate TensorFlow model. Either a lambda
       function that takes in input data and outputs the results or a TensorFlow
       ConcreteFunction.
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     tolerance: Decimal place to check accuracy to. (default 5)
   """
   # Convert the input data into a map.
   if input_data is None:
-    input_data, input_data_map = _generate_random_input_data(tflite_model)
+    input_data, input_data_map = _generate_random_input_data(
+        tflite_model=tflite_model, input_data_range=input_data_range)
   else:
     input_data_map = _get_input_data_map(tflite_model, input_data)
   input_data_func_map = {
@@ -383,6 +417,7 @@ def test_frozen_graph(filename,
                       output_arrays,
                       input_shapes=None,
                       input_data=None,
+                      input_data_range=None,
                       **kwargs):
   """Validates the TensorFlow frozen graph converts to a TFLite model.
 
@@ -397,7 +432,12 @@ def test_frozen_graph(filename,
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_frozen_graph(
@@ -405,7 +445,11 @@ def test_frozen_graph(filename,
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_frozen_graph(filename, input_arrays, output_arrays)
-  compare_models(tflite_model, tf_eval_func, input_data=input_data)
+  compare_models(
+      tflite_model,
+      tf_eval_func,
+      input_data=input_data,
+      input_data_range=input_data_range)
 
 
 def test_saved_model(directory,
@@ -413,6 +457,7 @@ def test_saved_model(directory,
                      tag_set=None,
                      signature_key=None,
                      input_data=None,
+                     input_data_range=None,
                      **kwargs):
   """Validates the TensorFlow SavedModel converts to a TFLite model.
 
@@ -428,7 +473,12 @@ def test_saved_model(directory,
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
       analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_saved_model(
@@ -439,13 +489,18 @@ def test_saved_model(directory,
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_saved_model(directory, tag_set, signature_key)
-  compare_models(tflite_model, tf_eval_func, input_data=input_data)
+  compare_models(
+      tflite_model,
+      tf_eval_func,
+      input_data=input_data,
+      input_data_range=input_data_range)
 
 
 def test_saved_model_v2(directory,
                         tag_set=None,
                         signature_key=None,
                         input_data=None,
+                        input_data_range=None,
                         **kwargs):
   """Validates the TensorFlow SavedModel converts to a TFLite model.
 
@@ -457,7 +512,12 @@ def test_saved_model_v2(directory,
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
       analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   model = _load.load(directory, tags=tag_set)
@@ -468,7 +528,11 @@ def test_saved_model_v2(directory,
   converter = _lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
   tflite_model = _convert(converter, **kwargs)
 
-  compare_models_v2(tflite_model, concrete_func, input_data=input_data)
+  compare_models_v2(
+      tflite_model,
+      concrete_func,
+      input_data=input_data,
+      input_data_range=input_data_range)
 
 
 def test_saved_model_v2_quant_float16(directory, **kwargs):
@@ -511,6 +575,7 @@ def test_keras_model(filename,
                      input_arrays=None,
                      input_shapes=None,
                      input_data=None,
+                     input_data_range=None,
                      **kwargs):
   """Validates the tf.keras model converts to a TFLite model.
 
@@ -524,7 +589,12 @@ def test_keras_model(filename,
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_keras_model_file(
@@ -532,10 +602,18 @@ def test_keras_model(filename,
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
-  compare_models(tflite_model, tf_eval_func, input_data=input_data)
+  compare_models(
+      tflite_model,
+      tf_eval_func,
+      input_data=input_data,
+      input_data_range=input_data_range)
 
 
-def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
+def test_keras_model_v2(filename,
+                        input_shapes=None,
+                        input_data=None,
+                        input_data_range=None,
+                        **kwargs):
   """Validates the tf.keras model converts to a TFLite model.
 
   Converts the tf.keras model to TFLite and checks the accuracy of the model on
@@ -546,7 +624,12 @@ def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
     input_shapes: List of list of integers representing input shapes in the
       order of the tf.keras model's .input attribute (e.g., [[1, 16, 16, 3]]).
       (default None)
-    input_data: np.ndarray to pass into models during inference. (default None)
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and
+      the value is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   keras_model = _keras.models.load_model(filename)
@@ -558,4 +641,8 @@ def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
-  compare_models_v2(tflite_model, tf_eval_func, input_data=input_data)
+  compare_models_v2(
+      tflite_model,
+      tf_eval_func,
+      input_data=input_data,
+      input_data_range=input_data_range)

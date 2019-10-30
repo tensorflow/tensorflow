@@ -27,9 +27,11 @@ namespace profiling {
 class NoopProfiler : public tflite::Profiler {
  public:
   NoopProfiler() {}
-  NoopProfiler(int max_profiling_buffer_entries) {}
+  explicit NoopProfiler(int max_profiling_buffer_entries) {}
 
-  uint32_t BeginEvent(const char*, EventType, uint32_t) override { return 0; }
+  uint32_t BeginEvent(const char*, EventType, uint32_t, uint32_t) override {
+    return 0;
+  }
   void EndEvent(uint32_t) override {}
 
   void StartProfiling() {}

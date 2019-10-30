@@ -49,12 +49,11 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
                        &GrpcEagerServiceImpl::method##Handler, false);     \
   } while (0)
   ENQUEUE_REQUEST(CreateContext);
+  ENQUEUE_REQUEST(UpdateContext);
   ENQUEUE_REQUEST(Enqueue);
   ENQUEUE_REQUEST(WaitQueueDone);
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
-  ENQUEUE_REQUEST(RegisterFunction);
-  ENQUEUE_REQUEST(SendTensor);
 #undef ENQUEUE_REQUEST
 
   // Request a StreamingEnqueue call.

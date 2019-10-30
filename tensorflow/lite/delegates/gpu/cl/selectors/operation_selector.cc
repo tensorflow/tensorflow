@@ -36,7 +36,16 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
                             const std::vector<Value<TensorRef<BHWC>>*>& inputs,
                             const std::vector<Value<TensorRef<BHWC>>*>& outputs,
                             const Node& node,
-                            std::unique_ptr<GPUOperation>* gpu_op) {
+                            GPUOperationsSubgraph* gpu_subgraph) {
+  gpu_subgraph->operations.push_back({});
+  std::unique_ptr<GPUOperation>* gpu_op =
+      &gpu_subgraph->operations[0].operation;
+  for (int i = 0; i < inputs.size(); ++i) {
+    gpu_subgraph->operations[0].input_ids.push_back(i);
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    gpu_subgraph->operations[0].output_ids.push_back(i);
+  }
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ABS: {
@@ -96,11 +105,16 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context, op_def, gpu_op);
+      return SelectFullyConnected(attr, creation_context, op_def,
+                                  inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::HARD_SWISH:
       *gpu_op = HardSwish::Create(op_def);
       return OkStatus();
+    case OperationType::LSTM: {
+      SelectLSTM(op_def, gpu_op);
+      return OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
@@ -149,6 +163,12 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::SOFTMAX: {
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
+      return OkStatus();
+    }
+    case OperationType::TRANSPOSE: {
+      auto attr =
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, gpu_op);
       return OkStatus();
     }
     case OperationType::UPSAMPLE_2D: {

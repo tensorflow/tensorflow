@@ -323,7 +323,7 @@ def for_stmt(iter_,
                                 init_vars, basic_symbol_names,
                                 composite_symbol_names)
 
-  if isinstance(iter_, iterator_ops.IteratorV2):
+  if isinstance(iter_, iterator_ops.OwnedIterator):
     return _tf_iterator_for_stmt(iter_, extra_test, body, get_state, set_state,
                                  init_vars, basic_symbol_names,
                                  composite_symbol_names)

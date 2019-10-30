@@ -30,6 +30,15 @@ limitations under the License.
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
+#ifdef MLIR_CALLINTERFACES
+#else
+include "mlir/Analysis/CallInterfaces.td"
+#endif // MLIR_CALLINTERFACES
+
+// A derived attribute that returns the shape of the first result type.
+def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
+
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
     TF_VariantTensor:$handle
@@ -196,6 +205,44 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall",
+                                 [CallOpInterface, NoSideEffect]> {
+  let summary =
+    "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f,
+    StrAttr:$config,
+    StrAttr:$config_proto,
+    StrAttr:$executor_type
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
+}
+
 // In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
 // of function arguments.
 // Note: NoSideEffect trait is not added intentionally to preserve the captured
@@ -238,6 +285,62 @@ Inserts a placeholder for a tensor that will be always fed.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
+  let summary = "Placeholder op";
+  let description = [{
+    A placeholder op that passes through input when its output is not fed.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+  DerivedAttr shape = TF_DerivedResultShapeAttr;
+}
+
+def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
+                                         [CallOpInterface]> {
+  let summary =
+    "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f,
+    StrAttr:$config,
+    StrAttr:$config_proto,
+    StrAttr:$executor_type
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
 }
 
 def TF_WhileOp : TF_Op<"While", []> {

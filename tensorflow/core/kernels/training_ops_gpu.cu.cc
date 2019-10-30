@@ -43,7 +43,7 @@ __global__ void ApplyAdamKernel(int32 data_dim, T* var, T* m, T* v,
                        (static_cast<T>(1.0) - (*beta1_power_));
   const T epsilon = (*epsilon_);
   const T beta1 = (*beta1_);
-  const T one_minus_beta1 = static_cast<T>(1.0) - (*beta1_);
+  const T one_minus_beta1 = static_cast<T>(1.0) - (beta1);
   const T one_minus_beta2 = static_cast<T>(1.0) - (*beta2_);
   const int32 stripe = gridDim.x * blockDim.x;
 

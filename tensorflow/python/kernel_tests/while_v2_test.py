@@ -37,6 +37,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -80,6 +81,32 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_deprecated_v1
+  def testCustomGradient(self):
+    x = constant_op.constant(2.)
+    n = constant_op.constant(1., name="const-n")
+    m = variables.Variable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+
+    def body_fn(v):  # pylint: disable=invalid-name
+
+      @custom_gradient.custom_gradient
+      def inner_fn(v):  # pylint: disable=invalid-name
+
+        def grad_fn(dy, variables=None):  # pylint: disable=invalid-name, unused-argument, redefined-outer-name
+          return dy * 2 * v * n * m, [v * v]
+
+        return v * v * m, grad_fn
+
+      return inner_fn(v)
+
+    ret = while_loop_v2(
+        lambda v: v < 8., body_fn, [x], return_same_structure=False)
+    grad = gradients_impl.gradients(ret, [x])
+    with self.cached_session():
+      self.assertEqual(self.evaluate(ret), 16.)
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
+
   @test_util.run_v1_only("b/120545219")
   def testReturnSameStructureTrue(self):
     x = constant_op.constant(2.)
@@ -110,9 +137,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         r"but has type <dtype: 'float16'> after 1 iteration."):
       BuildWhile()
 
-  def testGradientTapeResourceVariable(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testGradientTapeResourceVariable(self, dtype):
     with context.eager_mode():
-      v = variables.Variable(1.)
+      v = variables.Variable(1., dtype=dtype)
 
       @def_function.function
       def fnWithLoop():  # pylint: disable=invalid-name
@@ -120,7 +148,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
           _, x = while_loop_v2(
               lambda i, _: i < 2,
               lambda i, x: (i + 1, x * v),
-              [0, 2.])
+              [0, constant_op.constant(2., dtype=dtype)])
         return tape.gradient(x, v)
 
       self.assertAllEqual(fnWithLoop(), 4.0)

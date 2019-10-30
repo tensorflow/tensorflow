@@ -238,8 +238,9 @@ class RingReducerTest : public ::testing::Test {
 
     // Set up all of the fake device contexts.
     for (int wi = 0; wi < num_workers; ++wi) {
+      string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+      col_params_.instance.num_devices_per_task[task_name] = num_devices;
       for (int di = 0; di < num_devices; ++di) {
-        string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
         string dev_name = strings::StrCat(task_name, "/cpu:", di);
         if (device_type == DEVICE_GPU) {
           dev_name =
@@ -485,7 +486,6 @@ class RingReducerTest : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
       DeviceContext* dev_ctx = nullptr;
       auto* dev_info = device_->tensorflow_gpu_device_info();
       if (dev_info) {
@@ -494,8 +494,6 @@ class RingReducerTest : public ::testing::Test {
       } else {
         dev_ctx = new DeviceContext;
       }
-      input_dc.push_back(dev_ctx);
-      op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
       int forward_from = 0;
       op_params.forward_from_array = &forward_from;

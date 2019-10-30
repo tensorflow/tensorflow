@@ -959,13 +959,13 @@ class TensorArray(object):
   >>> ta = ta.write(2, 30)
   >>>
   >>> ta.read(0)
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=10.0>
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.0>
   >>> ta.read(1)
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=20.0>
+  <tf.Tensor: shape=(), dtype=float32, numpy=20.0>
   >>> ta.read(2)
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=30.0>
+  <tf.Tensor: shape=(), dtype=float32, numpy=30.0>
   >>> ta.stack()
-  <tf.Tensor: id=..., shape=(3,), dtype=float32, numpy=array([10., 20., 30.],
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([10., 20., 30.],
   dtype=float32)>
 
   Example 2: Fibonacci sequence algorithm that writes in a loop then returns.
@@ -980,8 +980,8 @@ class TensorArray(object):
   ...   return ta.stack()
   >>>
   >>> fibonacci(7)
-  <tf.Tensor: id=..., shape=(7,), dtype=float32, numpy=array([0., 1., 1., 2.,
-  3., 5., 8.], dtype=float32)>
+  <tf.Tensor: shape=(7,), dtype=float32,
+  numpy=array([0., 1., 1., 2., 3., 5., 8.], dtype=float32)>
 
   Example 3: A simple loop interacting with a tf.Variable.
   >>> v = tf.Variable(1)
@@ -997,7 +997,7 @@ class TensorArray(object):
   ...   return ta.stack()
   >>>
   >>> f(5)
-  <tf.Tensor: id=..., shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
   dtype=int32)>
   """
 

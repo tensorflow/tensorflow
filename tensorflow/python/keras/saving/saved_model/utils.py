@@ -42,8 +42,10 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     call_fn are added to the layer losses.
   """
   expects_training_arg = layer._expects_training_arg   # pylint: disable=protected-access
-  if hasattr(call_fn, 'original_call'):
+  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
     original_call = call_fn.original_call
+    # In Python 3, callable objects are not compatible with inspect.getargspec
+    call_fn = call_fn.__call__
   else:
     original_call = call_fn
   fn, arg_spec = maybe_add_training_arg(

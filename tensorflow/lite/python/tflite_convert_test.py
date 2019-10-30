@@ -46,7 +46,7 @@ class TestModels(test_util.TensorFlowTestCase):
 
   def _run(self, flags_str, should_succeed):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
-    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert.par')
+    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
                                                  flags_str)
 
@@ -124,7 +124,7 @@ class TfLiteConvertV1Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_enable_mlir_converter'
+    flags_str = ('--keras_model_file={} --experimental_new_converter'
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
@@ -157,7 +157,7 @@ class TfLiteConvertV2Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_enable_mlir_converter'
+    flags_str = ('--keras_model_file={} --experimental_new_converter'
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)

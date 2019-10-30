@@ -68,7 +68,6 @@ class HadoopFileSystem : public FileSystem {
 
  private:
   Status Connect(StringPiece fname, hdfsFS* fs);
-  LibHDFS* hdfs_;
 };
 
 }  // namespace tensorflow

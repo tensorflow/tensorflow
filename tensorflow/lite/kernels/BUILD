@@ -93,7 +93,6 @@ config_setting(
 )
 
 ###### End of config_setting's to match aarch64 ######
-
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -242,6 +241,7 @@ cc_library(
         ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
+        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
     }),
 )
@@ -537,6 +537,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
@@ -609,7 +610,11 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],
-    hdrs = ["register.h"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",

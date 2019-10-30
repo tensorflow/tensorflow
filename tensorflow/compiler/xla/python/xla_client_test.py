@@ -29,6 +29,9 @@ from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 
 
+bfloat16 = xla_client.bfloat16
+
+
 class ComputationTest(absltest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
@@ -116,6 +119,11 @@ class ComputationsWithConstantsTest(ComputationTest):
     c = self._NewComputation()
     c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
+
+  def testConstantScalarSumBF16(self):
+    c = self._NewComputation()
+    c.Add(c.Constant(bfloat16(1.11)), c.Constant(bfloat16(3.14)))
+    self._ExecuteAndCompareClose(c, expected=bfloat16(4.25))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
@@ -542,6 +550,22 @@ class BufferTest(ComputationTest):
     # copy_to_host_async does nothing after to_py is called.
     arg0_buffer.copy_to_host_async()
     np.testing.assert_equal(arg0, arg0_buffer.to_py())
+
+  def testDevice(self):
+    x = np.arange(8)
+    for device in xla_client.get_local_backend().local_devices():
+      buf = xla_client.Buffer.from_pyval(x, device=device)
+      self.assertEqual(buf.device(), device)
+      np.testing.assert_equal(x, buf.to_py())
+
+  def testInvalidDevice(self):
+    t = np.array(1.)
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
+        r"\(num_local_devices=\d+\)"):
+      # TODO(skyewm): figure out how to test this with a Device
+      xla_client.Buffer.from_pyval(t, device=100)
 
 
 class SingleOpTest(ComputationTest):
@@ -1405,6 +1429,15 @@ class SingleOpTest(ComputationTest):
     self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
                                  rtol=1e-4)
 
+  def testNextAfter(self):
+    c = self._NewComputation()
+    c.NextAfter(
+        c.Constant(np.array([1, 2], dtype=np.float32)),
+        c.Constant(np.array([2, 1], dtype=np.float32)))
+    out = self._Execute(c, ())
+    eps = np.finfo(np.float32).eps
+    np.testing.assert_equal(np.array([eps + 1, 2 - eps], dtype=np.float32), out)
+
 
 class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
@@ -1843,7 +1876,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.shape_from_pyval(to_infeed[0]))
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed[0])), 0)
     compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1852,11 +1885,24 @@ class EmbeddedComputationsTest(ComputationTest):
       result = xla_client.execute_with_python_values(compiled_c)
       self.assertEqual(result, item)
 
+  def testInfeedTuple(self):
+    to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
+    c = self._NewComputation()
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed)), 0)
+    compiled_c = c.Build().Compile()
+    xla_client.transfer_to_infeed(to_infeed)
+
+    result = xla_client.execute_with_python_values(compiled_c)
+    np.testing.assert_equal(result[0], to_infeed[0])
+    np.testing.assert_equal(result[1], to_infeed[1])
+
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
-    c.Outfeed(x)
+    x_and_token = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
+    x = c.GetTupleElement(x_and_token, 0)
+    token = c.GetTupleElement(x_and_token, 1)
+    c.Outfeed(x, token)
 
     compiled_c = c.Build().Compile()
 

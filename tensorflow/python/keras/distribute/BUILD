@@ -121,6 +121,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notpu",  # TODO(b/142805125): Enable tpu_test_target once fixed on tpu.
         "notsan",
     ],
     deps = [
@@ -149,7 +150,7 @@ py_library(
         "keras_dnn_correctness_test.py",
         "keras_embedding_model_correctness_test.py",
         "keras_image_model_correctness_test.py",
-        "keras_lstm_model_correctness_test.py",
+        "keras_rnn_model_correctness_test.py",
         "keras_stateful_lstm_model_correctness_test.py",
     ],
     deps = [
@@ -227,11 +228,11 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_lstm_model_correctness_test",
+    name = "keras_rnn_model_correctness_test",
     size = "medium",
-    srcs = ["keras_lstm_model_correctness_test.py"],
+    srcs = ["keras_rnn_model_correctness_test.py"],
     full_precision = True,
-    main = "keras_lstm_model_correctness_test.py",
+    main = "keras_rnn_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,

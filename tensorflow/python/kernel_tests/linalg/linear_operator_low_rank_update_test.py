@@ -199,7 +199,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = True
   _is_diag_update_positive = False
@@ -242,7 +242,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = False
   _is_diag_update_positive = None

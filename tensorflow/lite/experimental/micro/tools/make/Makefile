@@ -30,6 +30,11 @@ HOST_ARCH := $(shell if uname -m | grep -Eq 'i[345678]86'; then echo x86_32; els
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
+# Default compiler and tool names:
+CXX_TOOL := g++
+CC_TOOL := gcc
+AR_TOOL := ar
+
 # Specify TAGS on the command line to add a particular set of specialized
 # implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
 # STM32F746NG board, using the CMSIS library's implementations where possible.
@@ -92,8 +97,9 @@ tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
-tensorflow/lite/kernels/kernel_util.cc \
-tensorflow/lite/kernels/internal/quantization_util.cc
+tensorflow/lite/kernels/internal/quantization_util.cc \
+tensorflow/lite/kernels/kernel_util.cc
+
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 
 MICROLITE_CC_HDRS := \
@@ -120,15 +126,19 @@ tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/dequantize.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
 tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
+tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
@@ -174,6 +184,12 @@ KEIL_PROJECT_FILES := \
 ARDUINO_PROJECT_FILES := \
   library.properties
 
+ESP_PROJECT_FILES := \
+  README_ESP.md \
+  CMakeLists.txt \
+  main/CMakeLists.txt \
+  components/tfmicro/CMakeLists.txt
+
 ALL_PROJECT_TARGETS :=
 
 ARDUINO_LIBRARY_TARGETS :=
@@ -211,9 +227,9 @@ PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
-CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
-CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
-AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
+CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
+CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
+AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
@@ -265,6 +281,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
+	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
 # snease: Add %.bin rule here since BINDIR is now defined

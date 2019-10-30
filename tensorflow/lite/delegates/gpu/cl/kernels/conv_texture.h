@@ -36,7 +36,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// This convolution process 2x2x2(XxYxZ) block of FLT4 values per thread.
+// This convolution process BLOCK_SIZE(XxYxZ) of FLT4 values per thread.
 class ConvTexture : public GPUOperation {
  public:
   ConvTexture() = default;
@@ -56,8 +56,19 @@ class ConvTexture : public GPUOperation {
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
                                   ConvTexture* result);
+  friend Status CreateConvTexture(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  ConvTexture* result);
   ConvTexture(const OperationDef& definition,
               const Convolution2DAttributes& attr);
+  ConvTexture(const OperationDef& definition,
+              const FullyConnectedAttributes& attr);
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
+
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -81,14 +92,30 @@ class ConvTexture : public GPUOperation {
   int2 padding_;
   int2 dilation_;
 
+  int3 block_size_ = int3(2, 2, 2);
+
   CLKernel kernel_;
   int3 work_group_size_;
 };
 
 template <DataType T>
+Status ConvTexture::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                               const ::tflite::gpu::Tensor<Linear, T>& biases,
+                               CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::TEXTURE_2D;
+  create_info.data_type = definition_.GetDataType();
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
+
+template <DataType T>
 Status ConvTexture::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                                   CLContext* context) {
-  const int dst_depth = AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), 2);
+  const int dst_depth =
+      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
   int texture_width = dst_depth;
@@ -143,21 +170,22 @@ template <DataType S, typename T>
 void ConvTexture::RearrangeWeightsData(
     const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
     absl::Span<T> dst_1, absl::Span<T> dst_2, absl::Span<T> dst_3) {
-  const int dst_depth = AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), 2);
+  const int dst_depth =
+      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
   int texture_width = dst_depth;
 
-  for (int d = 0; d < dst_depth / 2; ++d) {
+  for (int d = 0; d < dst_depth / block_size_.z; ++d) {
     for (int y = 0; y < kernel_size_.y; ++y) {
       for (int x = 0; x < kernel_size_.x; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          for (int sub_d = 0; sub_d < 2; ++sub_d) {
+          for (int sub_d = 0; sub_d < block_size_.z; ++sub_d) {
             T filters[4];
             for (int i = 0; i < 4; ++i) {
               for (int j = 0; j < 4; ++j) {
                 const int s_ch = s * 4 + j;
-                const int d_ch = (d * 2 + sub_d) * 4 + i;
+                const int d_ch = (d * block_size_.z + sub_d) * 4 + i;
                 if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
                   const int f_index =
                       weights.shape.LinearIndex({d_ch, y, x, s_ch});
@@ -167,7 +195,7 @@ void ConvTexture::RearrangeWeightsData(
                 }
               }
             }
-            int x_coord = d * 2 + sub_d;
+            int x_coord = d * block_size_.z + sub_d;
             int y_coord = (y * kernel_size_.x + x) * src_depth + s;
             int offset = y_coord * texture_width + x_coord;
             dst_0[offset] = filters[0];
@@ -184,6 +212,11 @@ void ConvTexture::RearrangeWeightsData(
 Status CreateConvTexture(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
+                         ConvTexture* result);
+
+Status CreateConvTexture(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
                          ConvTexture* result);
 
 }  // namespace cl

@@ -28,7 +28,7 @@ namespace tflite {
 class SimpleMemoryAllocator {
  public:
   SimpleMemoryAllocator(uint8_t* buffer, size_t buffer_size)
-      : data_size_(0), data_size_max_(buffer_size), data_(buffer) {}
+      : data_size_max_(buffer_size), data_(buffer) {}
 
   // Allocates memory starting at the end of the arena (highest address and
   // moving downwards, so that tensor buffers can be allocated from the start
@@ -37,10 +37,25 @@ class SimpleMemoryAllocator {
 
   int GetDataSize() const { return data_size_; }
 
+  // Child allocator is something like a temporary allocator. Memory allocated
+  // by the child allocator will be freed once the child allocator is
+  // deallocated. Child allocator could be cascaded to have for example
+  // grandchild allocator. But at any given time, only the latest child
+  // allocator can be used. All its ancestors will be locked to avoid memory
+  // corruption. Locked means that the allocator can't allocate memory.
+  // WARNING: Parent allocator needs to live longer than the child allocator.
+  SimpleMemoryAllocator CreateChildAllocator();
+
+  // Unlocks parent allocator when the child allocator is deconstructed.
+  ~SimpleMemoryAllocator();
+
  private:
-  int data_size_;
+  int data_size_ = 0;
   size_t data_size_max_;
   uint8_t* data_;
+  SimpleMemoryAllocator* parent_allocator_ = nullptr;
+  // The allocator is locaked if it has a child.
+  bool has_child_allocator_ = false;
 };
 
 }  // namespace tflite

@@ -221,7 +221,7 @@ cc_library(
 )
 
 cc_library(
-    name = "statetul_ops_utils",
+    name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
     ],
@@ -262,6 +262,7 @@ cc_library(
         "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/lower_static_tensor_list.cc",
+        "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/split_merged_operands.cc",
@@ -274,7 +275,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -334,7 +335,9 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/core:protos_all_proto_cc",
         "@com_google_absl//absl/memory",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
@@ -365,6 +368,7 @@ genrule(
     ],
     cmd = ("$(location //tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen) " +
            "-I external/local_config_mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
     tools = ["//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen"],
 )
@@ -394,19 +398,21 @@ tf_native_cc_binary(
     ],
 )
 
-genrule(
+gentbl(
     name = "operator_converter_inc",
-    srcs = [
-        "ir/tfl_ops.td",
+    tbl_outs = [
+        (
+            "",  # This driver has no options.
+            "operator_converters.inc",
+        ),
+    ],
+    tblgen = ":operator-converter-gen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
-    outs = [
-        "operator_converters.inc",
-    ],
-    cmd = ("$(location :operator-converter-gen) " +
-           "-I external/local_config_mlir/include " +
-           "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = [":operator-converter-gen"],
+    test = 1,
 )
 
 cc_library(
@@ -463,11 +469,12 @@ cc_library(
     hdrs = [
         "flatbuffer_import.h",
         "flatbuffer_translate.h",
+        "flatbuffer_translate_flags.h",
         "utils/convert_type.h",
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir:op_name_mapper",
@@ -475,6 +482,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
@@ -484,6 +492,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -506,7 +515,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
-        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
+        "@local_config_mlir//:MlirTranslateMain",
     ],
 )
 
@@ -530,6 +539,7 @@ cc_library(
         "common/tfl_pass_config.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "@llvm//:support",
     ],
 )
@@ -553,10 +563,11 @@ tf_cc_binary(
         ":tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",
@@ -594,21 +605,19 @@ cc_library(
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
-        "@local_config_mlir//:Parser",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:QuantOpsDialectRegistration",
-        "@local_config_mlir//:Support",
         "@local_config_mlir//:Transforms",
     ],
 )
@@ -620,18 +629,19 @@ cc_library(
         "tf_to_tfl_flatbuffer.h",
     ],
     deps = [
+        ":common",
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",

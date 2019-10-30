@@ -155,7 +155,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
           "load status object, e.g. "
           "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
           "warnings, or use assert_consumed() to make the check explicit. See "
-          "https://www.tensorflow.org/alpha/guide/checkpoints#loading_mechanics"
+          "https://www.tensorflow.org/guide/checkpoint#loading_mechanics"
           " for details.")
 
 
@@ -1412,7 +1412,7 @@ class CheckpointV1(tracking.AutoTrackable):
   `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
   attached (or vice versa) will not match the `Model`'s variables. See the
   [guide to training
-  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  checkpoints](https://www.tensorflow.org/guide/checkpoint) for
   details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
   training checkpoints.
 
@@ -1517,7 +1517,7 @@ class CheckpointV1(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1749,7 +1749,7 @@ class Checkpoint(tracking.AutoTrackable):
   `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
   attached (or vice versa) will not match the `Model`'s variables. See the
   [guide to training
-  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  checkpoints](https://www.tensorflow.org/guide/checkpoint) for
   details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
   training checkpoints.
 
@@ -1851,7 +1851,7 @@ class Checkpoint(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames

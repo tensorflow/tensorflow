@@ -28,15 +28,18 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
@@ -55,6 +58,36 @@ def dense_to_csr_sparse_matrix(dense):
 
 def _swap(a, i, j):
   a[i], a[j] = a[j], a[i]
+
+
+def twist_matrix(matrix, permutation_indices):
+  """Permute the rows and columns of a 2D or (batched) 3D Tensor."""
+  # Shuffle the rows and columns with the same permutation.
+  if matrix.shape.ndims == 2:
+    # Invert the permutation since `tf.gather` and `tf.gather_nd` need the
+    # mapping from each index `i` to the index that maps to `i`.
+    permutation_indices_inv = array_ops.invert_permutation(permutation_indices)
+    matrix = array_ops.gather(matrix, permutation_indices_inv, axis=0)
+    matrix = array_ops.gather(matrix, permutation_indices_inv, axis=1)
+  elif matrix.shape.ndims == 3:
+    permutation_indices_inv = map_fn.map_fn(array_ops.invert_permutation,
+                                            permutation_indices)
+    # For 3D Tensors, it's easy to shuffle the rows but not the columns. We
+    # permute the rows, transpose, permute the rows again, and transpose back.
+    batch_size = matrix.shape[0]
+    batch_indices = array_ops.broadcast_to(
+        math_ops.range(batch_size)[:, None], permutation_indices.shape)
+    for _ in range(2):
+      matrix = array_ops.gather_nd(
+          matrix,
+          array_ops.stack([batch_indices, permutation_indices_inv], axis=-1))
+      # Transpose the matrix, or equivalently, swap dimensions 1 and 2.
+      matrix = array_ops.transpose(matrix, perm=[0, 2, 1])
+  else:
+    raise ValueError("Input matrix must have rank 2 or 3. Got: {}".format(
+        matrix.shape.ndims))
+
+  return matrix
 
 
 class CSRSparseMatrixOpsTest(test.TestCase):
@@ -457,8 +490,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixMatMul(self):
-    if not self._gpu_available:
-      return
     for shapes in [[(5, 6), (6, 1)], [(5, 6), (6, 2)]]:
       a_indices = np.array([[0, 0], [2, 3]])
       a_values = np.array([1.0, 5.0]).astype(np.float32)
@@ -479,10 +510,29 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       self.assertAllClose(expected_c_value, c_value)
 
   @test_util.run_in_graph_and_eager_modes
-  def testLargeBatchSparseMatrixMatMul(self):
-    if not self._gpu_available:
-      return
+  def testSparseMatrixMatMulConjugateOutput(self):
+    for shapes in [[(5, 6), (6, 1)], [(5, 6), (6, 2)]]:
+      a_indices = np.array([[0, 0], [2, 3]])
+      a_values = np.array([1.0 + 1.j, 5.0 - 2.j]).astype(np.complex64)
+      a_dense_shape = shapes[0]
+      a_sparse_mat = sparse.coo_matrix(
+          (a_values, (a_indices[:, 0], a_indices[:, 1])), shape=a_dense_shape)
+      a_dense = a_sparse_mat.todense()
 
+      # Will multiply sparse a (shape=shapes[0]) by dense b (shape=shapes[1]).
+      b = np.random.randn(*shapes[1]).astype(np.complex64)
+
+      a_sm = dense_to_csr_sparse_matrix(a_dense)
+      c = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
+          a=a_sm, b=b, conjugate_output=True)
+      c_value = self.evaluate(c)
+
+      expected_c_value = self.evaluate(
+          math_ops.conj(math_ops.matmul(a_dense, b)))
+      self.assertAllClose(expected_c_value, c_value)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLargeBatchSparseMatrixMatMul(self):
     sparsify = lambda m: m * (m > 0)
     for dtype in np.float32, np.complex64:
       for (transpose_a, transpose_b) in ((False, False), (False, True),
@@ -534,9 +584,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     for dtype in np.float32, np.complex64:
       for (transpose_a, transpose_b) in ((False, False), (False, True),
@@ -589,9 +636,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     a_dense_shape = [53, 65, 127]
     b_dense_shape = [53, 127, 67]
@@ -793,9 +837,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTranspose(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     dense_shape = [127, 65]
     data_types = [
@@ -821,9 +862,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchTranspose(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     dense_shape = [53, 65, 127]
     data_types = [
@@ -1081,6 +1119,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         # Compute L * Lh where L is the Sparse Cholesky factor.
         verification = math_ops.matmul(
             dense_cholesky, array_ops.transpose(dense_cholesky, conjugate=True))
+        verification = twist_matrix(verification, ordering_amd)
         # Assert that input matrix A satisfies A = L * Lh.
         verification_values = self.evaluate(verification)
         full_dense_matrix = (
@@ -1134,6 +1173,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       verification = math_ops.matmul(
           dense_cholesky,
           array_ops.transpose(dense_cholesky, perm=[0, 2, 1], conjugate=True))
+      verification = twist_matrix(verification, ordering_amd)
 
       verification_values = self.evaluate(verification)
       self.assertAllClose(
@@ -1173,6 +1213,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     # Compute L * Lh.
     verification = math_ops.matmul(
         dense_cholesky, array_ops.transpose(dense_cholesky, perm=[0, 2, 1]))
+    verification = twist_matrix(verification, ordering_amd)
     verification_values = self.evaluate(verification)
     self.assertAllClose(dense_matrix, verification_values, atol=1e-5, rtol=1e-5)
 
@@ -1333,6 +1374,79 @@ class CSRSparseMatrixOpsBenchmark(test.Benchmark):
                   "num_nonzero": nnz_value
               },
               min_iters=50)
+
+  def benchmark_sparse_matrix_mat_vec_mul(self):
+    # num_rows, device, transpose.
+    cases = [
+        [2000, CPU, False],
+        [8000, CPU, False],
+        [12000, CPU, False],
+        [2000, CPU, True],
+        [8000, CPU, True],
+        [12000, CPU, True],
+    ]
+    seed = 42
+
+    for num_rows, device, transpose in cases:
+      if device == GPU and not test_util.is_gpu_available():
+        continue
+      for num_threads in [1, 2, 4, 6, 8, 10]:
+        device_str = "cpu" if device == CPU else "gpu"
+        w_dense_shape = [num_rows, num_rows]
+        x_dense_shape = [num_rows, 1]
+
+        with ops.Graph().as_default(), ops.device(device):
+          random_seed.set_random_seed(seed)
+          x = random_ops.random_normal(x_dense_shape, dtype=dtypes.float32)
+          w_np = sparse.rand(
+              w_dense_shape[0],
+              w_dense_shape[1],
+              density=0.01,
+              dtype=np.float32,
+              random_state=np.random.RandomState(seed))
+          w_st = sparse_tensor.SparseTensor(
+              zip(w_np.row, w_np.col), w_np.data, w_np.shape)
+          w_st = sparse_ops.sparse_reorder(w_st)
+
+          nnz = array_ops.shape(w_st.values)[0]
+          ratio = math_ops.cast(nnz, dtypes.float32) / np.prod(w_np.shape)
+
+          w_sm = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+              w_st.indices, w_st.values, w_st.dense_shape)
+          xw_sparse_matrix = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
+              w_sm,
+              x,
+              transpose_a=transpose,
+              transpose_b=False,
+              transpose_output=False)
+          xw_sparse_tensor = sparse_ops.sparse_tensor_dense_matmul(
+              w_st, x, adjoint_a=transpose, adjoint_b=False)
+
+          with session.Session(
+              config=config_pb2.ConfigProto(
+                  intra_op_parallelism_threads=num_threads)) as sess:
+            nnz_value, ratio_value = sess.run((nnz, ratio))
+            name_template = ("mat_vec_mul_%s_%s_W_%d_transpose_%s_threads_%d")
+            self.run_op_benchmark(
+                sess,
+                xw_sparse_matrix.op,
+                name=name_template %
+                (device_str, "sparse_matrix", num_rows, transpose, num_threads),
+                extras={
+                    "percentage_nonzero": ratio_value,
+                    "num_nonzero": nnz_value,
+                },
+                min_iters=10)
+            self.run_op_benchmark(
+                sess,
+                xw_sparse_tensor.op,
+                name=name_template %
+                (device_str, "sparse_tensor", num_rows, transpose, num_threads),
+                extras={
+                    "percentage_nonzero": ratio_value,
+                    "num_nonzero": nnz_value,
+                },
+                min_iters=10)
 
   def benchmark_sparse_matrix_sparse_matmul(self):
     density = 0.05

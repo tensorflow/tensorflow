@@ -37,7 +37,8 @@ EOF
 OUTPUT_REGULAR_FILE=${TEST_TMPDIR}/output_regular.cc
 THIRD_PARTY_HEADERS="subdir/foo.h subdir_2/include/bar/fish.h subdir_3/something.h"
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   < ${INPUT_REGULAR_FILE} \
   > ${OUTPUT_REGULAR_FILE}
@@ -85,18 +86,12 @@ void setup() {
 
 void loop() {
 }
-
-int main(int argc, char* argv[]) {
-  setup();
-  while (true) {
-    loop();
-  }
-}
 EOF
 
 OUTPUT_EXAMPLE_INO_FILE=${TEST_TMPDIR}/output_regular.cc
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   --is_example_ino \
   < ${INPUT_EXAMPLE_INO_FILE} \
@@ -107,16 +102,10 @@ if ! grep -q '#include <TensorFlowLite.h>' ${OUTPUT_EXAMPLE_INO_FILE}; then
   exit 1
 fi
 
-if ! grep -q '#include "foo/fish.h"' ${OUTPUT_EXAMPLE_INO_FILE}; then
+if ! grep -q '#include "foo_fish.h"' ${OUTPUT_EXAMPLE_INO_FILE}; then
   echo "ERROR: No foo/fish.h include found in output '${OUTPUT_EXAMPLE_INO_FILE}'"
   exit 1
 fi
-
-if grep -q 'int main' ${OUTPUT_EXAMPLE_INO_FILE}; then
-  echo "ERROR: main() function wasn't removed from output '${OUTPUT_EXAMPLE_INO_FILE}'"
-  exit 1
-fi
-
 
 INPUT_EXAMPLE_SOURCE_FILE=${TEST_TMPDIR}/input_example_source.h
 cat << EOF > ${INPUT_EXAMPLE_SOURCE_FILE}
@@ -124,6 +113,7 @@ cat << EOF > ${INPUT_EXAMPLE_SOURCE_FILE}
 #include "foo.h"
 #include "foo/fish.h"
 #include "baz.h"
+#include "tensorflow/lite/experimental/micro/examples/something/cube/tri.h"
 
 void setup() {
 }
@@ -141,15 +131,21 @@ EOF
 
 OUTPUT_EXAMPLE_SOURCE_FILE=${TEST_TMPDIR}/output_example_source.h
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   --is_example_source \
   --source_path="foo/input_example_source.h" \
   < ${INPUT_EXAMPLE_SOURCE_FILE} \
   > ${OUTPUT_EXAMPLE_SOURCE_FILE}
 
-if ! grep -q '#include "fish.h"' ${OUTPUT_EXAMPLE_SOURCE_FILE}; then
-  echo "ERROR: No fish.h include found in output '${OUTPUT_EXAMPLE_SOURCE_FILE}'"
+if ! grep -q '#include "foo/fish.h"' ${OUTPUT_EXAMPLE_SOURCE_FILE}; then
+  echo "ERROR: No foo/fish.h include found in output '${OUTPUT_EXAMPLE_SOURCE_FILE}'"
+  exit 1
+fi
+
+if ! grep -q '#include "cube_tri.h"' ${OUTPUT_EXAMPLE_SOURCE_FILE}; then
+  echo "ERROR: No cube_tri.h include found in output '${OUTPUT_EXAMPLE_SOURCE_FILE}'"
   exit 1
 fi
 

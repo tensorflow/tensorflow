@@ -197,6 +197,19 @@ gentbl(
     ]),
 )
 
+cc_library(
+    name = "utils_tablegen",
+    srcs = glob([
+        "utils/TableGen/GlobalISel/*.cpp",
+    ]),
+    hdrs = glob([
+        "utils/TableGen/GlobalISel/*.h",
+    ]),
+    deps = [
+        ":tablegen",
+    ],
+)
+
 # Binary targets used by Tensorflow.
 cc_binary(
     name = "llvm-tblgen",
@@ -211,6 +224,7 @@ cc_binary(
         ":config",
         ":support",
         ":tablegen",
+        ":utils_tablegen",
     ],
 )
 
@@ -244,6 +258,7 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenGICombiner.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -1100,7 +1115,6 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
     deps = [
         ":config",
-        ":mc",
         ":support",
     ],
 )
@@ -1590,6 +1604,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":mc",
         ":support",
     ],
 )
@@ -3805,6 +3820,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
     deps = [
         ":config",
+        ":mc",
         ":mc_disassembler",
         ":support",
         ":web_assembly_desc",

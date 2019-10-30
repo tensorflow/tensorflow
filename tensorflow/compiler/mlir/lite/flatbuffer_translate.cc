@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <cstdint>
 #include <memory>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
@@ -47,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
@@ -66,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 using llvm::dyn_cast;
@@ -112,6 +116,8 @@ bool emit_custom_ops;
 bool emit_select_tf_ops;
 bool lower_tensor_list_ops;
 bool strip_debug_info;
+// NOLINTNEXTLINE
+std::string output_arrays_string;
 
 // NOLINTNEXTLINE
 static opt<bool, true> emit_builtin_tflite_ops_flag(
@@ -144,6 +150,11 @@ static opt<bool, true> strip_debug_info_flag(
     "strip-debug-info", llvm::cl::desc("Strip debug info during export"),
     llvm::cl::location(strip_debug_info), llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static opt<std::string, true> output_arrays_flag(
+    "output-arrays", llvm::cl::desc("List of output tensors"),
+    llvm::cl::location(output_arrays_string), llvm::cl::init(""));
+
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
 
 // Use initial buffer size in flatbuffer builder to be same as the initial size
@@ -174,10 +185,15 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT16;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::COMPLEX64:
-      return tflite::TensorType_COMPLEX64;
     case mlir::TF::TensorFlowTypes::UINT8:
       return tflite::TensorType_UINT8;
+    case mlir::StandardTypes::Complex: {
+      auto ftype = type.cast<mlir::ComplexType>().getElementType();
+      if (ftype && ftype.isF32()) {
+        return tflite::TensorType_COMPLEX64;
+      }
+      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+    }
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {
@@ -457,6 +473,10 @@ class Translator {
   // dialect is not registered.
   const Dialect* tf_dialect_;
   const Dialect* tfl_dialect_;
+
+  // The failed ops during legalization.
+  std::vector<std::string> failed_flex_ops_;
+  std::vector<std::string> failed_custom_ops_;
 };
 
 std::string Translator::UniqueName(mlir::Operation* op) {
@@ -689,14 +709,15 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   // If the insert succeeded, the opcode has not been created already. Create a
   // new operator code and update its index value in the map.
   if (it.second) {
-    // TODO(antiagainst): Some TFLite ops supports version > 1, like
-    // DepthwiseConv2DOptions. Handle version properly.
     it.first->second = opcodes_.size();
     auto custom_code = builtin == tflite::BuiltinOperator_CUSTOM
                            ? builder_.CreateString(op_name)
                            : BufferOffset<flatbuffers::String>();
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
     opcodes_.push_back(CreateOperatorCode(builder_, /*builtin_code=*/builtin,
-                                          custom_code, /*version=*/1));
+                                          custom_code, op_version));
   }
   return it.first->second;
 }
@@ -790,6 +811,12 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         return llvm::None;
       }
     } else {
+      // Insert failed op to `flex_ops` or `custom_ops`.
+      if (IsWhitelistedFlexOp(node_def->op())) {
+        failed_flex_ops_.push_back(node_def->op());
+      } else {
+        failed_custom_ops_.push_back(node_def->op());
+      }
       return inst->emitOpError("is neither a custom op nor a flex op"),
              llvm::None;
     }
@@ -915,6 +942,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     }
   }
 
+  bool failed_once = false;
   for (auto& inst : bb) {
     if (inst.isKnownTerminator()) break;
 
@@ -951,8 +979,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     if (auto tfl_operator = BuildOperator(&inst, operands, results))
       operators.push_back(*tfl_operator);
     else
-      return llvm::None;
+      failed_once = true;
   }
+
+  if (failed_once) return llvm::None;
 
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
@@ -1038,13 +1068,39 @@ Optional<std::string> Translator::TranslateInternal() {
   // Build subgraph for each of the functions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
   subgraphs.reserve(functions.size());
-  for (auto fn : functions) {
-    auto subgraph_or = BuildSubGraph(fn);
-    if (!subgraph_or)
-      return fn.emitError("failed while converting: '") << fn.getName() << '\'',
-             llvm::None;
+  int first_failed_func = -1;
+  for (int i = 0; i < functions.size(); ++i) {
+    auto subgraph_or = BuildSubGraph(functions[i]);
+    if (!subgraph_or) {
+      if (first_failed_func == -1)
+        // Record the index of the first function that cannot be converted.
+        // Keep looping through all subgraphs in the module to make sure that
+        // we collect the list of missing ops from the entire module.
+        first_failed_func = i;
+    } else {
+      subgraphs.push_back(*subgraph_or);
+    }
+  }
 
-    subgraphs.push_back(*subgraph_or);
+  if (first_failed_func != -1) {
+    std::string failed_flex_ops_list = absl::StrJoin(failed_flex_ops_, ",");
+    std::string failed_custom_ops_list = absl::StrJoin(failed_custom_ops_, ",");
+    std::string err;
+    if (!failed_flex_ops_list.empty())
+      err +=
+          "Ops that can be supported by the flex runtime (enabled via setting "
+          "the -emit-select-tf-ops flag): " +
+          failed_flex_ops_list + ".";
+    if (!failed_custom_ops_list.empty())
+      err +=
+          "Ops that need custom implementation (enabled via setting the "
+          "-emit-custom-ops flag): " +
+          failed_custom_ops_list;
+
+    return functions[first_failed_func].emitError("failed while converting: '")
+               << functions[first_failed_func].getName() << "\'\n"
+               << err,
+           llvm::None;
   }
 
   std::string model_description;
@@ -1065,6 +1121,7 @@ Optional<std::string> Translator::TranslateInternal() {
       builder_.CreateVector(subgraphs), description,
       builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
+  tflite::UpdateOpVersion(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),

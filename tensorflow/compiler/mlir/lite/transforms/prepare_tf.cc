@@ -95,7 +95,7 @@ struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
 //                                                tf.dequantize
 //                                                     |
 // If the input is a constant, the result pattern will eventually converted to
-
+//
 //            quant-emulated input
 //                   |
 //               tf.quantize
@@ -136,8 +136,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, num_bits, narrow_range);
+    TypeAttr qtype =
+        GetQuantizedTypeAttr(rewriter, res_type, min_value, max_value, num_bits,
+                             narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
@@ -258,7 +259,7 @@ struct ConvertTFConvOp : public RewritePattern {
     auto elem_type = filter_type.getElementType();
     auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
         filter_type.getShape());
-    auto bias_type = rewriter.getTensorType({bias_dim}, elem_type);
+    auto bias_type = RankedTensorType::get({bias_dim}, elem_type);
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     auto bias =
         rewriter.create<TF::ConstOp>(op->getLoc(), bias_type, bias_attr);
@@ -308,8 +309,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
                         Value *filter) const {
     // Create a constant op for HWIO to OHWI transpose permutation.
     SmallVector<int, 4> perm = {3, 0, 1, 2};
-    auto perm_type = rewriter.getTensorType({static_cast<int>(perm.size())},
-                                            rewriter.getIntegerType(32));
+    auto perm_type = RankedTensorType::get({static_cast<int>(perm.size())},
+                                           rewriter.getIntegerType(32));
     auto perm_attr =
         DenseElementsAttr::get(perm_type, llvm::makeArrayRef<int>(perm));
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
@@ -320,7 +321,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
         [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
         perm);
     auto elem_type = filter_type.getElementType();
-    auto result_type = rewriter.getTensorType(result_shape, elem_type);
+    auto result_type = RankedTensorType::get(result_shape, elem_type);
 
     return rewriter.create<TF::TransposeOp>(loc, result_type, filter, perm_op);
   }
@@ -377,19 +378,107 @@ class ConvertTFDepthwiseConv2dNative
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
     auto elem_type = filter_type.getElementType();
-    auto result_type = rewriter.getTensorType(result_shape, elem_type);
+    auto result_type = RankedTensorType::get(result_shape, elem_type);
     // TensorFlow Lite `Reshape` op only support int32 shape tensor currently.
-    auto shape_type = rewriter.getTensorType({4}, rewriter.getIntegerType(32));
+    auto shape_type = RankedTensorType::get({4}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
       result_shape_data[i] =
           rewriter.getI32IntegerAttr(static_cast<int32_t>(result_shape[i]));
     }
-    auto shape_attr =
-        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
+    auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
 
     return rewriter.create<TF::ReshapeOp>(loc, result_type, filter, shape);
+  }
+};
+
+// StridedSlice can have complicated atributes like begin_axis_mask,
+// end_axis_mask, ellipsis_axis_mask, new_axis_mask, shrink_axis_mask. These
+// masks will complicate the strided_slice computation logic, we can simplify
+// the logic by inserting a reshape op to pad the inputs so strided_slice can
+// be easier to handle.
+//
+// So the graph may looks like below:
+//   original_input -> strided_slice -> output
+//      (transforms)
+//   original_input -> reshape -> strided_slice -> output
+//
+// And the new shape is computed based on the masks.
+//
+// An example for new_axis_mask. say the new_axis_mask is 9 which represents
+// [1 0 0 1], and that means we're inserting two new axes at 0 & 3 dim, so
+// if original shape is [2, 3], now we reshape that into [1, 2, 3, 1].
+struct ConvertTFStridedSlice : public RewritePattern {
+  explicit ConvertTFStridedSlice(MLIRContext *context)
+      : RewritePattern(TF::StridedSliceOp::getOperationName(), 2, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
+    // mask as well.
+    TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+    const uint64_t new_axis_mask =
+        strided_slice_op.new_axis_mask().getZExtValue();
+    if (new_axis_mask == 0) return matchFailure();
+
+    // Insert a new reshape op.
+    Value *original_input = strided_slice_op.input();
+    RankedTensorType original_input_type =
+        original_input->getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> &original_input_shape =
+        original_input_type.getShape();
+    RankedTensorType begin_type =
+        strided_slice_op.begin()->getType().cast<RankedTensorType>();
+    const int dim_size = begin_type.getShape()[0];
+    SmallVector<int64_t, 4> new_shape;
+    int mask = 1;
+    int index = 0;
+    for (int i = 0; i < dim_size; ++i) {
+      if (mask & new_axis_mask) {
+        new_shape.emplace_back(1);
+      } else {
+        new_shape.emplace_back(original_input_shape[index]);
+        ++index;
+      }
+      mask = mask << 1;
+    }
+
+    Location loc = strided_slice_op.getLoc();
+    auto shape_type =
+        RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));
+    SmallVector<Attribute, 4> result_shape_data(dim_size);
+    for (int i = 0; i < dim_size; ++i) {
+      result_shape_data[i] =
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
+    }
+    auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
+    auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
+    auto new_output_type =
+        RankedTensorType::get(new_shape, original_input_type.getElementType());
+    TF::ReshapeOp reshape = rewriter.create<TF::ReshapeOp>(
+        loc, new_output_type, original_input, shape);
+
+    // Replace the original strided_slice.
+    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
+    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    // Since we expand the dims, we need to apply them to the begin_mask &
+    // end_mask.
+    new_begin_mask |= strided_slice_op.new_axis_mask();
+    new_end_mask |= strided_slice_op.new_axis_mask();
+
+    auto attribute_type = rewriter.getIntegerType(64);
+    rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
+        op, strided_slice_op.getType(), reshape, strided_slice_op.begin(),
+        strided_slice_op.end(), strided_slice_op.strides(),
+        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
+        rewriter.getIntegerAttr(attribute_type, new_end_mask),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.ellipsis_mask()),
+        rewriter.getI64IntegerAttr(0),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.shrink_axis_mask()));
+    return matchSuccess();
   }
 };
 
@@ -398,14 +487,14 @@ class ConvertTFDepthwiseConv2dNative
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
+  MLIRContext *ctx = &getContext();
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(
-      &getContext());
-  TFL::populateWithGenerated(&getContext(), &patterns);
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -416,10 +505,10 @@ void PrepareTFPass::runOnFunction() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   patterns.clear();
-  TFL::populateWithGenerated(&getContext(), &patterns);
+  TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative>(&getContext());
+                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

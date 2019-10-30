@@ -62,7 +62,7 @@ class Loss(object):
   'SUM_OVER_BATCH_SIZE' will raise an error.
 
   Please see
-  https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for more
+  https://www.tensorflow.org/tutorials/distribute/custom_training for more
   details on this.
 
   You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
@@ -83,7 +83,7 @@ class Loss(object):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -169,7 +169,7 @@ class Loss(object):
           'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
-          'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
+          'https://www.tensorflow.org/tutorials/distribute/custom_training'
           ' for more details.')
 
     if self.reduction == losses_utils.ReductionV2.AUTO:
@@ -190,7 +190,7 @@ class LossFunctionWrapper(Loss):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) name for the loss.
     **kwargs: The keyword arguments that are passed on to `fn`.
@@ -387,7 +387,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) Name for the op.
   """
@@ -451,7 +451,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -512,7 +512,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -746,7 +746,7 @@ class Huber(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -793,7 +793,7 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
-      (y_true - y_pred) / K.clip(math_ops.abs(y_true), K.epsilon(), None))
+      (y_true - y_pred) / K.maximum(math_ops.abs(y_true), K.epsilon()))
   return 100. * K.mean(diff, axis=-1)
 
 
@@ -806,8 +806,8 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
 def mean_squared_logarithmic_error(y_true, y_pred):  # pylint: disable=missing-docstring
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
-  second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
+  first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
+  second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
@@ -1128,7 +1128,7 @@ class CosineSimilarity(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """

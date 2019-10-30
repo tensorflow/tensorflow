@@ -3,7 +3,7 @@
 # Verify that we match correctly the input / output when they are scalar.
 
 # CHECK: func @main(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>)
-# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "out"}} {
+# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "out:1,out"}} {
 # CHECK:  "tf.Placeholder.input"(%arg0)
 
 # CHECK: tf.Relu

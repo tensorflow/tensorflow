@@ -100,7 +100,9 @@ typedef Eigen::RunQueue<Task, 1024> Queue;
 class ThreadWorkSource {
  public:
   ThreadWorkSource()
-      : non_blocking_work_sharding_factor_(2),
+      : non_blocking_work_sharding_factor_(
+            static_cast<int32>(ParamFromEnvWithDefault(
+                "TF_RUN_HANDLER_NUM_OF_NON_BLOCKING_QUEUES", 1))),
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),
@@ -144,8 +146,11 @@ class ThreadWorkSource {
     // resource. The non-blocking threads are used only to compensate for
     // threads that may be blocked on some tasks. There is less need to
     // proactively wake up those threads.
-    static int max_rank_to_wakeup = static_cast<int>(ParamFromEnvWithDefault(
-        "TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP", kMaxConcurrentHandlers));
+    static int max_rank_to_wakeup = static_cast<int>(
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP",
+                                static_cast<int32>(ParamFromEnvWithDefault(
+                                    "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                    kMaxConcurrentHandlers))));
     if (max_rank_to_wakeup > 0 &&
         rank_.load(std::memory_order_relaxed) <= max_rank_to_wakeup) {
       Waiter* w = nullptr;
@@ -374,11 +379,26 @@ class RunHandlerThreadPool {
     thread_data_[tid].thread_work_sources.resize(0);
     thread_data_[tid].thread_work_sources.emplace_back(
         thread_work_sources[start_request_idx]);
-    for (int i = 0; i < thread_work_sources.size(); ++i) {
-      if (i != start_request_idx) {
-        thread_data_[tid].thread_work_sources.emplace_back(
-            thread_work_sources[i]);
+    // The number of shards for the queue. Threads in each shard will prioritize
+    // different thread_work_sources. Increase the number of shards could
+    // decrease the contention in the queue.
+    // For example, when num_shards == 1:
+    // thread_work_sources are ordered as start_request_idx, 0, 1, 2, 3, 4 ...
+    // for all threads.
+    // When num_shards == 2:
+    // thread_work_sources are order as start_request_idx, 0, 2, 4 ... 1, 3,
+    // 5... for half of the threads and start_request_idx, 1, 3, 5 ... 0, 2,
+    // 4... for the other half of the threads.
+    int num_shards = ParamFromEnvWithDefault("TF_RUN_HANDLER_QUEUE_SHARDS", 1);
+    int token = tid % num_shards;
+    for (int i = 0; i < num_shards; ++i) {
+      for (int j = token; j < thread_work_sources.size(); j += num_shards) {
+        if (j != start_request_idx) {
+          thread_data_[tid].thread_work_sources.emplace_back(
+              thread_work_sources[j]);
+        }
       }
+      token = (token + 1) % num_shards;
     }
     thread_data_[tid].sources_not_empty.notify_all();
   }
@@ -412,7 +432,10 @@ class RunHandlerThreadPool {
 
  private:
   struct ThreadData {
-    ThreadData() : thread_work_sources(kMaxConcurrentHandlers) {}
+    ThreadData()
+        : thread_work_sources(static_cast<int32>(
+              ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                      kMaxConcurrentHandlers))) {}
     mutex mu;
     condition_variable sources_not_empty;
     std::unique_ptr<Thread> thread;
@@ -602,7 +625,8 @@ class RunHandler::Impl {
 class RunHandlerPool::Impl {
  public:
   explicit Impl(int num_inter_op_threads, int num_intra_op_threads)
-      : max_handlers_(kMaxConcurrentHandlers),
+      : max_handlers_(static_cast<int32>(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS", kMaxConcurrentHandlers))),
         run_handler_thread_pool_(new RunHandlerThreadPool(
             num_inter_op_threads, num_intra_op_threads, Env::Default(),
             ThreadOptions(), "tf_run_handler_pool")),

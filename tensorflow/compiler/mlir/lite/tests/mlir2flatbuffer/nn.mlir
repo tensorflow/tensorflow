@@ -5,7 +5,8 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: AVERAGE_POOL_2D
+  // CHECK-NEXT:     builtin_code: AVERAGE_POOL_2D,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {

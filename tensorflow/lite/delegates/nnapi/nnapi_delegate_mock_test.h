@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_MOCK_TEST_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_MOCK_TEST_H_
 
+// Cannot mock the delegate when using the disabled version
+// (see the condition in the BUILD file).
+#ifndef NNAPI_DELEGATE_DISABLED
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -206,5 +210,7 @@ class NnApiDelegateMockTest : public ::testing::Test {
 }  // namespace nnapi
 }  // namespace delegate
 }  // namespace tflite
+
+#endif  // #ifndef NNAPI_DELEGATE_DISABLED
 
 #endif  // TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_MOCK_TEST_H_

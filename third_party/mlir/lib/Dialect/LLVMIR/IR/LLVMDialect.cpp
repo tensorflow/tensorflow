@@ -306,7 +306,7 @@ static void printCallOp(OpAsmPrinter &p, CallOp &op) {
   // callee (first operand) otherwise.
   p << op.getOperationName() << ' ';
   if (isDirect)
-    p << '@' << callee.getValue();
+    p.printSymbolName(callee.getValue());
   else
     p << *op.getOperand(0);
 
@@ -487,8 +487,8 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser &parser,
 
   // Infer the element type from the structure type: iteratively step inside the
   // type by taking the element type, indexed by the position attribute for
-  // stuctures.  Check the position index before accessing, it is supposed to be
-  // in bounds.
+  // structures.  Check the position index before accessing, it is supposed to
+  // be in bounds.
   for (Attribute subAttr : positionArrayAttr) {
     auto positionElementAttr = subAttr.dyn_cast<IntegerAttr>();
     if (!positionElementAttr)
@@ -869,7 +869,7 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
                      ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   if (isConstant)
     result.addAttribute("constant", builder->getUnitAttr());
   if (value)
@@ -881,7 +881,8 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   p << op.getOperationName() << ' ';
   if (op.constant())
     p << "constant ";
-  p << '@' << op.sym_name() << '(';
+  p.printSymbolName(op.sym_name());
+  p << '(';
   if (auto value = op.getValueOrNull())
     p.printAttribute(value);
   p << ')';
@@ -938,7 +939,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
     }
   }
 
-  result.addAttribute("type", parser.getBuilder().getTypeAttr(types[0]));
+  result.addAttribute("type", TypeAttr::get(types[0]));
   return success();
 }
 
@@ -1025,7 +1026,7 @@ void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
   result.addRegion();
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
-  result.addAttribute("type", builder->getTypeAttr(type));
+  result.addAttribute("type", TypeAttr::get(type));
   result.attributes.append(attrs.begin(), attrs.end());
   if (argAttrs.empty())
     return;
@@ -1114,6 +1115,21 @@ unsigned LLVMFuncOp::getNumFuncArguments() {
   return getType().getUnderlyingType()->getFunctionNumParams();
 }
 
+// Hook for OpTrait::FunctionLike, returns the number of function results.
+// Depends on the type attribute being correct as checked by verifyType
+unsigned LLVMFuncOp::getNumFuncResults() {
+  llvm::FunctionType *funcType =
+      cast<llvm::FunctionType>(getType().getUnderlyingType());
+  // We model LLVM functions that return void as having zero results,
+  // and all others as having one result.
+  // If we modeled a void return as one result, then it would be possible to
+  // attach an MLIR result attribute to it, and it isn't clear what semantics we
+  // would assign to that.
+  if (funcType->getReturnType()->isVoidTy())
+    return 0;
+  return 1;
+}
+
 static LogicalResult verify(LLVMFuncOp op) {
   if (op.isExternal())
     return success();
@@ -1139,6 +1155,33 @@ static LogicalResult verify(LLVMFuncOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Printing, parsing and verification for LLVM::NullOp.
+//===----------------------------------------------------------------------===//
+
+static void printNullOp(OpAsmPrinter &p, LLVM::NullOp op) {
+  p << NullOp::getOperationName();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : ";
+  p.printType(op.getType());
+}
+
+// <operation> = `llvm.mlir.null` : type
+static ParseResult parseNullOp(OpAsmParser &parser, OperationState &result) {
+  Type type;
+  return failure(parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+// Only LLVM pointer types are supported.
+static LogicalResult verify(LLVM::NullOp op) {
+  auto llvmType = op.getType().dyn_cast<LLVM::LLVMType>();
+  if (!llvmType || !llvmType.isPointerTy())
+    return op.emitOpError("expected LLVM IR pointer type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 
@@ -1154,7 +1197,7 @@ struct LLVMDialectImpl {
   /// A set of LLVMTypes that are cached on construction to avoid any lookups or
   /// locking.
   LLVMType int1Ty, int8Ty, int16Ty, int32Ty, int64Ty, int128Ty;
-  LLVMType doubleTy, floatTy, halfTy;
+  LLVMType doubleTy, floatTy, halfTy, fp128Ty, x86_fp80Ty;
   LLVMType voidTy;
 
   /// A smart mutex to lock access to the llvm context. Unlike MLIR, LLVM is not
@@ -1190,6 +1233,9 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
   impl->doubleTy = LLVMType::get(context, llvm::Type::getDoubleTy(llvmContext));
   impl->floatTy = LLVMType::get(context, llvm::Type::getFloatTy(llvmContext));
   impl->halfTy = LLVMType::get(context, llvm::Type::getHalfTy(llvmContext));
+  impl->fp128Ty = LLVMType::get(context, llvm::Type::getFP128Ty(llvmContext));
+  impl->x86_fp80Ty =
+      LLVMType::get(context, llvm::Type::getX86_FP80Ty(llvmContext));
   /// Other Types.
   impl->voidTy = LLVMType::get(context, llvm::Type::getVoidTy(llvmContext));
 }
@@ -1327,6 +1373,9 @@ bool LLVMType::isPointerTy() { return getUnderlyingType()->isPointerTy(); }
 LLVMType LLVMType::getStructElementType(unsigned i) {
   return get(getContext(), getUnderlyingType()->getStructElementType(i));
 }
+unsigned LLVMType::getStructNumElements() {
+  return getUnderlyingType()->getStructNumElements();
+}
 bool LLVMType::isStructTy() { return getUnderlyingType()->isStructTy(); }
 
 /// Utilities used to generate floating point types.
@@ -1338,6 +1387,12 @@ LLVMType LLVMType::getFloatTy(LLVMDialect *dialect) {
 }
 LLVMType LLVMType::getHalfTy(LLVMDialect *dialect) {
   return dialect->impl->halfTy;
+}
+LLVMType LLVMType::getFP128Ty(LLVMDialect *dialect) {
+  return dialect->impl->fp128Ty;
+}
+LLVMType LLVMType::getX86_FP80Ty(LLVMDialect *dialect) {
+  return dialect->impl->x86_fp80Ty;
 }
 
 /// Utilities used to generate integer types.
@@ -1415,7 +1470,7 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
                                       LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
-         "expected builder to point to a block constained in an op");
+         "expected builder to point to a block constrained in an op");
   auto module =
       builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
   assert(module && "builder points to an op outside of a module");

@@ -110,6 +110,18 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     return self._dense_shape
 
   @property
+  def shape(self):
+    """Gets the `tf.TensorShape` representing the shape of the dense tensor.
+
+    Returns:
+      A `tf.TensorShape` object.
+    """
+    if self._dense_shape is None:
+      return tensor_shape.TensorShape(None)
+
+    return tensor_util.constant_value_as_shape(self._dense_shape)
+
+  @property
   def name(self):
     """The name of this `IndexedSlices`."""
     return self.values.name
@@ -296,8 +308,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
     ValueError: If `dtype` does not match the element type of `value`.
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
-    return ops.internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
+    return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
   elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
@@ -305,8 +316,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
           (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return ops.internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
+    return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
 
 
 def internal_convert_n_to_tensor_or_indexed_slices(values,

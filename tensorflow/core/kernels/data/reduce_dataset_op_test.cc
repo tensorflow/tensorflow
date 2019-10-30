@@ -20,78 +20,93 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "reduce_dataset";
-constexpr char kOpName[] = "ReduceDataset";
 
-class ReduceDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Create a new `ReduceDataset` op kernel.
-  Status CreateReduceDatasetOpKernel(
-      const FunctionDefHelper::AttrValueWrapper &func,
-      const DataTypeVector &t_state, const DataTypeVector &output_types,
-      const std::vector<PartialTensorShape> &output_shapes,
-      bool use_inter_op_parallelism,
-      std::unique_ptr<OpKernel> *reduce_dataset_op_kernel) {
-    std::vector<string> components;
-    components.reserve(1 + t_state.size());
-    components.emplace_back("input_dataset");
-    for (int i = 0; i < t_state.size(); ++i) {
-      components.emplace_back(strings::StrCat("initial_state_", i));
+class ReduceDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  ReduceDatasetParams(T input_dataset_params, std::vector<Tensor> initial_state,
+                      std::vector<Tensor> other_arguments,
+                      FunctionDefHelper::AttrValueWrapper func,
+                      std::vector<FunctionDef> func_lib,
+                      DataTypeVector type_state, DataTypeVector type_arguments,
+                      DataTypeVector output_dtypes,
+                      std::vector<PartialTensorShape> output_shapes,
+                      bool use_inter_op_parallelism, string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        initial_state_(std::move(initial_state)),
+        other_arguments_(std::move(other_arguments)),
+        func_(std::move(func)),
+        func_lib_(std::move(func_lib)),
+        type_state_(std::move(type_state)),
+        type_arguments_(std::move(type_arguments)),
+        use_inter_op_parallelism_(use_inter_op_parallelism) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    std::vector<Tensor> input_tensors = initial_state_;
+    input_tensors.insert(input_tensors.end(), other_arguments_.begin(),
+                         other_arguments_.end());
+    return input_tensors;
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->emplace_back("input_dataset");
+    for (int i = 0; i < initial_state_.size(); ++i) {
+      input_names->emplace_back(strings::StrCat("initial_state_", i));
     }
-    NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, components,
-        {{"f", func},
-         {"Tstate", t_state},
-         {"Targuments", {}},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes},
-         {"use_inter_op_parallelism", use_inter_op_parallelism}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, reduce_dataset_op_kernel));
+    for (int i = 0; i < other_arguments_.size(); ++i) {
+      input_names->emplace_back(strings::StrCat("other_arguments_", i));
+    }
     return Status::OK();
   }
 
-  // Create a new `ReduceDataset` op kernel context
-  Status CreateReduceDatasetContext(
-      OpKernel *const op_kernel,
-      gtl::InlinedVector<TensorValue, 4> *const inputs,
-      std::unique_ptr<OpKernelContext> *context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    attr_vector->clear();
+    *attr_vector = {{"f", func_},
+                    {"Tstate", type_state_},
+                    {"Targuments", type_arguments_},
+                    {"output_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"use_inter_op_parallelism", use_inter_op_parallelism_}};
     return Status::OK();
   }
+
+  string dataset_type() const override { return "Reduce"; }
+
+  std::vector<FunctionDef> func_lib() const override { return func_lib_; }
+
+ private:
+  std::vector<Tensor> initial_state_;
+  std::vector<Tensor> other_arguments_;
+  FunctionDefHelper::AttrValueWrapper func_;
+  std::vector<FunctionDef> func_lib_;
+  DataTypeVector type_state_;
+  DataTypeVector type_arguments_;
+  bool use_inter_op_parallelism_;
 };
 
-struct RangeDatasetParam {
-  int64 start;
-  int64 end;
-  int64 step;
-};
-
-struct TestCase {
-  RangeDatasetParam range_data_param;
-  std::vector<Tensor> initial_state;
-  FunctionDefHelper::AttrValueWrapper func;
-  std::vector<FunctionDef> func_lib;
-  DataTypeVector t_state;
-  bool use_inter_op_parallelism;
-  std::vector<Tensor> expected_outputs;
-  DataTypeVector output_dtypes;
-  std::vector<PartialTensorShape> output_shapes;
-};
+class ReduceDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: the input function has one output.
-TestCase TestCase1() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*initial_state*/
-          {CreateTensor<int64>(TensorShape({}), {0})},
-          /*func*/
-          FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::XAddY()},
-          /*t_state*/ {DT_INT64},
-          /*use_inter_op_parallelism*/ true,
-          /*expected_outputs*/
-          {CreateTensor<int64>(TensorShape({}), {45})},
-          /*output_dtypes*/ {DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})}};
+ReduceDatasetParams ReduceDatasetParams1() {
+  return ReduceDatasetParams(
+      /*input_dataset_params=*/RangeDatasetParams(0, 10, 1),
+      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}}),
+      /*other_arguments=*/{},
+      /*func=*/FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
+      /*func_lib=*/{test::function::XAddY()},
+      /*type_state=*/{DT_INT64},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*use_inter_op_parallelism=*/true,
+      /*node_name=*/kNodeName);
 }
 
 // Test case 2: the reduce function has two inputs and two outputs. As the
@@ -100,91 +115,71 @@ TestCase TestCase1() {
 // the components of initial_state will be all the inputs for the reduce
 // function, and the input dataset will not be involved in the
 // reduce/aggregation process.
-TestCase TestCase2() {
-  return {/*range_data_param*/ {1, 10, 1},
-          /*initial_state*/
-          {CreateTensor<int64>(TensorShape({}), {1}),
-           CreateTensor<int64>(TensorShape({}), {1})},
-          /*func*/
-          FunctionDefHelper::FunctionRef("XPlusOneXTimesY", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::XPlusOneXTimesY()},
-          /*t_state*/ {DT_INT64, DT_INT64},
-          /*use_inter_op_parallelism*/ true,
-          /*expected_outputs*/
-          {CreateTensor<int64>(TensorShape({}), {10}),
-           CreateTensor<int64>(TensorShape({}),
-                               {1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9})},
-          /*output_dtypes*/ {DT_INT64, DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})}};
+ReduceDatasetParams ReduceDatasetParams2() {
+  return ReduceDatasetParams(
+      /*input_dataset_params=*/RangeDatasetParams(1, 10, 1),
+      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}, {1}}),
+      /*other_arguments=*/{},
+      /*func=*/
+      FunctionDefHelper::FunctionRef("XPlusOneXTimesY", {{"T", DT_INT64}}),
+      /*func_lib=*/{test::function::XPlusOneXTimesY()},
+      /*type_state=*/{DT_INT64, DT_INT64},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64, DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({}), PartialTensorShape({})},
+      /*use_inter_op_parallelism=*/true,
+      /*node_name=*/kNodeName);
 }
 
 // Test case 3: the input dataset has no outputs, so the reduce dataset just
 // returns the initial state.
-TestCase TestCase3() {
-  return {/*range_data_param*/ {0, 0, 1},
-          /*initial_state*/
-          {CreateTensor<int64>(TensorShape({}), {1}),
-           CreateTensor<int64>(TensorShape({}), {3})},
-          /*func*/
-          FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::XAddY()},
-          /*t_state*/ {DT_INT64, DT_INT64},
-          /*use_inter_op_parallelism*/ true,
-          /*expected_outputs*/
-          {CreateTensor<int64>(TensorShape({}), {1}),
-           CreateTensor<int64>(TensorShape({}), {3})},
-          /*output_dtypes*/ {DT_INT64, DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})}};
+ReduceDatasetParams ReduceDatasetParams3() {
+  return ReduceDatasetParams(
+      /*input_dataset_params=*/RangeDatasetParams(0, 0, 1),
+      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}, {3}}),
+      /*other_arguments=*/{},
+      /*func=*/
+      FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
+      /*func_lib=*/{test::function::XAddY()},
+      /*type_state=*/{DT_INT64, DT_INT64},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64, DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({}), PartialTensorShape({})},
+      /*use_inter_op_parallelism=*/true,
+      /*node_name=*/kNodeName);
+}
+
+std::vector<GetNextTestCase<ReduceDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/
+           ReduceDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{46}})},
+          {/*dataset_params=*/ReduceDatasetParams2(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}),
+                                {{10}, {1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9}})},
+          {/*dataset_params=*/
+           ReduceDatasetParams3(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape{}, {{1}, {3}})}};
 }
 
 class ParameterizedReduceDatasetOpTest
     : public ReduceDatasetOpTest,
-      public ::testing::WithParamInterface<TestCase> {};
+      public ::testing::WithParamInterface<
+          GetNextTestCase<ReduceDatasetParams>> {};
 
 TEST_P(ParameterizedReduceDatasetOpTest, Compute) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> reduce_dataset_kernel;
-  TF_ASSERT_OK(CreateReduceDatasetOpKernel(
-      test_case.func, test_case.t_state, test_case.output_dtypes,
-      test_case.output_shapes, test_case.use_inter_op_parallelism,
-      &reduce_dataset_kernel));
-
-  DatasetBase *range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_data_param.start, test_case.range_data_param.end,
-      test_case.range_data_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  std::vector<Tensor> initial_state = test_case.initial_state;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&range_dataset_tensor)});
-  for (auto &t : initial_state) {
-    inputs.emplace_back(&t);
-  }
-
-  std::unique_ptr<OpKernelContext> reduce_dataset_context;
-  TF_ASSERT_OK(CreateReduceDatasetContext(reduce_dataset_kernel.get(), &inputs,
-                                          &reduce_dataset_context));
-  TF_ASSERT_OK(
-      RunOpKernel(reduce_dataset_kernel.get(), reduce_dataset_context.get()));
-
-  int num_outputs = reduce_dataset_context->num_outputs();
-  EXPECT_EQ(num_outputs, test_case.expected_outputs.size());
-  for (int i = 0; i < num_outputs; i++) {
-    // output will be released by the op kernel context.
-    Tensor *output = reduce_dataset_context->mutable_output(i);
-    TF_EXPECT_OK(ExpectEqual(test_case.expected_outputs[i], *output));
-  }
+  auto test_case = GetParam();
+  TF_ASSERT_OK(InitializeRuntime(test_case.dataset_params));
+  std::vector<Tensor> output;
+  TF_ASSERT_OK(RunDatasetOp(test_case.dataset_params, &output));
+  TF_EXPECT_OK(
+      ExpectEqual(test_case.expected_outputs, output, /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(ReduceDatasetOpTest, ParameterizedReduceDatasetOpTest,
-                         ::testing::ValuesIn(std::vector<TestCase>(
-                             {TestCase1(), TestCase2(), TestCase3()})));
+                         ::testing::ValuesIn(GetNextTestCases()));
 
 }  // namespace
 }  // namespace data

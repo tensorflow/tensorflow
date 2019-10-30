@@ -51,6 +51,12 @@ limitations under the License.
     return nullptr;                                                         \
   }
 
+#define TFLITE_PY_NODES_BOUNDS_CHECK(i)                   \
+  if (i >= interpreter_->nodes_size() || i < 0) {         \
+    PyErr_Format(PyExc_ValueError, "Invalid node index"); \
+    return nullptr;                                       \
+  }
+
 #define TFLITE_PY_ENSURE_VALID_INTERPRETER()                               \
   if (!interpreter_) {                                                     \
     PyErr_SetString(PyExc_ValueError, "Interpreter was not initialized."); \
@@ -110,7 +116,7 @@ bool RegisterCustomOpByName(const char* registerer_name,
 #else
       dlsym(RTLD_DEFAULT, registerer_name)
 #endif  // defined(_WIN32)
-      );
+  );
 
   // Fail in an informative way if the function was not found.
   if (registerer == nullptr) {
@@ -313,7 +319,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %s"
+                 " Got value of type %s"
                  " but expected type %s for input %d, name: %s ",
                  TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
                  TfLiteTypeGetName(tensor->type), i, tensor->name);
@@ -357,6 +363,52 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
     dynamic_buffer.WriteToTensor(tensor, nullptr);
   }
   Py_RETURN_NONE;
+}
+
+int InterpreterWrapper::NumNodes() const {
+  if (!interpreter_) {
+    return 0;
+  }
+  return interpreter_->nodes_size();
+}
+
+PyObject* InterpreterWrapper::NodeInputs(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_NODES_BOUNDS_CHECK(i);
+
+  const TfLiteNode* node = &(interpreter_->node_and_registration(i)->first);
+  PyObject* inputs =
+      PyArrayFromIntVector(node->inputs->data, node->inputs->size);
+  return inputs;
+}
+
+PyObject* InterpreterWrapper::NodeOutputs(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_NODES_BOUNDS_CHECK(i);
+
+  const TfLiteNode* node = &(interpreter_->node_and_registration(i)->first);
+  PyObject* outputs =
+      PyArrayFromIntVector(node->outputs->data, node->outputs->size);
+  return outputs;
+}
+
+std::string InterpreterWrapper::NodeName(int i) const {
+  if (!interpreter_ || i >= interpreter_->nodes_size() || i < 0) {
+    return "";
+  }
+  // Get op name from registration
+  const TfLiteRegistration* node_registration =
+      &(interpreter_->node_and_registration(i)->second);
+  int32_t op_code = node_registration->builtin_code;
+  std::string op_name;
+  if (op_code == tflite::BuiltinOperator_CUSTOM) {
+    const char* custom_name = node_registration->custom_name;
+    op_name = custom_name ? custom_name : "UnknownCustomOp";
+  } else {
+    op_name = tflite::EnumNamesBuiltinOperator()[op_code];
+  }
+  std::string op_name_str(op_name);
+  return op_name_str;
 }
 
 namespace {
@@ -429,9 +481,9 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
 
     PyArrayObject* py_array = reinterpret_cast<PyArrayObject*>(py_object);
     PyObject** data = reinterpret_cast<PyObject**>(PyArray_DATA(py_array));
-    auto num_strings = GetStringCount(tensor->data.raw);
+    auto num_strings = GetStringCount(tensor);
     for (int j = 0; j < num_strings; ++j) {
-      auto ref = GetString(tensor->data.raw, j);
+      auto ref = GetString(tensor, j);
 
       PyObject* bytes = PyBytes_FromStringAndSize(ref.str, ref.len);
       if (bytes == nullptr) {
@@ -482,7 +534,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, const std::vector<std::string>& registerers,
     std::string* error_msg) {
-  char * buf = nullptr;
+  char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
 

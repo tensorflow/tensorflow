@@ -49,12 +49,16 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  bool isLegalToInline(Region *, Region *, BlockAndValueMapping &) const final {
+    // Inlining into test dialect regions is legal.
+    return true;
+  }
   bool isLegalToInline(Operation *, Region *,
                        BlockAndValueMapping &) const final {
     return true;
   }
 
-  bool shouldAnalyzeRecursively(Operation *op) const override {
+  bool shouldAnalyzeRecursively(Operation *op) const final {
     // Analyze recursively if this is not a functional region operation, it
     // froms a separate functional scope.
     return !isa<FunctionalRegionOp>(op);
@@ -78,6 +82,21 @@ struct TestInlinerInterface : public DialectInlinerInterface {
     for (const auto &it : llvm::enumerate(returnOp.getOperands()))
       valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
   }
+
+  /// Attempt to materialize a conversion for a type mismatch between a call
+  /// from this dialect, and a callable region. This method should generate an
+  /// operation that takes 'input' as the only operand, and produces a single
+  /// result of 'resultType'. If a conversion can not be generated, nullptr
+  /// should be returned.
+  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+                                       Type resultType,
+                                       Location conversionLoc) const final {
+    // Only allow conversion for i16/i32 types.
+    if (!(resultType.isInteger(16) || resultType.isInteger(32)) ||
+        !(input->getType().isInteger(16) || input->getType().isInteger(32)))
+      return nullptr;
+    return builder.create<TestCastOp>(conversionLoc, resultType, input);
+  }
 };
 } // end anonymous namespace
 
@@ -93,6 +112,24 @@ TestDialect::TestDialect(MLIRContext *context)
       >();
   addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
   allowUnknownOperations();
+}
+
+LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
+                                                    unsigned regionIndex,
+                                                    unsigned argIndex,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
+LogicalResult
+TestDialect::verifyRegionResultAttribute(Operation *op, unsigned regionIndex,
+                                         unsigned resultIndex,
+                                         NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -160,12 +197,16 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
   SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
   OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
-  builder.create<TestReturnOp>(result.location, return_operands);
+  builder.create<TestReturnOp>(wrapped_op->getLoc(), return_operands);
 
   // Get the results type for the wrapping op from the terminator operands.
   Operation &return_op = body.back().back();
   result.types.append(return_op.operand_type_begin(),
                       return_op.operand_type_end());
+
+  // Use the location of the wrapped op for the "test.wrapping_region" op.
+  result.location = wrapped_op->getLoc();
+
   return success();
 }
 
@@ -201,7 +242,7 @@ struct TestRemoveOpWithInnerOps
 
   PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -214,6 +255,22 @@ void TestOpWithRegionPattern::getCanonicalizationPatterns(
 
 OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
   return operand();
+}
+
+LogicalResult TestOpWithVariadicResultsAndFolder::fold(
+    ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
+  for (Value *input : this->operands()) {
+    results.push_back(input);
+  }
+  return success();
+}
+
+SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
+    llvm::Optional<Location> location, ArrayRef<Value *> operands,
+    ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
+  if (location)
+    mlir::emitError(*location) << "expected to fail";
+  return SmallVector<Type, 2>{nullptr};
 }
 
 // Static initialization for Test dialect registration.

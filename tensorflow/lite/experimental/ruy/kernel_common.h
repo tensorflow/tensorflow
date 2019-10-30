@@ -48,8 +48,10 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
                     Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
   Kernel kernel(tuning);
+#if !defined(NDEBUG) || !RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   using LhsLayout = typename Kernel::LhsLayout;
   using RhsLayout = typename Kernel::RhsLayout;
+#endif
   // end_row and end_col may be larger than dst dimensions.
   // that is because kernels write directly to the destination matrix, whose
   // dimensions may not be a multiple of the kernel dimensions, and we try to
@@ -404,8 +406,6 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
                                   int start_row, int start_col, int end_row,
                                   int end_col, Matrix<float>* dst,
                                   KernelParamsFloat<LhsCols, RhsCols>* params) {
-  using Params = KernelParamsFloat<LhsCols, RhsCols>;
-
   const int depth = lhs.layout.rows;
   RUY_DCHECK_EQ(start_row % LhsCols, 0);
   RUY_DCHECK_EQ(start_col % RhsCols, 0);

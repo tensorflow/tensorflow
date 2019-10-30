@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import sys
 import traceback
@@ -212,6 +213,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+
+  def test_deepcopy(self):
+    with context.eager_mode():
+      bias_reg = lambda x: 1e-3 * math_ops.reduce_sum(x)
+      layer = keras.layers.Conv2D(32, (3, 3), bias_regularizer=bias_reg)
+      # Call the Layer on data to generate regularize losses.
+      layer(array_ops.ones((1, 10, 10, 3)))
+      self.assertLen(layer.losses, 1)
+      new_layer = copy.deepcopy(layer)
+      self.assertEqual(new_layer.bias_regularizer, bias_reg)
+      self.assertEqual(layer.get_config(), new_layer.get_config())
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):
@@ -1439,11 +1451,25 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
+    layer._supports_ragged_inputs = True
+
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
+
+  def test_supports_ragged_inputs_attribute_error(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'does not support RaggedTensors'):
+      ragged = ragged_tensor.RaggedTensor.from_row_splits(
+          values=array_ops.constant([1., 2., 3.], dtype='float32'),
+          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
+      model = keras.Sequential([
+          keras.layers.InputLayer(input_shape=(None,), ragged=True),
+          IdentityLayer()])
+      model.compile(rmsprop.RMSprop(0.001), loss='mse')
+      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

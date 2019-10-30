@@ -97,6 +97,7 @@ struct Result {
   std::vector<Tensor> dense_values;
   std::vector<Tensor> ragged_values;
   std::vector<Tensor> ragged_splits;
+  std::vector<Tensor> ragged_outer_splits;  // For SequenceExamples
 
   // This vector will be populated with one element per example if
   // `FastParseExampleConfig::collect_feature_stats` is set to `true`.
@@ -122,13 +123,14 @@ Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
 // result according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
+// (If batch=true, then this parses a single SequenceExample.)
 Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
     const example::FastParseExampleConfig& feature_list_config,
     gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
     thread::ThreadPool* thread_pool, example::Result* context_result,
     example::Result* feature_list_result,
-    std::vector<Tensor>* dense_feature_lengths);
+    std::vector<Tensor>* dense_feature_lengths, bool is_batch = true);
 
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.

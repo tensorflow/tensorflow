@@ -59,7 +59,8 @@ static LogicalResult performActions(raw_ostream &os, bool verifyDiagnostics,
   applyPassManagerCLOptions(pm);
 
   // Build the provided pipeline.
-  passPipeline.addToPipeline(pm);
+  if (failed(passPipeline.addToPipeline(pm)))
+    return failure();
 
   // Run the pipeline.
   if (failed(pm.run(*module)))

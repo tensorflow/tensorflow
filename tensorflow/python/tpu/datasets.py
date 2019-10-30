@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -194,6 +193,6 @@ def StreamingFilesDataset(files,
 
     if batch_transfer_size:
       # Undo the batching used during the transfer.
-      output_dataset = output_dataset.apply(batching.unbatch()).prefetch(1)
+      output_dataset = output_dataset.unbatch().prefetch(1)
 
   return output_dataset

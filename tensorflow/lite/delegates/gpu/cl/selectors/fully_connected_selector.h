@@ -28,7 +28,7 @@ namespace cl {
 
 Status SelectFullyConnected(const FullyConnectedAttributes& attr,
                             const CreationContext& creation_context,
-                            const OperationDef& op_def,
+                            const OperationDef& op_def, int batch_size,
                             std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl

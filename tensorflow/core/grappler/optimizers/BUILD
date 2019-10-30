@@ -379,6 +379,7 @@ cc_library(
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -618,7 +619,6 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
-        "//tensorflow/core/lib/gtl:map_util",
         "@com_google_absl//absl/strings",
     ],
 )

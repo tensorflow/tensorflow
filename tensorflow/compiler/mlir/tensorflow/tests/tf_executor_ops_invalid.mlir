@@ -522,6 +522,18 @@ func @invalid_merge(%arg0: tensor<*x!tf.variant>, %arg1: tensor<4x!tf.variant>) 
 
 // -----
 
+// Check that merge data inputs of resource type are broadcastable to the output
+func @invalid_merge(%arg0: tensor<*x!tf.resource>, %arg1: tensor<4x!tf.resource>) -> tensor<8x!tf.resource> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.resource>, tensor<4x!tf.resource>) -> (tensor<8x!tf.resource>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf.resource>' vs 'tensor<8x!tf.resource>'}}
+    tf_executor.fetch %value : tensor<8x!tf.resource>
+  }
+  return %result : tensor<8x!tf.resource>
+}
+
+// -----
+
 // Check that if result is a ref type, all operands need to be ref too.
 func @inavlid_merge(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4xf32>) -> tensor<4x!tf.f32ref> {
   %result = tf_executor.graph {

@@ -21,8 +21,10 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-std::atomic<int> TraceMeRecorder::trace_level_ =
+namespace internal {
+std::atomic<int> g_trace_level =
     ATOMIC_VAR_INIT(TraceMeRecorder::kTracingDisabled);
+}  // namespace internal
 
 // Implementation of TraceMeRecorder::trace_level_ must be lock-free for faster
 // execution of the TraceMe() public API. This can be commented (if compilation
@@ -217,7 +219,7 @@ bool TraceMeRecorder::StartRecording(int level) {
   mutex_lock lock(mutex_);
   // Change trace_level_ while holding mutex_.
   int expected = kTracingDisabled;
-  bool started = trace_level_.compare_exchange_strong(
+  bool started = internal::g_trace_level.compare_exchange_strong(
       expected, level, std::memory_order_acq_rel);
   if (started) {
     // We may have old events in buffers because Record() raced with Stop().
@@ -235,8 +237,8 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   TraceMeRecorder::Events events;
   mutex_lock lock(mutex_);
   // Change trace_level_ while holding mutex_.
-  if (trace_level_.exchange(kTracingDisabled, std::memory_order_acq_rel) !=
-      kTracingDisabled) {
+  if (internal::g_trace_level.exchange(
+          kTracingDisabled, std::memory_order_acq_rel) != kTracingDisabled) {
     events = Clear();
   }
   return events;

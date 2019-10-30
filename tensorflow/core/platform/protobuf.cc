@@ -54,9 +54,7 @@ void TStringOutputStream::BackUp(int count) {
   target_->resize(target_->size() - count);
 }
 
-protobuf::io::ByteCountInt64 TStringOutputStream::ByteCount() const {
-  return target_->size();
-}
+int64_t TStringOutputStream::ByteCount() const { return target_->size(); }
 #endif  // USE_TSTRING
 
 }  // namespace tensorflow

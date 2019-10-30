@@ -1406,6 +1406,29 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::FunctionType* replica_id_function_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {/*run_options=*/i8_ptr_type,
+                               /*output_buffer=*/i8_ptr_type},
+                              /*isVarArg=*/false);
+  auto* replica_id_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kReplicaIdSymbolName,
+                                replica_id_function_ty)
+          .getCallee());
+  replica_id_func->setCallingConv(llvm::CallingConv::C);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(hlo, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
+  Call(replica_id_func,
+       {/*run_options=*/GetExecutableRunOptionsArgument(),
+        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)});
+
+  return Status::OK();
+}
+
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   return EmitTargetAddressForOp(parameter);
@@ -2784,8 +2807,9 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
                                  old_state->getType()->getScalarType(),
                                  address->getType()->getPointerAddressSpace()));
   llvm::StoreInst* store = Store(old_state, address);
-  store->setAlignment(IrEmitter::MinimumAlignmentForPrimitiveType(
-      rng_state->shape().element_type()));
+  store->setAlignment(
+      llvm::MaybeAlign(IrEmitter::MinimumAlignmentForPrimitiveType(
+          rng_state->shape().element_type())));
 
   return Status::OK();
 }
@@ -2859,7 +2883,7 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
 
 llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  if (use_rdtscp_) {
+  if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
         llvm::Intrinsic::getDeclaration(module,
                                         llvm::Intrinsic::readcyclecounter);
@@ -2867,20 +2891,8 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   }
   llvm::Function* func_llvm_x86_rdtscp =
       llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
-  if (!aux_i8ptr_) {
-    llvm::AllocaInst* rdtscp_aux =
-        llvm_ir::EmitAllocaAtFunctionEntry(b->getInt32Ty(), "rdtscp_aux", b);
-    aux_i8ptr_ = b->CreateBitCast(rdtscp_aux, b->getInt8PtrTy());
-  }
-  llvm::ConstantInt* alloca_size = b->getInt64(4);
-  llvm::Function* func_llvm_lifetime_start =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_start);
-  b->CreateCall(func_llvm_lifetime_start, {alloca_size, aux_i8ptr_});
-  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp, aux_i8ptr_);
-  llvm::Function* func_llvm_lifetime_end =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_end);
-  b->CreateCall(func_llvm_lifetime_end, {alloca_size, aux_i8ptr_});
-  return rdtscp_call;
+  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
+  return b->CreateExtractValue(rdtscp_call, {0});
 }
 
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,

@@ -385,6 +385,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           }
 
           if (cancellation_manager_.IsCancelled()) {
+            prefetch_thread_finished_ = true;
+            cond_var_->notify_all();
             return;
           }
         }

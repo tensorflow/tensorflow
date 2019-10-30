@@ -145,6 +145,7 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":loops",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -187,6 +188,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -495,6 +497,85 @@ xla_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "tridiagonal",
+    srcs = ["tridiagonal.cc"],
+    hdrs = ["tridiagonal.h"],
+    deps = [
+        ":constants",
+        ":loops",
+        ":slicing",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "tridiagonal_test",
+    srcs = ["tridiagonal_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":constants",
+        ":slicing",
+        ":tridiagonal",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
+
+cc_library(
+    name = "logdet",
+    srcs = ["logdet.cc"],
+    hdrs = ["logdet.h"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        ":loops",
+        ":math",
+        ":matrix",
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "logdet_test",
+    srcs = ["logdet_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":logdet",
+        ":matrix",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",

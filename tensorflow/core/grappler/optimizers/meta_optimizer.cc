@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -164,10 +165,17 @@ bool MemoryOptimizerEnabled(
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
+bool MetaOptimizer::IsSingleThreadedExecutor() const {
+  return config_proto_.experimental().executor_type() ==
+         "SINGLE_THREADED_EXECUTOR";
+}
+
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
+  MK_OPT("function", new FunctionOptimizer(
+                         cfg_.function_optimization(),
+                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
@@ -211,8 +219,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
+    optimizers->push_back(MakeUnique<FunctionOptimizer>(
+        cfg_.function_optimization(),
+        /*lower_contorl_flow=*/!IsSingleThreadedExecutor()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
@@ -228,18 +237,18 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
   }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
-  }
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -411,7 +420,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimized_graph->Swap(&optimized_item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
-  GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
 
   // Constants in the graph are normally compressed after model_pruner.
@@ -446,10 +454,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
         continue;
       }
-      if (optimizer->name() == "xla-fusion") {
-        if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
-        continue;
-      }
 
       TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
                                       optimized_graph, &optimization_result));
@@ -480,18 +484,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     for (const auto& verifier : post_optimization_verifiers) {
       TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
-  }
-
-  // Run fusion optimizer if requested after all other optimizers since: 1) it
-  // doesn't need to be called more than once. 2) we don't want subsequent
-  // optimization passes to break the fusion clusters. We could potentially
-  // encapsulate the fusion clusters right away, but that will prevent a lot of
-  // optimizations from taking place since we don't have shape inference for
-  // functions, and we can't optimize across function boundaries.
-  if (fusion_optimizer != nullptr) {
-    TF_RETURN_IF_ERROR(RunOptimizer(fusion_optimizer, cluster, &optimized_item,
-                                    optimized_graph, &optimization_result));
-    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
 
   // ScopedAllocatorOptimizer must run last.
@@ -548,6 +540,7 @@ Status MetaOptimizer::RunOptimizer(
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   const uint64 end_us = Env::Default()->NowMicros();
   const float duration_ms = (end_us - start_us) / 1000.0f;
+  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
 
   string message;
   if (!status.ok()) {

@@ -24,8 +24,7 @@
 #define MLIR_SUPPORT_STLEXTRAS_H
 
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/iterator.h"
-#include <tuple>
+#include "llvm/ADT/STLExtras.h"
 
 namespace mlir {
 
@@ -184,6 +183,15 @@ protected:
   ObjectType object;
   ptrdiff_t index;
 };
+
+/// Given a container of pairs, return a range over the second elements.
+template <typename ContainerTy> auto make_second_range(ContainerTy &&c) {
+  return llvm::map_range(
+      std::forward<ContainerTy>(c),
+      [](decltype((*std::begin(c))) elt) -> decltype((elt.second)) {
+        return elt.second;
+      });
+}
 
 } // end namespace mlir
 

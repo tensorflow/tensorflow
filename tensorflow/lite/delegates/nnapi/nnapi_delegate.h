@@ -116,6 +116,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // Returns the int value of the ResultCode returned by the latest
   // failed call to NNAPI, if any. Zero only in case of NO failed calls since
   // the construction of this instance of StatefulNnApiDelegate.
+  // The error code is reset when the delegate is re-initialized
+  // (i.e. when calling interpreter.ModifyGraphWithDelegate(delegate)).
   int GetNnApiErrno() const;
 
  private:

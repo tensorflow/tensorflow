@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 // A helper class for appending various kinds of values in protocol
 // buffer encoding format to a buffer.  The client gives a pointer to

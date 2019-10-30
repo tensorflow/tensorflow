@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "numpy/arrayobject.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
@@ -175,33 +177,89 @@ struct type_caster<xla::BorrowingLiteral> {
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
   // Pybind appears to keep type_casters alive until the callee has run.
-  pybind11::array array;
+  absl::InlinedVector<pybind11::array, 1> arrays;
 
-  bool load(handle handle, bool) {
-    array = pybind11::array::ensure(
-        handle, pybind11::array::c_style |
-                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
-    if (!array) return false;
+  bool load(handle input, bool) {
+    // TODO(b/79707221): support nested tuples if/when XLA adds support for
+    // nested BorrowingLiterals.
+    if (pybind11::isinstance<pybind11::tuple>(input)) {
+      pybind11::tuple tuple =
+          pybind11::reinterpret_borrow<pybind11::tuple>(input);
+      std::vector<xla::Shape> shapes;
+      std::vector<const char*> buffers;
+      arrays.reserve(tuple.size());
+      shapes.reserve(tuple.size());
+      buffers.reserve(tuple.size());
+      for (pybind11::handle entry : tuple) {
+        auto c = CastToArray(entry);
+        if (!c) {
+          return false;
+        }
+        arrays.push_back(c->array);
+        buffers.push_back(c->buf_ptr);
+        shapes.push_back(c->shape);
+      }
+      value = xla::BorrowingLiteral(buffers,
+                                    xla::ShapeUtil::MakeTupleShape(shapes));
+    } else {
+      auto c = CastToArray(input);
+      if (!c) {
+        return false;
+      }
+      arrays.push_back(c->array);
+      value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
+    }
+    return true;
+  }
+
+ private:
+  struct CastToArrayResult {
+    pybind11::array array;
+    const char* buf_ptr;
+    xla::Shape shape;
+  };
+
+  absl::optional<CastToArrayResult> CastToArray(pybind11::handle h) {
+    pybind11::array array = pybind11::array::ensure(
+        h, pybind11::array::c_style |
+               pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
+    if (!array) {
+      return absl::nullopt;
+    }
+
+    auto type_or_status = xla::DtypeToPrimitiveType(array.dtype());
+    if (!type_or_status.ok()) {
+      throw std::runtime_error(type_or_status.status().ToString());
+    }
+    xla::PrimitiveType type = type_or_status.ValueOrDie();
+
+    if (type == xla::BF16) {
+      // The NumPy array protocol has no way to describe our custom bfloat16
+      // type, so we cast to an array of uint16 instead. We are going to pass
+      // a raw buffer pointer to xla::BorrowingLiteral anyway, so it doesn't
+      // really matter what type we use here, so long as it has the correct size
+      // and alignment.
+      array = reinterpret_steal<pybind11::array>(PyArray_View(
+          reinterpret_cast<PyArrayObject*>(array.ptr()),
+          reinterpret_cast<PyArray_Descr*>(dtype::of<uint16>().release().ptr()),
+          static_cast<PyTypeObject*>(nullptr)));
+    }
+
     pybind11::buffer_info buffer_info = array.request();
 
     absl::InlinedVector<xla::int64, 4> dims(array.ndim());
     for (int i = 0; i < array.ndim(); ++i) {
       dims[i] = array.shape(i);
     }
-    auto type = xla::DtypeToPrimitiveType(array.dtype());
-    if (!type.ok()) {
-      throw std::runtime_error(type.status().ToString());
-    }
-    xla::Shape shape = xla::ShapeUtil::MakeShape(type.ValueOrDie(), dims);
+    xla::Shape shape = xla::ShapeUtil::MakeShape(type, dims);
     if (buffer_info.size * buffer_info.itemsize !=
         xla::ShapeUtil::ByteSizeOf(shape)) {
       throw std::runtime_error(absl::StrCat(
           "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
           " vs. ", xla::ShapeUtil::ByteSizeOf(shape)));
     }
-    value =
-        xla::BorrowingLiteral(static_cast<const char*>(buffer_info.ptr), shape);
-    return true;
+    return CastToArrayResult{array, static_cast<const char*>(buffer_info.ptr),
+                             shape};
   }
 };
 

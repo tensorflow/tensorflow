@@ -132,11 +132,6 @@ final class NativeLibrary {
   }
 
   private static String getVersionedLibraryName(String libFilename) {
-    // If the resource exists as an unversioned file, return that.
-    if (resourceExists(libFilename)) {
-      return libFilename;
-    }
-
     final String versionName = getMajorVersionNumber();
 
     // If we're on darwin, the versioned libraries look like blah.1.dylib.
@@ -174,11 +169,13 @@ final class NativeLibrary {
    * determined.
    */
   private static String getMajorVersionNumber() {
+    // getImplementationVersion() retrun null.
     String version = NativeLibrary.class.getPackage().getImplementationVersion();
     // expecting a string like 1.14.0, we want to get the first '1'.
     int dotIndex;
     if (version == null || (dotIndex = version.indexOf('.')) == -1) {
-      return null;
+      // we want to get the version 1.
+      return "1";
     }
     String majorVersion = version.substring(0, dotIndex);
     try {

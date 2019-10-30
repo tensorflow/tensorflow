@@ -22,12 +22,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
-DeviceBase::~DeviceBase() { gtl::STLDeleteElements(&eigen_cpu_devices_); }
+DeviceBase::~DeviceBase() {
+  for (auto& temp : eigen_cpu_devices_) {
+    delete temp;
+  }
+  eigen_cpu_devices_.clear();
+}
 
 const DeviceAttributes& DeviceBase::attributes() const {
   LOG(FATAL) << "Device does not implement attributes()";

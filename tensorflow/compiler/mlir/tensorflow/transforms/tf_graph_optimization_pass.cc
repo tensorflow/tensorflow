@@ -59,7 +59,7 @@ void GraphOptPass::runOnModule() {
   // Convert MLIR to Graph
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
-  ExporterConfigs confs;
+  GraphExportConfig confs;
   auto graph = absl::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
@@ -90,7 +90,7 @@ void GraphOptPass::runOnModule() {
 
   // Convert Graph to MLIR
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   auto module_or_status =
       ConvertGraphToMlir(**options.graph, debug_info, flib_def, specs, &ctx);
   if (!module_or_status.ok()) {

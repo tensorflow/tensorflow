@@ -28,6 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
 
@@ -200,10 +201,10 @@ class KerasLossesTest(test.TestCase):
 
   def test_serializing_loss_class(self):
     orig_loss_class = _MSEMAELoss(0.3)
-    with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+    with generic_utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
       serialized = keras.losses.serialize(orig_loss_class)
 
-    with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+    with generic_utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
       deserialized = keras.losses.deserialize(serialized)
     assert isinstance(deserialized, _MSEMAELoss)
     assert deserialized.mse_fraction == 0.3
@@ -214,7 +215,7 @@ class KerasLossesTest(test.TestCase):
     model_filename = os.path.join(tmpdir, 'custom_loss.h5')
 
     with self.cached_session():
-      with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+      with generic_utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loss = _MSEMAELoss(0.3)
         inputs = keras.layers.Input((2,))
         outputs = keras.layers.Dense(1, name='model_output')(inputs)
@@ -227,7 +228,7 @@ class KerasLossesTest(test.TestCase):
 
         model.save(model_filename)
 
-      with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+      with generic_utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loaded_model = keras.models.load_model(model_filename)
         loaded_model.predict(np.random.rand(128, 2))
 

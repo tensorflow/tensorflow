@@ -87,7 +87,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       executable->executable()->module().input_output_alias_config();
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
       ctx, result, run_result.ConsumeValueOrDie(),
-      /*missing_ctx_input_prefix=*/0, input_output_alias));
+      /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
   return Status::OK();
 }
 

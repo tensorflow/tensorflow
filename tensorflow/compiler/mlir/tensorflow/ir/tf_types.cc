@@ -37,6 +37,17 @@ TensorFlowType TensorFlowRefType::get(Type type) {
       return DoubleRefType::get(ctx);
     case StandardTypes::BF16:
       return Bfloat16RefType::get(ctx);
+    case StandardTypes::Complex: {
+      const auto& etype = type.cast<ComplexType>().getElementType();
+      switch (getElementTypeOrSelf(etype).getKind()) {
+        case StandardTypes::F32:
+          return Complex64RefType::get(ctx);
+        case StandardTypes::F64:
+          return Complex128RefType::get(ctx);
+        default:
+          llvm_unreachable("unexpected complex type");
+      }
+    }
     case StandardTypes::Integer: {
       const auto& itype = type.cast<IntegerType>();
       switch (itype.getWidth()) {
@@ -87,6 +98,10 @@ Type TensorFlowRefType::RemoveRef() {
       return mlir::IntegerType::get(32, ctx);
     case TensorFlowTypes::INT64_REF:
       return mlir::IntegerType::get(64, ctx);
+    case TensorFlowTypes::COMPLEX64_REF:
+      return mlir::ComplexType::get(mlir::FloatType::getF32(ctx));
+    case TensorFlowTypes::COMPLEX128_REF:
+      return mlir::ComplexType::get(mlir::FloatType::getF64(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   case TensorFlowTypes::enumerant##_REF:        \
     return tftype##Type::get(ctx);
@@ -96,6 +111,18 @@ Type TensorFlowRefType::RemoveRef() {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
     default:
       llvm_unreachable("unexpected tensorflow ref type kind");
+  }
+}
+
+Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
+  MLIRContext* ctx = getContext();
+  switch (getKind()) {
+    case TensorFlowTypes::VARIANT:
+      return VariantType::get(ctx);
+    case TensorFlowTypes::RESOURCE:
+      return ResourceType::get(ctx);
+    default:
+      llvm_unreachable("unexpected tensorflow type with subtypes kind");
   }
 }
 
