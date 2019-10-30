@@ -1244,7 +1244,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Validates Shape/ShapeN operand and associated result types.
+// Validates Shape/ShapeN/VariableShape operand and associated result types.
 LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
                                           Type result_type,
                                           int variadic_idx = -1) {
@@ -1255,7 +1255,7 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
   if (!result_ranked_type || result_ranked_type.getShape().size() != 1)
     return op->emitOpError("requires 1D type for result") << variadic_idx_str;
 
-  auto operand_ranked_type = operand_type.dyn_cast<RankedTensorType>();
+  auto operand_ranked_type = operand_type.dyn_cast_or_null<RankedTensorType>();
   if (operand_ranked_type) {
     // The operand is a ranked tensor.
     if (result_ranked_type.hasStaticShape() &&
@@ -1646,6 +1646,29 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TruncateDivWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// VariableShapeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(VariableShapeOp op) {
+  auto resource_operand_type = op.input()
+                                   ->getType()
+                                   .cast<TensorType>()
+                                   .getElementType()
+                                   .cast<TF::ResourceType>();
+  auto subtypes = resource_operand_type.getSubtypes();
+  switch (subtypes.size()) {
+    case 1:
+      return VerifyShapeOperandAndResult(
+          op, resource_operand_type.getSubtypes().front(), op.getType());
+    case 0:
+      return VerifyShapeOperandAndResult(op, Type(), op.getType());
+    default:
+      return op.emitOpError(
+          "requires resource input type to have at most 1 subtype");
+  }
 }
 
 //===----------------------------------------------------------------------===//
