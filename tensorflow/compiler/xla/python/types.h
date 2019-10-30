@@ -239,10 +239,11 @@ struct type_caster<xla::BorrowingLiteral> {
       // a raw buffer pointer to xla::BorrowingLiteral anyway, so it doesn't
       // really matter what type we use here, so long as it has the correct size
       // and alignment.
-      array = reinterpret_steal<pybind11::array>(PyArray_View(
-          reinterpret_cast<PyArrayObject*>(array.ptr()),
-          reinterpret_cast<PyArray_Descr*>(dtype::of<uint16>().release().ptr()),
-          static_cast<PyTypeObject*>(nullptr)));
+      array = reinterpret_steal<pybind11::array>(
+          PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
+                       reinterpret_cast<PyArray_Descr*>(
+                           dtype::of<xla::uint16>().release().ptr()),
+                       static_cast<PyTypeObject*>(nullptr)));
     }
 
     pybind11::buffer_info buffer_info = array.request();

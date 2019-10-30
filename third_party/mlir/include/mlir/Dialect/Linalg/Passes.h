@@ -41,6 +41,8 @@ std::unique_ptr<OpPassBase<FuncOp>> createLinalgPromotionPass();
 std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
 
 std::unique_ptr<OpPassBase<ModuleOp>> createLowerLinalgToLLVMPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLinalgTransformsPass();
 } // namespace linalg
 } // namespace mlir
 

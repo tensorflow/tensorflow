@@ -40,15 +40,19 @@ class _TFShouldUseHelper(object):
   main issues this wrapper warns about).
   """
 
-  def __init__(self, type_, repr_, stack_frame, fatal_error_if_unsated):
+  def __init__(self, type_, repr_, stack_frame, fatal_error_if_unsated,
+               warn_in_eager):
     self._type = type_
     self._repr = repr_
     self._stack_frame = stack_frame
     self._fatal_error_if_unsated = fatal_error_if_unsated
-    # If in eager mode or building a function with autodeps, we generally do not
-    # need these warnings since behavior is eager-like.
-    self._sated = (context.executing_eagerly()
-                   or ops.get_default_graph()._building_function)  # pylint: disable=protected-access
+    if warn_in_eager:
+      self._sated = False
+    else:
+      # If in eager mode or building a function with autodeps, we generally do
+      # not need these warnings since behavior is eager-like.
+      self._sated = (context.executing_eagerly()
+                     or ops.get_default_graph()._building_function)  # pylint: disable=protected-access
 
   def sate(self):
     self._sated = True
@@ -141,13 +145,15 @@ def _get_wrapper(x, tf_should_use_helper):
   return copy_tx(x, tf_should_use_helper)
 
 
-def _add_should_use_warning(x, fatal_error=False):
+def _add_should_use_warning(x, fatal_error=False, warn_in_eager=False):
   """Wraps object x so that if it is never used, a warning is logged.
 
   Args:
     x: Python object.
     fatal_error: Python bool.  If `True`, tf.compat.v1.logging.fatal is raised
       if the returned value is never used.
+    warn_in_eager: Python bool. If `True` raise warning if in Eager mode as well
+      as graph.
 
   Returns:
     An instance of `TFShouldUseWarningWrapper` which subclasses `type(x)`
@@ -166,12 +172,13 @@ def _add_should_use_warning(x, fatal_error=False):
       type_=type(x),
       repr_=repr(x),
       stack_frame=stack_frame,
-      fatal_error_if_unsated=fatal_error)
+      fatal_error_if_unsated=fatal_error,
+      warn_in_eager=warn_in_eager)
 
   return _get_wrapper(x, tf_should_use_helper)
 
 
-def should_use_result(fn):
+def should_use_result(fn=None, warn_in_eager=False):
   """Function wrapper that ensures the function's output is used.
 
   If the output is not used, a `tf.compat.v1.logging.error` is logged.
@@ -190,19 +197,31 @@ def should_use_result(fn):
 
   Args:
     fn: The function to wrap.
+    warn_in_eager: Whether to create warnings in Eager as well.
 
   Returns:
     The wrapped function.
   """
-  def wrapped(*args, **kwargs):
-    return _add_should_use_warning(fn(*args, **kwargs))
-  return tf_decorator.make_decorator(
-      fn, wrapped, 'should_use_result',
-      ((fn.__doc__ or '') +
-       ('\n\n  '
-        '**NOTE** The output of this function should be used.  If it is not, '
-        'a warning will be logged.  To mark the output as used, '
-        'call its .mark_used() method.')))
+  def decorated(fn):
+    def wrapped(*args, **kwargs):
+      return _add_should_use_warning(fn(*args, **kwargs),
+                                     warn_in_eager=warn_in_eager)
+    return tf_decorator.make_decorator(
+        target=fn,
+        decorator_func=wrapped,
+        decorator_name='should_use_result',
+        decorator_doc=(
+            (fn.__doc__ or '') +
+            ('\n\n  '
+             '**NOTE** The output of this function should be used.  If it is '
+             'not, a warning will be logged.  To mark the output as used, '
+             'call its .mark_used() method.')))
+
+  if fn is not None:
+    return decorated(fn)
+
+  else:
+    return decorated
 
 
 def must_use_result_or_fatal(fn):

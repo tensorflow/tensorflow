@@ -58,33 +58,31 @@ namespace {
 
 void GenerateFileContent(const std::string& tflite_path,
                          const std::string& filename,
-                         const std::string& user_namespace,
+                         const std::string& namespace_flag,
                          const tflite::RegisteredOpMap& builtin_ops,
                          const tflite::RegisteredOpMap& custom_ops,
                          const bool for_micro) {
   std::ofstream fout(filename);
-  const std::string tflite_namespace = for_micro ? "micro" : "builtin";
 
   if (for_micro) {
+    if (!builtin_ops.empty()) {
+      fout << "#include \"" << tflite_path
+           << "/experimental/micro/kernels/micro_ops.h\"\n";
+    }
     fout << "#include \"" << tflite_path
          << "/experimental/micro/micro_mutable_op_resolver.h\"\n";
   } else {
+    if (!builtin_ops.empty()) {
+      fout << "#include \"" << tflite_path
+           << "/kernels/builtin_op_kernels.h\"\n";
+    }
     fout << "#include \"" << tflite_path << "/model.h\"\n";
     fout << "#include \"" << tflite_path << "/op_resolver.h\"\n";
   }
 
-  fout << "namespace tflite {\n";
-  fout << "namespace ops {\n";
-  if (!builtin_ops.empty()) {
-    fout << "namespace " << tflite_namespace << " {\n";
-    fout << "// Forward-declarations for the builtin ops.\n";
-    for (const auto& op : builtin_ops) {
-      fout << "TfLiteRegistration* Register_" << op.first << "();\n";
-    }
-    fout << "}  // namespace " << tflite_namespace << "\n";
-  }
-
   if (!custom_ops.empty()) {
+    fout << "namespace tflite {\n";
+    fout << "namespace ops {\n";
     fout << "namespace custom {\n";
     fout << "// Forward-declarations for the custom ops.\n";
     for (const auto& op : custom_ops) {
@@ -92,12 +90,12 @@ void GenerateFileContent(const std::string& tflite_path,
            << ::tflite::NormalizeCustomOpName(op.first) << "();\n";
     }
     fout << "}  // namespace custom\n";
+    fout << "}  // namespace ops\n";
+    fout << "}  // namespace tflite\n";
   }
-  fout << "}  // namespace ops\n";
-  fout << "}  // namespace tflite\n";
 
-  if (!user_namespace.empty()) {
-    fout << "namespace " << user_namespace << " {\n";
+  if (!namespace_flag.empty()) {
+    fout << "namespace " << namespace_flag << " {\n";
   }
   if (for_micro) {
     fout << "void RegisterSelectedOps(::tflite::MicroMutableOpResolver* "
@@ -128,8 +126,8 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << ");\n";
   }
   fout << "}\n";
-  if (!user_namespace.empty()) {
-    fout << "}  // namespace " << user_namespace << "\n";
+  if (!namespace_flag.empty()) {
+    fout << "}  // namespace " << namespace_flag << "\n";
   }
   fout.close();
 }

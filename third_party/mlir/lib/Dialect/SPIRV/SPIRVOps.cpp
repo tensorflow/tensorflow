@@ -2286,6 +2286,26 @@ static void print(spirv::UndefOp undefOp, OpAsmPrinter &printer) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.Unreachable
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(spirv::UnreachableOp unreachableOp) {
+  auto *op = unreachableOp.getOperation();
+  auto *block = op->getBlock();
+  // Fast track: if this is in entry block, its invalid. Otherwise, if no
+  // predecessors, it's valid.
+  if (block->isEntryBlock())
+    return unreachableOp.emitOpError("cannot be used in reachable block");
+  if (block->hasNoPredecessors())
+    return success();
+
+  // TODO(antiagainst): further verification needs to analyze reachablility from
+  // the entry block.
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.Variable
 //===----------------------------------------------------------------------===//
 
