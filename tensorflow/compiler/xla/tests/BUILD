@@ -1893,7 +1893,11 @@ xla_test(
 xla_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.cc"],
-    backends = ["gpu"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
     tags = [
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
