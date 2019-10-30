@@ -173,19 +173,32 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
-def HLO_ComplexOp: HLO_Op<"complex", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ComplexOp {
-    let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
-    let results = (outs HLO_ComplexTensor);
+def HLO_ComplexOp: HLO_Op<"complex",
+    [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
+    BASE_HLO_ComplexOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *lhs, Value *rhs">];
+
+  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let results = (outs HLO_ComplexTensor);
 }
 
-def HLO_ImagOp: HLO_Op<"imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
-    let arguments = (ins HLO_ComplexTensor);
-    let results = (outs HLO_FpTensor);
+def HLO_ImagOp: HLO_Op<
+    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
 }
 
-def HLO_RealOp: HLO_Op<"real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
-    let arguments = (ins HLO_ComplexTensor);
-    let results = (outs HLO_FpTensor);
+def HLO_RealOp: HLO_Op<
+    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
 }
 
 //===----------------------------------------------------------------------===//
