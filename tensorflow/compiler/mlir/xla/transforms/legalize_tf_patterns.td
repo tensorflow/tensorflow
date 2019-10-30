@@ -192,6 +192,12 @@ class EqualityPat<Op FromOp, StrEnumAttrCase direction>
 def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
 def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
 
+//===----------------------------------------------------------------------===//
+// Complex op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_ConjOp AnyTensor:$v),
+          (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
 
 //===----------------------------------------------------------------------===//
 // Concat op patterns.
