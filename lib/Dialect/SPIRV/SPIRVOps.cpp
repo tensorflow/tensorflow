@@ -154,6 +154,40 @@ printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter &printer,
   elidedAttrs.push_back(spirv::attributeName<spirv::StorageClass>());
 }
 
+static LogicalResult verifyCastOp(Operation *op,
+                                  bool requireSameBitWidth = true) {
+  Type operandType = op->getOperand(0)->getType();
+  Type resultType = op->getResult(0)->getType();
+
+  // ODS checks that result type and operand type have the same shape.
+  if (auto vectorType = operandType.dyn_cast<VectorType>()) {
+    operandType = vectorType.getElementType();
+    resultType = resultType.cast<VectorType>().getElementType();
+  }
+
+  auto operandTypeBitWidth = operandType.getIntOrFloatBitWidth();
+  auto resultTypeBitWidth = resultType.getIntOrFloatBitWidth();
+  auto isSameBitWidth = operandTypeBitWidth == resultTypeBitWidth;
+
+  if (requireSameBitWidth) {
+    if (!isSameBitWidth) {
+      return op->emitOpError(
+                 "expected the same bit widths for operand type and result "
+                 "type, but provided ")
+             << operandType << " and " << resultType;
+    }
+    return success();
+  }
+
+  if (isSameBitWidth) {
+    return op->emitOpError(
+               "expected the different bit widths for operand type and result "
+               "type, but provided ")
+           << operandType << " and " << resultType;
+  }
+  return success();
+}
+
 template <typename LoadStoreOpTy>
 static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
   // ODS checks for attributes values. Just need to verify that if the
@@ -635,28 +669,6 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
 //===----------------------------------------------------------------------===//
 // spv.BitcastOp
 //===----------------------------------------------------------------------===//
-
-static ParseResult parseBitcastOp(OpAsmParser &parser, OperationState &state) {
-  OpAsmParser::OperandType operandInfo;
-  Type operandType, resultType;
-  if (parser.parseOperand(operandInfo) || parser.parseKeyword("from") ||
-      parser.parseType(operandType) || parser.parseKeyword("to") ||
-      parser.parseType(resultType)) {
-    return failure();
-  }
-  if (parser.resolveOperands(operandInfo, operandType, state.operands)) {
-    return failure();
-  }
-  state.addTypes(resultType);
-  return success();
-}
-
-static void print(spirv::BitcastOp bitcastOp, OpAsmPrinter &printer) {
-  printer << spirv::BitcastOp::getOperationName() << ' ';
-  printer.printOperand(bitcastOp.operand());
-  printer << " from " << bitcastOp.operand()->getType() << " to "
-          << bitcastOp.result()->getType();
-}
 
 static LogicalResult verify(spirv::BitcastOp bitcastOp) {
   // TODO: The SPIR-V spec validation rules are different for different
