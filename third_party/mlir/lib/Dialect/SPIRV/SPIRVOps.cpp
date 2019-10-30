@@ -1418,7 +1418,7 @@ static void print(spirv::LoopOp loopOp, OpAsmPrinter &printer) {
 /// given `dstBlock`.
 static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
   // Check that there is only one op in the `srcBlock`.
-  if (srcBlock.empty() || std::next(srcBlock.begin()) != srcBlock.end())
+  if (!has_single_element(srcBlock))
     return false;
 
   auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
