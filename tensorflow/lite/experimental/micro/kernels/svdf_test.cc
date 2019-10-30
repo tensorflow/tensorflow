@@ -257,10 +257,11 @@ inline void TestHybridSVDFInt8(
     const int memory_size, const int rank, float* input_data,
     float* weights_feature_data, int8_t* weights_feature_quantized_data,
     float* weights_time_data, int8_t* weights_time_quantized_data,
-    float* activation_state_data, float* scratch_data_1, int8_t* scratch_data_2,
-    float* scratch_data_3, float* scratch_data_4, float* output_data,
-    float* golden_input_data, int golden_input_data_size,
-    float* expected_output, float tolerance = 1e-5f) {
+    float* activation_state_data, float* scratch_data,
+    int8_t* scratch_input_quantized, float* scratch_scaling_factors,
+    float* scratch_weights_time, float* output_data, float* golden_input_data,
+    int golden_input_data_size, float* expected_output,
+    float tolerance = 1e-5f) {
   const int num_filters = num_units * rank;
 
   const int input_dims_arg[] = {2, batch_size, input_size};
@@ -283,7 +284,7 @@ inline void TestHybridSVDFInt8(
   TfLiteIntArray* scratch_dims = IntArrayFromInts(scratch_dims_args);
 
   const int scratch_scaling_factor_dims_args[] = {1, batch_size};
-  TfLiteIntArray* scratch_scaling_factor_dims =
+  TfLiteIntArray* scratch_scaling_factors_dims =
       IntArrayFromInts(scratch_scaling_factor_dims_args);
 
   const int output_dims_args[] = {2, batch_size, num_units};
@@ -300,12 +301,13 @@ inline void TestHybridSVDFInt8(
       CreateFloatTensor(activation_state_data, activation_state_dims,
                         "activation_state", true /* is_variable */),
       CreateFloatTensor(output_data, output_dims, "output"),
-      CreateFloatTensor(scratch_data_1, scratch_dims, "scratch_1"),
-      CreateQuantizedTensor(scratch_data_2, scratch_dims, "scratch_2",
-                            1 /* placeholder-min */, 2 /* placehnolder-max */),
-      CreateFloatTensor(scratch_data_3, scratch_scaling_factor_dims,
-                        "scratch_3"),
-      CreateFloatTensor(scratch_data_4, weights_time_dims, "scratch_4"),
+      CreateFloatTensor(scratch_data, scratch_dims, "scratch_tensor"),
+      CreateQuantizedTensor(scratch_input_quantized, input_dims,
+                            "scratch_input_quantized", 1 /* placeholder-min */,
+                            2 /* placehnolder-max */),
+      CreateFloatTensor(scratch_scaling_factors, scratch_scaling_factors_dims,
+                        "scratch_scaling_factors"),
+      CreateFloatTensor(scratch_weights_time, weights_time_dims, "scratch_4"),
   };
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
@@ -319,10 +321,11 @@ inline void TestHybridSVDFUint8(
     const int memory_size, const int rank, float* input_data,
     float* weights_feature_data, uint8_t* weights_feature_quantized_data,
     float* weights_time_data, uint8_t* weights_time_quantized_data,
-    float* activation_state_data, float* scratch_data_1,
-    uint8_t* scratch_data_2, float* scratch_data_3, float* scratch_data_4,
-    float* output_data, float* golden_input_data, int golden_input_data_size,
-    float* expected_output, float tolerance = 1e-5f) {
+    float* activation_state_data, float* scratch_data,
+    uint8_t* scratch_input_quantized, float* scratch_scaling_factors,
+    float* scratch_weights_time, float* output_data, float* golden_input_data,
+    int golden_input_data_size, float* expected_output,
+    float tolerance = 1e-5f) {
   const int num_filters = num_units * rank;
 
   const int input_dims_arg[] = {2, batch_size, input_size};
@@ -345,7 +348,7 @@ inline void TestHybridSVDFUint8(
   TfLiteIntArray* scratch_dims = IntArrayFromInts(scratch_dims_args);
 
   const int scratch_scaling_factor_dims_args[] = {1, batch_size};
-  TfLiteIntArray* scratch_scaling_factor_dims =
+  TfLiteIntArray* scratch_scaling_factors_dims =
       IntArrayFromInts(scratch_scaling_factor_dims_args);
 
   const int output_dims_args[] = {2, batch_size, num_units};
@@ -364,13 +367,14 @@ inline void TestHybridSVDFUint8(
       CreateFloatTensor(activation_state_data, activation_state_dims,
                         "activation_state", true /* is_variable */),
       CreateFloatTensor(output_data, output_dims, "output"),
-      CreateFloatTensor(scratch_data_1, scratch_dims, "scratch_1"),
+      CreateFloatTensor(scratch_data, scratch_dims, "scratch_tensor"),
 
-      CreateQuantizedTensor(scratch_data_2, scratch_dims, "scratch_2",
-                            1 /* placeholder-min */, 2 /* placehnolder-max */),
-      CreateFloatTensor(scratch_data_3, scratch_scaling_factor_dims,
-                        "scratch_3"),
-      CreateFloatTensor(scratch_data_4, weights_time_dims, "scratch_4"),
+      CreateQuantizedTensor(scratch_input_quantized, input_dims,
+                            "scratch_input_quantized", 1 /* placeholder-min */,
+                            2 /* placehnolder-max */),
+      CreateFloatTensor(scratch_scaling_factors, scratch_scaling_factors_dims,
+                        "scratch_scaling_factors"),
+      CreateFloatTensor(scratch_weights_time, weights_time_dims, "scratch_4"),
   };
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
@@ -530,12 +534,11 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank1Int8) {
   float activation_state_data[activation_state_dims_count];
 
   const int scratch_dims_count = batch_size * num_filters;
-  float scratch_data_1[scratch_dims_count];
+  float scratch_data[scratch_dims_count];
 
-  int8_t scratch_data_2[scratch_dims_count];
-  float scratch_data_3[batch_size];
-
-  float scratch_data_4[weights_time_dims_count];
+  int8_t scratch_input_quantized[input_size_dims_count];
+  float scratch_scaling_factors[batch_size];
+  float scratch_weights_time[weights_time_dims_count];
 
   const int output_dims_count = batch_size * num_units;
   float output_data[output_dims_count];
@@ -543,9 +546,10 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank1Int8) {
   tflite::testing::TestHybridSVDFInt8(
       batch_size, num_units, input_size, memory_size, rank, input_data,
       weights_feature_data, weights_feature_data_quantized, weights_time_data,
-      weights_time_data_quantized, activation_state_data, scratch_data_1,
-      scratch_data_2, scratch_data_3, scratch_data_4, output_data,
-      tflite::testing::svdf_input, sizeof(tflite::testing::svdf_input),
+      weights_time_data_quantized, activation_state_data, scratch_data,
+      scratch_input_quantized, scratch_scaling_factors, scratch_weights_time,
+      output_data, tflite::testing::svdf_input,
+      sizeof(tflite::testing::svdf_input),
       tflite::testing::svdf_golden_output_rank_1, 0.002945 /* tolerance */);
 }
 
@@ -602,12 +606,11 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank2Int8) {
   float activation_state_data[activation_state_dims_count];
 
   const int scratch_dims_count = batch_size * num_filters;
-  float scratch_data_1[scratch_dims_count];
+  float scratch_data[scratch_dims_count];
 
-  int8_t scratch_data_2[scratch_dims_count];
-  float scratch_data_3[batch_size];
-
-  float scratch_data_4[weights_time_dims_count];
+  int8_t scratch_input_quantized[scratch_dims_count];
+  float scratch_scaling_factors[batch_size];
+  float scratch_weights_time[weights_time_dims_count];
 
   const int output_dims_count = batch_size * num_units;
   float output_data[output_dims_count];
@@ -615,9 +618,10 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank2Int8) {
   tflite::testing::TestHybridSVDFInt8(
       batch_size, num_units, input_size, memory_size, rank, input_data,
       weights_feature_data, weights_feature_data_quantized, weights_time_data,
-      weights_time_data_quantized, activation_state_data, scratch_data_1,
-      scratch_data_2, scratch_data_3, scratch_data_4, output_data,
-      tflite::testing::svdf_input, sizeof(tflite::testing::svdf_input),
+      weights_time_data_quantized, activation_state_data, scratch_data,
+      scratch_input_quantized, scratch_scaling_factors, scratch_weights_time,
+      output_data, tflite::testing::svdf_input,
+      sizeof(tflite::testing::svdf_input),
       tflite::testing::svdf_golden_output_rank_2, 0.00625109 /* tolerance */);
 }
 
@@ -659,12 +663,11 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank1Uint8) {
   float activation_state_data[activation_state_dims_count];
 
   const int scratch_dims_count = batch_size * num_filters;
-  float scratch_data_1[scratch_dims_count];
+  float scratch_data[scratch_dims_count];
 
-  uint8_t scratch_data_2[scratch_dims_count];
-  float scratch_data_3[batch_size];
-
-  float scratch_data_4[weights_time_dims_count];
+  uint8_t scratch_input_quantized[scratch_dims_count];
+  float scratch_scaling_factors[batch_size];
+  float scratch_weights_time[weights_time_dims_count];
 
   const int output_dims_count = batch_size * num_units;
   float output_data[output_dims_count];
@@ -672,9 +675,10 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank1Uint8) {
   tflite::testing::TestHybridSVDFUint8(
       batch_size, num_units, input_size, memory_size, rank, input_data,
       weights_feature_data, weights_feature_data_quantized, weights_time_data,
-      weights_time_data_quantized, activation_state_data, scratch_data_1,
-      scratch_data_2, scratch_data_3, scratch_data_4, output_data,
-      tflite::testing::svdf_input, sizeof(tflite::testing::svdf_input),
+      weights_time_data_quantized, activation_state_data, scratch_data,
+      scratch_input_quantized, scratch_scaling_factors, scratch_weights_time,
+      output_data, tflite::testing::svdf_input,
+      sizeof(tflite::testing::svdf_input),
       tflite::testing::svdf_golden_output_rank_1, 0.002945 /* tolerance */);
 }
 
@@ -731,12 +735,11 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank2Uint8) {
   float activation_state_data[activation_state_dims_count];
 
   const int scratch_dims_count = batch_size * num_filters;
-  float scratch_data_1[scratch_dims_count];
+  float scratch_data[scratch_dims_count];
 
-  uint8_t scratch_data_2[scratch_dims_count];
-  float scratch_data_3[batch_size];
-
-  float scratch_data_4[weights_time_dims_count];
+  uint8_t scratch_input_quantized[scratch_dims_count];
+  float scratch_scaling_factors[batch_size];
+  float scratch_weights_time[weights_time_dims_count];
 
   const int output_dims_count = batch_size * num_units;
   float output_data[output_dims_count];
@@ -744,9 +747,10 @@ TF_LITE_MICRO_TEST(BlackBoxTestHybridRank2Uint8) {
   tflite::testing::TestHybridSVDFUint8(
       batch_size, num_units, input_size, memory_size, rank, input_data,
       weights_feature_data, weights_feature_data_quantized, weights_time_data,
-      weights_time_data_quantized, activation_state_data, scratch_data_1,
-      scratch_data_2, scratch_data_3, scratch_data_4, output_data,
-      tflite::testing::svdf_input, sizeof(tflite::testing::svdf_input),
+      weights_time_data_quantized, activation_state_data, scratch_data,
+      scratch_input_quantized, scratch_scaling_factors, scratch_weights_time,
+      output_data, tflite::testing::svdf_input,
+      sizeof(tflite::testing::svdf_input),
       tflite::testing::svdf_golden_output_rank_2, 0.00625109 /* tolerance */);
 }
 

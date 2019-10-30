@@ -32,6 +32,11 @@ std::vector<ComputeTaskDescriptorPtr> PReLU(int id, ValueId input_id,
                                             ValueId output_id,
                                             const PReLUAttributes& attr,
                                             const RuntimeOptions& options);
+// Parametric Rectified 3D Linear Unit.
+std::vector<ComputeTaskDescriptorPtr> PReLUFull(int id, ValueId input_id,
+                                                ValueId output_id,
+                                                const PReLUAttributes& attr,
+                                                const RuntimeOptions& options);
 
 }  // namespace metal
 }  // namespace gpu

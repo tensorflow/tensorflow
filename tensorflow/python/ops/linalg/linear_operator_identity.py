@@ -399,6 +399,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       new_diag = 1 + mat_diag
       return array_ops.matrix_set_diag(mat, new_diag)
 
+  def _eigvals(self):
+    return self._ones_diag()
+
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
     # Possibly add asserts.
@@ -723,6 +726,9 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       new_diag = multiplier_vector + mat_diag
 
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
 
   @property
   def multiplier(self):

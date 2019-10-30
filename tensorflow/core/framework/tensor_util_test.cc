@@ -455,99 +455,72 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
   EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
 }
 
-TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllZero) {
+TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
   const int kLength = 64;
   TensorProto tensor_proto =
       tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
-            0);
+            1);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
-            0);
+            1);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
-            0);
+            1);
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
-            0);
+            1);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(
       tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
-      0);
+      1);
 
   tensor_proto = tensor::CreateTensorProto(
       std::vector<std::complex<float>>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
                 tensor_proto),
-            0);
-}
-
-TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllOnes) {
-  const int kLength = 64;
-  TensorProto tensor_proto =
-      tensor::CreateTensorProto(std::vector<float>(kLength, 1), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
-            1);
-
-  tensor_proto =
-      tensor::CreateTensorProto(std::vector<int>(kLength, 1), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
-            1);
-
-  tensor_proto =
-      tensor::CreateTensorProto(std::vector<uint8>(kLength, 1), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
-            1);
-  tensor_proto =
-      tensor::CreateTensorProto(std::vector<bool>(kLength, true), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
-            1);
-
-  tensor_proto = tensor::CreateTensorProto(
-      std::vector<Eigen::half>(kLength, Eigen::half(1.0)), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(
-      tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
-      1);
-
-  tensor_proto = tensor::CreateTensorProto(
-      std::vector<std::complex<float>>(kLength, 1), {kLength});
-  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
-                tensor_proto),
             1);
 }
 
 template <typename T>
-std::vector<T> VectorWithConstantTail(int size, int tail_length) {
+void VectorWithConstantTail(int size, int tail_length, std::vector<T>* v) {
   CHECK_LE(tail_length, size);
-  std::vector<T> v(size, T(0));
-  for (int i = 0; i < size - tail_length; ++i) {
-    v[i] = T(i + 1);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    T vi = (i >= size - tail_length) ? T() : T(i);
+    v->push_back(vi);
   }
-  return v;
+}
+
+template <>
+void VectorWithConstantTail(int size, int tail_length,
+                            std::vector<std::complex<float>>* v) {
+  CHECK_LE(tail_length, size);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    std::complex<float> vi(
+        0.0f, (i >= (size - tail_length)) ? 0.f : static_cast<float>(i));
+    v->push_back(vi);
+  }
 }
 
 template <typename T>
 TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;
@@ -557,7 +530,8 @@ TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
 
 template <typename T>
 TensorProto CreateAsProtoField(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;

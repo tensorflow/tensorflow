@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -88,7 +89,7 @@ struct RequantizeState {
 // iteration), this process stops if the existing parameters are the immutable,
 // or adding `requantize` op to resolve the conflicts.
 //
-// After the algorithm is converaged, pairs of tfl.quantize and tfl.dequantize
+// After the algorithm is converged, pairs of tfl.quantize and tfl.dequantize
 // are inserted to the right position to materialize the propagation and
 // requantize results.
 //
@@ -414,7 +415,7 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto quantize =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   auto dequantize = builder_.create<TFL::DequantizeOp>(loc, expressed_type,
@@ -473,7 +474,7 @@ void QuantizationDriver::RequantizeValue(Value *value, RequantizeState *state,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = builder_.getTypeAttr(new_type);
+  TypeAttr type_attr = TypeAttr::get(new_type);
   auto requantize_op =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
   value->replaceAllUsesWith(requantize_op);
@@ -565,7 +566,7 @@ void QuantizationDriver::PreprocessConstantOps() {
       // The user doesn't use this value as a bias operand or require same
       // scale, then this constant is considered to be a weight.
       if (biases.find(operand_num) == biases.end() &&
-          !spec->requires_same_scale) {
+          !user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
         used_as_weight = true;
       } else {
         bias_users.push_back({user, operand_num});
@@ -593,8 +594,9 @@ void QuantizationDriver::SetupAllStates() {
   llvm::DenseMap<Value *, int> value_to_state;
 
   fn_.walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return;
-    if (!GetQuantSpec(op)->is_quantizable) return;
+    if (op->isKnownTerminator() ||
+        op->hasTrait<OpTrait::quant::NoQuantizableResult>())
+      return;
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
@@ -653,12 +655,6 @@ bool QuantizationDriver::PropagateParams() {
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
 
-    auto spec = GetQuantSpec(op);
-
-    // If the op has no quantizable result, the quantization parameters will not
-    // be propagated to the results.
-    if (!spec->is_quantizable) continue;
-
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
       // If it isn't a weight or has been quantized, skip.
       if (!IsWeight(cst) || IsQuantized(op)) continue;
@@ -669,7 +665,7 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (spec->requires_same_scale) {
+    if (op->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands or
       // results. Skip this node for now.
@@ -688,10 +684,14 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
+    auto spec = GetQuantSpec(op);
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
     for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      changed |= SetResultParams(op, i, restricted_outputs[i]);
+      // The restrict can be nullptr if the result has been quantized.
+      if (auto params = restricted_outputs[i]) {
+        changed |= SetResultParams(op, i, params);
+      }
     }
 
     for (auto &it : spec->biases_params) {

@@ -54,7 +54,7 @@ class NormalizationTest(keras_parameterized.TestCase,
           input_data=np.array([[3, 1, 2], [6, 5, 4]], dtype=np.float32),
           validate_training=False,
           adapt_data=np.array([[1, 2, 1], [2, 3, 4], [1, 2, 1], [2, 3, 4]]))
-    expected = np.array([[6., -6., -0.22222222], [18., 10., 0.66666667]])
+    expected = np.array([[3., -3., -0.33333333], [9., 5., 1.]])
     self.assertAllClose(expected, output_data)
 
   def test_combiner_api_compatibility(self):
@@ -132,7 +132,7 @@ class NormalizationTest(keras_parameterized.TestCase,
           "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]]),
           "axis": -1,
           "test_data": np.array([[1.], [2.], [3.]]),
-          "expected": np.array([[-1], [-.5], [0]]),
+          "expected": np.array([[-1.414214], [-.707107], [0]]),
           "testcase_name": "2d_single_element"
       }, {
           "adapt_data":
@@ -144,9 +144,11 @@ class NormalizationTest(keras_parameterized.TestCase,
               np.array([[[1., 2., 3.], [2., 3., 4.]],
                         [[3., 4., 5.], [4., 5., 6.]]]),
           "expected":
-              np.array([[[-1.2, -0.6, 0.], [-1.2, -0.6, 0.]],
-                        [[0., 0.6, 1.2], [0., 0.6, 1.2]]]),
-          "testcase_name": "3d_internal_axis"
+              np.array([[[-1.549193, -0.774597, 0.], [-1.549193, -0.774597, 0.
+                                                     ]],
+                        [[0., 0.774597, 1.549193], [0., 0.774597, 1.549193]]]),
+          "testcase_name":
+              "3d_internal_axis"
       }, {
           "adapt_data":
               np.array([[[1., 0., 3.], [2., 3., 4.]],
@@ -156,9 +158,10 @@ class NormalizationTest(keras_parameterized.TestCase,
               np.array([[[3., 1., -1.], [2., 5., 4.]],
                         [[3., 0., 5.], [2., 5., 8.]]]),
           "expected":
-              np.array([[[1., 6., -5.], [-1., 1., -0.5]],
-                        [[1., 2., 1.], [-1., 1., 0.5]]]),
-          "testcase_name": "3d_multiple_axis"
+              np.array([[[1., 3., -5.], [-1., 1., -1.]],
+                        [[1., 1., 1.], [-1., 1., 1.]]]),
+          "testcase_name":
+              "3d_multiple_axis"
       })
   def test_layer_computation(self, adapt_data, axis, test_data, expected):
 

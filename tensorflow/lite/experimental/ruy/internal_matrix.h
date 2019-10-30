@@ -162,9 +162,9 @@ struct Type {
 
   template <typename T>
   void AssertIs() const {
-    RUY_DCHECK(is_signed == Create<T>().is_signed);
-    RUY_DCHECK(is_floating_point == Create<T>().is_floating_point);
-    RUY_DCHECK(size == Create<T>().size);
+    RUY_DCHECK_EQ(is_signed, Create<T>().is_signed);
+    RUY_DCHECK_EQ(is_floating_point, Create<T>().is_floating_point);
+    RUY_DCHECK_EQ(size, Create<T>().size);
   }
 
   bool is_signed = false;

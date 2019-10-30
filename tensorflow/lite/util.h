@@ -64,7 +64,14 @@ struct TfLiteIntArrayDeleter {
 TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
                            size_t* bytes);
 
-TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node);
+// Creates a stub TfLiteRegistration instance with the provided
+// `custom_op_name`. The op will fail if invoked, and is useful as a placeholde
+// to defer op resolution.
+// Note that `custom_op_name` must remain valid for the returned op's lifetime..
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name);
+
+// Checks whether the provided op is an unresolved custom op.
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration);
 
 }  // namespace tflite
 

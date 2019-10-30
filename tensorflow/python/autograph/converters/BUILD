@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python/autograph/lang",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
     ],
 )
@@ -82,13 +83,18 @@ py_test(
 py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "no_windows",
+        "nopip",
+    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/impl",
     ],
 )
 

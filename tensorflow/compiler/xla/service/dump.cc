@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -274,6 +275,28 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view suffix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpExecutionOptions(const ExecutionOptions& execution_options,
+                          const DebugOptions& debug_options) {
+  CanonicalDebugOptions opts(debug_options);
+  tensorflow::Env* env = tensorflow::Env::Default();
+  const string& dir = opts.dump_to;
+  if (env->IsDirectory(dir).ok()) {
+    string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    Status status;
+    if (opts.dump_as_text) {
+      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
+                                          execution_options);
+    } else {
+      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                            execution_options);
+    }
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
+                 << status;
+    }
+  }
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {

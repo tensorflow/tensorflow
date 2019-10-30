@@ -154,6 +154,16 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
 
   # Create the model and load its weights.
   sess = tf.compat.v1.InteractiveSession()

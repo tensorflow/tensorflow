@@ -72,6 +72,11 @@ class InterpreterWrapper {
   PyObject* GetTensor(int i) const;
   PyObject* ResetVariableTensors();
 
+  int NumNodes() const;
+  std::string NodeName(int i) const;
+  PyObject* NodeInputs(int i) const;
+  PyObject* NodeOutputs(int i) const;
+
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.
   PyObject* tensor(PyObject* base_object, int i);

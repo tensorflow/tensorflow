@@ -127,6 +127,7 @@ class FunctionMetadata {
   struct Params {
     bool is_multi_device_function = false;
     bool use_inter_op_parallelism = true;
+    bool use_default_device = true;
   };
 
   // Creates a new instance of the `FunctionMetadata` class, fetching function
@@ -156,6 +157,10 @@ class FunctionMetadata {
     return short_circuit_info_;
   }
 
+  // Indicates whether a default device should be used for executing function
+  // ops.
+  bool use_default_device() const { return use_default_device_; }
+
   // Indicates whether to use inter-op parallelism for execution of the
   // function.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
@@ -164,14 +169,16 @@ class FunctionMetadata {
   FunctionMetadata(NameAttrList&& func, Params params)
       : func_(std::move(func)),
         is_multi_device_function_(params.is_multi_device_function),
+        use_default_device_(params.use_default_device),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
 
   void ValidateMultiDevice();
 
   NameAttrList func_;
-  bool is_multi_device_function_ = false;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
   ShortCircuitInfo short_circuit_info_;
+  bool is_multi_device_function_ = false;
+  bool use_default_device_ = true;
   bool use_inter_op_parallelism_ = true;
 };
 
@@ -250,6 +257,10 @@ class CapturedFunction {
  private:
   CapturedFunction(const std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
+
+  // Determines whether the captured function requires the use of the
+  // multi-device function backend.
+  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device);
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;

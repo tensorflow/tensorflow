@@ -89,7 +89,7 @@ message ProcessMetrics {
 
 // Parameters that define how images are preprocessed.
 //
-// Next ID: 6
+// Next ID: 7
 message ImagePreprocessingParams {
   // Required.
   optional int32 image_height = 1;
@@ -106,6 +106,9 @@ message ImagePreprocessingParams {
   // Set this flag if the image is preprocessed and saved as binary file.
   // In that case, we only do the quantization if needed.
   optional bool load_raw_images = 5 [default = false];
+  // If this flag is true, the resize function will preserve the image's
+  // aspect ratio.
+  optional bool aspect_preserving = 6 [default = false];
 }
 
 // Parameters that control TFLite inference.

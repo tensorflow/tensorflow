@@ -113,7 +113,8 @@ class Scaffold(object):
                local_init_op=None,
                summary_op=None,
                saver=None,
-               copy_from_scaffold=None):
+               copy_from_scaffold=None,
+               local_init_feed_dict=None):
     """Create a scaffold.
 
     Args:
@@ -146,6 +147,8 @@ class Scaffold(object):
         match the variable through the other `Model`.
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
+      local_init_feed_dict: Optional session feed dictionary to use when running
+        the local_init_op.
     """
     if copy_from_scaffold is not None:
       if not isinstance(copy_from_scaffold, Scaffold):
@@ -162,6 +165,8 @@ class Scaffold(object):
       ready_for_local_init_op = coalesce(
           ready_for_local_init_op, copy_from_scaffold.ready_for_local_init_op)
       local_init_op = coalesce(local_init_op, copy_from_scaffold.local_init_op)
+      local_init_feed_dict = coalesce(local_init_feed_dict,
+                                      copy_from_scaffold.local_init_feed_dict)
       summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
       saver = coalesce(saver, copy_from_scaffold.saver)
 
@@ -178,6 +183,7 @@ class Scaffold(object):
     self._ready_op = ready_op
     self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
+    self._local_init_feed_dict = local_init_feed_dict
     self._summary_op = summary_op
     self._saver = saver
 
@@ -261,6 +267,10 @@ class Scaffold(object):
     return self._local_init_op
 
   @property
+  def local_init_feed_dict(self):
+    return self._local_init_feed_dict
+
+  @property
   def summary_op(self):
     return self._summary_op
 
@@ -322,7 +332,8 @@ def _create_monitored_session_with_worker_context(
     log_step_count_steps=100,
     max_wait_secs=7200,
     save_checkpoint_steps=None,
-    summary_dir=None):
+    summary_dir=None,
+    save_graph_def=True):
   all_hooks = []
   if hooks:
     all_hooks.extend(hooks)
@@ -396,14 +407,16 @@ def _create_monitored_session_with_worker_context(
                 checkpoint_dir,
                 save_steps=save_checkpoint_steps,
                 save_secs=save_checkpoint_secs,
-                scaffold=scaffold))
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
       elif tmpdir:
         all_hooks.append(
             basic_session_run_hooks.CheckpointSaverHook(
                 os.path.join(checkpoint_dir, tmpdir),
                 save_steps=save_checkpoint_steps,
                 save_secs=save_checkpoint_secs,
-                scaffold=scaffold))
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
 
   logging.info('all_hooks %r', all_hooks)
   session_creator = worker_context.session_creator(
@@ -433,7 +446,8 @@ def MonitoredTrainingSession(
     log_step_count_steps=100,
     max_wait_secs=7200,
     save_checkpoint_steps=USE_DEFAULT,
-    summary_dir=None):
+    summary_dir=None,
+    save_graph_def=True):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -487,6 +501,10 @@ def MonitoredTrainingSession(
       `save_checkpoint_secs` is used. Default not enabled.
     summary_dir: A string.  Optional path to a directory where to save
       summaries. If None, checkpoint_dir is used instead.
+    save_graph_def: Whether to save the GraphDef and MetaGraphDef to
+      `checkpoint_dir`. The GraphDef is saved after the session is created as
+      `graph.pbtxt`. MetaGraphDefs are saved out for every checkpoint as
+      `model.ckpt-*.meta`.
 
   Returns:
     A `MonitoredSession` object.
@@ -526,7 +544,8 @@ def MonitoredTrainingSession(
         log_step_count_steps=log_step_count_steps,
         max_wait_secs=max_wait_secs,
         save_checkpoint_steps=save_checkpoint_steps,
-        summary_dir=summary_dir)
+        summary_dir=summary_dir,
+        save_graph_def=save_graph_def)
 
   if not is_chief:
     session_creator = WorkerSessionCreator(
@@ -574,7 +593,8 @@ def MonitoredTrainingSession(
               checkpoint_dir,
               save_steps=save_checkpoint_steps,
               save_secs=save_checkpoint_secs,
-              scaffold=scaffold))
+              scaffold=scaffold,
+              save_graph_def=save_graph_def))
 
   if hooks:
     all_hooks.extend(hooks)
@@ -624,11 +644,13 @@ class ChiefSessionCreator(SessionCreator):
     self._config = config
 
   def _get_session_manager(self):
+    """Gets or creates a SessionManager."""
     if self._session_manager:
       return self._session_manager
 
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
+        local_init_feed_dict=self._scaffold.local_init_feed_dict,
         ready_op=self._scaffold.ready_op,
         ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
@@ -672,11 +694,13 @@ class WorkerSessionCreator(SessionCreator):
     self._max_wait_secs = max_wait_secs
 
   def _get_session_manager(self):
+    """Gets or creates a SessionManager."""
     if self._session_manager:
       return self._session_manager
 
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
+        local_init_feed_dict=self._scaffold.local_init_feed_dict,
         ready_op=self._scaffold.ready_op,
         ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())

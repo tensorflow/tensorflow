@@ -27,7 +27,8 @@
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
-#include "mlir/Dialect/SPIRV/SPIRVEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc"
 
 #include <tuple>
 
@@ -58,11 +59,7 @@ class CompositeType : public Type {
 public:
   using Type::Type;
 
-  static bool classof(Type type) {
-    return (type.getKind() == TypeKind::Array ||
-            type.getKind() == TypeKind::Struct ||
-            type.getKind() == StandardTypes::Vector);
-  }
+  static bool classof(Type type);
 
   unsigned getNumElements() const;
 
@@ -173,12 +170,17 @@ public:
   // types
   using LayoutInfo = uint64_t;
 
+  using MemberDecorationInfo = std::pair<uint32_t, spirv::Decoration>;
+
   static bool kindof(unsigned kind) { return kind == TypeKind::Struct; }
 
-  static StructType get(ArrayRef<Type> memberTypes);
-
+  /// Construct a StructType with at least one member.
   static StructType get(ArrayRef<Type> memberTypes,
-                        ArrayRef<LayoutInfo> layoutInfo);
+                        ArrayRef<LayoutInfo> layoutInfo = {},
+                        ArrayRef<MemberDecorationInfo> memberDecorations = {});
+
+  /// Construct a struct with no members.
+  static StructType getEmpty(MLIRContext *context);
 
   unsigned getNumElements() const;
 
@@ -187,6 +189,16 @@ public:
   bool hasLayout() const;
 
   uint64_t getOffset(unsigned) const;
+
+  // Returns in `allMemberDecorations` the spirv::Decorations (apart from
+  // Offset) associated with all members of the StructType.
+  void getMemberDecorations(SmallVectorImpl<StructType::MemberDecorationInfo>
+                                &allMemberDecorations) const;
+
+  // Returns in `memberDecorations` all the spirv::Decorations (apart from
+  // Offset) associated with the `i`-th member of the StructType.
+  void getMemberDecorations(
+      unsigned i, SmallVectorImpl<spirv::Decoration> &memberDecorations) const;
 };
 
 } // end namespace spirv

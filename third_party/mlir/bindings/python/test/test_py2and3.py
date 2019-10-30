@@ -30,9 +30,9 @@ class EdscTest:
 
   def setUp(self):
     self.module = E.MLIRModule()
-    self.boolType = self.module.make_scalar_type("i", 1)
-    self.i32Type = self.module.make_scalar_type("i", 32)
-    self.f32Type = self.module.make_scalar_type("f32")
+    self.boolType = self.module.make_type("i1")
+    self.i32Type = self.module.make_type("i32")
+    self.f32Type = self.module.make_type("f32")
     self.indexType = self.module.make_index_type()
 
   def testBlockArguments(self):
@@ -195,10 +195,10 @@ class EdscTest:
   def testConstants(self):
     self.setUp()
     with self.module.function_context("constants", [], []) as fun:
-      E.constant_float(1.23, self.module.make_scalar_type("bf16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f32"))
-      E.constant_float(1.23, self.module.make_scalar_type("f64"))
+      E.constant_float(1.23, self.module.make_type("bf16"))
+      E.constant_float(1.23, self.module.make_type("f16"))
+      E.constant_float(1.23, self.module.make_type("f32"))
+      E.constant_float(1.23, self.module.make_type("f64"))
       E.constant_int(1, 1)
       E.constant_int(123, 8)
       E.constant_int(123, 16)
@@ -297,6 +297,15 @@ class EdscTest:
     #       CHECK: func @foo_0()
     #       CHECK: %{{.*}} = constant 0 : index
 
+  def testIndexCast(self):
+    self.setUp()
+    with self.module.function_context("testIndexCast", [], []):
+      index = E.constant_index(0)
+      E.index_cast(index, self.i32Type)
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testIndexCast
+    #       CHECK: index_cast %{{.*}} : index to i32
+
   def testIndexedValue(self):
     self.setUp()
     memrefType = self.module.make_memref_type(self.f32Type, [10, 42])
@@ -381,7 +390,7 @@ class EdscTest:
   def testMLIRFunctionCreation(self):
     self.setUp()
     module = E.MLIRModule()
-    t = module.make_scalar_type("f32")
+    t = module.make_type("f32")
     m = module.make_memref_type(t, [3, 4, -1, 5])
     printWithCurrentFunctionName(str(t))
     print(str(m))
@@ -396,15 +405,15 @@ class EdscTest:
   def testMLIRScalarTypes(self):
     self.setUp()
     module = E.MLIRModule()
-    printWithCurrentFunctionName(str(module.make_scalar_type("bf16")))
-    print(str(module.make_scalar_type("f16")))
-    print(str(module.make_scalar_type("f32")))
-    print(str(module.make_scalar_type("f64")))
-    print(str(module.make_scalar_type("i", 1)))
-    print(str(module.make_scalar_type("i", 8)))
-    print(str(module.make_scalar_type("i", 32)))
-    print(str(module.make_scalar_type("i", 123)))
-    print(str(module.make_scalar_type("index")))
+    printWithCurrentFunctionName(str(module.make_type("bf16")))
+    print(str(module.make_type("f16")))
+    print(str(module.make_type("f32")))
+    print(str(module.make_type("f64")))
+    print(str(module.make_type("i1")))
+    print(str(module.make_type("i8")))
+    print(str(module.make_type("i32")))
+    print(str(module.make_type("i123")))
+    print(str(module.make_type("index")))
     # CHECK-LABEL: testMLIRScalarTypes
     #       CHECK:  bf16
     #       CHECK:  f16

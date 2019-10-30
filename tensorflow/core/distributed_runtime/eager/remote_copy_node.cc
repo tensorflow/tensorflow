@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -62,9 +64,8 @@ Status CreateUncachedKernelAndDeviceOp(
 string GetUniqueWireID() {
   static tensorflow::uint64 random_seed = random::New64();
   static tensorflow::mutex wireid_mutex(tensorflow::LINKER_INITIALIZED);
-  static tensorflow::int64 wireid GUARDED_BY(wireid_mutex) = 0;
-  tensorflow::mutex_lock l(wireid_mutex);
-  return strings::StrCat(random_seed, "_", wireid++);
+  static std::atomic<int64_t> wire_id;
+  return strings::StrCat(random_seed, "_", wire_id++);
 }
 
 }  // namespace
@@ -102,7 +103,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
   TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
 
-  return kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr, nullptr);
+  EagerKernelArgs args(std::move(input_vector));
+  return kernel->Run(args, nullptr, nullptr, absl::nullopt);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -183,9 +185,9 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
-  gtl::InlinedVector<TensorValue, 4> input_vector;
-  return kernel->Run(input_vector, outputs, nullptr, nullptr, nullptr,
-                     captured_state_->recv_cancellation());
+  EagerKernelArgs args;
+  return kernel->Run(args, outputs, captured_state_->recv_cancellation(),
+                     absl::nullopt);
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -332,6 +334,11 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
         done(s);
         delete response;
       });
+}
+
+Status RemoteCopyNode::Prepare() {
+  TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
+  return Status::OK();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

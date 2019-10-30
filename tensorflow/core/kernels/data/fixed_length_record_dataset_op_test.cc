@@ -18,679 +18,252 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "fixed_length_record_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 constexpr int kOpVersion = 2;
 
-class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Create a new `TextLineDataset` op kernel.
-  Status CreateFixedLengthRecordDatasetOpKernel(
-      std::unique_ptr<OpKernel>* fixed_length_record_dataset_op_kernel) {
-    name_utils::OpNameParams params;
-    params.op_version = kOpVersion;
-    NodeDef node_def = test::function::NDef(
-        kNodeName,
-        name_utils::OpName(FixedLengthRecordDatasetOp::kDatasetType, params),
-        {FixedLengthRecordDatasetOp::kFileNames,
-         FixedLengthRecordDatasetOp::kHeaderBytes,
-         FixedLengthRecordDatasetOp::kRecordBytes,
-         FixedLengthRecordDatasetOp::kFooterBytes,
-         FixedLengthRecordDatasetOp::kBufferSize,
-         FixedLengthRecordDatasetOp::kCompressionType},
-        {});
-    TF_RETURN_IF_ERROR(
-        CreateOpKernel(node_def, fixed_length_record_dataset_op_kernel));
+class FixedLengthRecordDatasetParams : public DatasetParams {
+ public:
+  FixedLengthRecordDatasetParams(const std::vector<tstring>& filenames,
+                                 int64 header_bytes, int64 record_bytes,
+                                 int64 footer_bytes, int64 buffer_size,
+                                 CompressionType compression_type,
+                                 string node_name)
+      : DatasetParams({DT_STRING}, {PartialTensorShape({})},
+                      std::move(node_name)),
+        filenames_(filenames),
+        header_bytes_(header_bytes),
+        record_bytes_(record_bytes),
+        footer_bytes_(footer_bytes),
+        buffer_size_(buffer_size),
+        compression_type_(compression_type) {
+    op_version_ = 2;
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    int num_files = filenames_.size();
+    return {
+        CreateTensor<tstring>(TensorShape({num_files}), filenames_),
+        CreateTensor<int64>(TensorShape({}), {header_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {record_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {footer_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {buffer_size_}),
+        CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    *input_names = {FixedLengthRecordDatasetOp::kFileNames,
+                    FixedLengthRecordDatasetOp::kHeaderBytes,
+                    FixedLengthRecordDatasetOp::kRecordBytes,
+                    FixedLengthRecordDatasetOp::kFooterBytes,
+                    FixedLengthRecordDatasetOp::kBufferSize,
+                    FixedLengthRecordDatasetOp::kCompressionType};
     return Status::OK();
   }
 
-  // Create a new `FixedLengthRecordDataset` op kernel context
-  Status CreateFixedLengthRecordDatasetContext(
-      OpKernel* const op_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
-      std::unique_ptr<OpKernelContext>* context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    *attr_vector = {};
     return Status::OK();
   }
+
+  string dataset_type() const override {
+    return FixedLengthRecordDatasetOp::kDatasetType;
+  }
+
+ private:
+  std::vector<tstring> filenames_;
+  int64 header_bytes_;
+  int64 record_bytes_;
+  int64 footer_bytes_;
+  int64 buffer_size_;
+  CompressionType compression_type_;
 };
 
-struct TestCase {
-  std::vector<tstring> filenames;
-  std::vector<string> contents;
-  int64 header_bytes;
-  int64 record_bytes;
-  int64 footer_bytes;
-  int64 buffer_size;
-  CompressionType compression_type;
-  std::vector<Tensor> expected_outputs;
-  DataTypeVector expected_output_dtypes;
-  std::vector<PartialTensorShape> expected_output_shapes;
-  int64 expected_cardinality;
-  std::vector<int> breakpoints;
-};
+class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
-Status CreateTestFiles(const TestCase& test_case) {
-  if (test_case.filenames.size() != test_case.contents.size()) {
+Status CreateTestFiles(const std::vector<tstring>& filenames,
+                       const std::vector<string>& contents,
+                       CompressionType compression_type) {
+  if (filenames.size() != contents.size()) {
     return tensorflow::errors::InvalidArgument(
         "The number of files does not match with the contents");
   }
-  if (test_case.compression_type == CompressionType::UNCOMPRESSED) {
-    for (int i = 0; i < test_case.filenames.size(); ++i) {
-      TF_RETURN_IF_ERROR(WriteDataToFile(test_case.filenames[i],
-                                         test_case.contents[i].data()));
+  if (compression_type == CompressionType::UNCOMPRESSED) {
+    for (int i = 0; i < filenames.size(); ++i) {
+      TF_RETURN_IF_ERROR(WriteDataToFile(filenames[i], contents[i].data()));
     }
   } else {
     CompressionParams params;
-    params.compression_type = test_case.compression_type;
-    params.input_buffer_size = test_case.buffer_size;
-    params.output_buffer_size = test_case.buffer_size;
-    for (int i = 0; i < test_case.filenames.size(); ++i) {
-      TF_RETURN_IF_ERROR(WriteDataToFile(test_case.filenames[i],
-                                         test_case.contents[i].data(), params));
+    params.output_buffer_size = 10;
+    params.compression_type = compression_type;
+    for (int i = 0; i < filenames.size(); ++i) {
+      TF_RETURN_IF_ERROR(
+          WriteDataToFile(filenames[i], contents[i].data(), params));
     }
   }
   return Status::OK();
 }
 
 // Test case 1: multiple fixed-length record files with ZLIB compression.
-TestCase TestCase1() {
-  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
-                         absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
-          /*contents*/
-          {absl::StrCat("HHHHH", "111", "222", "333", "FF"),
-           absl::StrCat("HHHHH", "aaa", "bbb", "FF")},
-          /*header_bytes*/ 5,
-          /*record_bytes*/ 3,
-          /*footer_bytes*/ 2,
-          /*buffer_size*/ 10,
-          /*compression_type*/ CompressionType::ZLIB,
-          /*expected_outputs*/
-          {CreateTensor<tstring>(TensorShape({}), {"111"}),
-           CreateTensor<tstring>(TensorShape({}), {"222"}),
-           CreateTensor<tstring>(TensorShape({}), {"333"}),
-           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
-           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
-          /*expected_output_dtypes*/ {DT_STRING},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams1() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
+      absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")};
+  std::vector<string> contents = {
+      absl::StrCat("HHHHH", "111", "222", "333", "FF"),
+      absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
+  CompressionType compression_type = CompressionType::ZLIB;
+  if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
+    VLOG(WARNING) << "Failed to create the test files: "
+                  << absl::StrJoin(filenames, ", ");
+  }
+
+  return FixedLengthRecordDatasetParams(filenames,
+                                        /*header_bytes=*/5,
+                                        /*record_bytes=*/3,
+                                        /*footer_bytes=*/2,
+                                        /*buffer_size=*/10,
+                                        /*compression_type=*/compression_type,
+                                        /*node_name=*/kNodeName);
 }
 
 // Test case 2: multiple fixed-length record files with GZIP compression.
-TestCase TestCase2() {
-  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
-                         absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
-          /*contents*/
-          {absl::StrCat("HHHHH", "111", "222", "333", "FF"),
-           absl::StrCat("HHHHH", "aaa", "bbb", "FF")},
-          /*header_bytes*/ 5,
-          /*record_bytes*/ 3,
-          /*footer_bytes*/ 2,
-          /*buffer_size*/ 10,
-          /*compression_type*/ CompressionType::GZIP,
-          /*expected_outputs*/
-          {CreateTensor<tstring>(TensorShape({}), {"111"}),
-           CreateTensor<tstring>(TensorShape({}), {"222"}),
-           CreateTensor<tstring>(TensorShape({}), {"333"}),
-           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
-           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
-          /*expected_output_dtypes*/ {DT_STRING},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
+      absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")};
+  std::vector<string> contents = {
+      absl::StrCat("HHHHH", "111", "222", "333", "FF"),
+      absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
+  CompressionType compression_type = CompressionType::GZIP;
+  if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
+    VLOG(WARNING) << "Failed to create the test files: "
+                  << absl::StrJoin(filenames, ", ");
+  }
+  return FixedLengthRecordDatasetParams(filenames,
+                                        /*header_bytes=*/5,
+                                        /*record_bytes=*/3,
+                                        /*footer_bytes=*/2,
+                                        /*buffer_size=*/10,
+                                        /*compression_type=*/compression_type,
+                                        /*node_name=*/kNodeName);
 }
 
 // Test case 3: multiple fixed-length record files without compression.
-TestCase TestCase3() {
-  return {/*filenames*/ {
-              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
-              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
-          /*contents*/
-          {absl::StrCat("HHHHH", "111", "222", "333", "FF"),
-           absl::StrCat("HHHHH", "aaa", "bbb", "FF")},
-          /*header_bytes*/ 5,
-          /*record_bytes*/ 3,
-          /*footer_bytes*/ 2,
-          /*buffer_size*/ 10,
-          /*compression_type*/ CompressionType::UNCOMPRESSED,
-          /*expected_outputs*/
-          {CreateTensor<tstring>(TensorShape({}), {"111"}),
-           CreateTensor<tstring>(TensorShape({}), {"222"}),
-           CreateTensor<tstring>(TensorShape({}), {"333"}),
-           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
-           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
-          /*expected_output_dtypes*/ {DT_STRING},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
-}
-
-class ParameterizedFixedLengthRecordDatasetOpTest
-    : public FixedLengthRecordDatasetOpTest,
-      public ::testing::WithParamInterface<TestCase> {};
-
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, GetNext) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(fixed_length_record_dataset_context.get(),
-                                     &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(fixed_length_record_dataset->MakeIterator(
-      iterator_ctx.get(), kIteratorPrefix, &iterator));
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    std::vector<Tensor> next;
-    TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
-    out_tensors.insert(out_tensors.end(), next.begin(), next.end());
+FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
+      absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")};
+  std::vector<string> contents = {
+      absl::StrCat("HHHHH", "111", "222", "333", "FF"),
+      absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
+    VLOG(WARNING) << "Failed to create the test files: "
+                  << absl::StrJoin(filenames, ", ");
   }
-
-  TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+  return FixedLengthRecordDatasetParams(filenames,
+                                        /*header_bytes=*/5,
+                                        /*record_bytes=*/3,
+                                        /*footer_bytes=*/2,
+                                        /*buffer_size=*/10,
+                                        /*compression_type=*/compression_type,
+                                        /*node_name=*/kNodeName);
 }
+
+std::vector<GetNextTestCase<FixedLengthRecordDatasetParams>>
+GetNextTestCases() {
+  return {
+      {/*dataset_params=*/FixedLengthRecordDatasetParams1(),
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
+      {/*dataset_params=*/FixedLengthRecordDatasetParams2(),
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
+      {/*dataset_params=*/FixedLengthRecordDatasetParams3(),
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})}};
+}
+
+ITERATOR_GET_NEXT_TEST_P(FixedLengthRecordDatasetOpTest,
+                         FixedLengthRecordDatasetParams, GetNextTestCases())
 
 TEST_F(FixedLengthRecordDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = TestCase1();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-  EXPECT_EQ(fixed_length_record_dataset->node_name(), kNodeName);
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
 }
 
 TEST_F(FixedLengthRecordDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = TestCase1();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
   name_utils::OpNameParams params;
   params.op_version = kOpVersion;
-  EXPECT_EQ(
-      fixed_length_record_dataset->type_string(),
-      name_utils::OpName(FixedLengthRecordDatasetOp::kDatasetType, params));
+  TF_ASSERT_OK(CheckDatasetTypeString(
+      name_utils::OpName(FixedLengthRecordDatasetOp::kDatasetType, params)));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-  TF_EXPECT_OK(VerifyTypesMatch(fixed_length_record_dataset->output_dtypes(),
-                                test_case.expected_output_dtypes));
+TEST_F(FixedLengthRecordDatasetOpTest, DatasetOutputDtypes) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_STRING}));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-  TF_EXPECT_OK(
-      VerifyShapesCompatible(fixed_length_record_dataset->output_shapes(),
-                             test_case.expected_output_shapes));
+TEST_F(FixedLengthRecordDatasetOpTest, DatasetOutputShapes) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-  EXPECT_EQ(fixed_length_record_dataset->Cardinality(),
-            test_case.expected_cardinality);
+TEST_F(FixedLengthRecordDatasetOpTest, Cardinality) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetCardinality(kUnknownCardinality));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(fixed_length_record_dataset_context.get(),
-                                     &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(fixed_length_record_dataset->MakeIterator(
-      iterator_ctx.get(), kIteratorPrefix, &iterator));
-
-  TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
-                                test_case.expected_output_dtypes));
+TEST_F(FixedLengthRecordDatasetOpTest, IteratorOutputDtypes) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_STRING}));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(fixed_length_record_dataset_context.get(),
-                                     &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(fixed_length_record_dataset->MakeIterator(
-      iterator_ctx.get(), kIteratorPrefix, &iterator));
-
-  TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      test_case.expected_output_shapes));
+TEST_F(FixedLengthRecordDatasetOpTest, IteratorOutputShapes) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(fixed_length_record_dataset_context.get(),
-                                     &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(fixed_length_record_dataset->MakeIterator(
-      iterator_ctx.get(), kIteratorPrefix, &iterator));
-  name_utils::IteratorPrefixParams params;
-  params.op_version = kOpVersion;
-  EXPECT_EQ(iterator->prefix(),
-            name_utils::IteratorPrefix(FixedLengthRecordDatasetOp::kDatasetType,
-                                       kIteratorPrefix, params));
+TEST_F(FixedLengthRecordDatasetOpTest, IteratorPrefix) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  name_utils::IteratorPrefixParams iterator_prefix_params;
+  iterator_prefix_params.op_version = kOpVersion;
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      FixedLengthRecordDatasetOp::kDatasetType,
+      dataset_params.iterator_prefix(), iterator_prefix_params)));
 }
 
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Roundtrip) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<tstring>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(fixed_length_record_dataset_context.get(),
-                                     &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(fixed_length_record_dataset->MakeIterator(
-      iterator_ctx.get(), kIteratorPrefix, &iterator));
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  int cur_iteration = 0;
-  const std::vector<int>& breakpoints = test_case.breakpoints;
-  for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, kIteratorPrefix,
-                                 *fixed_length_record_dataset, &iterator));
-
-    while (cur_iteration <= breakpoint) {
-      std::vector<Tensor> next;
-      TF_EXPECT_OK(
-          iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
-      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-      cur_iteration++;
-    }
-  }
-
-  TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {
+      {/*dataset_params=*/FixedLengthRecordDatasetParams1(),
+       /*breakpoints=*/{0, 2, 6},
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
+      {/*dataset_params=*/FixedLengthRecordDatasetParams2(),
+       /*breakpoints=*/{0, 2, 6},
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
+      {/*dataset_params=*/FixedLengthRecordDatasetParams3(),
+       /*breakpoints=*/{0, 2, 6},
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})}};
 }
 
-INSTANTIATE_TEST_SUITE_P(FixedLengthRecordDatasetOpTest,
-                         ParameterizedFixedLengthRecordDatasetOpTest,
-                         ::testing::ValuesIn(std::vector<TestCase>(
-                             {TestCase1(), TestCase2(), TestCase3()})));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(FixedLengthRecordDatasetOpTest,
+                                 FixedLengthRecordDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
 }  // namespace
 }  // namespace data

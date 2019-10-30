@@ -211,3 +211,9 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
 
   def _add_to_tensor(self, x):
     return self.to_dense() + x
+
+  def _eigvals(self):
+    eigvals = self.operator.eigvals()
+    if not self.operator.is_self_adjoint:
+      eigvals = math_ops.conj(eigvals)
+    return eigvals

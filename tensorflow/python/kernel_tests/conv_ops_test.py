@@ -220,6 +220,7 @@ class Conv2DTest(test.TestCase):
           strides=strides,
           padding=padding,
           data_format=data_format)
+      self.assertEqual(conv.dtype, dtype)
       if data_format == "NCHW":
         conv = test_util.NCHWToNHWC(conv)
 
@@ -336,7 +337,10 @@ class Conv2DTest(test.TestCase):
     for (data_format, use_gpu) in GetTestConfigs():
       if gpu_only and not use_gpu:
         continue
-      for dtype in self._DtypesToTest(use_gpu):
+      dtypes_to_test = self._DtypesToTest(use_gpu)
+      if not test_grappler_layout_optimizer and data_format == "NHWC":
+        dtypes_to_test.append(dtypes.int32)
+      for dtype in dtypes_to_test:
         result = self._SetupValuesForDevice(
             tensor_in_sizes,
             filter_in_sizes,
@@ -358,9 +362,13 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("expected = %s", expected)
         tf_logging.debug("actual = %s", value)
         tol_to_use = fp16_tol if value.dtype == np.float16 else tol
-        self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
-                            rtol=tol_to_use)
+        if np.issubdtype(value.dtype, np.integer):
+          self.assertAllEqual(expected, np.ravel(value))
+        else:
+          self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
+                              rtol=tol_to_use)
         self.assertShapeEqual(value, conv)
+        self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
 
   def _VerifyExplicitPaddings(self,
                               tensor_in_sizes,
@@ -858,7 +866,7 @@ class Conv2DTest(test.TestCase):
       self.assertShapeEqual(value, conv)
     tf_logging.debug("expected = %s", expected)
     tf_logging.debug("actual = %s", value)
-    self.assertArrayNear(expected, value.flatten(), err)
+    self.assertAllCloseAccordingToType(expected, value.flatten(), atol=1e-5)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                             conv_strides, padding):
@@ -1760,7 +1768,7 @@ class Conv2DTest(test.TestCase):
                                data_format,
                                use_gpu,
                                num_groups=1,
-                               max_err=0.002):
+                               max_err=0.003):
     assert in_depth % num_groups == 0 and out_depth % num_groups == 0
     input_shape = [batch, input_rows, input_cols, in_depth]
     filter_shape = [filter_rows, filter_cols, in_depth // num_groups, out_depth]

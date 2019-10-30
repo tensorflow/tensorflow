@@ -1,3 +1,9 @@
+tflite-runtime (2.0.0-1) unstable; urgency=low
+
+  * Bump version to 2.0.0.
+
+ -- TensorFlow team <packages@tensorflow.org>  Fri, 18 Oct 2019 13:21:05 -0700
+
 tflite-runtime (1.14.0-1) unstable; urgency=low
 
   * Initial release.

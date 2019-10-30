@@ -254,7 +254,7 @@ tf_class {
   }
   member_method {
     name: "load_weights"
-    argspec: "args=[\'self\', \'filepath\', \'by_name\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
   }
   member_method {
     name: "predict"

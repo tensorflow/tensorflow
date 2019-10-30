@@ -49,6 +49,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -74,6 +75,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -294,7 +296,7 @@ def IsMklEnabled():
 
 
 def InstallStackTraceHandler():
-  pywrap_tensorflow.InstallStacktraceHandler()
+  _pywrap_stacktrace_handler.InstallStacktraceHandler()
 
 
 def NHWCToNCHW(input_tensor):
@@ -1211,7 +1213,7 @@ def deprecated_graph_mode_only(func=None):
       return f
 
     def decorated(self, *args, **kwargs):
-      if tf2.enabled():
+      if context.executing_eagerly():
         with context.graph_mode():
           return f(self, *args, **kwargs)
       else:
@@ -1432,6 +1434,8 @@ def with_forward_compatibility_horizons(*horizons):
   return decorator
 
 
+@deprecation.deprecated(
+    None, "Use `tf.config.experimental.list_physical_devices('GPU')` instead.")
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
@@ -1810,6 +1814,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
@@ -1833,7 +1838,8 @@ class TensorFlowTestCase(googletest.TestCase):
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
-    context.context().summary_writer = None
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):
@@ -2041,7 +2047,8 @@ class TensorFlowTestCase(googletest.TestCase):
     the CPU.
 
     Example:
-    ```python
+
+    ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
         with self.session(use_gpu=True):

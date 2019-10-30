@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -117,6 +118,17 @@ bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
     }
   }
   return true;
+}
+
+bool IsXlaDevice(absl::string_view device_type) {
+  if (device_type == "XLA_CPU_JIT" || device_type == "XLA_GPU_JIT" ||
+      device_type == "XLA_TPU_JIT") {
+    // Symbolic XLA device.
+    return true;
+  }
+
+  return (device_type == "XLA_CPU" || device_type == "XLA_GPU" ||
+          device_type == "TPU");
 }
 
 }  // namespace
@@ -481,6 +493,28 @@ Status Member::AssignDevice(const Node& node) {
   return Status::OK();
 }
 
+void Member::MaybeExcludeXlaDevices() {
+  for (const auto& parsed_name :
+       {requested_device_name_, assigned_device_name_, resource_device_name_}) {
+    if (parsed_name.has_type && IsXlaDevice(parsed_name.type)) {
+      return;
+    }
+  }
+
+  PrioritizedDeviceTypeVector non_xla_types;
+  absl::c_copy_if(supported_device_types_, std::back_inserter(non_xla_types),
+                  [&](const std::pair<DeviceType, int32>& entry) {
+                    return !IsXlaDevice(entry.first.type_string());
+                  });
+
+  // TODO(b/141216278) Remove all XLA device types from the supported device
+  // types if the node has no requested/assigned/resource XLA device.
+  if (!non_xla_types.empty() &&
+      non_xla_types.size() < supported_device_types_.size()) {
+    supported_device_types_ = std::move(non_xla_types);
+  }
+}
+
 Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
                                       bool allow_soft_placement) {
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
@@ -728,8 +762,14 @@ Status ColocationGraph::Initialize() {
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
+  TF_RETURN_IF_ERROR(ColocateAllNodes());
 
-  return ColocateAllNodes();
+  for (Node* node : graph_.op_nodes()) {
+    int root_id = FindAndUpdateRoot(node->id());
+    members_[root_id].MaybeExcludeXlaDevices();
+  }
+
+  return Status::OK();
 }
 
 // pair containing a node and whether this node has a resource input

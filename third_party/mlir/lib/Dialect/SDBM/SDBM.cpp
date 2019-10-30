@@ -329,7 +329,7 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
   //    x - t - (C - 1) <= 0}.
   for (const auto &pair : result.stripeToPoint) {
     auto stripe = pair.second.cast<SDBMStripeExpr>();
-    SDBMBuilderResult update = builder.visit(stripe.getVar());
+    SDBMBuilderResult update = builder.visit(stripe.getLHS());
     assert(update.negativePos.size() == 1 && update.negativePos[0] == 0 &&
            "unexpected negated variable in stripe expression");
     assert(update.value == 0 &&
@@ -388,13 +388,13 @@ void SDBM::convertDBMElement(unsigned row, unsigned col, SDBMTermExpr rowExpr,
                          SDBMExpr x1Expr, int64_t value) {
     if (stripeToPoint.count(x0)) {
       auto stripe = stripeToPoint[x0].cast<SDBMStripeExpr>();
-      SDBMTermExpr var = stripe.getVar();
+      SDBMDirectExpr var = stripe.getLHS();
       if (x1Expr == var && value >= 0)
         return true;
     }
     if (stripeToPoint.count(x1)) {
       auto stripe = stripeToPoint[x1].cast<SDBMStripeExpr>();
-      SDBMTermExpr var = stripe.getVar();
+      SDBMDirectExpr var = stripe.getLHS();
       if (x0Expr == var && value >= stripe.getStripeFactor().getValue() - 1)
         return true;
     }

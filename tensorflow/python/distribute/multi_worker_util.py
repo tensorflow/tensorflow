@@ -230,6 +230,9 @@ def should_save_checkpoint():
   for fault-tolerance, the cluster should save checkpoint but not necessarily
   every worker in the cluster should.
 
+  TODO(rchao): Consider generalizing this util to be `should_save_file` as there
+  can be other files to save such as summary.
+
   Returns:
       Whether this particular worker in the cluster should save checkpoints.
   """

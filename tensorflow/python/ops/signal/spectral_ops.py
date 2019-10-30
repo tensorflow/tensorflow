@@ -39,10 +39,11 @@ def stft(signals, frame_length, frame_step, fft_length=None,
          pad_end=False, name=None):
   """Computes the [Short-time Fourier Transform][stft] of `signals`.
 
-  Implemented with GPU-compatible ops and supports gradients.
+  Implemented with TPU/GPU-compatible ops and supports gradients.
 
   Args:
-    signals: A `[..., samples]` `float32` `Tensor` of real-valued signals.
+    signals: A `[..., samples]` `float32`/`float64` `Tensor` of real-valued
+      signals.
     frame_length: An integer scalar `Tensor`. The window length in samples.
     frame_step: An integer scalar `Tensor`. The number of samples to step.
     fft_length: An integer scalar `Tensor`. The size of the FFT to apply.
@@ -55,9 +56,9 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     name: An optional name for the operation.
 
   Returns:
-    A `[..., frames, fft_unique_bins]` `Tensor` of `complex64` STFT values where
-    `fft_unique_bins` is `fft_length // 2 + 1` (the unique components of the
-    FFT).
+    A `[..., frames, fft_unique_bins]` `Tensor` of `complex64`/`complex128`
+    STFT values where `fft_unique_bins` is `fft_length // 2 + 1` (the unique
+    components of the FFT).
 
   Raises:
     ValueError: If `signals` is not at least rank 1, `frame_length` is
@@ -162,30 +163,29 @@ def inverse_stft(stfts,
                  name=None):
   """Computes the inverse [Short-time Fourier Transform][stft] of `stfts`.
 
-  To reconstruct an original waveform, a complimentary window function should
-  be used in inverse_stft. Such a window function can be constructed with
-  tf.signal.inverse_stft_window_fn.
-
+  To reconstruct an original waveform, a complementary window function should
+  be used with `inverse_stft`. Such a window function can be constructed with
+  `tf.signal.inverse_stft_window_fn`.
   Example:
 
   ```python
   frame_length = 400
   frame_step = 160
-  waveform = tf.compat.v1.placeholder(dtype=tf.float32, shape=[1000])
+  waveform = tf.random.normal(dtype=tf.float32, shape=[1000])
   stft = tf.signal.stft(waveform, frame_length, frame_step)
   inverse_stft = tf.signal.inverse_stft(
       stft, frame_length, frame_step,
       window_fn=tf.signal.inverse_stft_window_fn(frame_step))
   ```
 
-  if a custom window_fn is used in stft, it must be passed to
-  inverse_stft_window_fn:
+  If a custom `window_fn` is used with `tf.signal.stft`, it must be passed to
+  `tf.signal.inverse_stft_window_fn`:
 
   ```python
   frame_length = 400
   frame_step = 160
-  window_fn = functools.partial(window_ops.hamming_window, periodic=True),
-  waveform = tf.compat.v1.placeholder(dtype=tf.float32, shape=[1000])
+  window_fn = tf.signal.hamming_window
+  waveform = tf.random.normal(dtype=tf.float32, shape=[1000])
   stft = tf.signal.stft(
       waveform, frame_length, frame_step, window_fn=window_fn)
   inverse_stft = tf.signal.inverse_stft(
@@ -194,12 +194,12 @@ def inverse_stft(stfts,
          frame_step, forward_window_fn=window_fn))
   ```
 
-  Implemented with GPU-compatible ops and supports gradients.
+  Implemented with TPU/GPU-compatible ops and supports gradients.
 
   Args:
-    stfts: A `complex64` `[..., frames, fft_unique_bins]` `Tensor` of STFT bins
-      representing a batch of `fft_length`-point STFTs where `fft_unique_bins`
-      is `fft_length // 2 + 1`
+    stfts: A `complex64`/`complex128` `[..., frames, fft_unique_bins]`
+      `Tensor` of STFT bins representing a batch of `fft_length`-point STFTs
+      where `fft_unique_bins` is `fft_length // 2 + 1`
     frame_length: An integer scalar `Tensor`. The window length in samples.
     frame_step: An integer scalar `Tensor`. The number of samples to step.
     fft_length: An integer scalar `Tensor`. The size of the FFT that produced
@@ -211,8 +211,8 @@ def inverse_stft(stfts,
     name: An optional name for the operation.
 
   Returns:
-    A `[..., samples]` `Tensor` of `float32` signals representing the inverse
-    STFT for each input STFT in `stfts`.
+    A `[..., samples]` `Tensor` of `float32`/`float64` signals representing
+    the inverse STFT for each input STFT in `stfts`.
 
   Raises:
     ValueError: If `stfts` is not at least rank 2, `frame_length` is not scalar,

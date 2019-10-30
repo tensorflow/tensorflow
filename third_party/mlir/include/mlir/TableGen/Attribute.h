@@ -151,6 +151,9 @@ public:
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
 
+  // Returns whether skipping auto-generation is requested.
+  bool skipAutoGen() const;
+
   // Returns the enum class name.
   StringRef getEnumClassName() const;
 
@@ -171,6 +174,10 @@ public:
   // Returns the name of the utility function that converts a symbol to the
   // corresponding string.
   StringRef getSymbolToStringFnName() const;
+
+  // Returns the return type of the utility function that converts a symbol to
+  // the corresponding string.
+  StringRef getSymbolToStringFnRetType() const;
 
   // Returns the name of the utilit function that returns the max enum value
   // used within the enum class.

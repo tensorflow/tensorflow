@@ -27,22 +27,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace data {
-
-/* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
-/* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
-/* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  if (ctx->HasAttr(kAllowStateful)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful_ops_));
-  }
-}
-
 namespace {
 Status FindStatefulOps(const GraphDef& graph_def,
                        std::vector<string>* stateful_op_names) {
@@ -72,18 +60,63 @@ Status FindStatefulOps(const GraphDef& graph_def,
 }
 }  // namespace
 
+/* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
+/* static */ constexpr const char* const
+    DatasetToGraphOp::kStripDeviceAssignment;
+/* static */ constexpr const char* const DatasetToGraphOp::kExternalStatePolicy;
+/* static */ constexpr const char* const DatasetToGraphOp::kDatasetToGraph;
+/* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
+/* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
+
+// See documentation in ../../ops/dataset_ops.cc for a high-level
+// description of the following op.
+DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
+  if (op_version_ == 2) {
+    if (ctx->HasAttr(kExternalStatePolicy)) {
+      int64 state_change_option;
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttr(kExternalStatePolicy, &state_change_option));
+      external_state_policy_ = ExternalStatePolicy(state_change_option);
+    }
+  } else {
+    if (ctx->HasAttr(kAllowStateful)) {
+      bool allow_stateful;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful));
+      if (allow_stateful) {
+        external_state_policy_ = ExternalStatePolicy::kWarn;
+      } else {
+        external_state_policy_ = ExternalStatePolicy::kFail;
+      }
+    }
+  }
+
+  if (ctx->HasAttr(kStripDeviceAssignment)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kStripDeviceAssignment, &strip_device_assignment_));
+  }
+}
+
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   SerializationContext::Params params;
-  params.check_external_state = !allow_stateful_ops_;
+  params.check_external_state =
+      (external_state_policy_ == ExternalStatePolicy::kFail);
+
   GraphDef graph_def;
-  OP_REQUIRES_OK(
-      ctx, AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def));
+  Status s = AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def);
+  if (!s.ok()) {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Failed to clone the input pipeline because the input pipeline graph "
+        "could not be serialized: ",
+        s.error_message()));
+    return;
+  }
   // In case we allow stateful ops, we walk the graph and find all the stateful
   // ops in the Graph. We then log a warning indicating what ops' state we are
   // going to throw away.
-  if (allow_stateful_ops_) {
+  if (external_state_policy_ == ExternalStatePolicy::kWarn) {
     std::vector<string> stateful_op_names;
     OP_REQUIRES_OK(ctx, FindStatefulOps(graph_def, &stateful_op_names));
     if (!stateful_op_names.empty()) {
@@ -94,6 +127,18 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
           << absl::StrJoin(stateful_op_names, ", ");
     }
   }
+
+  if (strip_device_assignment_) {
+    auto library = graph_def.mutable_library();
+    for (auto& function : (*library->mutable_function())) {
+      for (auto& node : (*function.mutable_node_def())) {
+        if (!node.device().empty()) {
+          *node.mutable_device() = DeviceNameUtils::LocalName(node.device());
+        }
+      }
+    }
+  }
+
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
   result->scalar<tstring>()() = graph_def.SerializeAsString();
@@ -145,6 +190,8 @@ void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
+                        DatasetToGraphOp);
+REGISTER_KERNEL_BUILDER(Name("DatasetToGraphV2").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
 REGISTER_KERNEL_BUILDER(Name("DatasetCardinality").Device(DEVICE_CPU),

@@ -209,9 +209,9 @@ class IrEmitterUnnested : public IrEmitter,
   // scheme.
   //
   // Returns lane_id as an LLVM value.
-  llvm::Value* EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
-                                llvm::Type* index_ty,
-                                TileElementGenerator tile_element_generator);
+  llvm::Value* EmitTilingKernel(
+      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
+      const TileElementGenerator& tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.

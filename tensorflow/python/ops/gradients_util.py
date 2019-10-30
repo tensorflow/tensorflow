@@ -306,7 +306,7 @@ def _IsPartitionedCall(op):
 def _SymGrad(op, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
   f_in = [x for x in op.inputs] + out_grads
-  f_types = [x.dtype for x in op.inputs]
+  f_types = [default_gradient.get_zeros_dtype(x) for x in op.inputs]
   f = attr_value_pb2.NameAttrList()
   if _IsPartitionedCall(op):
     f.name = op.get_attr("f").name
@@ -314,11 +314,7 @@ def _SymGrad(op, out_grads):
     f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  # TODO(apassos) use a better dtype here
-  in_grads = functional_ops.symbolic_gradient(
-      input=f_in,
-      Tout=[x if x != dtypes.resource else dtypes.float32 for x in f_types],
-      f=f)
+  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
 
@@ -393,7 +389,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured.items()  # pylint: disable=protected-access
+    return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -657,7 +653,10 @@ def _GradientsHelper(ys,
               # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
-              else:
+              elif default_gradient.supports_default_grad(op.outputs[i]):
+                # TODO(b/143286622): The supports_default_grad check is needed
+                # because While op emits non-differentiable resource tensors
+                # as outputs. Remove this check when that is not the case.
                 out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access

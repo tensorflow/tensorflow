@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -44,6 +45,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_v2_only
   def test_float64_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -102,6 +104,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_recurrent_dropout_with_implementation_restriction(self):
+    layer = keras.layers.LSTM(2, recurrent_dropout=0.1, implementation=2)
+    # The implementation is force to 1 due to the limit of recurrent_dropout.
+    self.assertEqual(layer.implementation, 1)
+
   @parameterized.parameters([0, 1, 2])
   def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2
@@ -133,14 +140,15 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
-  def test_with_masking_layer_LSTM(self):
+  @parameterized.parameters([True, False])
+  def test_with_masking_layer_LSTM(self, unroll):
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
-    model.add(layer_class(units=5, return_sequences=True, unroll=False))
+    model.add(layer_class(units=5, return_sequences=True, unroll=unroll))
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
@@ -148,14 +156,16 @@ class LSTMLayerTest(keras_parameterized.TestCase):
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
-  def test_masking_with_stacking_LSTM(self):
+  @parameterized.parameters([True, False])
+  def test_masking_with_stacking_LSTM(self, unroll):
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
     lstm_cells = [keras.layers.LSTMCell(10), keras.layers.LSTMCell(5)]
-    model.add(keras.layers.RNN(lstm_cells, return_sequences=True, unroll=False))
+    model.add(keras.layers.RNN(
+        lstm_cells, return_sequences=True, unroll=unroll))
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',

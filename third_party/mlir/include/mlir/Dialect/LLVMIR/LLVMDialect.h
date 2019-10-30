@@ -64,6 +64,14 @@ public:
   LLVMDialect &getDialect();
   llvm::Type *getUnderlyingType() const;
 
+  /// Utilities to identify types.
+  bool isFloatTy() { return getUnderlyingType()->isFloatTy(); }
+  bool isDoubleTy() { return getUnderlyingType()->isDoubleTy(); }
+  bool isIntegerTy() { return getUnderlyingType()->isIntegerTy(); }
+  bool isIntegerTy(unsigned bitwidth) {
+    return getUnderlyingType()->isIntegerTy(bitwidth);
+  }
+
   /// Array type utilities.
   LLVMType getArrayElementType();
   unsigned getArrayNumElements();
@@ -86,12 +94,15 @@ public:
 
   /// Struct type utilities.
   LLVMType getStructElementType(unsigned i);
+  unsigned getStructNumElements();
   bool isStructTy();
 
   /// Utilities used to generate floating point types.
   static LLVMType getDoubleTy(LLVMDialect *dialect);
   static LLVMType getFloatTy(LLVMDialect *dialect);
   static LLVMType getHalfTy(LLVMDialect *dialect);
+  static LLVMType getFP128Ty(LLVMDialect *dialect);
+  static LLVMType getX86_FP80Ty(LLVMDialect *dialect);
 
   /// Utilities used to generate integer types.
   static LLVMType getIntNTy(LLVMDialect *dialect, unsigned numBits);

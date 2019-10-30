@@ -23,6 +23,7 @@
 #define MLIR_SUPPORT_TRANSLATE_CL_PARSER_H_
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/Translation.h"
 #include "llvm/Support/CommandLine.h"
 #include <functional>
 
@@ -30,10 +31,6 @@ namespace mlir {
 
 struct LogicalResult;
 class MLIRContext;
-
-/// Common interface for source-to-source translation functions.
-using TranslateFunction = std::function<LogicalResult(
-    StringRef inputFilename, StringRef outputFilename, MLIRContext *)>;
 
 /// Custom parser for TranslateFunction.
 /// Wraps TranslateToMLIRFunctions and TranslateFromMLIRFunctions into

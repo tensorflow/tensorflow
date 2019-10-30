@@ -88,7 +88,11 @@ class LHLO_UnaryElementwiseOp<string mnemonic> :
 
 def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
+def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
+
 def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+
+def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exp">, BASE_HLO_ExpOp;
 
@@ -122,25 +126,32 @@ def LHLO_MinOp : LHLO_BinaryElementwiseOp<"min", []>, BASE_HLO_MinOp;
 
 def LHLO_MulOp : LHLO_BinaryElementwiseOp<"mul", []>, BASE_HLO_MulOp;
 
+def LHLO_RemOp :
+      LHLO_BinaryElementwiseOp<"remainder", []>, BASE_HLO_RemOp;
+
 def LHLO_SubOp : LHLO_BinaryElementwiseOp<"sub", []>, BASE_HLO_SubOp;
 
 def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
+
+def LHLO_OrOp: LHLO_BinaryElementwiseOp<"or", []>, BASE_HLO_OrOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
-def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
+def LHLO_ReduceOp: LHLO_Op<"reduce", [
+      SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Variadic<LHLO_BufferOrTuple>:$operands,
     Variadic<LHLO_BufferOrTuple>:$init_values,
     Variadic<LHLO_BufferOrTuple>:$out,
-    // TODO(hinsu): Attach computation as a region similar to the
-    // xla_hlo.reduce op.
-    SymbolRefAttr:$computation,
     I64ElementsAttr:$dimensions
   );
+
+  let regions = (region SizedRegion<1>:$body);
 }
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
@@ -344,7 +355,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"Builder *builder, OperationState *result, "
+     OpBuilder<"Builder *builder, OperationState &result, "
                "ArrayRef<NamedAttribute> attributes">
    ];
 }

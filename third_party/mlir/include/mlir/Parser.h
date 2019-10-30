@@ -22,6 +22,8 @@
 #ifndef MLIR_PARSER_H
 #define MLIR_PARSER_H
 
+#include <cstddef>
+
 namespace llvm {
 class SourceMgr;
 class SMDiagnostic;
@@ -29,6 +31,7 @@ class StringRef;
 } // end namespace llvm
 
 namespace mlir {
+class Attribute;
 class Location;
 class MLIRContext;
 class OwningModuleRef;
@@ -59,6 +62,24 @@ OwningModuleRef parseSourceFile(llvm::StringRef filename,
 OwningModuleRef parseSourceString(llvm::StringRef moduleStr,
                                   MLIRContext *context);
 
+/// This parses a single MLIR attribute to an MLIR context if it was valid.  If
+/// not, an error message is emitted through a new SourceMgrDiagnosticHandler
+/// constructed from a new SourceMgr with a single a MemoryBuffer wrapping
+/// `attrStr`. If the passed `attrStr` has additional tokens that were not part
+/// of the type, an error is emitted.
+// TODO(ntv) Improve diagnostic reporting.
+Attribute parseAttribute(llvm::StringRef attrStr, MLIRContext *context);
+Attribute parseAttribute(llvm::StringRef attrStr, Type type);
+
+/// This parses a single MLIR attribute to an MLIR context if it was valid.  If
+/// not, an error message is emitted through a new SourceMgrDiagnosticHandler
+/// constructed from a new SourceMgr with a single a MemoryBuffer wrapping
+/// `attrStr`. The number of characters of `attrStr` parsed in the process is
+/// returned in `numRead`.
+Attribute parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+                         size_t &numRead);
+Attribute parseAttribute(llvm::StringRef attrStr, Type type, size_t &numRead);
+
 /// This parses a single MLIR type to an MLIR context if it was valid.  If not,
 /// an error message is emitted through a new SourceMgrDiagnosticHandler
 /// constructed from a new SourceMgr with a single a MemoryBuffer wrapping
@@ -67,6 +88,12 @@ OwningModuleRef parseSourceString(llvm::StringRef moduleStr,
 // TODO(ntv) Improve diagnostic reporting.
 Type parseType(llvm::StringRef typeStr, MLIRContext *context);
 
+/// This parses a single MLIR type to an MLIR context if it was valid.  If not,
+/// an error message is emitted through a new SourceMgrDiagnosticHandler
+/// constructed from a new SourceMgr with a single a MemoryBuffer wrapping
+/// `typeStr`. The number of characters of `typeStr` parsed in the process is
+/// returned in `numRead`.
+Type parseType(llvm::StringRef typeStr, MLIRContext *context, size_t &numRead);
 } // end namespace mlir
 
 #endif // MLIR_PARSER_H

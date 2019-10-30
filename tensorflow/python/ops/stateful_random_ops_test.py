@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -523,6 +524,26 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         "For the Philox algorithm, the size of state must be at least"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           var.handle, random.RNG_ALG_PHILOX, shape)
+
+  @test_util.run_v2_only
+  def testGetGlobalGeneratorWithXla(self):
+    """Demonstrates using the global generator with XLA."""
+    if not config.list_physical_devices("XLA_CPU"):
+      self.skipTest("No XLA_CPU device available.")
+
+    random.set_global_generator(None)
+
+    @def_function.function(experimental_compile=True)
+    def make_seed():
+      generator = random.get_global_generator()
+      state = array_ops.identity(generator.state, name="state")
+      return generator.uniform_full_int((2,), dtypes.int32, name="seed"), state
+
+    with ops.device("/device:XLA_CPU:0"):
+      seed, state = make_seed()
+      self.assertTrue(np.all(np.isfinite(seed.numpy())))
+      random.get_global_generator().reset(state)
+      self.assertAllEqual(make_seed()[0], seed)
 
   @test_util.run_v2_only
   def testSetGlobalGeneratorBadWithDefun(self):

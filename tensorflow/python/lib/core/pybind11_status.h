@@ -19,27 +19,53 @@ limitations under the License.
 #include <Python.h>
 
 #include "pybind11/pybind11.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-namespace py = ::pybind11;
+namespace internal {
 
-namespace pybind11 {
-
-inline void MaybeRaiseFromStatus(const Status& status) {
-  if (!status.ok()) {
-    // TODO(slebedev): translate to builtin exception classes instead?
-    auto* exc_type = PyExceptionRegistry::Lookup(status.code());
-    PyErr_SetObject(
-        exc_type,
-        py::make_tuple(nullptr, nullptr, status.error_message()).ptr());
-    throw py::error_already_set();
+PyObject* CodeToPyExc(const int code) {
+  switch (code) {
+    case error::Code::INVALID_ARGUMENT:
+      return PyExc_ValueError;
+    case error::Code::OUT_OF_RANGE:
+      return PyExc_IndexError;
+    case error::Code::UNIMPLEMENTED:
+      return PyExc_NotImplementedError;
+    default:
+      return PyExc_RuntimeError;
   }
 }
 
-}  // namespace pybind11
+PyObject* StatusToPyExc(const Status& status) {
+  return CodeToPyExc(status.code());
+}
+
+PyObject* TFStatusToPyExc(const TF_Status* status) {
+  return CodeToPyExc(TF_GetCode(status));
+}
+
+}  // namespace internal
+
+inline void MaybeRaiseFromStatus(const Status& status) {
+  if (!status.ok()) {
+    PyErr_SetString(internal::StatusToPyExc(status),
+                    status.error_message().c_str());
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  if (code != TF_OK) {
+    PyErr_SetString(internal::TFStatusToPyExc(status), TF_Message(status));
+    throw pybind11::error_already_set();
+  }
+}
+
 }  // namespace tensorflow
 
 namespace pybind11 {
@@ -51,11 +77,11 @@ namespace detail {
 // by PyExceptionRegistry. Note that the registry should be initialized
 // in order to be used, see PyExceptionRegistry::Init.
 template <>
-struct type_caster<::tensorflow::Status> {
+struct type_caster<tensorflow::Status> {
  public:
-  PYBIND11_TYPE_CASTER(::tensorflow::Status, _("Status"));
-  static handle cast(::tensorflow::Status status, return_value_policy, handle) {
-    tensorflow::pybind11::MaybeRaiseFromStatus(status);
+  PYBIND11_TYPE_CASTER(tensorflow::Status, _("Status"));
+  static handle cast(tensorflow::Status status, return_value_policy, handle) {
+    tensorflow::MaybeRaiseFromStatus(status);
     return none();
   }
 };

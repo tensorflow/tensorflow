@@ -33,6 +33,8 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
+class OpInterface;
+
 // Wrapper class with helper methods for accessing OpTrait constraints defined
 // in TableGen.
 class OpTrait {
@@ -44,7 +46,9 @@ public:
     // OpTrait corresponding to predicate on operation.
     Pred,
     // OpTrait controlling op definition generator internals.
-    Internal
+    Internal,
+    // OpTrait corresponding to OpInterface.
+    Interface
   };
 
   explicit OpTrait(Kind kind, const llvm::Record *def);
@@ -90,6 +94,23 @@ public:
   static bool classof(const OpTrait *t) {
     return t->getKind() == Kind::Internal;
   }
+};
+
+// OpTrait corresponding to an OpInterface on the operation.
+class InterfaceOpTrait : public OpTrait {
+public:
+  // Returns member function definitions corresponding to the trait,
+  OpInterface getOpInterface() const;
+
+  // Returns the trait corresponding to a C++ trait class.
+  StringRef getTrait() const;
+
+  static bool classof(const OpTrait *t) {
+    return t->getKind() == Kind::Interface;
+  }
+
+  // Whether the declaration of methods for this trait should be emitted.
+  bool shouldDeclareMethods() const;
 };
 
 } // end namespace tblgen

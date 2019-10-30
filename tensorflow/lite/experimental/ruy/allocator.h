@@ -73,7 +73,7 @@ class AlignedAllocator {
   }
 
   void* AllocateAlignedBytes(std::ptrdiff_t num_bytes) {
-    RUY_DCHECK(num_bytes > 0);
+    RUY_DCHECK_GT(num_bytes, 0);
     RUY_DCHECK((num_bytes & (kAlignment - 1)) == 0);
     if (void* p = AllocateFast(num_bytes)) {
       return p;
@@ -105,7 +105,17 @@ class AlignedAllocator {
     fallback_blocks_total_size_ = 0;
   }
 
- private:
+  void FreeOne(void* ptr) {
+    for (auto p = fallback_blocks_.begin(); p != fallback_blocks_.end(); ++p) {
+      if (*p == ptr) {
+        SystemAlignedFree(ptr);
+        fallback_blocks_.erase(p);
+        return;
+      }
+    }
+    RUY_DCHECK(false);  // Trying to free pointer we did not allocate.
+  }
+
   void* AllocateFast(std::ptrdiff_t num_bytes) {
     if (current_ + num_bytes > size_) {
       return nullptr;
@@ -122,6 +132,7 @@ class AlignedAllocator {
     return p;
   }
 
+ private:
   // Primitive allocation functions obtaining aligned memory from the
   // operating system.
   void* SystemAlignedAlloc(std::ptrdiff_t num_bytes);

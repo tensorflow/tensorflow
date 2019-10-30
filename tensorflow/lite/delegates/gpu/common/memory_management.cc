@@ -70,14 +70,16 @@ Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
     case MemoryStrategy::EQUALITY:
       return EqualityAssignmentWithHash(usage_records, assignment);
     case MemoryStrategy::GREEDY_IN_ORDER:
-      return GreedyInOrderAssignment(usage_records, assignment);
+      return GreedyInOrderAssignment(usage_records, assignment,
+                                     reallocation_graph);
     case MemoryStrategy::GREEDY_BY_BREADTH:
       return GreedyByBreadthAssignment(usage_records, assignment);
     case MemoryStrategy::GREEDY_BY_SIZE:
@@ -96,7 +98,8 @@ Status AssignObjectsToTensors(
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
@@ -112,7 +115,8 @@ Status AssignObjectsToTensors(
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint2>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
@@ -130,7 +134,8 @@ Status AssignObjectsToTensors(
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint3>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
@@ -147,13 +152,14 @@ Status AssignObjectsToTensors(
 
 Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, OffsetsAssignment* assignment) {
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    const UsageGraph* reallocation_graph) {
   if (strategy == MemoryStrategy::GREEDY_BY_SIZE) {
     return GreedyBySizeAssignment(usage_records, assignment);
   }
   ObjectsAssignment<size_t> objects_assignment;
-  RETURN_IF_ERROR(
-      AssignObjectsToTensors(usage_records, strategy, &objects_assignment));
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      usage_records, strategy, &objects_assignment, reallocation_graph));
   *assignment = ObjectsToOffsets(objects_assignment);
   return OkStatus();
 }

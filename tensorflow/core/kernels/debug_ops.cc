@@ -138,4 +138,16 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_SYCL_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_float(REGISTER_SYCL_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_double(REGISTER_SYCL_DEBUG_NUMERIC_SUMMARY_COUNT);
 #endif  // TENSORFLOW_USE_SYCL
+
+REGISTER_KERNEL_BUILDER(Name("DebugIdentityV2").Device(DEVICE_CPU),
+                        DebugIdentityV2Op);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("DebugIdentityV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        DebugIdentityV2Op);
+#endif
+
 }  // namespace tensorflow

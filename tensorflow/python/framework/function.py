@@ -821,6 +821,11 @@ class _FuncGraph(ops.Graph):
     else:
       return self._capture_tensor_as_extra_input(tensor, name)
 
+  @property
+  def captures(self):
+    """Pairs of tensors and captured tensor."""
+    return [(k.deref(), v) for k, v in self._captured.items()]
+
   def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
     self.extra_inputs.append(tensor)

@@ -28,6 +28,11 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+#ifdef MLIR_LOOPLIKEINTERFACE
+#else
+include "mlir/Transforms/LoopLikeInterface.td"
+#endif
+
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 
 def Affine_Dialect : Dialect {
@@ -39,10 +44,10 @@ def Affine_Dialect : Dialect {
 class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Affine_Dialect, mnemonic, traits> {
   // For every affine op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
-  //                                         OperationState *result)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -53,7 +58,9 @@ class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
 def ImplicitAffineTerminator
     : SingleBlockImplicitTerminator<"AffineTerminatorOp">;
 
-def AffineForOp : Affine_Op<"for", [ImplicitAffineTerminator]> {
+def AffineForOp : Affine_Op<"for",
+    [ImplicitAffineTerminator,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface>]> {
   let summary = "for operation";
   let description = [{
     The "affine.for" operation represents an affine loop nest, defining an SSA
@@ -89,9 +96,9 @@ def AffineForOp : Affine_Op<"for", [ImplicitAffineTerminator]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "int64_t lowerBound, int64_t upperBound, int64_t step = 1">,
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "ArrayRef<Value *> lbOperands, AffineMap lbMap, "
               "ArrayRef<Value *> ubOperands, AffineMap ubMap, "
               "int64_t step = 1">
@@ -214,7 +221,7 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "IntegerSet set, ArrayRef<Value *> args, bool withElseRegion">
   ];
 

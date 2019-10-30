@@ -11,6 +11,7 @@ cc_library(
         "c_api_internal.h",
     ],
     visibility = [
+        "//intelligence/mobile_acceleration/tools/nnapi_linter:__pkg__",
         "//learning/brain/mobile/kernel_test:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],

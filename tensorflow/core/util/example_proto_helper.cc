@@ -472,42 +472,88 @@ Status ParseSingleExampleAttrs::FinishInit() {
   return Status::OK();
 }
 
-Status ParseSequenceExampleAttrs::FinishInit() {
-  if (num_context_sparse != context_sparse_keys.size() ||
-      num_context_sparse != context_sparse_types.size()) {
+Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
+  switch (op_version) {
+    case 1:
+      num_context_ragged = 0;
+      num_feature_list_ragged = 0;
+      if (num_context_sparse != context_sparse_keys.size()) {
+        return errors::InvalidArgument(
+            "num_context_sparse (", num_context_sparse,
+            ") must match the size of context_sparse_keys (",
+            context_sparse_keys.size(), ")");
+      }
+      if (num_context_dense != context_dense_keys.size()) {
+        return errors::InvalidArgument(
+            "num_context_dense (", num_context_dense,
+            ") must match the size of context_dense_keys (",
+            context_dense_keys.size(), ")");
+      }
+      if (num_feature_list_sparse != feature_list_sparse_keys.size()) {
+        return errors::InvalidArgument(
+            "num_feature_list_sparse (", num_feature_list_sparse,
+            ") must match the size of feature_list_sparse_keys (",
+            feature_list_sparse_keys.size(), ")");
+      }
+      if (num_feature_list_dense != feature_list_dense_keys.size()) {
+        return errors::InvalidArgument(
+            "num_feature_list_dense (", num_feature_list_dense,
+            ") must match the size of feature_list_dense_keys (",
+            feature_list_dense_keys.size(), ")");
+      }
+      break;
+    case 2:
+      num_context_dense = context_dense_types.size();
+      num_context_ragged = context_ragged_value_types.size();
+      num_feature_list_ragged = feature_list_ragged_value_types.size();
+      break;
+    default:
+      return errors::InvalidArgument("Unexpected op_version", op_version);
+  }
+  if (num_context_sparse != context_sparse_types.size()) {
     return errors::InvalidArgument(
         "num_context_sparse (", num_context_sparse,
-        ") must match the size of context_sparse_keys (",
-        context_sparse_keys.size(), ") and context_sparse_types (",
+        ") must match the size of context_sparse_types (",
         context_sparse_types.size(), ")");
   }
-  if (num_context_dense != context_dense_keys.size() ||
-      num_context_dense != context_dense_types.size() ||
+  if (num_context_dense != context_dense_types.size() ||
       num_context_dense != context_dense_shapes.size()) {
     return errors::InvalidArgument(
         "num_context_dense (", num_context_dense,
-        ") must match the size of context_dense_keys (",
-        context_dense_keys.size(), "), context_dense_types (",
+        ") must match the size of context_dense_types (",
         context_dense_types.size(), ") and context_dense_shapes (",
         context_dense_shapes.size(), ")");
   }
-  if (num_feature_list_sparse != feature_list_sparse_keys.size() ||
-      num_feature_list_sparse != feature_list_sparse_types.size()) {
+  if ((num_context_ragged != context_ragged_value_types.size()) ||
+      (num_context_ragged != context_ragged_split_types.size())) {
+    return errors::InvalidArgument(
+        "num_context_ragged (", num_context_ragged,
+        ") must match the size of context_ragged_value_types (",
+        context_ragged_value_types.size(), ") and context_ragged_split_types (",
+        context_ragged_split_types.size(), ")");
+  }
+  if (num_feature_list_sparse != feature_list_sparse_types.size()) {
     return errors::InvalidArgument(
         "num_feature_list_sparse (", num_feature_list_sparse,
-        ") must match the size of feature_list_sparse_keys (",
-        feature_list_sparse_keys.size(), ") and feature_list_sparse_types (",
+        ") must match the size of feature_list_sparse_types (",
         feature_list_sparse_types.size(), ")");
   }
-  if (num_feature_list_dense != feature_list_dense_keys.size() ||
-      num_feature_list_dense != feature_list_dense_types.size() ||
+  if (num_feature_list_dense != feature_list_dense_types.size() ||
       num_feature_list_dense != feature_list_dense_shapes.size()) {
     return errors::InvalidArgument(
         "num_feature_list_dense (", num_feature_list_dense,
-        ") must match the size of feature_list_dense_keys (",
-        feature_list_dense_keys.size(), "), feature_list_dense_types (",
+        ") must match the size of feature_list_dense_types (",
         feature_list_dense_types.size(), ") and feature_list_dense_shapes (",
         feature_list_dense_shapes.size(), ")");
+  }
+  if ((num_feature_list_ragged != feature_list_ragged_value_types.size()) ||
+      (num_feature_list_ragged != feature_list_ragged_split_types.size())) {
+    return errors::InvalidArgument(
+        "num_feature_list_ragged (", num_feature_list_ragged,
+        ") must match the size of feature_list_ragged_value_types (",
+        feature_list_ragged_value_types.size(),
+        ") and feature_list_ragged_split_types (",
+        feature_list_ragged_split_types.size(), ")");
   }
   for (const DataType& type : context_dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
@@ -520,6 +566,24 @@ Status ParseSequenceExampleAttrs::FinishInit() {
   }
   for (const DataType& type : feature_list_sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_ragged_value_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_ragged_split_types) {
+    if (!(type == DT_INT64 || type == DT_INT32)) {
+      return errors::InvalidArgument("Invalid context_ragged_split_type: ",
+                                     DataTypeString(type));
+    }
+  }
+  for (const DataType& type : feature_list_ragged_value_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_ragged_split_types) {
+    if (!(type == DT_INT64 || type == DT_INT32)) {
+      return errors::InvalidArgument("Invalid feature_list_ragged_split_type: ",
+                                     DataTypeString(type));
+    }
   }
 
   return Status::OK();

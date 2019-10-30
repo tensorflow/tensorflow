@@ -836,7 +836,12 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 
        // CudnnRNN ops are stateful but they can't generate any observable
        // side-effect.
-       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"});
+       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+
+       // TPUEmbedding EnqueueOps are stateful but this is only between ops with
+       // the same device_ordinal on the same host.
+       "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+       "EnqueueTPUEmbeddingSparseTensorBatch"});
   return exemption->contains(op);
 }
 
@@ -1161,6 +1166,7 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 // Runs a placer after inlining, to keep all nodes in a graph placed.
 Status InlineFunctionCalls(const GrapplerItem& item,
                            const RewriterConfig::Toggle opt_level,
+                           const bool lower_control_flow,
                            GraphDef* output_graph) {
   bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
   VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
@@ -1201,7 +1207,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     // Special case for lowering functional control flow ops. We do not rely on
     // LowerFunctionOpsPass because in Grappler we have to be more restrictive
     // about what type of function calls we are allowed to inline.
-    if (LowerUsingSwitchMergeIsOn(n)) {
+    if (lower_control_flow && LowerUsingSwitchMergeIsOn(n)) {
       VLOG(2) << "Lower functional control flow op: " << SummarizeNode(*n);
       AddStrictInputSemantics(n, graph.get());
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
@@ -1388,8 +1394,8 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   // Inline all function calls into a graph using common_runtime/function
   // implementation (see `InlineFunctionBody` function documentation).
   GraphDef graph_after_inlining;
-  TF_RETURN_IF_ERROR(
-      InlineFunctionCalls(item, opt_level_, &graph_after_inlining));
+  TF_RETURN_IF_ERROR(InlineFunctionCalls(item, opt_level_, lower_control_flow_,
+                                         &graph_after_inlining));
 
   // Specialize function calls that we could not inline.
   FunctionOptimizerContext ctx(item, opt_level_, graph_after_inlining);

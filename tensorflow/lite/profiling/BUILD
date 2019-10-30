@@ -50,12 +50,37 @@ cc_library(
     copts = common_copts,
 )
 
+cc_library(
+    name = "memory_info",
+    srcs = ["memory_info.cc"],
+    hdrs = ["memory_info.h"],
+    copts = common_copts,
+)
+
 cc_test(
     name = "time_test",
     srcs = ["time_test.cc"],
     copts = common_copts,
     deps = [
         ":time",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "memory_info_test",
+    srcs = ["memory_info_test.cc"],
+    copts = common_copts,
+    tags = [
+        # Some low-level checks, like heap size check, may break in asan, msan
+        # and tsan. So, disable such tests.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":memory_info",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -84,6 +109,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

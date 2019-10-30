@@ -83,6 +83,10 @@ class Member {
 
   Status AssignDevice(const Node& node);
 
+  // If user does not explicitly request XLA device and non-XLA device is
+  // supported for this node, use only the non-XLA device. See b/140896502.
+  void MaybeExcludeXlaDevices();
+
   // Limit the possible devices of this (should be a root) to the device
   // specifications in `devices`.
   Status LimitToPossibleDevices(const PossibleDevices& devices,

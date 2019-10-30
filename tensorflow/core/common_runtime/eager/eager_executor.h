@@ -50,6 +50,10 @@ class EagerNode {
 
   virtual ~EagerNode() {}
 
+  // Prepares the node when adding it into EagerExecutor. If any errors happens,
+  // EagerExecutor will abort the node immediately.
+  virtual Status Prepare() { return Status::OK(); }
+
   // Runs the computation corresponding to this node and blocks till the
   // execution is done.
   virtual Status Run() = 0;
@@ -94,8 +98,8 @@ class EagerExecutor {
 
   ~EagerExecutor();
 
-  // Puts this in a shutdown state. In this state, Add() will return an error
-  // and not add new EagerNodes. After putting this in the shutdown state,
+  // Puts this in a shutdown state. In this state, AddOrExecute() will return an
+  // error and not add new EagerNodes. After putting this in the shutdown state,
   // blocks until all pendings nodes have finished running.
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
@@ -154,7 +158,7 @@ class EagerExecutor {
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  void NodeDone(core::RefCountPtr<NodeItem> item, const Status& status);
+  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
@@ -162,7 +166,7 @@ class EagerExecutor {
   // `status_` is not ok.
   void Run();
 
-  void RunItem(core::RefCountPtr<NodeItem> item);
+  Status RunItem(core::RefCountPtr<NodeItem> item);
 
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.
@@ -209,6 +213,8 @@ class EagerExecutor {
   // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.
   const std::unique_ptr<Thread> thread_;
 };
+
+inline bool EagerExecutor::Async() const { return thread_ != nullptr; }
 
 }  // namespace tensorflow
 

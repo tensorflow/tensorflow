@@ -1,8 +1,6 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "if_not_mobile")
-load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -36,6 +34,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
+        srcs_version = "PY2AND3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -99,7 +98,7 @@ def pyx_library(
         name = name,
         srcs = py_srcs,
         deps = py_deps,
-        srcs_version = "PY2AND3",
+        srcs_version = srcs_version,
         data = shared_objects,
         testonly = testonly,
         **kwargs
@@ -441,10 +440,10 @@ def tf_proto_library(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         js_codegen = "jspb",
-        provide_cc_alias = False,
-        make_default_target_header_only = False):
+        make_default_target_header_only = False,
+        exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
-    _ignore = (js_codegen, provide_cc_alias)
+    _ignore = (js_codegen, exports)
 
     tf_proto_library_cc(
         name = name,
@@ -491,6 +490,7 @@ def tf_additional_lib_hdrs(exclude = []):
         "posix/error.h",
     ], exclude = exclude + [
         "default/subprocess.h",
+        "default/posix_file_system.h",
     ])
     return select({
         "//tensorflow:windows": windows_hdrs,
@@ -506,11 +506,14 @@ def tf_additional_lib_srcs(exclude = []):
         "windows/*.cc",
         "posix/error.cc",
     ], exclude = exclude + [
+        "default/env.cc",
         "default/env_time.cc",
         "default/load_library.cc",
         "default/net.cc",
         "default/port.cc",
+        "default/posix_file_system.cc",
         "default/subprocess.cc",
+        "default/stacktrace_handler.cc",
     ])
     return select({
         "//tensorflow:windows": windows_srcs,
@@ -528,23 +531,11 @@ def tf_additional_monitoring_srcs():
         "default/monitoring.cc",
     ]
 
-def tf_additional_minimal_lib_srcs():
-    return [
-        "default/integral_types.h",
-        "default/mutex.h",
-        "default/mutex_data.h",
-    ]
-
 def tf_additional_proto_hdrs():
     return [
         "default/integral_types.h",
         "default/logging.h",
-    ] + if_windows([
-        "windows/integral_types.h",
-    ])
-
-def tf_additional_human_readable_json_deps():
-    return []
+    ]
 
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
@@ -564,12 +555,6 @@ def tf_protos_all():
 
 def tf_profiler_all_protos():
     return ["//tensorflow/core/profiler:protos_all"]
-
-def tf_grpc_service_all():
-    return [
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-    ]
 
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
@@ -609,22 +594,12 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
+        "default/test.cc",
         "default/test_benchmark.cc",
-    ] + select({
-        "//tensorflow:windows": [
-            "windows/test.cc",
-        ],
-        "//conditions:default": [
-            "posix/test.cc",
-        ],
-    })
+    ]
 
 def tf_kernel_tests_linkstatic():
     return 0
-
-def tf_additional_lib_defines():
-    """Additional defines needed to build TF libraries."""
-    return []
 
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
@@ -675,17 +650,6 @@ def tf_lib_proto_parsing_deps():
         "//tensorflow/core/platform/default/build_config:proto_parsing",
     ]
 
-def tf_lib_proto_compiler_deps():
-    return [
-        "@com_google_protobuf//:protoc_lib",
-    ]
-
-def tf_additional_numa_lib_defines():
-    return select({
-        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
-        "//conditions:default": [],
-    })
-
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -719,44 +683,29 @@ def tf_additional_binary_deps():
         ],
     )
 
-def tf_additional_numa_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:macos": [],
-        "//conditions:default": [
-            "@hwloc",
-        ],
-    })
-
-def tf_additional_numa_copts():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:macos": [],
-        "//conditions:default": [
-            "-Ithird_party/hwloc/hwloc-master/include",
-            "-DTENSORFLOW_USE_NUMA",
-        ],
-    })
-
 def tf_additional_rpc_deps():
     return []
 
-def tf_logging_absl_deps():
+def tf_additional_tensor_coding_deps():
+    return []
+
+def tf_fingerprint_deps():
     return [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
+        "@farmhash_archive//:farmhash",
     ]
 
 def tf_protobuf_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )
 
 def tf_protobuf_compiler_deps():
-    return [
-        "@com_google_protobuf//:protobuf",
-    ]
+    return if_static(
+        [
+            "@com_google_protobuf//:protobuf",
+        ],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+    )

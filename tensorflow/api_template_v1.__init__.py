@@ -39,7 +39,7 @@ if "dev" in __version__:   # pylint: disable=undefined-variable
   TensorFlow's `tf-nightly` package will soon be updated to TensorFlow 2.0.
 
   Please upgrade your code to TensorFlow 2.0:
-    * https://www.tensorflow.org/beta/guide/migration_guide
+    * https://www.tensorflow.org/guide/migrate
 
   Or install the latest stable TensorFlow 1.X release:
     * `pip install -U "tensorflow==1.*"`

@@ -85,7 +85,9 @@ MINIMAL_SRCS := \
 # build files.
 
 PROFILER_SRCS := \
+  tensorflow/lite/profiling/memory_info.cc \
 	tensorflow/lite/profiling/time.cc
+
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
 	tensorflow/core/util/stats_calculator.cc
@@ -113,7 +115,7 @@ tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))

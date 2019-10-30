@@ -638,7 +638,11 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
   for (HloInstruction* fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
-    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
+    // Since fusion buffers aren't materialized, fusion parameters will not have
+    // the same memory space as the fusion operand.
+    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape(),
+                    /*minor_to_major_only=*/false,
+                    /*ignore_memory_space=*/true)) {
       return InternalError(
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",
@@ -989,6 +993,12 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
   return CheckShape(get_size,
                     ShapeInference::InferGetDimensionSizeShape(
                         get_size->operand(0)->shape(), get_size->dimension()));
+}
+
+Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
+  return CheckShape(set_size,
+                    ShapeInference::InferSetDimensionSizeShape(
+                        set_size->operand(0)->shape(), set_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

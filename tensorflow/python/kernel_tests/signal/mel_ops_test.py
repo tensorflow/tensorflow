@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -132,29 +133,35 @@ def spectrogram_to_mel_matrix(num_mel_bins=20,
 
 
 @tf_test_util.run_all_in_graph_and_eager_modes
-class LinearToMelTest(test.TestCase):
+class LinearToMelTest(test.TestCase, parameterized.TestCase):
 
-  def test_matches_reference_implementation(self):
-    # Tuples of (num_mel_bins, num_spectrogram_bins, sample_rate,
-    # lower_edge_hertz, upper_edge_hertz) to test.
-    configs = [
-        # Defaults.
-        (20, 129, 8000.0, 125.0, 3800.0, dtypes.float64),
-        # Same as above, but with a constant Tensor sample rate.
-        (20, 129, constant_op.constant(8000.0), 125.0, 3800.0, dtypes.float64),
-        # Settings used by Tacotron (https://arxiv.org/abs/1703.10135).
-        (80, 1025, 24000.0, 80.0, 12000.0, dtypes.float64),
-    ]
-    for config in configs:
-      mel_matrix_np = spectrogram_to_mel_matrix(*config)
-      mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
-      self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
+  @parameterized.parameters(
+      # Defaults. Integer sample rate.
+      (20, 129, 8000, False, 125.0, 3800.0, dtypes.float64),
+      (20, 129, 8000, True, 125.0, 3800.0, dtypes.float64),
+      # Defaults. Float sample rate.
+      (20, 129, 8000.0, False, 125.0, 3800.0, dtypes.float64),
+      (20, 129, 8000.0, True, 125.0, 3800.0, dtypes.float64),
+      # Settings used by Tacotron (https://arxiv.org/abs/1703.10135).
+      (80, 1025, 24000.0, False, 80.0, 12000.0, dtypes.float64))
+  def test_matches_reference_implementation(
+      self, num_mel_bins, num_spectrogram_bins, sample_rate,
+      use_tensor_sample_rate, lower_edge_hertz, upper_edge_hertz, dtype):
+    if use_tensor_sample_rate:
+      sample_rate = constant_op.constant(sample_rate)
+    mel_matrix_np = spectrogram_to_mel_matrix(
+        num_mel_bins, num_spectrogram_bins, sample_rate, lower_edge_hertz,
+        upper_edge_hertz, dtype)
+    mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+        num_mel_bins, num_spectrogram_bins, sample_rate, lower_edge_hertz,
+        upper_edge_hertz, dtype)
+    self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
 
-  def test_dtypes(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def test_dtypes(self, dtype):
     # LinSpace is not supported for tf.float16.
-    for dtype in (dtypes.float32, dtypes.float64):
-      self.assertEqual(dtype,
-                       mel_ops.linear_to_mel_weight_matrix(dtype=dtype).dtype)
+    self.assertEqual(dtype,
+                     mel_ops.linear_to_mel_weight_matrix(dtype=dtype).dtype)
 
   def test_error(self):
     # TODO(rjryan): Error types are different under eager.
@@ -167,9 +174,6 @@ class LinearToMelTest(test.TestCase):
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(sample_rate=0.0)
     with self.assertRaises(ValueError):
-      mel_ops.linear_to_mel_weight_matrix(
-          sample_rate=array_ops.placeholder(dtypes.float32))
-    with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(lower_edge_hertz=-1)
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(lower_edge_hertz=100,
@@ -180,17 +184,19 @@ class LinearToMelTest(test.TestCase):
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(dtype=dtypes.int32)
 
-  def test_constant_folding(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def test_constant_folding(self, dtype):
     """Mel functions should be constant foldable."""
     if context.executing_eagerly():
       return
     # TODO(rjryan): tf.bfloat16 cannot be constant folded by Grappler.
-    for dtype in (dtypes.float32, dtypes.float64):
-      g = ops.Graph()
-      with g.as_default():
-        mel_matrix = mel_ops.linear_to_mel_weight_matrix(dtype=dtype)
-        rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
-        self.assertEqual(1, len(rewritten_graph.node))
+    g = ops.Graph()
+    with g.as_default():
+      mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+          sample_rate=constant_op.constant(8000.0, dtype=dtypes.float32),
+          dtype=dtype)
+      rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
+      self.assertLen(rewritten_graph.node, 1)
 
   def test_num_spectrogram_bins_dynamic(self):
     num_spectrogram_bins = array_ops.placeholder_with_default(

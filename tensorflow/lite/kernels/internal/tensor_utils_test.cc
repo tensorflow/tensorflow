@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 #ifdef DOTPROD_BENCHMARKS
@@ -53,7 +54,8 @@ TEST(uKernels, VectorScalarMultiply) {
                    0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
 }
 
-TEST(uKernels, IsZeroTest) {
+// Test if a float array if full of zero values.
+TEST(uKernels, IsZeroFloatTest) {
   constexpr int kVectorSize = 21;
   static float zeros[kVectorSize] = {0.0};
   EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
@@ -63,6 +65,19 @@ TEST(uKernels, IsZeroTest) {
       1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
       1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
   EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+}
+
+// Test if an int8 array if full of zero values.
+TEST(uKernels, IsZeroInt8Test) {
+  constexpr int kVectorSize = 43;
+  static int8_t zeros[kVectorSize] = {0};
+  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
+
+  for (int i = 0; i < kVectorSize; ++i) {
+    int8_t non_zeros[kVectorSize] = {0};
+    non_zeros[i] = 1;
+    EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
+  }
 }
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
@@ -113,6 +128,62 @@ TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
   EXPECT_NEAR(scaling_factor, 1.57e-6, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-6, 19, -4, -57, 1, 25, 6, 127, 0}));
+}
+
+TEST(uKernels, AsymmetricQuantizeFloatsTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
+                                     -5.0, -10.0,  0.0,  1000.0};
+  int8_t output[kVectorSize];
+  double min = -640.0;
+  double max = 1000.0;
+  QuantizationParams quantization_params =
+      ChooseQuantizationParams<int8_t>(min, max);
+  int32_t offset = quantization_params.zero_point;
+  AsymmetricQuantizeFloats(input, kVectorSize, output,
+                           quantization_params.scale, offset);
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          {-128, -127, -126, -26, -28, -29, -30, -28, 127}));
+}
+
+TEST(uKernels, AsymmetricQuantizeFloatsAllZerosTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  int8_t output[kVectorSize];
+  AsymmetricQuantizeFloats(input, kVectorSize, output, 0, 0);
+  EXPECT_THAT(output, testing::ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0}));
+}
+
+TEST(uKernels, AsymmetricQuantizeFloatsZeroRangeTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {2000, 2000, 2000, 2000, 2000,
+                                     2000, 2000, 2000, 2000};
+  int8_t output[kVectorSize];
+  double min = 0;
+  double max = 2000;
+  QuantizationParams quantization_params =
+      ChooseQuantizationParams<int8_t>(min, max);
+  int32_t offset = quantization_params.zero_point;
+  AsymmetricQuantizeFloats(input, kVectorSize, output,
+                           quantization_params.scale, offset);
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          {127, 127, 127, 127, 127, 127, 127, 127, 127}));
+}
+
+TEST(uKernels, AsymmetricQuantizeFloatsAllAlmostZeroTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {-1e-5, 3e-5, -7e-6, -9e-5, 1e-6,
+                                     4e-5,  9e-6, 2e-4,  0};
+  int8_t output[kVectorSize];
+  double min = -9e-05;
+  double max = 0.0002;
+  QuantizationParams quantization_params =
+      ChooseQuantizationParams<int8_t>(min, max);
+  int32_t offset = quantization_params.zero_point;
+  AsymmetricQuantizeFloats(input, kVectorSize, output,
+                           quantization_params.scale, offset);
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          {-58, -23, -55, -128, -48, -14, -41, 127, -49}));
 }
 
 TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
@@ -237,6 +308,39 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,
       -19, 2,  11, -5,  9,  -2,  10,  -38, -22,
+  };
+
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized matmul with 9 * 30 matrix.
+TEST(uKernels, MatrixScalarMultiplyAccumulateTest) {
+  std::vector<int32_t> output = {
+      -620, -170, -395, 715, -1220, -1080, 1130, -260, -470,
+  };
+  const std::vector<int8_t> weight = {
+      -10, -4,  -8,  16,  4,   -16, -1,  11,  1,   2,   -25, 19,  7,   9,   2,
+      -24, -2,  10,  -7,  7,   -5,  -2,  3,   4,   3,   -4,  -7,  -11, -13, -18,
+      11,  10,  12,  -9,  17,  -15, -5,  20,  -6,  -11, 2,   -6,  -18, 15,  4,
+      4,   -9,  -2,  -3,  -9,  -13, 17,  -21, 5,   3,   -12, 0,   -4,  9,   -5,
+      10,  -2,  8,   1,   -10, -6,  1,   -9,  10,  11,  -1,  -5,  4,   -7,  -4,
+      -4,  4,   12,  -7,  -5,  -9,  -19, 6,   -4,  12,  -17, -22, 0,   9,   -4,
+      -5,  5,   -8,  8,   3,   15,  -18, -18, 5,   3,   -12, 5,   -10, 7,   7,
+      -9,  17,  2,   -11, -25, 3,   19,  -6,  7,   1,   7,   5,   -3,  11,  3,
+      0,   -8,  8,   -2,  -2,  -12, 14,  -5,  7,   8,   16,  20,  -16, -5,  -5,
+      1,   -10, -6,  14,  10,  -12, 10,  -6,  5,   0,   3,   8,   -9,  -13, -2,
+      4,   4,   -16, -17, -9,  16,  -5,  14,  -9,  -5,  -12, 0,   17,  6,   -1,
+      16,  -20, 1,   -11, -1,  -10, -21, 13,  4,   -12, -7,  0,   -14, -6,  3,
+      -4,  6,   -18, -3,  -1,  14,  -8,  -6,  -15, 5,   12,  -3,  -10, 4,   6,
+      -5,  -20, 0,   3,   -3,  -7,  1,   2,   -10, 7,   -3,  6,   1,   -12, 6,
+      4,   -12, 2,   6,   -20, 0,   5,   23,  15,  14,  9,   8,   20,  -2,  9,
+      -8,  -8,  -7,  -4,  -8,  -9,  7,   -12, -2,  2,   1,   -14, 31,  4,   -14,
+      3,   10,  -18, -17, -1,  18,  1,   12,  0,   7,   -3,  -5,  8,   -9,  18,
+      17,  7,   -15, 3,   20,  4,   -8,  16,  6,   -3,  -3,  9,   -4,  -6,  4,
+  };
+  MatrixScalarMultiplyAccumulate(weight.data(), 3, 9, 30, output.data());
+  const std::vector<int32_t> expected_output = {
+      -797, -227, -536, 739, -1187, -1314, 965, -140, -257,
   };
 
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
@@ -505,13 +609,18 @@ struct MatrixVectorData {
   std::vector<float> scale_factors;
   std::vector<float> results;
 
+  // Per channel scale data.
+  std::vector<float> per_channel_scales;
+  std::vector<int32_t> input_offsets;
+
   int rows;
   int cols;
   int batch;
 };
 
 MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
-                                       bool negative = false) {
+                                       bool negative = false,
+                                       bool is_per_channel = false) {
   MatrixVectorData data;
   data.rows = rows;
   data.cols = cols;
@@ -563,6 +672,23 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
       }
     }
   }
+
+  if (is_per_channel) {
+    for (int i = 0; i < rows; i++) {
+      if (i % 2 == 0) {
+        data.per_channel_scales.push_back(0.5);
+      } else {
+        data.per_channel_scales.push_back(1.0);
+      }
+    }
+
+    for (int i = 0; i < batch; i++) {
+      for (int j = 0; j < cols; j++) {
+        data.vectors[i * cols + j] += i;
+      }
+      data.input_offsets.push_back(i);
+    }
+  }
   return data;
 }
 
@@ -587,6 +713,19 @@ std::vector<float> TestSparseDotprodMatrixBatchVectorMultiply(
       data.sparse_matrix.data(), data.ledger.data(), rows, cols,
       data.vectors.data(), data.scale_factors.data(), batch, &data.results[0],
       1);
+  return data.results;
+}
+
+std::vector<float> TestPerChannelDotprodMatrixBatchVectorMultiply(
+    int rows, int cols, int batch, bool negative = false,
+    bool is_per_channel = true) {
+  MatrixVectorData data =
+      SetupMatrixVectorData(rows, cols, batch, negative, is_per_channel);
+
+  MatrixBatchVectorMultiplyAccumulate(
+      data.matrix.data(), rows, cols, data.vectors.data(),
+      data.scale_factors.data(), batch, &data.results[0], 1,
+      data.per_channel_scales.data(), data.input_offsets.data());
   return data.results;
 }
 
@@ -615,6 +754,28 @@ TEST(uKernels, DotprodMatrixBatchVectorMultiplyAccumulateTest) {
   ASSERT_THAT(
       TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative),
       testing::ElementsAre(3436, 3522, 1590, 6972, 2516, 20520, 456, 10628));
+}
+
+TEST(uKernels, PerChannelDotprodMatrixBatchVectorMultiplyAccumulateTest) {
+  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 16, 1),
+              testing::ElementsAre(1240 / 2, 3160, 5080 / 2, 7000));
+
+  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 32, 2),
+              testing::ElementsAre(10416 / 2, 26288, 8490 / 2, 23312, 18276 / 2,
+                                   70756, 37416 / 2, 60916));
+
+  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 32, 3),
+              testing::ElementsAre(10416 / 2, 26288, 8490 / 2, 23312, 18276 / 2,
+                                   70756, 37416 / 2, 60916, 52080 / 2, 142704,
+                                   55878 / 2, 125712));
+
+  ASSERT_THAT(
+      TestPerChannelDotprodMatrixBatchVectorMultiply(8, 1024, 3),
+      testing::ElementsAreArray(
+          {841094 / 2,  853168,  866642 / 2,  840286,  860760 / 2,  862754,
+           843678 / 2,  872552,  1724476 / 2, 1769072, 1747588 / 2, 1738844,
+           1758240 / 2, 1742916, 1761612 / 2, 1755808, 2506896 / 2, 2564262,
+           2629188 / 2, 2515824, 2598390 / 2, 2569236, 2537352 / 2, 2645118}));
 }
 
 TEST(uKernels, DotprodMatrixBatchFourVectorMultiplyAccumulateDotprodTest) {
@@ -681,6 +842,39 @@ TEST(uKernels, DotprodMatrixBatchFourVectorMultiplyAccumulateDotprodTest) {
     sum += static_cast<int64_t>(results[i]);
   }
   EXPECT_EQ(7980076336, sum);
+}
+
+TEST(uKernels,
+     PerChannelDotprodMatrixBatchFourVectorMultiplyAccumulateDotprodTest) {
+  ASSERT_THAT(
+      TestPerChannelDotprodMatrixBatchVectorMultiply(16, 1024, 4),
+      testing::ElementsAreArray(
+          {841094 / 2,  853168,  866642 / 2,  840286,  860760 / 2,  862754,
+           843678 / 2,  872552,  837586 / 2,  851270,  877414 / 2,  834188,
+           863062 / 2,  857846,  841780 / 2,  879054,  1724476 / 2, 1769072,
+           1747588 / 2, 1738844, 1758240 / 2, 1742916, 1761612 / 2, 1755808,
+           1737684 / 2, 1750780, 1747356 / 2, 1754152, 1748348 / 2, 1753324,
+           1743320 / 2, 1754316, 2506896 / 2, 2564262, 2629188 / 2, 2515824,
+           2598390 / 2, 2569236, 2537352 / 2, 2645118, 2508444 / 2, 2571480,
+           2610576 / 2, 2510442, 2618208 / 2, 2566584, 2544570 / 2, 2614536,
+           3458904 / 2, 3502688, 3474792 / 2, 3505976, 3499360 / 2, 3488264,
+           3485848 / 2, 3512832, 3500616 / 2, 3482520, 3489624 / 2, 3469008,
+           3495992 / 2, 3524376, 3465680 / 2, 3526264}));
+
+  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 128, 4),
+              testing::ElementsAreArray(
+                  {87920 / 2, 80024, 92288 / 2, 103712, 228148 / 2, 224820,
+                   233812 / 2, 213124, 271284 / 2, 271788, 332772 / 2, 328236,
+                   419328 / 2, 431328, 411968 / 2, 417248}));
+
+  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 128, 8),
+              testing::ElementsAreArray(
+                  {87920 / 2,  80024,  92288 / 2,  103712, 228148 / 2, 224820,
+                   233812 / 2, 213124, 271284 / 2, 271788, 332772 / 2, 328236,
+                   419328 / 2, 431328, 411968 / 2, 417248, 482680 / 2, 523840,
+                   560800 / 2, 593560, 563940 / 2, 609924, 566868 / 2, 644772,
+                   743708 / 2, 857780, 818972 / 2, 823284, 708384 / 2, 695008,
+                   730912 / 2, 872096}));
 }
 
 TEST(uKernels, DotprodSparseMatrixBatchVectorMultiplyAccumulate) {
