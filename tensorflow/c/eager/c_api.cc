@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -565,6 +567,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
+  tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
+      tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
+                                          worker_session.get());
   auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
       /*is_master=*/true, ctx->context);
 
@@ -572,14 +577,13 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
         std::move(new_server), grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs,
-        worker_session->cluster_flr(), std::move(remote_mgr)));
+        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
+        std::move(remote_mgr)));
   } else {
     LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
         grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), added_workers, removed_workers,
-        context_id, r, device_mgr, keep_alive_secs,
-        worker_session->cluster_flr()));
+        context_id, r, device_mgr, keep_alive_secs, cluster_flr));
   }
 
   // NOTE: We start the server after all other initialization, because the
