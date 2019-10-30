@@ -24,6 +24,7 @@ def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
+def ConvertAttrToI64 : NativeCodeCall<"ConvertAttrToI64($0)">;
 
 class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
@@ -86,6 +87,9 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_RealDivOp, HLO_DivOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+def : Pat<(TF_ComplexOp AnyTensor:$r, AnyTensor:$i),
+          (HLO_ComplexOp $r, $i)>;
 
 def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 
@@ -225,6 +229,26 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
+// CrossReplicaSum op patterns.
+//===----------------------------------------------------------------------===//
+
+def CastElementsToI64Elements : NativeCodeCall<
+  "::xla::ConvertElementsAttr("
+    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
+def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
+          (HLO_CrossReplicaSumOp $input,
+            (CastElementsToI64Elements $group_assignment))>;
+
+//===----------------------------------------------------------------------===//
+// Fft op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
+          (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
+           (ConvertAttrToI64 $fft_length))>;
+
+//===----------------------------------------------------------------------===//
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -330,12 +354,16 @@ def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
                    [TF_CeilOp, HLO_CeilOp],
+                   [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
+                   [TF_ImagOp, HLO_ImagOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
+                   [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
+                   [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),

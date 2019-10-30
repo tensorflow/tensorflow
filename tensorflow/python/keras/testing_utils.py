@@ -38,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -839,4 +840,4 @@ def _set_v2_dtype_behavior(fn, enabled):
     finally:
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
-  return wrapper
+  return tf_decorator.make_decorator(fn, wrapper)

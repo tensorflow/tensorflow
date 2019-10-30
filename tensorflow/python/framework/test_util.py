@@ -49,6 +49,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -295,7 +296,7 @@ def IsMklEnabled():
 
 
 def InstallStackTraceHandler():
-  pywrap_tensorflow.InstallStacktraceHandler()
+  _pywrap_stacktrace_handler.InstallStacktraceHandler()
 
 
 def NHWCToNCHW(input_tensor):
@@ -883,14 +884,27 @@ def _combine_named_parameters(**kwargs):
     the keyword argument names.  Each key has one value - one of the
     corresponding keyword argument values.
   """
-  sort_by_key = lambda k: k[0]
-  combinations = []
-  for key, values in sorted(kwargs.items(), key=sort_by_key):
-    if not isinstance(values, list):
-      values = [values]
-    combinations.append([(key, value) for value in values])
+  if not kwargs:
+    return [OrderedDict()]
 
-  return [OrderedDict(result) for result in itertools.product(*combinations)]
+  sort_by_key = lambda k: k[0][0]
+  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
+  first = list(kwargs.items())[0]
+
+  rest = dict(list(kwargs.items())[1:])
+  rest_combined = _combine_named_parameters(**rest)
+
+  key = first[0]
+  values = first[1]
+  if not isinstance(values, list):
+    values = [values]
+
+  combinations = [
+      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
+      for v in values
+      for combined in rest_combined
+  ]
+  return combinations
 
 
 def generate_combinations_with_testcase_name(**kwargs):

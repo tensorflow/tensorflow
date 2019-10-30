@@ -41,6 +41,16 @@ void MatrixBatchVectorMultiplyAccumulate(
                    vectors, scaling_factors, n_batch, result, result_stride);
 }
 
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset) {
+  return NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows,
+                          m_cols, vectors, scaling_factors, n_batch, result,
+                          result_stride, per_channel_scale, input_offset);
+}
+
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
@@ -232,6 +242,13 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              float max_value, float* scaling_factor) {
   NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
                    min_value, max_value, scaling_factor);
+}
+
+void AsymmetricQuantizeFloats(const float* values, const int size,
+                              int8_t* quantized_values, float scaling_factor,
+                              int32_t offset) {
+  NEON_OR_PORTABLE(AsymmetricQuantizeFloats, values, size, quantized_values,
+                   scaling_factor, offset);
 }
 
 void ReductionSumVector(const float* input_vector, float* output_vector,

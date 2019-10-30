@@ -29,7 +29,6 @@ namespace TFL {
 struct PassConfig {
   explicit PassConfig(QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
-        emit_quant_adaptor_ops(false),
         lower_tensor_list_ops(false),
         trim_functions_whitelist({}),
         quant_specs(specs),
@@ -39,9 +38,6 @@ struct PassConfig {
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
   bool emit_builtin_tflite_ops;
-  // If `emit_quant_adaptor_ops` is true, Quantize and
-  // Dequantize ops are added as part of running quantization passes.
-  bool emit_quant_adaptor_ops;
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
   bool lower_tensor_list_ops;

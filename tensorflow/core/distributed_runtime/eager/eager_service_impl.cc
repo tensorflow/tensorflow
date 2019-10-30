@@ -486,7 +486,7 @@ Status EagerServiceImpl::RegisterFunction(
   // If the function is a component of a multi-device function, we only need to
   // register it locally.
   return eager_context->AddFunctionDef(
-      register_function.function_def(),
+      register_function.function_def(), register_function.library(),
       register_function.is_component_function());
 }
 

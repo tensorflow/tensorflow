@@ -92,7 +92,7 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
-          "Opcode ", HloOpcodeString(opcode), " is not supported."));
+          "LHLO opcode ", HloOpcodeString(opcode), " is not supported."));
   }
   return Status::OK();
 }
@@ -221,6 +221,53 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   Value* result_memref = function.getArgument(function.getNumArguments() - 1);
   body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
                                              result_memref);
+
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*reduce));
+  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
+                                          function.args_end()};
+  OpBuilder builder(function.getBody());
+  auto loc = getLocation(reduce);
+  int input_count = reduce->operand_count() / 3;
+  auto inputs = llvm::makeArrayRef(arg_values).slice(input_count);
+  auto init_values =
+      llvm::makeArrayRef(arg_values).slice(input_count, input_count);
+  auto results =
+      llvm::makeArrayRef(arg_values).slice(2 * input_count, input_count);
+  auto dimensions_attr =
+      CreateDenseIntElementsAttrFromVector(reduce->dimensions(), builder_);
+  auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
+                                                  results, dimensions_attr);
+  reduce_op.setAttr("name", builder_.getStringAttr(reduce->name()));
+  reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(reduce));
+
+  OpBuilder body_builder(reduce_op.body());
+  auto block = body_builder.getInsertionBlock();
+  auto to_apply = reduce->to_apply();
+  llvm::SmallVector<Value*, 4> reduce_arg_values;
+  // First map parameters to memrefs on the operation.
+  for (auto param : to_apply->parameter_instructions()) {
+    TF_ASSIGN_OR_RETURN(auto arg_type, ConvertShapeToType<MemRefType>(
+                                           param->shape(), builder_));
+    auto block_arg = block->addArgument(arg_type);
+    reduce_arg_values.push_back(
+        body_builder.create<::mlir::TensorLoadOp>(loc, block_arg));
+  }
+  HloDialectEmitter hlo_emitter(emission_context_, body_builder,
+                                reduce_arg_values);
+
+  TF_ASSIGN_OR_RETURN(auto result, hlo_emitter.EmitComputation(*to_apply));
+
+  // Now add a block arg and store for the result.
+  body_builder.setInsertionPoint(block->getTerminator());
+  TF_ASSIGN_OR_RETURN(auto result_type,
+                      ConvertShapeToType<MemRefType>(
+                          to_apply->root_instruction()->shape(), builder));
+  auto block_arg = block->addArgument(result_type);
+  body_builder.create<::mlir::TensorStoreOp>(loc, result, block_arg);
 
   return Status::OK();
 }

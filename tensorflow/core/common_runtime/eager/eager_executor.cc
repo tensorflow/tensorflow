@@ -66,8 +66,8 @@ Status EagerExecutor::ShutDown() {
   }
 
   thread_exited_notification_.WaitForNotification();
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  return status_;
+
+  return status();
 }
 
 const char* EagerExecutor::StateStringLocked() {
@@ -101,12 +101,7 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
       status = RunItem(std::move(item));
     }
     return status;
-  }
-
-  // If we are unable to add the node to the queue, we must call Abort. However,
-  // we want to do that outside of the scope of the lock since the Abort may
-  // try to call EagerExecutor::Add()
-  {
+  } else {
     tensorflow::mutex_lock l(node_queue_mutex_);
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
              << " with status: " << status_.ToString();
@@ -130,8 +125,11 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
     }
   }
 
-  // Node needs to be aborted since it was not added to the queue
+  // If we are unable to add the node to the queue, we must call Abort. However,
+  // we want to do that outside of the scope of the lock since the Abort may
+  // try to call EagerExecutor::AddOrExecute()
   item->node->Abort(status);
+
   return status;
 }
 

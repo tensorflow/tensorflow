@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
@@ -34,6 +35,7 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
           {{'u', 2}, U16},
           {{'u', 4}, U32},
           {{'u', 8}, U64},
+          {{'V', 2}, BF16},  // array protocol code for raw data (void*)
           {{'f', 2}, F16},
           {{'f', 4}, F32},
           {{'f', 8}, F64},
@@ -68,8 +70,12 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32>();
     case U64:
       return py::dtype::of<uint64>();
+    case BF16: {
+      TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
+      return py::dtype::from_args(bfloat16);
+    }
     case F16:
-      return py::dtype("e");
+      return py::dtype("e");  // PEP 3118 code for "float16
     case F32:
       return py::dtype::of<float>();
     case F64:
@@ -105,8 +111,10 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
       return py::format_descriptor<uint32>::format();
     case U64:
       return py::format_descriptor<uint64>::format();
+    case BF16:
+      return std::string("H");  // PEP 3118 code for "unsigned int16"
     case F16:
-      return std::string("e");
+      return std::string("e");  // PEP 3118 code for "float16"
     case F32:
       return py::format_descriptor<float>::format();
     case F64:
@@ -166,8 +174,20 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
       m.shape().dimensions(),         // Buffer dimensions
       StridesForShape(m.shape())      // Strides (in bytes) for each index
   );
-  return py::array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
-                   literal_object);
+
+  py::array array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
+                  literal_object);
+  if (m.shape().element_type() == xla::BF16) {
+    // We requested an array of uint16 since NumPy doesn't know how
+    // to produce our custom bfloat16 type. Reinterpret the array as bfloat16
+    // before handing it back to the caller.
+    TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
+    array = py::reinterpret_steal<py::array>(
+        PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
+                     reinterpret_cast<PyArray_Descr*>(bfloat16.release().ptr()),
+                     static_cast<PyTypeObject*>(nullptr)));
+  }
+  return array;
 }
 
 StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {

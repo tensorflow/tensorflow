@@ -33,7 +33,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 // This file has 2 implementation of Conv.
 

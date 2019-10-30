@@ -497,8 +497,11 @@ def _preprocess_grad(grad, body_graph_output, while_op_output):
   # GradientTape initializes resource and variant grads as None instead of
   # zeros. Set to zeros so _GradientsHelper computes the gradients instead of
   # returning None.
-  if (while_op_output.dtype in (dtypes.resource, dtypes.variant)
-      and grad is None):
+  # TODO(b/143286622): The supports_default_grad check is needed
+  # because While op emits non-differentiable resource tensors
+  # as outputs. Remove this check when that is not the case.
+  if (while_op_output.dtype in (dtypes.resource, dtypes.variant) and
+      default_gradient.supports_default_grad(while_op_output) and grad is None):
     return _zeros_like(while_op_output)
 
   return grad

@@ -61,7 +61,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":add_test_lib"],
@@ -99,7 +98,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":concat_test_lib"],
@@ -138,7 +136,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":conv_test_lib"],
@@ -191,7 +188,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":depthwise_conv_test_lib"],
@@ -231,7 +227,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":elementwise_test_lib"],
@@ -271,7 +266,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":fully_connected_test_lib"],
@@ -310,7 +304,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":max_unpooling_test_lib"],
@@ -350,7 +343,6 @@ ios_unit_test(
     minimum_os_version = "9.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":mul_test_lib"],
@@ -389,7 +381,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":padding_test_lib"],
@@ -429,7 +420,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":pooling_test_lib"],
@@ -469,7 +459,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":prelu_test_lib"],
@@ -508,7 +497,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":relu_test_lib"],
@@ -548,7 +536,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":reshape_test_lib"],
@@ -587,7 +574,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":slice_test_lib"],
@@ -626,7 +612,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":softmax_test_lib"],
@@ -666,7 +651,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":transpose_conv_test_lib"],
@@ -705,7 +689,6 @@ ios_unit_test(
     minimum_os_version = "10.0",
     tags = [
         "notap",
-        "tflite_mobile_test_jet",
         "tflite_not_portable_android",
     ],
     deps = [":upsample_test_lib"],

@@ -72,6 +72,15 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -116,6 +125,14 @@ class BASE_HLO_FloorOp {
   }];
 }
 
+class BASE_HLO_ImagOp {
+  string summary = "Imag operator";
+
+  string description = [{
+    Returns `Imag(operand)` element-wise.
+  }];
+}
+
 class BASE_HLO_LogOp {
   string summary = "Logarithm operator";
 
@@ -135,6 +152,14 @@ class BASE_HLO_NegOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_RealOp {
+  string summary = "Real operator";
+
+  string description = [{
+    Returns `Real(operand)` element-wise.
   }];
 }
 
@@ -162,6 +187,18 @@ class BASE_HLO_SignOp {
             = +0  : x = +0
             = 1   : x > 0
     ```
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+
+class BASE_HLO_SqrtOp {
+  string summary = "Square-root operator";
+
+  string description = [{
+    Returns `sqrt(operand)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -507,6 +544,22 @@ class BASE_HLO_ConcatenateOp {
      Concatenates a set of tensors along the specified dimension.
 
      See https://www.tensorflow.org/xla/operation_semantics#concatenate.
+   }];
+}
+
+class BASE_HLO_CrossReplicaSumOp {
+   string summary = "Sums input across replicated instances.";
+
+   string description = [{
+     For each of the replica groups, operands of the group devices are summed
+     so that each device has the sum.
+
+     For example, suppose there are 8 TPU devices: `[A, B, C, D, E, F, G, H]`.
+     Passing group_assignment=`[[0,2,4,6],[1,3,5,7]]` sets `A, C, E, G` as group 0,
+     and `B, D, F, H` as group 1. Thus we get the outputs:
+     `[A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H]`.
+
+     See https://www.tensorflow.org/xla/operation_semantics#crossreplicasum.
    }];
 }
 

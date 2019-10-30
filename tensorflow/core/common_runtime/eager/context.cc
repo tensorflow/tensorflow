@@ -472,7 +472,13 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   return Status::OK();
 }
 
+Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
+  return AddFunctionDef(fdef, FunctionDefLibrary(),
+                        /* add_to_local_only=*/false);
+}
+
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
+                                    const FunctionDefLibrary& library,
                                     const bool add_to_local_only) {
   bool is_first_ref = false;
   {
@@ -492,6 +498,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   }
   if (is_first_ref) {
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+    TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     if (!add_to_local_only) {
       return MaybeRegisterFunctionRemotely(fdef);
     }

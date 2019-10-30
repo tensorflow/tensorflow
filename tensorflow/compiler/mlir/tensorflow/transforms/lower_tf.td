@@ -43,3 +43,36 @@ def LowerBiasAddGradOp :
                 (TF_ConstOp (GetBiasAddGradReductionIndices $out_backprop,
                                                             $data_format)),
                 /*keep_dims=*/ConstBoolAttrFalse)>;
+
+// Lowers SoftmaxCrossEntropyWithLogitsOp using simpler TensorFlow ops. The op
+// computes loss and backprop of the loss with respect to 'features'.
+//
+// Softmax cross entropy loss is defined as follows:
+//
+//  loss = Sum(-labels * Log(Exp(features) / Sum(Exp(features)))
+//  loss = Sum(-labels * LogSoftmax(features))
+//
+// Computing gradient of the loss with respect to features gives us,
+//
+//  backprop = (Exp(features) / Sum(Exp(features))) - labels
+//  backprop = Softmax(features) - labels
+//
+// Computation of the reduction axis for the Sum op depends on whether the
+// input is a scalar or not. Restrict pattern to ranked inputs so that input to
+// the Sum op is also ranked.
+
+// TODO(hinsu): Support scalar inputs by introducing reshape to 1D.
+def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
+
+def GetLastDimReductionAxis :
+  NativeCodeCall<"GetI64ElementsAttr({-1}, &$_builder)">;
+
+def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
+  (TF_SoftmaxCrossEntropyWithLogitsOp AnyRankedTensor:$features,
+                                      AnyRankedTensor:$labels),
+  [(TF_SumOp (TF_MulOp:$sum_input (TF_NegOp $labels),
+                                  (TF_LogSoftmaxOp $features)),
+             (TF_ConstOp (GetLastDimReductionAxis)),
+             /*keep_dims=*/ConstBoolAttrFalse),
+   (TF_SubOp (TF_SoftmaxOp $features), $labels)],
+  [(NonScalarType $features), (NonScalarType $labels)]>;

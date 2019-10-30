@@ -427,7 +427,12 @@ REGISTER_OP("_MklAddV2")
         "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
-    .SetIsCommutative();
+    .SetIsCommutative()
+    .Doc(R"doc(
+Returns `x` + `y` element-wise.
+*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+)doc");
 #endif  // INTEL_MKL
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(

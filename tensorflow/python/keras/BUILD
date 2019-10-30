@@ -67,6 +67,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",

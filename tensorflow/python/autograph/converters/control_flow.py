@@ -36,13 +36,7 @@ class ControlFlowTransformer(converter.Base):
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
-    if not returns:
-      # TODO(b/110167197): Replace with a plain return.
-      template = """
-        return 1
-      """
-      return_stmt = templates.replace(template)
-    elif len(returns) == 1:
+    if len(returns) == 1:
       template = """
         return retval
       """

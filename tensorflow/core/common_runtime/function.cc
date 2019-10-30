@@ -1993,14 +1993,22 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
         return !e->src()->IsSource() && e->IsControlEdge();
       };
 
-      const bool forward_control_frame =
-          // a) the node has not data or control inputs
-          absl::c_none_of(n->in_edges(), is_input_edge) ||
-          // b) the node is a function call without control inputs
-          (n->IsFunctionCall() &&
-           absl::c_none_of(n->in_edges(), is_control_edge));
+      // Forward execution frame if:
+      //
+      // a) The node has no data or control inputs.
+      // b) OR the node is a function call without control inputs (control edge
+      //    will be used in nested function inlining to forward execution frame
+      //    to constants inside the function body).
+      //
+      // c) Do not forward control frame to function argument nodes, they will
+      //    be connected to the corresponding function input later.
+      const bool forward_execution_frame =
+          (absl::c_none_of(n->in_edges(), is_input_edge) ||       // (a)
+           (n->IsFunctionCall() &&                                // (b)
+            absl::c_none_of(n->in_edges(), is_control_edge))) &&  //
+          !n->IsArg();                                            // (c)
 
-      if (forward_control_frame) {
+      if (forward_execution_frame) {
         VLOG(4) << "Add control edge from input control node to: "
                 << clone->name();
         g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);

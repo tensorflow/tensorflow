@@ -36,10 +36,11 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           bool emit_quant_adaptor_ops,
                            mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+  bool emit_quant_adaptor_ops =
+      quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addPass(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
@@ -127,8 +128,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Run quantization after all the floating point model conversion is
     // completed.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs,
-                            pass_config.emit_quant_adaptor_ops, pass_manager);
+      AddQuantizationPasses(pass_config.quant_specs, pass_manager);
     }
   }
 }

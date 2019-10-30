@@ -88,11 +88,12 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
 
   RegisterFunctionOp* register_function =
       request->add_queue()->mutable_register_function();
-  // TODO(yujingzhang): add FunctionDefLibrary to RegisterFunctionRequest to
-  // support nested functions.
   *register_function->mutable_function_def() =
       *func_lib_def.Find(function_name);
   register_function->set_is_component_function(true);
+  *register_function->mutable_library() =
+      func_lib_def.ReachableDefinitions(register_function->function_def())
+          .ToProto();
 
   eager_client->EnqueueAsync(
       request, response,

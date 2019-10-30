@@ -20,9 +20,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-// Returns runtime operation system version. Example 10.1
-float GetiOsSystemVersion();
-
 // Returns Apple SoC generation number. The list of Apple SoC that support Metal
 // API:
 //     7 - A7 iPhone 5s, iPad Air, iPad Mini 2, iPad Mini 3.

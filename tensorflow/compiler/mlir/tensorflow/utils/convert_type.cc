@@ -60,6 +60,12 @@ Status ConvertDataType(const DataType& dtype, Builder builder, Type* type) {
     case DT_BFLOAT16:
       *type = builder.getBF16Type();
       return Status::OK();
+    case DT_COMPLEX64:
+      *type = mlir::ComplexType::get(builder.getF32Type());
+      return Status::OK();
+    case DT_COMPLEX128:
+      *type = mlir::ComplexType::get(builder.getF64Type());
+      return Status::OK();
 #define HANDLE_TF_TYPE(tftype, enumerant, name)        \
   case DT_##enumerant:                                 \
     *type = builder.getType<mlir::TF::tftype##Type>(); \
@@ -108,6 +114,18 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
           return errors::Unimplemented(
               absl::StrCat("Converting ", debugString(type), " to DataType"));
       }
+    }
+    case mlir::StandardTypes::Complex: {
+      auto etype = type.cast<mlir::ComplexType>().getElementType();
+      if (etype.isF32()) {
+        *dtype = DT_COMPLEX64;
+        return Status::OK();
+      } else if (etype.isF64()) {
+        *dtype = DT_COMPLEX128;
+        return Status::OK();
+      }
+      return errors::Unimplemented(
+          absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   case mlir::TF::TensorFlowTypes::enumerant:    \

@@ -991,7 +991,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       return dataset
 
   def repeat(self, count=None):
-    """Repeats this dataset `count` times.
+    """Repeats this dataset so each original value is seen `count` times.
+
+    For example, the following code will evaluate to [0, 1, 0, 1]:
+
+    ```python
+    dataset = tf.data.Dataset.range(2)
+    [int(x.numpy()) for x in dataset.repeat(2)]
+    ```
 
     NOTE: If this dataset is a function of global state (e.g. a random number
     generator), then different repetitions may produce different elements.

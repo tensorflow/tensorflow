@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
@@ -184,10 +185,15 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT16;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::COMPLEX64:
-      return tflite::TensorType_COMPLEX64;
     case mlir::TF::TensorFlowTypes::UINT8:
       return tflite::TensorType_UINT8;
+    case mlir::StandardTypes::Complex: {
+      auto ftype = type.cast<mlir::ComplexType>().getElementType();
+      if (ftype && ftype.isF32()) {
+        return tflite::TensorType_COMPLEX64;
+      }
+      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+    }
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {
