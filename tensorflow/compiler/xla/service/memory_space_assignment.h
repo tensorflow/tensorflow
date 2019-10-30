@@ -229,6 +229,9 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 class MemorySpaceAssignment {
  public:
   using Chunk = HeapSimulator::Chunk;
+  using BufferInterval = GlobalDecreasingSizeBestFitHeap::BufferInterval;
+  using BufferIntervalCompare =
+      GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -395,6 +398,8 @@ class MemorySpaceAssignment {
   // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
   // architecture-specific integer value that describes the alternate memory.
   // max_size_in_bytes is the maximum size of the alternate memory.
+  // If a buffer_interval_compare is provided, we sort the buffers using that
+  // (otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial).
   // prefetch_interval_picker determines how early and how late can prefetches
   // occur. alternate_memory_space_alignment_in_bytes is the alignment required
   // in the alternate memory space, size_fn is the size function for buffer
@@ -404,6 +409,7 @@ class MemorySpaceAssignment {
   // outstanding asynchronous copies, -1 for unlimited.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
+      absl::optional<BufferIntervalCompare> buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker,
       int64 alternate_memory_space_alignment_in_bytes,
       BufferValue::SizeFunction size_fn,
@@ -413,6 +419,9 @@ class MemorySpaceAssignment {
   // Returns the maximum number of outstanding asynchronous copies in the
   // module.
   static int64 CountMaximumOutstandingAsyncCopies(const HloModule& module);
+
+  static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis);
 
  private:
   MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space)
@@ -481,7 +490,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationMap* allocation_map,
-      int64 max_size_in_bytes, PrefetchIntervalPicker* prefetch_interval_picker,
+      int64 max_size_in_bytes,
+      absl::optional<BufferIntervalCompare> buffer_interval_compare,
+      PrefetchIntervalPicker* prefetch_interval_picker,
       const HloAliasAnalysis& alias_analysis,
       const HloLiveRange& hlo_live_range, int64 alignment,
       IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem,
@@ -493,7 +504,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
         alias_analysis_(alias_analysis),
         hlo_live_range_(hlo_live_range),
         is_allowed_in_alternate_mem_(is_allowed_in_alternate_mem),
-        max_outstanding_async_copies_(max_outstanding_async_copies) {}
+        max_outstanding_async_copies_(max_outstanding_async_copies) {
+    // Override buffer interval compare if provided.
+    if (buffer_interval_compare) {
+      buffer_interval_compare_ = *buffer_interval_compare;
+    }
+  }
 
   HeapSimulator::Result Finish() override;
 

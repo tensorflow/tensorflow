@@ -751,9 +751,71 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   return max_copies;
 }
 
+/*static*/ MemorySpaceAssignment::BufferIntervalCompare
+MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis) {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    // Returns a heuristic value that captures how much putting this tensor to
+    // the alternate memory would help if the op is memory bound, or otherwise
+    // how far off is the op to memory boundedness. The larger this number, the
+    // higher priority it will be placed in the alternate memory.
+    auto get_alternate_mem_benefit =
+        [&](const HloInstruction& instruction,
+            float elapsed_time_due_to_alternate_mem) {
+          float elapsed_time_due_to_compute =
+              cost_analysis.GetInstructionElapsedDueToCompute(instruction);
+          float elapsed_time_due_to_memory =
+              cost_analysis.GetInstructionElapsedDueToMemory(instruction);
+          if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
+            // Memory bound, return how much alternate memory is better.
+            return elapsed_time_due_to_memory -
+                   elapsed_time_due_to_alternate_mem;
+          } else {
+            // Compute bound, return how far off are we to memory boundedness.
+            return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
+          }
+        };
+
+    auto get_memory_boundedness = [&](const BufferInterval& interval) {
+      const HloInstruction& defining_instruction =
+          *interval.buffer->defining_instruction();
+      float alternate_mem_benefit = get_alternate_mem_benefit(
+          defining_instruction, cost_analysis.GetInstructionElapsedDueToMemory(
+                                    defining_instruction,
+                                    /*operand_in_alternate_mem=*/{},
+                                    /*output_in_alternate_mem=*/true));
+      for (const HloUse& use : interval.buffer->uses()) {
+        float use_alternate_mem_benefit = get_alternate_mem_benefit(
+            *use.instruction, cost_analysis.GetInstructionElapsedDueToMemory(
+                                  *use.instruction, use.operand_number));
+        // If the benefit is positive (memory bound), add it to this buffer's
+        // benefit. If the benefit is negative (compute bound), calculate the
+        // maximum.
+        if (alternate_mem_benefit > 0 && use_alternate_mem_benefit > 0) {
+          alternate_mem_benefit += use_alternate_mem_benefit;
+        } else {
+          alternate_mem_benefit =
+              std::max(alternate_mem_benefit, use_alternate_mem_benefit);
+        }
+      }
+      return alternate_mem_benefit;
+    };
+
+    float x_memory_boundedness = get_memory_boundedness(x);
+    float y_memory_boundedness = get_memory_boundedness(y);
+    if (x_memory_boundedness != y_memory_boundedness) {
+      return x_memory_boundedness > y_memory_boundedness;
+    }
+    // Tie-break if the memory boundedness is the same.
+    return GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare()(
+        x, y);
+  };
+}
+
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(
     HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
+    absl::optional<BufferIntervalCompare> buffer_interval_compare,
     PrefetchIntervalPicker* prefetch_interval_picker,
     int64 alternate_memory_space_alignment_in_bytes,
     BufferValue::SizeFunction size_fn,
@@ -773,7 +835,7 @@ MemorySpaceAssignment::Run(
                                         entry_computation));
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_map_, max_size_in_bytes,
-      prefetch_interval_picker, *alias_analysis,
+      buffer_interval_compare, prefetch_interval_picker, *alias_analysis,
       *memory_space_assignment.hlo_live_range_,
       alternate_memory_space_alignment_in_bytes, is_allowed_in_alternate_mem,
       max_outstanding_async_copies);
