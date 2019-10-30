@@ -2091,6 +2091,23 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "LinalgTransformPatterns",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
+    td_srcs = [
+        "include/mlir/IR/OpBase.td",
+        ":LinalgOpsTdFiles",
+        ":LinalgLibraryOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "Linalg",
     srcs = [
@@ -2098,6 +2115,7 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
@@ -2110,6 +2128,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
         "include/mlir/Dialect/Linalg/Passes.h",
+        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
