@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -27,11 +28,59 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace activations {
-
+namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+struct OpData {
+  int32_t input_zero_point;
+  int32_t input_range_radius;
+  int32_t input_multiplier;
+  int32_t input_left_shift;
+};
+
+TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
+                                       OpData* data) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                      std::numeric_limits<int8_t>::min());
+    TF_LITE_ENSURE_EQ(context, static_cast<double>(output->params.scale),
+                      1. / 256);
+
+    static constexpr int kInputIntegerBits = 4;
+    const double input_real_multiplier =
+        static_cast<double>(input->params.scale) *
+        static_cast<double>(1 << (31 - kInputIntegerBits));
+
+    const double q = std::frexp(input_real_multiplier, &data->input_left_shift);
+    data->input_multiplier = static_cast<int32_t>(TfLiteRound(q * (1ll << 31)));
+
+    data->input_range_radius =
+        CalculateInputRadius(kInputIntegerBits, data->input_left_shift, 31);
+  }
+  return kTfLiteOk;
+}
+}  // namespace
+
+void* LogisticInit(TfLiteContext* context, const char* buffer, size_t length) {
+  OpData* data = new OpData();
+  return data;
+}
+
+void LogisticFree(TfLiteContext* context, void* buffer) {}
+
+TfLiteStatus LogisticPrepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  CalculateArithmeticOpData(context, node, data);
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
@@ -52,11 +101,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   } else if (input->type == kTfLiteInt8) {
     switch (output->type) {
       case kTfLiteInt8: {
-        reference_ops::Logistic(
-            GetTensorShape(input), GetTensorData<int8_t>(input),
-            input->params.scale, input->params.zero_point,
-            GetTensorShape(output), GetTensorData<int8_t>(output),
-            output->params.scale, output->params.zero_point);
+        OpData* data = reinterpret_cast<OpData*>(node->user_data);
+        reference_integer_ops::Logistic(
+            input->params.zero_point, data->input_range_radius,
+            data->input_multiplier, data->input_left_shift,
+            NumElements(input->dims), GetTensorData<int8_t>(input),
+            GetTensorData<int8_t>(output));
         return kTfLiteOk;
       }
       default:
@@ -79,14 +129,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_LOGISTIC() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/activations::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
+  static TfLiteRegistration r = {
+      activations::LogisticInit,    activations::LogisticFree,
+      activations::LogisticPrepare, activations::LogisticEval,
+      /*profiling_string=*/nullptr, /*builtin_code=*/0,
+      /*custom_name=*/nullptr,      /*version=*/0};
   return &r;
 }
 }  // namespace micro
