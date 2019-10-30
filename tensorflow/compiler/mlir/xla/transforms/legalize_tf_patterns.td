@@ -74,7 +74,7 @@ def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
     "types must be broadcastable">;
 
 class DirectBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
+  : Pat<(FromOp $l, $r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
@@ -87,7 +87,7 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
-def : Pat<(TF_ComplexOp AnyTensor:$r, AnyTensor:$i),
+def : Pat<(TF_ComplexOp $r, $i),
           (HLO_ComplexOp $r, $i)>;
 
 def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
@@ -140,7 +140,7 @@ def : Pat<(TF_FloorDivOp IntegerTensor:$l, IntegerTensor:$r),
 //
 //   T trunc_mod = std::fmod(x, y);
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
-def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
+def : Pat<(TF_FloorModOp $l, $r),
       (HLO_SelectOp
        (HLO_AndOp
         (HLO_CompareOp
@@ -175,7 +175,7 @@ foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
 //===----------------------------------------------------------------------===//
 
 class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
-  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
+  : Pat<(FromOp $l, $r),
         (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
 
 def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
@@ -184,7 +184,7 @@ def : DirectComparePat<TF_LessOp, HLO_COMPARISON_DIRECTION_LT>;
 def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
 
 class EqualityPat<Op FromOp, StrEnumAttrCase direction>
-    : Pat<(FromOp AnyTensor:$l, AnyTensor:$r,
+    : Pat<(FromOp $l, $r,
            TrueBoolAttr:$incompatible_shape_error),
         (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction),
         [(AreBroadcastCompatible $l, $r)]>;
@@ -196,7 +196,7 @@ def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
 // Complex op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConjOp AnyTensor:$v),
+def : Pat<(TF_ConjOp $v),
           (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
 
 //===----------------------------------------------------------------------===//
@@ -271,7 +271,7 @@ class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
   "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
 
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), AnyTensor:$c),
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
@@ -330,7 +330,7 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
+def : Pat<(TF_SelectOp $condition, $lhs, $rhs),
           (HLO_SelectOp $condition, $lhs, $rhs)>;
 
 
