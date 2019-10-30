@@ -1,4 +1,4 @@
-// RUN: (mlir-tblgen -gen-rewriters -I %S/../../include %s 2>&1 || true) | FileCheck %s
+// RUN: not mlir-tblgen -gen-rewriters -I %S/../../include %s 2>&1 | FileCheck %s
 
 include "mlir/IR/OpBase.td"
 
