@@ -600,7 +600,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
 
-  @test_util.disable_xla("b/128638446")
   @test_util.run_in_graph_and_eager_modes
   def testCondPruning(self):
     v1 = variables.Variable(7)
@@ -1256,7 +1255,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                                                   [1., 1.],
                                                                   [0., 0.]])
 
-  @test_util.disable_xla("b/128643464")
   def testCondGrad_MultiGather(self):
     # NOTE(skyewm): this test is interesting because the array_ops.gather and
     # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
@@ -1333,7 +1331,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
-  @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
     if test_util.is_gpu_available():
@@ -1406,7 +1403,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
 
-  @test_util.disable_xla("b/128643646 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
