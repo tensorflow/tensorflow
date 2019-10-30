@@ -180,6 +180,20 @@ func @or_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   return %0: tensor<?xi1>
 }
 
+// CHECK-LABEL: func @pow
+func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NEXT:  xla_hlo.pow
+  %0 = "tf.Pow"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0: tensor<2xf32>
+}
+
+// CHECK-LABEL: func @pow_dynamic
+func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-NEXT:  xla_hlo.pow
+  %0 = "tf.Pow"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %0: tensor<?xf32>
+}
+
 // CHECK-LABEL: func @floordiv_broadcast_i32
 func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> tensor<2x3xi32> {
   // CHECK-DAG: [[ZEROS1:%.+]] = xla_hlo.constant dense<0>

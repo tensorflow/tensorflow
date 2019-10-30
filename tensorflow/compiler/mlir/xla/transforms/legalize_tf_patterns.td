@@ -83,6 +83,7 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_MaximumOp, HLO_MaxOp],
                          [TF_MinimumOp, HLO_MinOp],
                          [TF_MulOp, HLO_MulOp],
+                         [TF_PowOp, HLO_PowOp],
                          [TF_RealDivOp, HLO_DivOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;

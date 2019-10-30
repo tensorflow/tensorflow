@@ -239,6 +239,9 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
 def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
+def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PowOp;
+
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
 
