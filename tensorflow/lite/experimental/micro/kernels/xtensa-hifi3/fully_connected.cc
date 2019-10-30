@@ -56,6 +56,8 @@ inline void OptIntDotProdWithOffsets(
         ae_int32x2 x_offsets_sum = AE_ADD32(offsets_x, x_32x2);
         ae_int32x2 y_offsets_sum = AE_ADD32(offsets_y, y_32x2);
 
+        // TODO(kreeger): use AE_ADD32_HL_LH() instead of the two moves to keep
+        // acc as an ae_int32.
         ae_int32x2 x_y_sums = AE_MULP32X2(x_offsets_sum, y_offsets_sum);
         acc += AE_MOVAD32_H(x_y_sums) + AE_MOVAD32_L(x_y_sums);
       }
