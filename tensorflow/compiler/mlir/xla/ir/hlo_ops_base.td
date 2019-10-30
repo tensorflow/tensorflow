@@ -193,6 +193,16 @@ class BASE_HLO_SignOp {
   }];
 }
 
+class BASE_HLO_SinOp {
+  string summary = "Sin operator";
+
+  string description = [{
+    Returns `Sin(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 
 class BASE_HLO_SqrtOp {
   string summary = "Square-root operator";

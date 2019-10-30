@@ -161,6 +161,9 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
 
+def HLO_SinOp: HLO_UnaryElementwiseOp<"sin",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SinOp;
+
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SqrtOp;
 
