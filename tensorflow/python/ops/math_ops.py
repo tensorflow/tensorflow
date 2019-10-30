@@ -320,10 +320,12 @@ def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`.
   
   For example:
+  
   >>> x = tf.constant([16, 12, 11])
   >>> y = tf.constant([4, 6, 2])
   >>> tf.divide(x,y)
   <tf.Tensor: id=..., shape=(3,), dtype=float64, numpy=array([4. , 2. , 5.5])>
+  
   Args:
     x: A `Tensor`
     y: A `Tensor`
@@ -3302,6 +3304,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By default, this op performs an inclusive cumsum, which means that the first
   element of the input is identical to the first element of the output:
+  For example:
 
   # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
   >>> x = tf.constant([2, 4, 6, 8])
@@ -3321,7 +3324,6 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
  
-
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
 
