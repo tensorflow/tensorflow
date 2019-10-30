@@ -16,18 +16,6 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
-//===----------------------------------------------------------------------===//
-// Pad op patterns.
-//===----------------------------------------------------------------------===//
-
-def ZeroDenseElementsAttr : NativeCodeCall<
-  "DenseElementsAttr::get("
-    "RankedTensorType::get({}, getElementTypeOrSelf($0->getType())) , {"
-      "$_builder.getZeroAttr(getElementTypeOrSelf($0->getType()))})">;
-
-def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
-          (TF_PadV2Op $input, $paddings,
-             (TF_ConstOp (ZeroDenseElementsAttr $input)))>;
 
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
@@ -76,3 +64,33 @@ def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
              /*keep_dims=*/ConstBoolAttrFalse),
    (TF_SubOp (TF_SoftmaxOp $features), $labels)],
   [(NonScalarType $features), (NonScalarType $labels)]>;
+
+
+//===----------------------------------------------------------------------===//
+// Difference op patterns.
+//===----------------------------------------------------------------------===//
+
+def ComplexTensor   : TensorOf<[AnyComplex]>;
+def RealTensor   : TensorOf<[AnyInteger, AnyFloat]>;
+
+def : Pat<(TF_SquareOp $val), (TF_MulOp $val, $val)>;
+
+def : Pat<(TF_SquaredDifferenceOp RealTensor: $lhs, RealTensor:$rhs),
+          (TF_SquareOp (TF_SubOp $lhs, $rhs))>;
+
+def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
+          (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
+
+//===----------------------------------------------------------------------===//
+// Pad op patterns.
+//===----------------------------------------------------------------------===//
+
+def ZeroDenseElementsAttr : NativeCodeCall<
+  "DenseElementsAttr::get("
+    "RankedTensorType::get({}, getElementTypeOrSelf($0->getType())) , {"
+      "$_builder.getZeroAttr(getElementTypeOrSelf($0->getType()))})">;
+
+def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
+          (TF_PadV2Op $input, $paddings,
+             (TF_ConstOp (ZeroDenseElementsAttr $input)))>;
+
