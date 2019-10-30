@@ -237,6 +237,8 @@ tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda10.0/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc5-rocm/BUILD
