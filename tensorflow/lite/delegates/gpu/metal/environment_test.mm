@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 
-using ::tflite::gpu::metal::GetAppleSocVersion;
+using ::tflite::gpu::metal::GetGpuType;
 
 @interface EnvironmentTest : XCTestCase
 
@@ -39,15 +39,10 @@ using ::tflite::gpu::metal::GetAppleSocVersion;
 #endif
 }
 
-- (void)testRunTimeOSDetection {
-#if IOS_VERSION > 0
-  int gpuVersion = GetAppleSocVersion();
-  XCTAssertTrue(gpuVersion >= 7, @"gpu version: %d", gpuVersion);
-#endif
-
-#if TVOS_VERSION > 0
-  int gpuVersion = GetAppleSocVersion();
-  XCTAssertTrue(gpuVersion >= 8, @"gpu version: %d", gpuVersion);
+- (void)testGetGpuType {
+#if (IOS_VERSION > 0) || (TVOS_VERSION > 0)
+  auto gpuType = GetGpuType();
+  XCTAssertTrue(gpuType != GpuType::kUnknown);
 #endif
 }
 

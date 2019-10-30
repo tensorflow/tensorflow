@@ -18,6 +18,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 #import <UIKit/UIKit.h>
 
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,7 +28,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-int GetAppleSocVersion() {
+GpuType GetGpuType() {
   int max_feature_set = 0;
 #if defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0
   std::vector<std::pair<MTLFeatureSet, int>> features;
@@ -64,7 +65,22 @@ int GetAppleSocVersion() {
     }
   }
 #endif
-  return max_feature_set;
+  switch (max_feature_set) {
+    case 7:
+      return GpuType::kA7;
+    case 8:
+      return GpuType::kA8;
+    case 9:
+      return GpuType::kA9;
+    case 10:
+      return GpuType::kA10;
+    case 11:
+      return GpuType::kA11;
+    case 12:
+      return GpuType::kA12;
+    default:
+      return GpuType::kUnknown;
+  };
 }
 
 }  // namespace metal
