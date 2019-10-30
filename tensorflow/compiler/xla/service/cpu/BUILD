@@ -81,7 +81,6 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
-        ":disassembler",
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -155,11 +154,9 @@ cc_library(
         "@llvm//:object",
         "@llvm//:support",
         "@llvm//:target",
-        "@llvm//:x86_disassembler",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
     ] + select({
         "//tensorflow:linux_ppc64le": [
-            "@llvm//:powerpc_disassembler",  # fixdeps: keep
             "@llvm//:powerpc_code_gen",  # fixdeps: keep
         ],
         "//conditions:default": [
@@ -179,7 +176,6 @@ cc_library(
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
-        ":disassembler",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
         ":runtime_conv2d",
@@ -449,32 +445,11 @@ tf_cc_binary(
 )
 
 cc_library(
-    name = "disassembler",
-    srcs = ["disassembler.cc"],
-    hdrs = ["disassembler.h"],
-    deps = [
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm//:mc",
-        "@llvm//:mc_disassembler",
-        "@llvm//:object",
-        "@llvm//:support",
-        "@llvm//:target",
-        "@llvm//:x86_disassembler",  # fixdeps: keep
-    ],
-)
-
-cc_library(
     name = "compiler_functor",
     srcs = ["compiler_functor.cc"],
     hdrs = ["compiler_functor.h"],
     deps = [
         ":cpu_runtime",
-        ":disassembler",
         ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
-#include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
@@ -159,7 +158,6 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-  llvm::InitializeNativeTargetDisassembler();
 }
 
 namespace {
@@ -548,7 +546,7 @@ namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
-// Dumps disassembled machine code if dumping is enabled for the module.
+// Dumps machine code if dumping is enabled for the module.
 struct OrcJITPostCompilationHook {
   // Gets an std::function that implements this hook.
   static std::function<void(const llvm::object::ObjectFile& obj_file)> Create(
@@ -564,29 +562,19 @@ struct OrcJITPostCompilationHook {
   // Constructor can't be private because we want to call it from
   // std::make_shared, but users should call Create() instead.
   explicit OrcJITPostCompilationHook(const HloModule* module)
-      : module(module),
-        target_machine(SimpleOrcJIT::InferTargetMachineForJIT(
-            CompilerTargetOptions(module->config()),
-            CodeGenOptLevel(module->config()))),
-        disassembler(*target_machine) {}
+      : module(module) {}
 
  private:
   void operator()(const llvm::object::ObjectFile& obj_file) {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    StatusOr<DisassemblerResult> disasm_or =
-        disassembler.DisassembleObjectFile(obj_file);
-    string text = disasm_or.ok() ? std::move(disasm_or).ValueOrDie().text
-                                 : absl::StrCat("Error disassembling: ",
-                                                disasm_or.status().ToString());
-    DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+    DumpToFileInDir(*module, /*file_suffix=*/"o",
+                    absl::string_view(obj_file.getData().data(),
+                                      obj_file.getData().size()));
   }
 
   const HloModule* module;
-  // disassembler keeps references to data inside of target_machine.
-  std::unique_ptr<llvm::TargetMachine> target_machine;
-  Disassembler disassembler;
 };
 
 }  // namespace
@@ -921,13 +909,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      StatusOr<DisassemblerResult> disasm_or =
-          Disassembler(*target_machine).DisassembleObjectFile(obj_file);
-      string text = disasm_or.ok()
-                        ? std::move(disasm_or).ValueOrDie().text
-                        : absl::StrCat("Error disassembling: ",
-                                       disasm_or.status().ToString());
-      DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+      DumpToFileInDir(*module, /*file_suffix=*/"o",
+                      absl::string_view(obj_file.getData().data(),
+                                        obj_file.getData().size()));
     };
 
     CompilerFunctor compiler_functor(
