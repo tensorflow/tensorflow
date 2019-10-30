@@ -441,6 +441,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kClamp, ClampOp);
       NoAttributeCase(kComplex, ComplexOp);
+      NoAttributeCase(kCos, CosOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kFloor, FloorOp);
@@ -458,6 +459,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
+      NoAttributeCase(kSin, SinOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);

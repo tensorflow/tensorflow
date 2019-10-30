@@ -1145,6 +1145,28 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: @sin
+func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.sin"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Sin"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @sin_dynamic
+func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "xla_hlo.sin"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Sin"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @sin_unranked
+func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "xla_hlo.sin"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Sin"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+
 // CHECK-LABEL: func @rsqrt
 func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>

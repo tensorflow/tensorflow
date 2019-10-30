@@ -1,0 +1,12 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule foo
+
+// CHECK-LABEL: func @main(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
+ENTRY %foo (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT: %0 = "xla_hlo.cos"(%arg0) {name = "cosine.3"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT: return %0 : tensor<1x16x16x3xf32>
+  ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
