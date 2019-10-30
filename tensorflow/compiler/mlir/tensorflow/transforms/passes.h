@@ -86,6 +86,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 // `op`.
 void LiftResourceOps(Operation* op);
 
+// Creates a pass that forms replica `tf_executor.island` from a single
+// `tf_device.replicate` island.
+std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
