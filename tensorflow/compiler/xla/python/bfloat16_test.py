@@ -317,7 +317,7 @@ class Bfloat16NumPyTest(parameterized.TestCase):
   } for op in UNARY_UFUNCS))
   def testUnaryUfunc(self, op):
     rng = np.random.RandomState(seed=42)
-    x = rng.randn(3, 7).astype(bfloat16)
+    x = rng.randn(3, 7, 10).astype(bfloat16)
     numpy_assert_allclose(
         op(x).astype(np.float32), op(x.astype(np.float32)), rtol=1e-2)
 
@@ -327,8 +327,8 @@ class Bfloat16NumPyTest(parameterized.TestCase):
   } for op in BINARY_UFUNCS))
   def testBinaryUfunc(self, op):
     rng = np.random.RandomState(seed=42)
-    x = rng.randn(3, 7).astype(bfloat16)
-    y = rng.randn(4, 1, 7).astype(bfloat16)
+    x = rng.randn(3, 7, 10).astype(bfloat16)
+    y = rng.randn(4, 1, 7, 10).astype(bfloat16)
     numpy_assert_allclose(
         op(x, y).astype(np.float32),
         op(x.astype(np.float32), y.astype(np.float32)),
@@ -351,7 +351,7 @@ class Bfloat16NumPyTest(parameterized.TestCase):
   } for op in [np.isfinite, np.isinf, np.isnan, np.signbit, np.logical_not]))
   def testPredicateUfunc(self, op):
     rng = np.random.RandomState(seed=42)
-    shape = (3, 7)
+    shape = (3, 7, 10)
     posinf_flips = rng.rand(*shape) < 0.1
     neginf_flips = rng.rand(*shape) < 0.1
     nan_flips = rng.rand(*shape) < 0.1
