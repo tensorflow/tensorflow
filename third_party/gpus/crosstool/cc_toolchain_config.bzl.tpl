@@ -114,7 +114,7 @@ def _impl(ctx):
 
     cc_target_os = None
 
-    builtin_sysroot = None
+    builtin_sysroot = ctx.attr.builtin_sysroot
 
     all_link_actions = [
         ACTION_NAMES.cpp_link_executable,
@@ -1065,6 +1065,32 @@ def _impl(ctx):
         ],
     )
 
+    cuda_path_feature = feature(
+        name = "cuda_path",
+        enabled = True,
+        flag_sets = [
+            flag_set(
+                actions = [
+                    ACTION_NAMES.assemble,
+                    ACTION_NAMES.preprocess_assemble,
+                    ACTION_NAMES.c_compile,
+                    ACTION_NAMES.cpp_compile,
+                    ACTION_NAMES.cpp_header_parsing,
+                    ACTION_NAMES.cpp_module_compile,
+                    ACTION_NAMES.cpp_module_codegen,
+                    ACTION_NAMES.cpp_link_executable,
+                    ACTION_NAMES.cpp_link_dynamic_library,
+                    ACTION_NAMES.cpp_link_nodeps_dynamic_library,
+                ],
+                flag_groups = [
+                    flag_group(
+                        flags = ["--cuda-path=" + ctx.attr.cuda_path],
+                    ),
+                ],
+            ),
+        ],
+    )
+
     def_file_feature = feature(
         name = "def_file",
         flag_sets = [
@@ -1313,6 +1339,8 @@ def _impl(ctx):
             supports_dynamic_linker_feature,
             supports_pic_feature,
         ]
+        if ctx.attr.cuda_path:
+            features += [cuda_path_feature]
     elif (ctx.attr.cpu == "darwin"):
         features = [
             cpp11_feature,
@@ -1472,6 +1500,8 @@ cc_toolchain_config = rule(
         "host_compiler_warnings": attr.string_list(),
         "host_unfiltered_compile_flags": attr.string_list(),
         "linker_bin_path": attr.string(),
+        "builtin_sysroot": attr.string(),
+        "cuda_path": attr.string(),
         "msvc_cl_path": attr.string(default = "msvc_not_used"),
         "msvc_env_include": attr.string(default = "msvc_not_used"),
         "msvc_env_lib": attr.string(default = "msvc_not_used"),
