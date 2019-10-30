@@ -70,22 +70,18 @@ Status Main(const MainFlags& flags) {
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
-  LLVMInitializeAArch64Disassembler();
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmPrinter();
-  LLVMInitializeARMDisassembler();
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializePowerPCDisassembler();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
-  LLVMInitializeX86Disassembler();
 
   // Process config.
   tf2xla::Config config;
