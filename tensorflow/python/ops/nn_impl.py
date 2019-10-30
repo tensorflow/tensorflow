@@ -634,7 +634,7 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   
   >>> x2 = tf.constant([[2,4,6,8],[1,3,5,7]], dtype='float32')
   >>> tf.nn.l2_normalize(x2, axis=1)
-  <tf.Tensor: id=23, shape=(2, 4), dtype=float32, numpy=
+  <tf.Tensor: id=..., shape=(2, 4), dtype=float32, numpy=
 array([[0.18257418, 0.36514837, 0.5477226 , 0.73029673],
        [0.10910894, 0.32732683, 0.5455447 , 0.7637626 ]], dtype=float32)>
   ```
