@@ -191,11 +191,9 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
 }
 
 TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
-                                            float input_scale,
-                                            float weight_scale,
+                                            float scaling_factor,
                                             ErrorReporter* error_reporter) {
-  // Compute scale and inverse of scale.
-  const float scaling_factor = input_scale * weight_scale;
+  // Compute the inverse of scale.
   const float scaling_factor_inv =
       (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
 
@@ -393,11 +391,9 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
 }
 
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
-                                           float input_scale,
-                                           float weight_scale,
+                                           float scaling_factor,
                                            ErrorReporter* error_reporter) {
-  // Compute scale and inverse of scale.
-  const float scaling_factor = input_scale * weight_scale;
+  // Compute the inverse of scale.
   const float scaling_factor_inv =
       (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
 
