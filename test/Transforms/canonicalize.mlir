@@ -323,6 +323,21 @@ func @dead_dealloc_fold_multi_use(%cond : i1) {
   return
 }
 
+// CHECK-LABEL: func @dead_block_elim
+func @dead_block_elim() {
+  // CHECK-NOT ^bb
+  func @nested() {
+    return
+
+  ^bb1:
+    return
+  }
+  return
+
+^bb1:
+  return
+}
+
 // CHECK-LABEL: func @dyn_shape_fold(%arg0: index, %arg1: index)
 func @dyn_shape_fold(%L : index, %M : index) -> (memref<? x ? x i32>, memref<? x ? x f32>) {
   // CHECK: %c0 = constant 0 : index
