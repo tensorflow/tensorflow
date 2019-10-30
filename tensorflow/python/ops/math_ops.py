@@ -3313,13 +3313,13 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   >>> tf.cumsum(y, axis=0)
   <tf.Tensor: id=..., shape=(2, 4), dtype=int32, numpy=
-array([[ 2,  4,  6,  8],
-       [ 3,  7, 11, 15]], dtype=int32)>
+  array([[ 2,  4,  6,  8],
+         [ 3,  7, 11, 15]], dtype=int32)>
 
   >>> tf.cumsum(y, axis=1)
   <tf.Tensor: id=..., shape=(2, 4), dtype=int32, numpy=
-array([[ 2,  6, 12, 20],
-       [ 1,  4,  9, 16]], dtype=int32)>
+  array([[ 2,  6, 12, 20],
+         [ 1,  4,  9, 16]], dtype=int32)>
  
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
