@@ -306,6 +306,7 @@ cc_library(
     hdrs = ["hlo_utils.h"],
     includes = ["include"],
     deps = [
+        ":convert_op_folder",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "@local_config_mlir//:IR",
