@@ -33,21 +33,24 @@ inline void print_output_data(TfLiteTensor* output) {
       (output->bytes < NUM_BYTES_TO_PRINT) ? output->bytes : NUM_BYTES_TO_PRINT;
 
   int dims_size = output->dims->size;
-  printf("dims: {%d,", dims_size);
-  for (int i = 0; i < output->dims->size - 1; ++i) {
+  printf("output dims: {");
+  for (int i = 0; i < dims_size - 1; ++i) {
     printf("%d,", output->dims->data[i]);
   }
   printf("%d}\n", output->dims->data[dims_size - 1]);
 
   printf("data_address: %p\n", output->data.raw);
-  printf("data:\n{");
-  for (int i = 0; i < num_bytes_to_print - 1; ++i) {
-    if (i % 16 == 0) {
-      printf("\n");
+
+  if(num_bytes_to_print != 0){
+    printf("data:\n{");
+    for (int i = 0; i < num_bytes_to_print - 1; ++i) {
+      if (i % 16 == 0) {
+        printf("\n");
+      }
+      printf("0x%02x,", output->data.uint8[i]);
     }
-    printf("0x%02x,", output->data.uint8[i]);
+    printf("0x%02x\n}\n", output->data.uint8[num_bytes_to_print - 1]);
   }
-  printf("0x%02x\n}\n", output->data.uint8[num_bytes_to_print - 1]);
 }
 #endif
 
