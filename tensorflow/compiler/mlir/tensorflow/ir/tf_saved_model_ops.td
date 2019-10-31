@@ -81,6 +81,8 @@ def TfSavedModel_Dialect : Dialect {
     `tf_saved_model.bound_input = @some_symbol_name` references a
     `tf_saved_model.global_tensor` that is bound to that function argument
     and implicitly passed in when the function is invoked from a user-level API.
+    TODO(silvasean): Consider replacing tf_saved_model.bound_input arg attrs
+    with "get_global @some_global_tensor" in the function body.
   }];
 
   let cppNamespace = "tf_saved_model";

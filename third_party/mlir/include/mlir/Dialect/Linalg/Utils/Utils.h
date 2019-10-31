@@ -88,7 +88,7 @@ struct FusionInfo {
 /// method is called.
 Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
                                     unsigned consumerIdx,
-                                    LinalgDependenceGraph &graph,
+                                    const LinalgDependenceGraph &graph,
                                     OperationFolder *folder = nullptr);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying

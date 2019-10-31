@@ -442,9 +442,14 @@ def _GatherDropNegatives(params,
     is_positive = math_ops.greater_equal(ids, 0)
     # tf.where(condition, x, y) requires condition to have the same shape as x
     # and y.
-    # todo(philjd): remove this if tf.where supports broadcasting (#9284)
-    for _ in range(gathered.shape.ndims - is_positive.shape.ndims):
-      is_positive = array_ops.expand_dims(is_positive, -1)
+    is_positive_shape = array_ops.shape(is_positive)
+    broadcastable_shape = array_ops.concat(
+        [is_positive_shape,
+         array_ops.ones([array_ops.rank(gathered)
+                         - array_ops.rank(is_positive)],
+                        dtype=is_positive_shape.dtype)],
+        axis=0)
+    is_positive = array_ops.reshape(is_positive, broadcastable_shape)
     is_positive = (
         is_positive & array_ops.ones_like(gathered, dtype=dtypes.bool))
   # replace gathered params of negative indices with 0

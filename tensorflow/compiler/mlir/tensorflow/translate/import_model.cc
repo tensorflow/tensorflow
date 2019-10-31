@@ -2255,8 +2255,32 @@ Status CreateSavedModelIR(
         continue;
       }
       const SavedFunction& function = object.function();
-      auto func = symbol_table.lookup<mlir::FuncOp>(
+      auto orig_func = symbol_table.lookup<mlir::FuncOp>(
           tf_name_to_mlir_name.find(function.concrete_functions(0))->second);
+      mlir::FuncOp func = orig_func;
+      // If there are potentially references to this func from within the
+      // module, create a wrapper around it and decorate the wrapper with the
+      // tf_saved_model attributes instead.
+      if (!mlir::SymbolTable::symbolKnownUseEmpty(orig_func.getName(),
+                                                  module)) {
+        func = orig_func.cloneWithoutRegions();
+        module.insert(module.getBody()->begin(), func);
+        func.addEntryBlock();
+        func.setName("__sm_exported_" + orig_func.getName().str());
+        llvm::SmallVector<mlir::Value*, 4> args_as_values;
+        for (auto block_argument : func.getArguments()) {
+          args_as_values.push_back(block_argument);
+        }
+        mlir::OpBuilder body_builder(&func.getBody());
+        auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
+            func.getLoc(), orig_func.getType().getResults(), args_as_values,
+            builder.getSymbolRefAttr(orig_func.getName()),
+            /*config=*/builder.getStringAttr(""),
+            /*config_proto=*/builder.getStringAttr(""),
+            /*executor_type=*/builder.getStringAttr(""));
+        body_builder.create<mlir::ReturnOp>(
+            func.getLoc(), llvm::to_vector<4>(call.getResults()));
+      }
       func.setAttr(
           "tf_saved_model.exported_names",
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));

@@ -2675,6 +2675,13 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kConditional:
     case HloOpcode::kCall:
       return false;
+    // Fusions are always fusible.
+    case HloOpcode::kFusion:
+    // Side effecting reduce and reduce window would be invalid HLO.
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
     // Side effecting instrutions cannot be fused.
     default:
       return !HasSideEffect();

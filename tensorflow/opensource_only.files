@@ -341,6 +341,10 @@ tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh
 tensorflow/tools/ci_build/release/windows/cpu_libtensorflow/nightly.bat
 tensorflow/tools/ci_build/release/windows/cpu_libtensorflow/release.bat
 tensorflow/tools/ci_build/release/windows/cpu_py35_full/nightly.bat
+tensorflow/tools/ci_build/release/windows/cpu_py35_full/nightly_release.bat
+tensorflow/tools/ci_build/release/windows/cpu_py35_full/release.bat
+tensorflow/tools/ci_build/release/windows/cpu_py35_full/release_pip_rename.sh
+tensorflow/tools/ci_build/release/windows/cpu_py35_full/release_v1.bat
 tensorflow/tools/ci_build/release/windows/cpu_py36_full/nightly.bat
 tensorflow/tools/ci_build/release/windows/cpu_py36_full/nightly_release.bat
 tensorflow/tools/ci_build/release/windows/cpu_py36_full/release.bat
