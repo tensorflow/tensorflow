@@ -113,28 +113,32 @@ void LinalgDependenceGraph::addDependenceElem(DependenceType dt,
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesFrom(
-    LinalgOp src, LinalgDependenceGraph::DependenceType dt) {
+    LinalgOp src, LinalgDependenceGraph::DependenceType dt) const {
   return getDependencesFrom(src.getOperation(), dt);
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesFrom(
-    Operation *src, LinalgDependenceGraph::DependenceType dt) {
-  auto &vec = dependencesFromGraphs[dt][src];
-  return llvm::make_range(vec.begin(), vec.end());
+    Operation *src, LinalgDependenceGraph::DependenceType dt) const {
+  auto iter = dependencesFromGraphs[dt].find(src);
+  if (iter == dependencesFromGraphs[dt].end())
+    return llvm::make_range(nullptr, nullptr);
+  return llvm::make_range(iter->second.begin(), iter->second.end());
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesInto(
-    LinalgOp dst, LinalgDependenceGraph::DependenceType dt) {
+    LinalgOp dst, LinalgDependenceGraph::DependenceType dt) const {
   return getDependencesInto(dst.getOperation(), dt);
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesInto(
-    Operation *dst, LinalgDependenceGraph::DependenceType dt) {
-  auto &vec = dependencesIntoGraphs[dt][dst];
-  return llvm::make_range(vec.begin(), vec.end());
+    Operation *dst, LinalgDependenceGraph::DependenceType dt) const {
+  auto iter = dependencesIntoGraphs[dt].find(dst);
+  if (iter == dependencesIntoGraphs[dt].end())
+    return llvm::make_range(nullptr, nullptr);
+  return llvm::make_range(iter->second.begin(), iter->second.end());
 }
 
 void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
@@ -178,23 +182,21 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
 
 SmallVector<Operation *, 8>
 LinalgDependenceGraph::findCoveringDependences(LinalgOp srcLinalgOp,
-                                               LinalgOp dstLinalgOp) {
+                                               LinalgOp dstLinalgOp) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, nullptr,
       {DependenceType::WAW, DependenceType::WAR, DependenceType::RAW});
 }
 
-SmallVector<Operation *, 8>
-LinalgDependenceGraph::findCoveringWrites(LinalgOp srcLinalgOp,
-                                          LinalgOp dstLinalgOp, Value *view) {
+SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringWrites(
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::WAW, DependenceType::WAR});
 }
 
-SmallVector<Operation *, 8>
-LinalgDependenceGraph::findCoveringReads(LinalgOp srcLinalgOp,
-                                         LinalgOp dstLinalgOp, Value *view) {
+SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringReads(
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::RAR, DependenceType::RAW});
@@ -203,11 +205,11 @@ LinalgDependenceGraph::findCoveringReads(LinalgOp srcLinalgOp,
 SmallVector<Operation *, 8>
 LinalgDependenceGraph::findOperationsWithCoveringDependences(
     LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view,
-    ArrayRef<DependenceType> types) {
+    ArrayRef<DependenceType> types) const {
   auto *src = srcLinalgOp.getOperation();
   auto *dst = dstLinalgOp.getOperation();
-  auto srcPos = linalgOpPositions[src];
-  auto dstPos = linalgOpPositions[dst];
+  auto srcPos = linalgOpPositions.lookup(src);
+  auto dstPos = linalgOpPositions.lookup(dst);
   assert(srcPos < dstPos && "expected dst after src in IR traversal order");
 
   SmallVector<Operation *, 8> res;
@@ -216,7 +218,7 @@ LinalgDependenceGraph::findOperationsWithCoveringDependences(
   // TODO(ntv) we are not considering paths yet, just interleaved positions.
   for (auto dt : types) {
     for (auto dependence : getDependencesFrom(src, dt)) {
-      auto interimPos = linalgOpPositions[dependence.dependentOpView.op];
+      auto interimPos = linalgOpPositions.lookup(dependence.dependentOpView.op);
       // Skip if not interleaved.
       if (interimPos >= dstPos || interimPos <= srcPos)
         continue;
