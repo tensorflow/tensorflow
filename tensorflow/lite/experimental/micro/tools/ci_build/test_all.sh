@@ -14,7 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Tests the microcontroller code using native x86 execution.
+# Creates the project file distributions for the TensorFlow Lite Micro test and
+# example targets aimed at embedded platforms.
 
 set -e
 
@@ -23,10 +24,11 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
 pwd
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
-  clean clean_downloads
+# Add all the test scripts for the various supported platforms here. This
+# emables running all the tests together has part of the continuous integration
+# pipeline and reduces duplication associated with setting up the docker
+# environment.
+tensorflow/lite/experimental/micro/tools/ci_build/test_arduino.sh
+tensorflow/lite/experimental/micro/tools/ci_build/test_sparkfun.sh
+tensorflow/lite/experimental/micro/tools/ci_build/test_x86.sh
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
-
-# Needed to solve CI build bug triggered by files added to source tree.
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

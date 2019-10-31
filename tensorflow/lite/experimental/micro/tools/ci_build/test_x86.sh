@@ -23,6 +23,9 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
 pwd
 
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
+  clean clean_downloads
+
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile test
 
 # Needed to solve CI build bug triggered by files added to source tree.
