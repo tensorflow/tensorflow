@@ -457,7 +457,9 @@ bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
-bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
+bool IsSelect(const NodeDef& node) {
+  return node.op() == "Select" || node.op() == "SelectV2";
+}
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
