@@ -24,7 +24,7 @@ int led = LED_BUILTIN;
 // Track whether the function has run at least once
 bool initialized = false;
 
-// Animates a dot across the screen to represent the current x and y values
+// Modifies the brightness of the LED based on the computed y_value
 void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
                   float y_value) {
   // Do this only once
