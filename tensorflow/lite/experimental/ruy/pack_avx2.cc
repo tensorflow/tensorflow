@@ -711,7 +711,7 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
       r2 = _mm256_permute2f128_ps(t2, t6, 0x20);
       r6 = _mm256_permute2f128_ps(t3, t7, 0x20);
       r3 = _mm256_permute2f128_ps(t2, t6, 0x31);
-      r7 = _mm256_permute2f128_ps(t3, t7, 0x31);
+      // r7 no longer needed.
 
       _mm256_storeu_ps(trailing_buf + 0 * 8, r0);
       _mm256_storeu_ps(trailing_buf + 2 * 8, r4);
@@ -720,7 +720,7 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
       _mm256_storeu_ps(trailing_buf + 1 * 8, r2);
       _mm256_storeu_ps(trailing_buf + 3 * 8, r6);
       _mm256_storeu_ps(trailing_buf + 5 * 8, r3);
-      _mm256_storeu_ps(trailing_buf + 7 * 8, r7);
+      // No store to (trailing_buf + 7 * 8), space not allocated.
     }
 
     packed_ptr += kPackRows * kPackCols;
