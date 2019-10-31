@@ -21,12 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

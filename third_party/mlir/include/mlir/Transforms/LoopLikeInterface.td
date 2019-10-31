@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_LOOPLIKEINTERFACE
-#else
+#ifndef MLIR_LOOPLIKEINTERFACE
 #define MLIR_LOOPLIKEINTERFACE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

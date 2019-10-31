@@ -20,12 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_CAST_OPS
-#else
+#ifndef SPIRV_CAST_OPS
 #define SPIRV_CAST_OPS
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 

@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#ifdef TEST_OPS
-#else
+#ifndef TEST_OPS
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
