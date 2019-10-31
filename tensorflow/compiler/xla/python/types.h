@@ -35,6 +35,9 @@ limitations under the License.
 
 namespace xla {
 
+// Initializes the NumPy API for the use of the types module.
+bool InitializeNumpyAPIForTypes();
+
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.
 template <typename T>
@@ -79,6 +82,16 @@ pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
 
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
+
+// Private helper function used in the implementation of the type caster for
+// xla::BorrowingLiteral. Converts a Python array-like object into a buffer
+// pointer and shape.
+struct CastToArrayResult {
+  pybind11::array array;  // Holds a reference to the array to keep it alive.
+  const char* buf_ptr;
+  xla::Shape shape;
+};
+absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 
 }  // namespace xla
 
@@ -191,7 +204,7 @@ struct type_caster<xla::BorrowingLiteral> {
       shapes.reserve(tuple.size());
       buffers.reserve(tuple.size());
       for (pybind11::handle entry : tuple) {
-        auto c = CastToArray(entry);
+        auto c = xla::CastToArray(entry);
         if (!c) {
           return false;
         }
@@ -202,7 +215,7 @@ struct type_caster<xla::BorrowingLiteral> {
       value = xla::BorrowingLiteral(buffers,
                                     xla::ShapeUtil::MakeTupleShape(shapes));
     } else {
-      auto c = CastToArray(input);
+      auto c = xla::CastToArray(input);
       if (!c) {
         return false;
       }
@@ -210,57 +223,6 @@ struct type_caster<xla::BorrowingLiteral> {
       value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
     }
     return true;
-  }
-
- private:
-  struct CastToArrayResult {
-    pybind11::array array;
-    const char* buf_ptr;
-    xla::Shape shape;
-  };
-
-  absl::optional<CastToArrayResult> CastToArray(pybind11::handle h) {
-    pybind11::array array = pybind11::array::ensure(
-        h, pybind11::array::c_style |
-               pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
-    if (!array) {
-      return absl::nullopt;
-    }
-
-    auto type_or_status = xla::DtypeToPrimitiveType(array.dtype());
-    if (!type_or_status.ok()) {
-      throw std::runtime_error(type_or_status.status().ToString());
-    }
-    xla::PrimitiveType type = type_or_status.ValueOrDie();
-
-    if (type == xla::BF16) {
-      // The NumPy array protocol has no way to describe our custom bfloat16
-      // type, so we cast to an array of uint16 instead. We are going to pass
-      // a raw buffer pointer to xla::BorrowingLiteral anyway, so it doesn't
-      // really matter what type we use here, so long as it has the correct size
-      // and alignment.
-      array = reinterpret_steal<pybind11::array>(
-          PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
-                       reinterpret_cast<PyArray_Descr*>(
-                           dtype::of<xla::uint16>().release().ptr()),
-                       static_cast<PyTypeObject*>(nullptr)));
-    }
-
-    pybind11::buffer_info buffer_info = array.request();
-
-    absl::InlinedVector<xla::int64, 4> dims(array.ndim());
-    for (int i = 0; i < array.ndim(); ++i) {
-      dims[i] = array.shape(i);
-    }
-    xla::Shape shape = xla::ShapeUtil::MakeShape(type, dims);
-    if (buffer_info.size * buffer_info.itemsize !=
-        xla::ShapeUtil::ByteSizeOf(shape)) {
-      throw std::runtime_error(absl::StrCat(
-          "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
-          " vs. ", xla::ShapeUtil::ByteSizeOf(shape)));
-    }
-    return CastToArrayResult{array, static_cast<const char*>(buffer_info.ptr),
-                             shape};
   }
 };
 

@@ -133,11 +133,9 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  bool init_numpy_array = []() {
-    import_array1(false);
-    return true;
-  }();
-  if (!init_numpy_array) return;
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
 
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
