@@ -542,9 +542,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kGather: {
       TF_RET_CHECK(proto.has_gather_dimension_numbers())
           << "Gather instruction should have GatherDimensionNumbers set.";
-      std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
-          absl::make_unique<GatherDimensionNumbers>(
-              proto.gather_dimension_numbers());
+      auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
+          proto.gather_dimension_numbers());
       std::vector<int64> gather_slice_sizes;
       for (int64 bound : proto.gather_slice_sizes()) {
         gather_slice_sizes.push_back(bound);
@@ -3063,9 +3062,9 @@ Status HloInstruction::AcceptWithOperandOrder(
 
 const Shape& HloInstruction::shape() const { return shape_; }
 
-std::vector<int64> HloInstruction::OperandIndices(
+absl::InlinedVector<int64, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
-  std::vector<int64> result;
+  absl::InlinedVector<int64, 4> result;
   for (int64 i = 0; i < operand_count(); ++i) {
     if (this->operand(i) == operand) {
       result.push_back(i);
