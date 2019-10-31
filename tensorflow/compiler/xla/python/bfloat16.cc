@@ -20,6 +20,8 @@ limitations under the License.
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
 
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
 #include "absl/strings/str_cat.h"
@@ -171,14 +173,15 @@ bool CastToBfloat16(PyObject* arg, bfloat16* output) {
   if (PyArray_IsZeroDim(arg)) {
     Safe_PyObjectPtr ref;
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(arg);
-    if (arr->descr->type_num != npy_bfloat16) {
+    if (PyArray_TYPE(arr) != npy_bfloat16) {
       ref = make_safe(PyArray_Cast(arr, npy_bfloat16));
       if (PyErr_Occurred()) {
         return false;
       }
       arg = ref.get();
+      arr = reinterpret_cast<PyArrayObject*>(arg);
     }
-    *output = *reinterpret_cast<bfloat16*>(PyArray_DATA(arg));
+    *output = *reinterpret_cast<bfloat16*>(PyArray_DATA(arr));
     return true;
   }
   return false;
@@ -326,7 +329,7 @@ PyObject* PyBfloat16_New(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     return PyBfloat16_FromBfloat16(value).release();
   } else if (PyArray_Check(arg)) {
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(arg);
-    if (arr->descr->type_num != npy_bfloat16) {
+    if (PyArray_TYPE(arr) != npy_bfloat16) {
       return PyArray_Cast(arr, npy_bfloat16);
     } else {
       Py_INCREF(arg);
@@ -402,7 +405,7 @@ PyTypeObject PyBfloat16_Type = {
     sizeof(PyBfloat16),    // tp_basicsize
     0,                     // tp_itemsize
     nullptr,               // tp_dealloc
-    nullptr,               // tp_print
+    0,                     // tp_print  NOLINT
     nullptr,               // tp_getattr
     nullptr,               // tp_setattr
     nullptr,               // tp_compare / tp_reserved
