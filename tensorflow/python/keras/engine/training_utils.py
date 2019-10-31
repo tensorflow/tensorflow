@@ -262,7 +262,12 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
-  if (x.shape is not None and len(x.shape) == 1 and
+  if tensor_util.is_tensor(x):
+    x_shape_ndims = x.shape.rank
+  else:
+    x_shape_ndims = len(x.shape)
+
+  if (x_shape_ndims == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
       x = array_ops.expand_dims(x, axis=1)
