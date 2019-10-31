@@ -19,17 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_CONVERSION_GPUTONVVM_TD
-#else
+#ifndef MLIR_CONVERSION_GPUTONVVM_TD
 #define MLIR_CONVERSION_GPUTONVVM_TD
 
-#ifdef GPU_OPS
-#else
+#ifndef GPU_OPS
 include "mlir/Dialect/GPU/GPUOps.td"
 #endif // GPU_OPS
 
-#ifdef NVVMIR_OPS
-#else
+#ifndef NVVMIR_OPS
 include "mlir/Dialect/LLVMIR/NVVMOps.td"
 #endif // NVVMIR_OPS
 

@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SHAPE_INFERENCE_INTERFACE
-#else
+#ifndef SHAPE_INFERENCE_INTERFACE
 #define SHAPE_INFERENCE_INTERFACE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

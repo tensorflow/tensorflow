@@ -19,17 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef TOY_OPS
-#else
+#ifndef TOY_OPS
 #define TOY_OPS
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
 #endif // MLIR_CALLINTERFACES
 
-#ifdef SHAPE_INFERENCE_INTERFACE
-#else
+#ifndef SHAPE_INFERENCE_INTERFACE
 include "toy/ShapeInferenceInterface.td"
 #endif // SHAPE_INFERENCE_INTERFACE
 

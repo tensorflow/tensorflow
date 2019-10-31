@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LINALG_TRANSFORMS
-#else
+#ifndef LINALG_TRANSFORMS
 #define LINALG_TRANSFORMS
 
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"

@@ -19,17 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LINALG_OPS
-#else
+#ifndef LINALG_OPS
 #define LINALG_OPS
 
-#ifdef AFFINE_OPS_BASE
-#else
+#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 #endif // AFFINE_OPS_BASE
 
-#ifdef LINALG_BASE
-#else
+#ifndef LINALG_BASE
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 #endif // LINALG_BASE
 
