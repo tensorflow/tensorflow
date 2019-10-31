@@ -174,3 +174,21 @@ module attributes {tf_saved_model.semantics} {
   }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  func @f() attributes { tf_saved_model.exported_names = ["f"] } {
+    // expected-error@+1 {{exported function cannot be internally referenced}}
+    "some_dialect.some_call"() { callee = @g } : () -> ()
+    return
+  }
+
+  // expected-note@+1 {{references this exported function}}
+  func @g() attributes { tf_saved_model.exported_names = ["g"] } {
+    return
+  }
+
+}
+
