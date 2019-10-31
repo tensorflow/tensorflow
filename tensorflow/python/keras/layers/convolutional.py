@@ -190,12 +190,6 @@ class Conv(Layer):
     # If they are different, recreate the _convolution_op to avoid the stateful
     # behavior.
     call_input_shape = inputs.get_shape()
-    call_input_channel = self._get_input_channel(call_input_shape)
-    if call_input_channel != self._build_input_channel:
-      raise ValueError(
-          'Expected input data with {} channels (in format {}), but got inputs '
-          'with shape: {}'.format(self._build_input_channel, self.data_format,
-                                  call_input_shape))
     recreate_conv_op = (
         call_input_shape[1:] != self._build_conv_op_input_shape[1:])
 

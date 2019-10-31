@@ -21,6 +21,13 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
+// This pass is used in preparation for Graph export.
+// The GraphDef exporter expects each op to be in its own island.
+// This pass puts the IR in that form.
+//
+// We do this as an IR->IR transform to keep the Graph exporter as simple as
+// possible.
+
 namespace mlir {
 
 namespace {

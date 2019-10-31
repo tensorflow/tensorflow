@@ -1303,6 +1303,53 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(grads[0])
 
 
+class FunctionTest(test.TestCase):
+
+  def testBackwardFuctionDevicePlacement(self):
+    if context.num_gpus() < 1:
+      self.skipTest("At least one GPU is required.")
+
+    devices = [device_util.resolve("/device:GPU:0"),
+               device_util.resolve("/device:CPU:0")]
+    ms = mirrored_strategy.MirroredStrategy(devices)
+
+    with ms.scope():
+      w = variable_scope.variable([1.5], name="w")
+      b = variable_scope.variable([0.5], name="b")
+
+    @def_function.function
+    def forward(x, w, b):
+      return x * w + b
+    x = constant_op.constant([1.0], name="x_useless")
+    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
+
+    with ms.scope():
+      def replica_fn():
+        with backprop.GradientTape() as t:
+          x = constant_op.constant([1.0], name="x")
+          loss = concrete_forward(x, w.get(), b.get()) - [1.0]
+          return t.gradient(loss, [w, b])
+
+      def step_fn():
+        return ms.experimental_run_v2(replica_fn)
+
+      context.enable_run_metadata()
+      g1, g2 = step_fn()
+      run_metadata = context.export_run_metadata()
+      context.disable_run_metadata()
+      self.assertEqual(self.evaluate(g1.primary), 1.0)
+      self.assertEqual(self.evaluate(g2.primary), 1.0)
+
+      # Verify that this node runs on both devices.
+      node_name = "gradients_mul_grad_mul_1_x"
+      devices_for_this_node = set()
+      for partition_graph in run_metadata.partition_graphs:
+        for node in partition_graph.node:
+          if node.name == node_name:
+            devices_for_this_node.add(node.device)
+      self.assertSetEqual(devices_for_this_node, set(devices))
+
+
 def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):

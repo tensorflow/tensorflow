@@ -695,6 +695,7 @@ cc_library(
         ":gpu_operation",
         ":util",
         ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",

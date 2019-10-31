@@ -1404,6 +1404,7 @@ class TensorBoard(Callback):
   TensorBoard is a visualization tool provided with TensorFlow.
 
   This callback logs events for TensorBoard, including:
+
   * Metrics summary plots
   * Training graph visualization
   * Activation histograms

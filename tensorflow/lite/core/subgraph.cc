@@ -102,7 +102,7 @@ TfLiteQuantizationParams GetLegacyQuantization(
   }
 
   auto* affine_quantization =
-      reinterpret_cast<TfLiteAffineQuantization*>(quantization.params);
+      static_cast<TfLiteAffineQuantization*>(quantization.params);
   if (!affine_quantization || !affine_quantization->scale ||
       !affine_quantization->zero_point ||
       affine_quantization->scale->size != 1 ||
@@ -270,7 +270,7 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 
   // Step 2: Allocate the memory.
   // Use `char*` for conveniently step through the allocated space by bytes.
-  char* allocation = reinterpret_cast<char*>(malloc(allocation_size));
+  char* allocation = static_cast<char*>(malloc(allocation_size));
 
   // Step 3: Fill all data structures structures.
   TfLiteDelegateParams* params =
@@ -571,9 +571,8 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   if (init_data) {
     node.user_data = OpInit(*registration, init_data, init_data_size);
   } else {
-    node.user_data =
-        OpInit(*registration,
-               reinterpret_cast<const char*>(builtin_data_deleter.get()), 0);
+    node.user_data = OpInit(
+        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
   }
 
   node.builtin_data = builtin_data_deleter.release();

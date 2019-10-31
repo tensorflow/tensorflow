@@ -2953,6 +2953,7 @@ cc_library(
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
+        ":hlo_cost_analysis",
     ],
 )
 
@@ -4091,6 +4092,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

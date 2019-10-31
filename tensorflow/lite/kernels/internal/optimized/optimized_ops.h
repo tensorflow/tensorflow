@@ -2108,6 +2108,20 @@ inline void BroadcastAddFivefold(const ArithmeticParams& params,
   }
 }
 
+template <typename T>
+inline void BroadcastAddDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return BroadcastAdd4DSlow(params, input1_shape, input1_data, input2_shape,
+                              input2_data, output_shape, output_data);
+  }
+
+  BroadcastAddFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
+}
+
 inline void MulElementwise(int size, const ArithmeticParams& params,
                            const float* input1_data, const float* input2_data,
                            float* output_data) {
@@ -2599,6 +2613,20 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
       input2_data_reset = input2_data_ptr;
     }
   }
+}
+
+template <typename T>
+inline void BroadcastMulDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return BroadcastMul4DSlow(params, input1_shape, input1_data, input2_shape,
+                              input2_data, output_shape, output_data);
+  }
+
+  BroadcastMulFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
 }
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary

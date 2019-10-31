@@ -145,12 +145,14 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
     }
     if (activations_type == tflite::TensorType_INT16) {
       return utils::SymmetricPerLayerBiasQuantize<std::int64_t>(
-          model, bias_tensor, input_tensor->quantization->scale[0],
-          weight_scales[0], error_reporter);
+          model, bias_tensor, 
+          input_tensor->quantization->scale[0] * weight_scales[0],
+          error_reporter);
     } else {
       return utils::SymmetricPerLayerBiasQuantize<std::int32_t>(
-              model, bias_tensor, input_tensor->quantization->scale[0],
-              weight_scales[0], error_reporter);
+              model, bias_tensor, 
+              input_tensor->quantization->scale[0] * weight_scales[0],
+              error_reporter);
     }
   }
   return kTfLiteError;
@@ -593,9 +595,7 @@ TfLiteStatus QuantizeOpOutput(
     const int input_tensor_idx = op->inputs[property.inputs[0].first];
     TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
     if (input_tensor->quantization->scale.size() != 1 ||
-        input_tensor->quantization->zero_point.size() != 1 ||
-        input_tensor->quantization->min.size() != 1 ||
-        input_tensor->quantization->max.size() != 1) {
+        input_tensor->quantization->zero_point.size() != 1) {
       error_reporter->Report(
           "Invalid quantization params for op %s at index %d "
           "in subgraph %d",
@@ -606,15 +606,18 @@ TfLiteStatus QuantizeOpOutput(
     const float input_scale = input_tensor->quantization->scale[0];
     const int32_t input_zero_point = input_tensor->quantization->zero_point[0];
 
-    const float min = input_tensor->quantization->min[0];
-    const float max = input_tensor->quantization->max[0];
-
     // Apply to output.
     output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
     output_tensor->quantization->scale.push_back(input_scale);
     output_tensor->quantization->zero_point.push_back(input_zero_point);
-    output_tensor->quantization->min = {min};
-    output_tensor->quantization->max = {max};
+    if (!input_tensor->quantization->min.empty()) {
+      const float min = input_tensor->quantization->min[0];
+      output_tensor->quantization->min = {min};
+    }
+    if (!input_tensor->quantization->max.empty()) {
+      const float max = input_tensor->quantization->max[0];
+      output_tensor->quantization->max = {max};
+    }
     output_tensor->type = activations_type;
   } else if (tensor_property.restriction) {
     const auto scale_and_zp = tensor_property.restricted_value;

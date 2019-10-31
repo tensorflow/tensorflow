@@ -107,7 +107,7 @@ def op_priority(op_type):
     Integer value corresponding the priority of the op.
   """
   if op_type in ('Const', 'Shape', 'BroadcastGradientArgs', 'Range',
-                 'VariableShape', 'Fill', 'OneHot'):
+                 'VariableShape', 'Fill', 'OneHot', 'ShapeN'):
     # Lowest priority ops, e.g., constant ops accross different steps,
     # They will be traced only if trace_level>=7
     return 7

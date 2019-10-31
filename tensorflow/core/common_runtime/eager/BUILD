@@ -54,6 +54,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        ":process_function_library_runtime",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",

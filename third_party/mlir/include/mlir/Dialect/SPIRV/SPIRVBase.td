@@ -117,6 +117,13 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpConvertFToU            : I32EnumAttrCase<"OpConvertFToU", 109>;
+def SPV_OC_OpConvertFToS            : I32EnumAttrCase<"OpConvertFToS", 110>;
+def SPV_OC_OpConvertSToF            : I32EnumAttrCase<"OpConvertSToF", 111>;
+def SPV_OC_OpConvertUToF            : I32EnumAttrCase<"OpConvertUToF", 112>;
+def SPV_OC_OpUConvert               : I32EnumAttrCase<"OpUConvert", 113>;
+def SPV_OC_OpSConvert               : I32EnumAttrCase<"OpSConvert", 114>;
+def SPV_OC_OpFConvert               : I32EnumAttrCase<"OpFConvert", 115>;
 def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
 def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
@@ -174,6 +181,7 @@ def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpUnreachable            : I32EnumAttrCase<"OpUnreachable", 255>;
 def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
@@ -191,7 +199,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpConvertFToU,
+      SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF, SPV_OC_OpConvertUToF,
+      SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert, SPV_OC_OpBitcast,
       SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
       SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
       SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
@@ -209,7 +219,7 @@ def SPV_OpcodeAttr :
       SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpPhi,
       SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
       SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
-      SPV_OC_OpModuleProcessed
+      SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";

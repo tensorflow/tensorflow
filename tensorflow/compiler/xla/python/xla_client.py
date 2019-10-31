@@ -274,6 +274,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
+bfloat16 = _xla.bfloat16_dtype()
+
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
     PrimitiveType.S8: np.dtype('int8'),
@@ -284,6 +286,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),
@@ -614,8 +617,7 @@ class Computation(object):
 #       sole, zero'th replica's output is returned instead, as a Buffer.
 #     """
 #
-# There are different implementations of Executable for the Local and XRT
-# backends.
+# There are different implementations of Executable for different backends.
 
 
 def execute_with_python_values(executable, arguments=(), backend=None):

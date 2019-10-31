@@ -2924,11 +2924,12 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         float float_mean = static_cast<float>(temp_sum[idx]) /
                            static_cast<float>(num_elements_in_axis);
-
-        // Convert to float value.
-        output_data[idx] =
-            static_cast<T>(std::round(float_mean * scale + bias)) +
-            output_zero_point;
+        float result =
+            std::min(std::round(float_mean * scale + bias) + output_zero_point,
+                     static_cast<float>(std::numeric_limits<T>::max()));
+        result =
+            std::max(result, static_cast<float>(std::numeric_limits<T>::min()));
+        output_data[idx] = static_cast<T>(result);
       }
     }
   }

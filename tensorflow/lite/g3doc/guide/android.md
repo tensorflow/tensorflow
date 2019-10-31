@@ -14,8 +14,9 @@ This example app uses
 to continuously classify whatever it sees from the device's rear-facing camera.
 The application can run either on device or emulator.
 
-Inference is performed using the TensorFlow Lite Java API. The demo app
-classifies frames in real-time, displaying the top most probable
+Inference is performed using the TensorFlow Lite Java API and the
+[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
+The demo app classifies frames in real-time, displaying the top most probable
 classifications. It allows the user to choose between a floating point or
 [quantized](https://www.tensorflow.org/lite/performance/post_training_quantization)
 model, select the thread count, and decide whether to run on CPU, GPU, or via

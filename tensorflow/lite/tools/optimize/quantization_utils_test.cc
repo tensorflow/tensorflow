@@ -426,8 +426,8 @@ TEST_F(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
 
   // Call and verify.
   EXPECT_EQ(SymmetricQuantizeFloatsToInt16(
-                model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scale, &error_reporter_),
+                model.get(), model->subgraphs[0]->tensors[0].get(),
+                input_scale * weight_scale, &error_reporter_),
             kTfLiteOk);
 
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],
@@ -480,7 +480,7 @@ TYPED_TEST(SymmetricBiasQuantizeTest, SymmetricPerLayerBiasQuantizeTest) {
   // Call and verify.
   EXPECT_EQ(SymmetricPerLayerBiasQuantize<TypeToTest>(model.get(),
                                           model->subgraphs[0]->tensors[0].get(),
-                                          input_scale, weight_scale,  &error_reporter_),
+                                          input_scale* weight_scale,  &error_reporter_),
             kTfLiteOk);
 
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],

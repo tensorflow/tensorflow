@@ -22,6 +22,10 @@ namespace tflite {
 
 uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
                                                  size_t alignment) {
+  if (has_child_allocator_) {
+    // TODO(wangtz): Add error reporting when the parent allocator is locked!
+    return nullptr;
+  }
   uint8_t* previous_free = (data_ + data_size_max_) - data_size_;
   uint8_t* current_data = previous_free - size;
   uint8_t* aligned_result = AlignPointerDown(current_data, alignment);
@@ -32,6 +36,23 @@ uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
   }
   data_size_ += aligned_size;
   return aligned_result;
+}
+
+SimpleMemoryAllocator SimpleMemoryAllocator::CreateChildAllocator() {
+  // Note that the parameterized constructor initializes data_size_ to 0 which
+  // is not what we expected.
+  SimpleMemoryAllocator child = *this;
+  child.parent_allocator_ = this;
+  // With C++ copy elision, &child should be available after return.
+  has_child_allocator_ = true;
+  return child;
+}
+
+SimpleMemoryAllocator::~SimpleMemoryAllocator() {
+  // Root allocator doesn't have a parent.
+  if (nullptr != parent_allocator_) {
+    parent_allocator_->has_child_allocator_ = false;
+  }
 }
 
 }  // namespace tflite
