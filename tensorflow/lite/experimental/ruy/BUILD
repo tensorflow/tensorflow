@@ -606,6 +606,7 @@ cc_library(
         ":have_built_path_for",
         ":path",
         ":platform",
+        ":prepacked_cache",
         ":thread_pool",
         ":trace",
         ":tune",
