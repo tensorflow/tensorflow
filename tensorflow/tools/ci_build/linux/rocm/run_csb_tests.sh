@@ -50,7 +50,6 @@ bazel test \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
-# Run tests requiring more than one GPU separately.
 && bazel test \
       --config=rocm \
       -k \

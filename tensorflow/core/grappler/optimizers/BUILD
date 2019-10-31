@@ -116,7 +116,6 @@ tf_cc_test(
     # won't be available, which result in test failures. So disable that.
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_rocm",
     ],
     deps = [
         ":constant_folding",
