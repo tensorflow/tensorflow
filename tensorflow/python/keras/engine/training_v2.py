@@ -257,7 +257,10 @@ class Loop(training_utils.TrainingLoop):
           steps_name='steps_per_epoch',
           epochs=0)
       
-      steps_per_epoch = inferred_steps if steps_per_epoch is None else steps_per_epoch
+      steps_per_epoch = (
+        inferred_steps
+        if steps_per_epoch is None
+        else steps_per_epoch)
         
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
