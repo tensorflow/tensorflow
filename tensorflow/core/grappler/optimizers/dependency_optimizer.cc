@@ -500,6 +500,8 @@ Status DependencyOptimizer::TransitiveReduction() {
         control_outputs[input_node_idx].emplace_back(node_idx, input_slot);
       }
     }
+    std::sort(inputs[node_idx].begin(), inputs[node_idx].end(),
+              std::greater<int>());
   }
 
   // Run the longest path in DAG algorithm for each source node that has control
@@ -528,13 +530,15 @@ Status DependencyOptimizer::TransitiveReduction() {
     std::fill(longest_distance.begin() + source,
               longest_distance.begin() + highest_control_target + 1, 0);
     for (int target = source + 1; target <= highest_control_target; ++target) {
-      for (int input : inputs[target]) {
+      const auto& target_inputs = inputs[target];
+      for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
+        const int input = target_inputs[input_idx];
+        if (input < source) break;
         // If the input node is before source in the topo order, no path
         // source -> input -> target can exits and we can skip it.
         // Also only extend a path from the source itself or from nodes that
         // have a path from source, indicated by longest_distance[input] > 0.
-        if (input == source ||
-            (input > source && longest_distance[input] > 0)) {
+        if (input == source || longest_distance[input] > 0) {
           // If source -> input -> target is longer than the longest
           // path so far from source -> target, update the longest_distance.
           int candidate_longest_distance = longest_distance[input] + 1;
