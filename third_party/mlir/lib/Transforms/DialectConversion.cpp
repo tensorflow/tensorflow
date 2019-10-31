@@ -33,9 +33,12 @@ using namespace mlir::detail;
 #define DEBUG_TYPE "dialect-conversion"
 
 /// Recursively collect all of the operations to convert from within 'region'.
+/// If 'target' is nonnull, operations that are recursively legal have their
+/// regions pre-filtered to avoid considering them for legalization.
 static LogicalResult
 computeConversionSet(llvm::iterator_range<Region::iterator> region,
-                     Location regionLoc, std::vector<Operation *> &toConvert) {
+                     Location regionLoc, std::vector<Operation *> &toConvert,
+                     ConversionTarget *target = nullptr) {
   if (llvm::empty(region))
     return success();
 
@@ -44,13 +47,21 @@ computeConversionSet(llvm::iterator_range<Region::iterator> region,
   DenseSet<Block *> visitedBlocks;
   visitedBlocks.insert(worklist.front());
   while (!worklist.empty()) {
-    auto *block = worklist.pop_back_val();
+    Block *block = worklist.pop_back_val();
 
     // Compute the conversion set of each of the nested operations.
-    for (auto &op : *block) {
+    for (Operation &op : *block) {
       toConvert.emplace_back(&op);
+
+      // Don't check this operation's children for conversion if the operation
+      // is recursively legal.
+      auto legalityInfo = target ? target->isLegal(&op)
+                                 : Optional<ConversionTarget::LegalOpDetails>();
+      if (legalityInfo && legalityInfo->isRecursivelyLegal)
+        continue;
       for (auto &region : op.getRegions())
-        computeConversionSet(region.getBlocks(), region.getLoc(), toConvert);
+        computeConversionSet(region.getBlocks(), region.getLoc(), toConvert,
+                             target);
     }
 
     // Recurse to children that haven't been visited.
@@ -288,8 +299,17 @@ void ArgConverter::applySignatureConversion(
   rewriter.setInsertionPointToStart(block);
   for (unsigned i = 0; i != origArgCount; ++i) {
     ArrayRef<Value *> remappedValues;
-    if (auto inputMap = signatureConversion.getInputMapping(i))
-      remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    if (auto &inputMap = signatureConversion.getInputMapping(i)) {
+      // If inputMap->replacementValue is not nullptr, then the argument is
+      // dropped and a replacement value is provided to be the remappedValue.
+      if (inputMap->replacementValue) {
+        assert(inputMap->size == 0 &&
+               "invalid to provide a replacement value when the argument isn't "
+               "dropped");
+        remappedValues = inputMap->replacementValue;
+      } else
+        remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+    }
 
     BlockArgument *arg = block->getArgument(i);
     newArgMapping.push_back(convertArgument(arg, remappedValues, mapping));
@@ -345,10 +365,10 @@ namespace {
 /// This is useful when saving and undoing a set of rewrites.
 struct RewriterState {
   RewriterState(unsigned numCreatedOperations, unsigned numReplacements,
-                unsigned numBlockActions, unsigned numDeadOperations)
+                unsigned numBlockActions, unsigned numIgnoredOperations)
       : numCreatedOperations(numCreatedOperations),
         numReplacements(numReplacements), numBlockActions(numBlockActions),
-        numDeadOperations(numDeadOperations) {}
+        numIgnoredOperations(numIgnoredOperations) {}
 
   /// The current number of created operations.
   unsigned numCreatedOperations;
@@ -359,8 +379,8 @@ struct RewriterState {
   /// The current number of block actions performed.
   unsigned numBlockActions;
 
-  /// The current number of dead operations.
-  unsigned numDeadOperations;
+  /// The current number of ignored operations.
+  unsigned numIgnoredOperations;
 };
 } // end anonymous namespace
 
@@ -473,9 +493,13 @@ struct ConversionPatternRewriterImpl {
   void remapValues(Operation::operand_range operands,
                    SmallVectorImpl<Value *> &remapped);
 
-  /// Returns true if the given operation is dead, and does not need to be
+  /// Returns true if the given operation is ignored, and does not need to be
   /// converted.
-  bool isOpDead(Operation *op) const;
+  bool isOpIgnored(Operation *op) const;
+
+  /// Recursively marks the nested operations under 'op' as ignored. This
+  /// removes them from being considered for legalization.
+  void markNestedOpsIgnored(Operation *op);
 
   // Mapping between replaced values that differ in type. This happens when
   // replacing a value with one of a different type.
@@ -493,20 +517,21 @@ struct ConversionPatternRewriterImpl {
   /// Ordered list of block operations (creations, splits, motions).
   SmallVector<BlockAction, 4> blockActions;
 
-  /// A set of operations that have been erased/replaced. This is not meant to
-  /// be an exhaustive list of all operations, but the minimal set that can be
-  /// used to detect if a given operation is `dead`. For example, we may add the
-  /// operations that define non-empty regions to the set, but not any of the
-  /// others. This simplifies the amount of memory needed as we can query if the
-  /// parent operation was erased.
-  llvm::SetVector<Operation *> deadOps;
+  /// A set of operations that have been erased/replaced/etc that should no
+  /// longer be considered for legalization. This is not meant to be an
+  /// exhaustive list of all operations, but the minimal set that can be used to
+  /// detect if a given operation should be `ignored`. For example, we may add
+  /// the operations that define non-empty regions to the set, but not any of
+  /// the others. This simplifies the amount of memory needed as we can query if
+  /// the parent operation was ignored.
+  llvm::SetVector<Operation *> ignoredOps;
 };
 } // end namespace detail
 } // end namespace mlir
 
 RewriterState ConversionPatternRewriterImpl::getCurrentState() {
   return RewriterState(createdOps.size(), replacements.size(),
-                       blockActions.size(), deadOps.size());
+                       blockActions.size(), ignoredOps.size());
 }
 
 void ConversionPatternRewriterImpl::resetState(RewriterState state) {
@@ -525,9 +550,9 @@ void ConversionPatternRewriterImpl::resetState(RewriterState state) {
     createdOps.pop_back();
   }
 
-  // Pop all of the recorded dead operations that are no longer valid.
-  while (deadOps.size() != state.numDeadOperations)
-    deadOps.pop_back();
+  // Pop all of the recorded ignored operations that are no longer valid.
+  while (ignoredOps.size() != state.numIgnoredOperations)
+    ignoredOps.pop_back();
 }
 
 void ConversionPatternRewriterImpl::undoBlockActions(
@@ -558,7 +583,7 @@ void ConversionPatternRewriterImpl::undoBlockActions(
     case BlockActionKind::Split: {
       action.originalBlock->getOperations().splice(
           action.originalBlock->end(), action.block->getOperations());
-      action.block->dropAllUses();
+      action.block->dropAllDefinedValueUses();
       action.block->erase();
       break;
     }
@@ -583,9 +608,11 @@ void ConversionPatternRewriterImpl::discardRewrites() {
 void ConversionPatternRewriterImpl::applyRewrites() {
   // Apply all of the rewrites replacements requested during conversion.
   for (auto &repl : replacements) {
-    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
-      repl.op->getResult(i)->replaceAllUsesWith(
-          mapping.lookupOrDefault(repl.newValues[i]));
+    for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i) {
+      if (auto *newValue = repl.newValues[i])
+        repl.op->getResult(i)->replaceAllUsesWith(
+            mapping.lookupOrDefault(newValue));
+    }
 
     // If this operation defines any regions, drop any pending argument
     // rewrites.
@@ -637,26 +664,16 @@ void ConversionPatternRewriterImpl::replaceOp(
   assert(newValues.size() == op->getNumResults());
 
   // Create mappings for each of the new result values.
-  for (unsigned i = 0, e = newValues.size(); i < e; ++i) {
-    assert((newValues[i] || op->getResult(i)->use_empty()) &&
-           "result value has remaining uses that must be replaced");
-    if (newValues[i])
-      mapping.map(op->getResult(i), newValues[i]);
-  }
+  for (unsigned i = 0, e = newValues.size(); i < e; ++i)
+    if (auto *repl = newValues[i])
+      mapping.map(op->getResult(i), repl);
 
   // Record the requested operation replacement.
   replacements.emplace_back(op, newValues);
 
-  // Walk this operation and collect nested operations that define non-empty
-  // regions. We mark such operations as 'dead' so that we know we don't have to
-  // convert them, or their nested ops.
-  if (op->getNumRegions() != 0) {
-    op->walk([&](Operation *op) {
-      if (llvm::any_of(op->getRegions(),
-                       [](Region &region) { return !region.empty(); }))
-        deadOps.insert(op);
-    });
-  }
+  /// Mark this operation as recursively ignored so that we don't need to
+  /// convert any nested operations.
+  markNestedOpsIgnored(op);
 }
 
 void ConversionPatternRewriterImpl::notifySplitBlock(Block *block,
@@ -694,9 +711,22 @@ void ConversionPatternRewriterImpl::remapValues(
     remapped.push_back(mapping.lookupOrDefault(operand));
 }
 
-bool ConversionPatternRewriterImpl::isOpDead(Operation *op) const {
-  // Check to see if this operation or its parent were erased.
-  return deadOps.count(op) || deadOps.count(op->getParentOp());
+bool ConversionPatternRewriterImpl::isOpIgnored(Operation *op) const {
+  // Check to see if this operation or its parent were ignored.
+  return ignoredOps.count(op) || ignoredOps.count(op->getParentOp());
+}
+
+void ConversionPatternRewriterImpl::markNestedOpsIgnored(Operation *op) {
+  // Walk this operation and collect nested operations that define non-empty
+  // regions. We mark such operations as 'ignored' so that we know we don't have
+  // to convert them, or their nested ops.
+  if (op->getNumRegions() == 0)
+    return;
+  op->walk([&](Operation *op) {
+    if (llvm::any_of(op->getRegions(),
+                     [](Region &region) { return !region.empty(); }))
+      ignoredOps.insert(op);
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -716,6 +746,16 @@ void ConversionPatternRewriter::replaceOp(
   LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
                           << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
+}
+
+/// PatternRewriter hook for erasing a dead operation. The uses of this
+/// operation *must* be made dead by the end of the conversion process,
+/// otherwise an assert will be issued.
+void ConversionPatternRewriter::eraseOp(Operation *op) {
+  LLVM_DEBUG(llvm::dbgs() << "** Erasing operation : " << op->getName()
+                          << "\n");
+  SmallVector<Value *, 1> nullRepls(op->getNumResults(), nullptr);
+  impl->replaceOp(op, nullRepls, /*valuesToRemoveIfDead=*/llvm::None);
 }
 
 /// Apply a signature conversion to the entry block of the given region.
@@ -860,6 +900,9 @@ public:
   /// was legalized, failure otherwise.
   LogicalResult legalize(Operation *op, ConversionPatternRewriter &rewriter);
 
+  /// Returns the conversion target in use by the legalizer.
+  ConversionTarget &getTarget() { return target; }
+
 private:
   /// Attempt to legalize the given operation by applying the provided pattern.
   /// Returns success if the operation was legalized, failure otherwise.
@@ -896,9 +939,7 @@ private:
 
 bool OperationLegalizer::isIllegal(Operation *op) const {
   // Check if the target explicitly marked this operation as illegal.
-  if (auto action = target.getOpAction(op->getName()))
-    return action == LegalizationAction::Illegal;
-  return false;
+  return target.getOpAction(op->getName()) == LegalizationAction::Illegal;
 }
 
 LogicalResult
@@ -908,16 +949,23 @@ OperationLegalizer::legalize(Operation *op,
                           << "\n");
 
   // Check if this operation is legal on the target.
-  if (target.isLegal(op)) {
+  if (auto legalityInfo = target.isLegal(op)) {
     LLVM_DEBUG(llvm::dbgs()
                << "-- Success : Operation marked legal by the target\n");
+    // If this operation is recursively legal, mark its children as ignored so
+    // that we don't consider them for legalization.
+    if (legalityInfo->isRecursivelyLegal) {
+      LLVM_DEBUG(llvm::dbgs() << "-- Success : Operation is recursively legal; "
+                                 "Skipping internals\n");
+      rewriter.getImpl().markNestedOpsIgnored(op);
+    }
     return success();
   }
 
-  // Check to see if the operation is dead and doesn't need to be converted.
-  if (rewriter.getImpl().isOpDead(op)) {
+  // Check to see if the operation is ignored and doesn't need to be converted.
+  if (rewriter.getImpl().isOpIgnored(op)) {
     LLVM_DEBUG(llvm::dbgs()
-               << "-- Success : Operation marked dead during conversion\n");
+               << "-- Success : Operation marked ignored during conversion\n");
     return success();
   }
 
@@ -990,6 +1038,22 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
     }
   }
 
+  // Check all of the replacements to ensure that the pattern actually replaced
+  // the root operation. We also mark any other replaced ops as 'dead' so that
+  // we don't try to legalize them later.
+  bool replacedRoot = false;
+  for (unsigned i = curState.numReplacements,
+                e = rewriterImpl.replacements.size();
+       i != e; ++i) {
+    Operation *replacedOp = rewriterImpl.replacements[i].op;
+    if (replacedOp == op)
+      replacedRoot = true;
+    else
+      rewriterImpl.ignoredOps.insert(replacedOp);
+  }
+  assert(replacedRoot && "expected pattern to replace the root operation");
+  (void)replacedRoot;
+
   // Recursively legalize each of the new operations.
   for (unsigned i = curState.numCreatedOperations,
                 e = rewriterImpl.createdOps.size();
@@ -1039,7 +1103,7 @@ void OperationLegalizer::buildLegalizationGraph(
 
     // Check to see if any of the generated operations are invalid.
     if (llvm::any_of(pattern->getGeneratedOps(), [&](OperationName op) {
-          auto action = target.getOpAction(op);
+          Optional<LegalizationAction> action = target.getOpAction(op);
           return !legalizerPatterns.count(op) &&
                  (!action || action == LegalizationAction::Illegal);
         }))
@@ -1236,6 +1300,7 @@ OperationConverter::convertOperations(ArrayRef<Operation *> ops,
                                       TypeConverter *typeConverter) {
   if (ops.empty())
     return success();
+  ConversionTarget &target = opLegalizer.getTarget();
 
   /// Compute the set of operations and blocks to convert.
   std::vector<Operation *> toConvert;
@@ -1243,7 +1308,7 @@ OperationConverter::convertOperations(ArrayRef<Operation *> ops,
     toConvert.emplace_back(op);
     for (auto &region : op->getRegions())
       if (failed(computeConversionSet(region.getBlocks(), region.getLoc(),
-                                      toConvert)))
+                                      toConvert, &target)))
         return failure();
   }
 
@@ -1290,7 +1355,17 @@ void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
                                                     unsigned newInputCount) {
   assert(!remappedInputs[origInputNo] && "input has already been remapped");
   assert(newInputCount != 0 && "expected valid input count");
-  remappedInputs[origInputNo] = InputMapping{newInputNo, newInputCount};
+  remappedInputs[origInputNo] =
+      InputMapping{newInputNo, newInputCount, /*replacementValue=*/nullptr};
+}
+
+/// Remap an input of the original signature to another `replacementValue`
+/// value. This would make the signature converter drop this argument.
+void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
+                                                    Value *replacementValue) {
+  assert(!remappedInputs[origInputNo] && "input has already been remapped");
+  remappedInputs[origInputNo] =
+      InputMapping{origInputNo, /*size=*/0, replacementValue};
 }
 
 /// This hooks allows for converting a type.
@@ -1350,16 +1425,14 @@ LogicalResult TypeConverter::convertSignatureArg(unsigned inputNo, Type type,
 /// Create a default conversion pattern that rewrites the type signature of a
 /// FuncOp.
 namespace {
-struct FuncOpSignatureConversion : public ConversionPattern {
+struct FuncOpSignatureConversion : public OpConversionPattern<FuncOp> {
   FuncOpSignatureConversion(MLIRContext *ctx, TypeConverter &converter)
-      : ConversionPattern(FuncOp::getOperationName(), 1, ctx),
-        converter(converter) {}
+      : OpConversionPattern(ctx), converter(converter) {}
 
   /// Hook for derived classes to implement combined matching and rewriting.
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
 
     // Convert the original function arguments.
@@ -1382,7 +1455,7 @@ struct FuncOpSignatureConversion : public ConversionPattern {
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
-    rewriter.replaceOp(op, llvm::None);
+    rewriter.eraseOp(funcOp);
     return matchSuccess();
   }
 
@@ -1417,7 +1490,7 @@ auto TypeConverter::convertBlockSignature(Block *block)
 /// Register a legality action for the given operation.
 void ConversionTarget::setOpAction(OperationName op,
                                    LegalizationAction action) {
-  legalOperations[op] = action;
+  legalOperations[op] = {action};
 }
 
 /// Register a legality action for the given dialects.
@@ -1429,38 +1502,53 @@ void ConversionTarget::setDialectAction(ArrayRef<StringRef> dialectNames,
 
 /// Get the legality action for the given operation.
 auto ConversionTarget::getOpAction(OperationName op) const
-    -> llvm::Optional<LegalizationAction> {
-  // Check for an action for this specific operation.
-  auto it = legalOperations.find(op);
-  if (it != legalOperations.end())
-    return it->second;
-  // Otherwise, default to checking for an action on the parent dialect.
-  auto dialectIt = legalDialects.find(op.getDialect());
-  if (dialectIt != legalDialects.end())
-    return dialectIt->second;
-  return llvm::None;
+    -> Optional<LegalizationAction> {
+  Optional<LegalizationInfo> info = getOpInfo(op);
+  return info ? info->action : Optional<LegalizationAction>();
 }
 
-/// Return if the given operation instance is legal on this target.
-bool ConversionTarget::isLegal(Operation *op) const {
-  auto action = getOpAction(op->getName());
+/// If the given operation instance is legal on this target, a structure
+/// containing legality information is returned. If the operation is not legal,
+/// None is returned.
+auto ConversionTarget::isLegal(Operation *op) const
+    -> Optional<LegalOpDetails> {
+  Optional<LegalizationInfo> info = getOpInfo(op->getName());
+  if (!info)
+    return llvm::None;
 
-  // Handle dynamic legality.
-  if (action == LegalizationAction::Dynamic) {
-    // Check for callbacks on the operation or dialect.
-    auto opFn = opLegalityFns.find(op->getName());
-    if (opFn != opLegalityFns.end())
-      return opFn->second(op);
-    auto dialectFn = dialectLegalityFns.find(op->getName().getDialect());
-    if (dialectFn != dialectLegalityFns.end())
-      return dialectFn->second(op);
+  // Returns true if this operation instance is known to be legal.
+  auto isOpLegal = [&] {
+    // Handle dynamic legality.
+    if (info->action == LegalizationAction::Dynamic) {
+      // Check for callbacks on the operation or dialect.
+      auto opFn = opLegalityFns.find(op->getName());
+      if (opFn != opLegalityFns.end())
+        return opFn->second(op);
+      auto dialectFn = dialectLegalityFns.find(op->getName().getDialect());
+      if (dialectFn != dialectLegalityFns.end())
+        return dialectFn->second(op);
 
-    // Otherwise, invoke the hook on the derived instance.
-    return isDynamicallyLegal(op);
+      // Otherwise, invoke the hook on the derived instance.
+      return isDynamicallyLegal(op);
+    }
+
+    // Otherwise, the operation is only legal if it was marked 'Legal'.
+    return info->action == LegalizationAction::Legal;
+  };
+  if (!isOpLegal())
+    return llvm::None;
+
+  // This operation is legal, compute any additional legality information.
+  LegalOpDetails legalityDetails;
+
+  if (info->isRecursivelyLegal) {
+    auto legalityFnIt = opRecursiveLegalityFns.find(op->getName());
+    if (legalityFnIt != opRecursiveLegalityFns.end())
+      legalityDetails.isRecursivelyLegal = legalityFnIt->second(op);
+    else
+      legalityDetails.isRecursivelyLegal = true;
   }
-
-  // Otherwise, the operation is only legal if it was marked 'Legal'.
-  return action == LegalizationAction::Legal;
+  return legalityDetails;
 }
 
 /// Set the dynamic legality callback for the given operation.
@@ -1470,12 +1558,41 @@ void ConversionTarget::setLegalityCallback(
   opLegalityFns[name] = callback;
 }
 
+/// Set the recursive legality callback for the given operation and mark the
+/// operation as recursively legal.
+void ConversionTarget::markOpRecursivelyLegal(
+    OperationName name, const DynamicLegalityCallbackFn &callback) {
+  auto infoIt = legalOperations.find(name);
+  assert(infoIt != legalOperations.end() &&
+         infoIt->second.action != LegalizationAction::Illegal &&
+         "expected operation to already be marked as legal");
+  infoIt->second.isRecursivelyLegal = true;
+  if (callback)
+    opRecursiveLegalityFns[name] = callback;
+  else
+    opRecursiveLegalityFns.erase(name);
+}
+
 /// Set the dynamic legality callback for the given dialects.
 void ConversionTarget::setLegalityCallback(
     ArrayRef<StringRef> dialects, const DynamicLegalityCallbackFn &callback) {
   assert(callback && "expected valid legality callback");
   for (StringRef dialect : dialects)
     dialectLegalityFns[dialect] = callback;
+}
+
+/// Get the legalization information for the given operation.
+auto ConversionTarget::getOpInfo(OperationName op) const
+    -> Optional<LegalizationInfo> {
+  // Check for info for this specific operation.
+  auto it = legalOperations.find(op);
+  if (it != legalOperations.end())
+    return it->second;
+  // Otherwise, default to checking on the parent dialect.
+  auto dialectIt = legalDialects.find(op.getDialect());
+  if (dialectIt != legalDialects.end())
+    return LegalizationInfo{dialectIt->second, /*isRecursivelyLegal=*/false};
+  return llvm::None;
 }
 
 //===----------------------------------------------------------------------===//

@@ -164,7 +164,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
     SmallVector<int64_t, 8> shape;
     for (int dim : llvm::seq<int>(0, c.Rank(shape_handle)))
       shape.push_back(c.Value(c.Dim(shape_handle, dim)));
-    auto new_type = builder.getTensorType(shape, shaped_type.getElementType());
+    auto new_type = RankedTensorType::get(shape, shaped_type.getElementType());
 
     // A tf.Cast operation is lazily created on the first uses that isn't a TF
     // operation.
@@ -179,6 +179,8 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
     for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
       if (use.getOwner()->getDialect() != tf_dialect) use.set(get_cast_op());
     }
+
+    if (result->getType() == new_type) continue;
 
     // Finally we inferred the shape and replace the type for this result.
     result->setType(new_type);
@@ -208,7 +210,13 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
         changed |= InferShapeForSingleOperation(op, tf_dialect, graph_version);
     });
   }
-  return success(!changed);
+  if (changed) {
+    region->getParentOp()->emitWarning()
+        << "Shape inference did not reach stable state after " << max_iteration
+        << " iterations";
+    return failure();
+  }
+  return success();
 }
 
 LogicalResult InferShapeForFunction(FuncOp op,

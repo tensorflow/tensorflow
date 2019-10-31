@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from absl.testing import parameterized
 import numpy as np
+import wrapt
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -744,6 +747,13 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     spec = structure.type_spec_from_value(elem)
     self.assertIsInstance(spec, CustomMap)
     self.assertEqual(spec["foo"], tensor_spec.TensorSpec([], dtypes.float32))
+
+  def testObjectProxy(self):
+    nt_type = collections.namedtuple("A", ["x", "y"])
+    proxied = wrapt.ObjectProxy(nt_type(1, 2))
+    proxied_spec = structure.type_spec_from_value(proxied)
+    self.assertEqual(structure.type_spec_from_value(nt_type(1, 2)),
+                     proxied_spec)
 
 
 class CustomMap(collections_abc.Mapping):

@@ -48,7 +48,7 @@ inline void Mul(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Mul/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -65,7 +65,7 @@ inline void Mul(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].

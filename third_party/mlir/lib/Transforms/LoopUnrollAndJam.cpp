@@ -223,7 +223,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
       if (!forOpIV->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
         auto d0 = builder.getAffineDimExpr(0);
-        auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
+        auto bumpMap = AffineMap::get(1, 0, {d0 + i * step});
         auto ivUnroll =
             builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forOpIV);
         operandMapping.map(forOpIV, ivUnroll);

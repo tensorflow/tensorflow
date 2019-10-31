@@ -70,6 +70,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"nsync::|"
                         r"tensorflow::|"
+                        r"toco::|"
                         r"functor::|"
                         r"perftools::gputools")
 
@@ -124,7 +125,7 @@ def get_symbols(path_to_lib, re_filter):
   # Filter out symbol from the split line (`sym_split` in the for loop below).
   # Sample line:
   # "    | ?NewProfiler@tfprof@tensorflow@@YA_NPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z (bool __cdecl tensorflow::tfprof::NewProfiler(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > const *,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > const *))"
-  sym_line_filter = r"\s+\| (.*) \(.* __cdecl.*"
+  sym_line_filter = r"\s+\| (.*) \(.*"
 
   for sym_line in sym_split:
     if re_filter_comp.search(sym_line):

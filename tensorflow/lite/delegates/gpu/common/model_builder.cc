@@ -1524,11 +1524,10 @@ class PadOperationParser : public TFLiteOperationParser {
     if (paddings.shape.h != 4 || paddings.shape.w != 2) {
       return InvalidArgumentError("Paddings tensor has unexpected shape.");
     }
-    if (paddings.data[0] != 0 || paddings.data[1] != 0) {
-      return UnimplementedError("Padding for BATCH channel is not supported.");
-    }
-    attr.prepended = HWC(paddings.data[2], paddings.data[4], paddings.data[6]);
-    attr.appended = HWC(paddings.data[3], paddings.data[5], paddings.data[7]);
+    attr.prepended = BHWC(paddings.data[0], paddings.data[2], paddings.data[4],
+                          paddings.data[6]);
+    attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
+                         paddings.data[7]);
     node->operation.attributes = attr;
     return OkStatus();
   }
@@ -1753,6 +1752,85 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
     SoftmaxAttributes attr;
     attr.axis = Axis::CHANNELS;  // always by channels
     node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
+class SliceOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SLICE);
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    Value<TensorRef<BHWC>>* input;
+    RETURN_IF_ERROR(reader->ReadValue(0, &input));
+    RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
+
+    SliceAttributes attr;
+    attr.strides = BHWC(1, 1, 1, 1);
+    Tensor<Linear, DataType::INT32> starts, sizes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &starts));
+    RETURN_IF_ERROR(reader->ReadTensor(2, &sizes));
+    if (starts.data.size() != sizes.data.size()) {
+      return InvalidArgumentError("Starts amount != sizes amount.");
+    }
+    if (starts.data.size() == 4) {
+      attr.starts =
+          BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
+      attr.ends =
+          BHWC(starts.data[0] + sizes.data[0], starts.data[1] + sizes.data[1],
+               starts.data[2] + sizes.data[2], starts.data[3] + sizes.data[3]);
+    } else if (starts.data.size() == 3) {
+      attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
+      attr.ends =
+          BHWC(input->tensor.shape.b, starts.data[0] + sizes.data[0],
+               starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
+    } else {
+      return UnimplementedError(
+          "Slicing is supported for 3 or 4 dimensional tensors only.");
+    }
+    RETURN_IF_ERROR(UpdateIfNegative(input->tensor.shape, &attr));
+
+    auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+    if ((attr.ends.b - attr.starts.b) != out_shape.b) {
+      return UnimplementedError("Output batch don't match");
+    }
+    if ((attr.ends.h - attr.starts.h) != out_shape.h) {
+      return UnimplementedError("Output height doesn't match");
+    }
+    if ((attr.ends.w - attr.starts.w) != out_shape.w) {
+      return UnimplementedError("Output width doesn't match");
+    }
+    if ((attr.ends.c - attr.starts.c) != out_shape.c) {
+      return UnimplementedError("Output channels don't match");
+    }
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+
+ private:
+  Status UpdateIfNegative(const BHWC& input_shape, SliceAttributes* attr) {
+    if (attr->ends.h < 0) {
+      attr->ends.h = input_shape.h + attr->ends.h;
+    }
+    if (attr->ends.w < 0) {
+      attr->ends.w = input_shape.w + attr->ends.w;
+    }
+    if (attr->ends.c < 0) {
+      attr->ends.c = input_shape.c + attr->ends.c;
+    }
+    if (attr->ends.b < 0) {
+      attr->ends.b = input_shape.b + attr->ends.b;
+    }
     return OkStatus();
   }
 };
@@ -1983,6 +2061,43 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
   }
 };
 
+class TransposeOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(
+        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::TRANSPOSE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    TransposeAttributes attr;
+    Tensor<Linear, DataType::INT32> perm;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &perm));
+    if (perm.data.size() == 4) {
+      attr.perm = BHWC(perm.data[0], perm.data[1], perm.data[2], perm.data[3]);
+    } else if (perm.data.size() == 3) {
+      attr.perm = BHWC(0, perm.data[0] + 1, perm.data[1] + 1, perm.data[2] + 1);
+    } else if (perm.data.size() == 2) {
+      attr.perm = BHWC(0, 1, perm.data[0] + 2, perm.data[1] + 2);
+    } else {
+      return InvalidArgumentError("Permutation for transpose is invalid.");
+    }
+
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
 class Unpooling2DOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2186,6 +2301,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSoftmax:
       return absl::make_unique<SoftmaxOperationParser>();
+    case kTfLiteBuiltinSlice:
+      return absl::make_unique<SliceOperationParser>();
     case kTfLiteBuiltinStridedSlice:
       return absl::make_unique<StridedSliceOperationParser>();
     case kTfLiteBuiltinSqrt:
@@ -2200,6 +2317,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SUB);
     case kTfLiteBuiltinTanh:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::TANH);
+    case kTfLiteBuiltinTranspose:
+      return absl::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
       return absl::make_unique<TransposeConvOperationParser>();
 

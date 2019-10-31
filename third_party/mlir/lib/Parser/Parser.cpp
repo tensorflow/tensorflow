@@ -271,8 +271,7 @@ public:
   ///
   ///   trailing-location     ::= location?
   ///
-  template <typename Owner>
-  ParseResult parseOptionalTrailingLocation(Owner *owner) {
+  ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
       return success();
@@ -281,7 +280,7 @@ public:
     LocationAttr directLoc;
     if (parseLocation(directLoc))
       return failure();
-    owner->setLoc(directLoc);
+    loc = directLoc;
     return success();
   }
 
@@ -350,7 +349,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 }
 
 /// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
-/// and may be recursive.  Return with the 'prettyName' StringRef encompasing
+/// and may be recursive.  Return with the 'prettyName' StringRef encompassing
 /// the entire pretty name.
 ///
 ///   pretty-dialect-sym-body ::= '<' pretty-dialect-sym-contents+ '>'
@@ -1063,9 +1062,9 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseAffineMapOrIntegerSetReference(map, set))
       return nullptr;
     if (map)
-      return builder.getAffineMapAttr(map);
+      return AffineMapAttr::get(map);
     assert(set);
-    return builder.getIntegerSetAttr(set);
+    return IntegerSetAttr::get(set);
   }
 
   // Parse an array attribute.
@@ -1164,7 +1163,7 @@ Attribute Parser::parseAttribute(Type type) {
   default:
     // Parse a type attribute.
     if (Type type = parseType())
-      return builder.getTypeAttr(type);
+      return TypeAttr::get(type);
     return nullptr;
   }
 }
@@ -1381,7 +1380,7 @@ Attribute Parser::parseOpaqueElementsAttr() {
   if (!type)
     return nullptr;
 
-  return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
+  return OpaqueElementsAttr::get(dialect, type, llvm::fromHex(val));
 }
 
 namespace {
@@ -2496,8 +2495,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
   if (exprs.empty())
     map = AffineMap();
   else
-    map = builder.getAffineMap(numDimOperands,
-                               dimsAndSymbols.size() - numDimOperands, exprs);
+    map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
+                         exprs);
   return success();
 }
 
@@ -2525,7 +2524,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
     return AffineMap();
 
   // Parsed a valid affine map.
-  return builder.getAffineMap(numDims, numSymbols, exprs);
+  return AffineMap::get(numDims, numSymbols, exprs);
 }
 
 /// Parse an affine constraint.
@@ -2600,11 +2599,11 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   if (constraints.empty()) {
     /* 0 == 0 */
     auto zero = getAffineConstantExpr(0, getContext());
-    return builder.getIntegerSet(numDims, numSymbols, zero, true);
+    return IntegerSet::get(numDims, numSymbols, zero, true);
   }
 
   // Parsed a valid integer set.
-  return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
+  return IntegerSet::get(numDims, numSymbols, constraints, isEqs);
 }
 
 /// Parse an ambiguous reference to either and affine map or an integer set.
@@ -2815,7 +2814,7 @@ private:
 
   /// This keeps track of the block names as well as the location of the first
   /// reference for each nested name scope. This is used to diagnose invalid
-  /// block references and memoize them.
+  /// block references and memorize them.
   SmallVector<DenseMap<StringRef, std::pair<Block *, SMLoc>>, 2> blocksByName;
   SmallVector<DenseMap<Block *, SMLoc>, 2> forwardRef;
 
@@ -3115,43 +3114,40 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();
-  SmallVector<std::pair<StringRef, SMLoc>, 1> resultIDs;
-  size_t numExpectedResults;
+  SmallVector<std::tuple<StringRef, unsigned, SMLoc>, 1> resultIDs;
+  size_t numExpectedResults = 0;
   if (getToken().is(Token::percent_identifier)) {
-    // Parse the first result id.
-    resultIDs.emplace_back(getTokenSpelling(), loc);
-    consumeToken(Token::percent_identifier);
+    // Parse the group of result ids.
+    auto parseNextResult = [&]() -> ParseResult {
+      // Parse the next result id.
+      if (!getToken().is(Token::percent_identifier))
+        return emitError("expected valid ssa identifier");
 
-    // If the next token is a ':', we parse the expected result count.
-    if (consumeIf(Token::colon)) {
-      // Check that the next token is an integer.
-      if (!getToken().is(Token::integer))
-        return emitError("expected integer number of results");
+      Token nameTok = getToken();
+      consumeToken(Token::percent_identifier);
 
-      // Check that number of results is > 0.
-      auto val = getToken().getUInt64IntegerValue();
-      if (!val.hasValue() || val.getValue() < 1)
-        return emitError("expected named operation to have atleast 1 result");
-      consumeToken(Token::integer);
-      numExpectedResults = *val;
-    } else {
-      // Otherwise, this is a comma separated list of result ids.
-      if (consumeIf(Token::comma)) {
-        auto parseNextResult = [&]() -> ParseResult {
-          // Parse the next result id.
-          if (!getToken().is(Token::percent_identifier))
-            return emitError("expected valid ssa identifier");
+      // If the next token is a ':', we parse the expected result count.
+      size_t expectedSubResults = 1;
+      if (consumeIf(Token::colon)) {
+        // Check that the next token is an integer.
+        if (!getToken().is(Token::integer))
+          return emitError("expected integer number of results");
 
-          resultIDs.emplace_back(getTokenSpelling(), getToken().getLoc());
-          consumeToken(Token::percent_identifier);
-          return success();
-        };
-
-        if (parseCommaSeparatedList(parseNextResult))
-          return failure();
+        // Check that number of results is > 0.
+        auto val = getToken().getUInt64IntegerValue();
+        if (!val.hasValue() || val.getValue() < 1)
+          return emitError("expected named operation to have atleast 1 result");
+        consumeToken(Token::integer);
+        expectedSubResults = *val;
       }
-      numExpectedResults = resultIDs.size();
-    }
+
+      resultIDs.emplace_back(nameTok.getSpelling(), expectedSubResults,
+                             nameTok.getLoc());
+      numExpectedResults += expectedSubResults;
+      return success();
+    };
+    if (parseCommaSeparatedList(parseNextResult))
+      return failure();
 
     if (parseToken(Token::equal, "expected '=' after SSA name"))
       return failure();
@@ -3178,25 +3174,16 @@ ParseResult OperationParser::parseOperation() {
              << op->getNumResults() << " results but was provided "
              << numExpectedResults << " to bind";
 
-    // If the number of result names matches the number of operation results, we
-    // can directly use the provided names.
-    if (resultIDs.size() == op->getNumResults()) {
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
-                          op->getResult(i)))
+    // Add definitions for each of the result groups.
+    unsigned opResI = 0;
+    for (std::tuple<StringRef, unsigned, SMLoc> &resIt : resultIDs) {
+      for (unsigned subRes : llvm::seq<unsigned>(0, std::get<1>(resIt))) {
+        if (addDefinition({std::get<0>(resIt), subRes, std::get<2>(resIt)},
+                          op->getResult(opResI++)))
           return failure();
-    } else {
-      // Otherwise, we use the same name for all results.
-      StringRef name = resultIDs.front().first;
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({name, i, loc}, op->getResult(i)))
-          return failure();
+      }
     }
   }
-
-  // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(op))
-    return failure();
 
   return success();
 }
@@ -3250,7 +3237,7 @@ ParseResult OperationParser::parseSuccessors(
 namespace {
 // RAII-style guard for cleaning up the regions in the operation state before
 // deleting them.  Within the parser, regions may get deleted if parsing failed,
-// and other errors may be present, in praticular undominated uses.  This makes
+// and other errors may be present, in particular undominated uses.  This makes
 // sure such uses are deleted.
 struct CleanupOpStateRegions {
   ~CleanupOpStateRegions() {
@@ -3352,12 +3339,16 @@ Operation *OperationParser::parseGenericOperation() {
       return nullptr;
   }
 
-  // Add the sucessors, and their operands after the proper operands.
+  // Add the successors, and their operands after the proper operands.
   for (const auto &succ : llvm::zip(successors, successorOperands)) {
     Block *successor = std::get<0>(succ);
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
     result.addSuccessor(successor, operands);
   }
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(result.location))
+    return nullptr;
 
   return opBuilder.createOperation(result);
 }
@@ -3715,7 +3706,7 @@ public:
       return failure();
     // Add AffineMap attribute.
     if (map) {
-      mapAttr = parser.builder.getAffineMapAttr(map);
+      mapAttr = AffineMapAttr::get(map);
       attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
     }
 
@@ -3730,7 +3721,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
-  /// effectively defines the SSA values of `arguments` and assignes their type.
+  /// effectively defines the SSA values of `arguments` and assigns their type.
   ParseResult parseRegion(Region &region, ArrayRef<OperandType> arguments,
                           ArrayRef<Type> argTypes,
                           bool enableNameShadowing) override {
@@ -3891,6 +3882,10 @@ Operation *OperationParser::parseCustomOperation() {
 
   // If it emitted an error, we failed.
   if (opAsmParser.didEmitError())
+    return nullptr;
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(opState.location))
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
@@ -4333,28 +4328,60 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
   return parseSourceFile(sourceMgr, context);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
-                     size_t &numRead) {
+/// Parses a symbol, of type 'T', and returns it if parsing was successful. If
+/// parsing failed, nullptr is returned. The number of bytes read from the input
+/// string is returned in 'numRead'.
+template <typename T, typename ParserFn>
+static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+                     size_t &numRead, ParserFn &&parserFn) {
   SourceMgr sourceMgr;
-  auto memBuffer =
-      MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
-                                 /*RequiresNullTerminator=*/false);
+  auto memBuffer = MemoryBuffer::getMemBuffer(
+      inputStr, /*BufferName=*/"<mlir_parser_buffer>",
+      /*RequiresNullTerminator=*/false);
   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);
   Parser parser(state);
 
   auto start = parser.getToken().getLoc();
-  auto ty = parser.parseType();
-  if (!ty)
-    return Type();
+  T symbol = parserFn(parser);
+  if (!symbol)
+    return T();
 
   auto end = parser.getToken().getLoc();
   numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
-  return ty;
+  return symbol;
+}
+
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, context, numRead);
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, type, numRead);
+}
+
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(attrStr, context, numRead, [](Parser &parser) {
+    return parser.parseAttribute();
+  });
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(
+      attrStr, type.getContext(), numRead,
+      [type](Parser &parser) { return parser.parseAttribute(type); });
 }
 
 Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseType(typeStr, context, numRead);
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
+                     size_t &numRead) {
+  return parseSymbol<Type>(typeStr, context, numRead,
+                           [](Parser &parser) { return parser.parseType(); });
 }

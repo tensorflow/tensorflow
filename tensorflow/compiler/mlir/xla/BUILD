@@ -14,6 +14,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
+        "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
@@ -81,6 +82,21 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "xla_canonicalize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/canonicalize.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+    ],
+)
+
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
@@ -88,10 +104,12 @@ cc_library(
         "transforms/legalize_tf.cc",
     ],
     deps = [
+        ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -106,10 +124,12 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:lhlo",
+        ":lhlo",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
+        "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
@@ -121,6 +141,7 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_linalg",
     srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
@@ -140,7 +161,7 @@ cc_library(
     srcs = ["transforms/lhlo_fuse_linalg.cc"],
     deps = [
         ":lhlo",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:Pass",
@@ -237,8 +258,10 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":convert_op_folder",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
+        ":xla_canonicalize_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -273,6 +296,20 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_utils",
+    srcs = ["hlo_utils.cc"],
+    hdrs = ["hlo_utils.h"],
+    includes = ["include"],
+    deps = [
+        ":convert_op_folder",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
 )
@@ -435,4 +472,13 @@ genrule(
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
+)
+
+cc_library(
+    name = "convert_op_folder",
+    srcs = ["convert_op_folder.cc"],
+    hdrs = ["convert_op_folder.h"],
+    deps = [
+        "@local_config_mlir//:IR",
+    ],
 )

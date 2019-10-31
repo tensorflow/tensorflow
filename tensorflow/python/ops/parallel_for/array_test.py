@@ -47,7 +47,16 @@ class ArrayTest(PForTestCase):
         axes = [0] if y is x_i else [0, 2, -1]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
-          outputs.append(array_ops.gather(y, i, axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(2, dtypes.int64),
+                                          axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          2,
+                                          axis=math_ops.cast(
+                                              axis, dtypes.int64)))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(i, dtypes.int64),
+                                          axis=axis))
           outputs.append(array_ops.gather(y, [i], axis=axis))
           outputs.append(array_ops.gather(y, [i, 2], axis=axis))
           outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))
@@ -327,7 +336,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       diagonal = array_ops.gather(x, i)
-      if compat.forward_compatible(2019, 10, 31):
+      if compat.forward_compatible(2019, 11, 30):
         return array_ops.matrix_diag(diagonal, k=(0, 1), num_rows=4, num_cols=5)
       return array_ops.matrix_diag(diagonal)
 
@@ -338,7 +347,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       input = array_ops.gather(x, i)  # pylint: disable=redefined-builtin
-      if compat.forward_compatible(2019, 10, 31):
+      if compat.forward_compatible(2019, 11, 30):
         return array_ops.matrix_diag_part(input, k=(-2, 0), padding_value=3)
       return array_ops.matrix_diag_part(input)
 
@@ -347,7 +356,7 @@ class ArrayTest(PForTestCase):
   def test_matrix_set_diag(self):
     matrices = random_ops.random_uniform([3, 4, 4])
     diags = random_ops.random_uniform([3, 4])
-    if compat.forward_compatible(2019, 10, 31):
+    if compat.forward_compatible(2019, 11, 30):
       bands = random_ops.random_uniform([3, 3, 4])
 
     def loop_fn(i):
@@ -358,7 +367,7 @@ class ArrayTest(PForTestCase):
           array_ops.matrix_set_diag(matrices[0, ...], diag_i),
           array_ops.matrix_set_diag(matrix_i, diags[0, ...])
       ]
-      if compat.forward_compatible(2019, 10, 31):
+      if compat.forward_compatible(2019, 11, 30):
         k = (-1, 1)
         band_i = array_ops.gather(bands, i)
         results.extend([

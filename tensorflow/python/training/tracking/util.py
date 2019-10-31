@@ -1517,7 +1517,7 @@ class CheckpointV1(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1851,7 +1851,7 @@ class Checkpoint(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames

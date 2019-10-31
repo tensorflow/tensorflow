@@ -30,6 +30,12 @@ auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
 
+auto* graph_optimization_usecs =
+    monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
+                                "The total time spent running each graph "
+                                "optimization pass in microseconds.",
+                                "kind", "name");
+
 auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
      "The wall-clock time spent on executing graphs in microseconds."},
@@ -153,6 +159,22 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
     graph_runs->GetCell()->IncrementBy(1);
     graph_run_time_usecs->GetCell()->IncrementBy(running_time_usecs);
     graph_run_time_usecs_histogram->GetCell()->Add(running_time_usecs);
+  }
+}
+
+void UpdateGraphOptimizationPassTime(const string& pass_name,
+                                     const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("GraphOptimizationPass", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateGrapplerPassTime(const string& pass_name,
+                            const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("Grappler", pass_name)
+        ->IncrementBy(running_time_usecs);
   }
 }
 

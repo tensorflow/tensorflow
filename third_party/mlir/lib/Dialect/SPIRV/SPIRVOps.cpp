@@ -21,11 +21,13 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/StringExtras.h"
@@ -45,6 +47,7 @@ static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
 static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
+static constexpr const char kSpecIdAttrName[] = "spec_id";
 static constexpr const char kTypeAttrName[] = "type";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
@@ -149,6 +152,40 @@ printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter &printer,
     printer << "]";
   }
   elidedAttrs.push_back(spirv::attributeName<spirv::StorageClass>());
+}
+
+static LogicalResult verifyCastOp(Operation *op,
+                                  bool requireSameBitWidth = true) {
+  Type operandType = op->getOperand(0)->getType();
+  Type resultType = op->getResult(0)->getType();
+
+  // ODS checks that result type and operand type have the same shape.
+  if (auto vectorType = operandType.dyn_cast<VectorType>()) {
+    operandType = vectorType.getElementType();
+    resultType = resultType.cast<VectorType>().getElementType();
+  }
+
+  auto operandTypeBitWidth = operandType.getIntOrFloatBitWidth();
+  auto resultTypeBitWidth = resultType.getIntOrFloatBitWidth();
+  auto isSameBitWidth = operandTypeBitWidth == resultTypeBitWidth;
+
+  if (requireSameBitWidth) {
+    if (!isSameBitWidth) {
+      return op->emitOpError(
+                 "expected the same bit widths for operand type and result "
+                 "type, but provided ")
+             << operandType << " and " << resultType;
+    }
+    return success();
+  }
+
+  if (isSameBitWidth) {
+    return op->emitOpError(
+               "expected the different bit widths for operand type and result "
+               "type, but provided ")
+           << operandType << " and " << resultType;
+  }
+  return success();
 }
 
 template <typename LoadStoreOpTy>
@@ -541,6 +578,41 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
   return success();
 }
 
+namespace {
+
+// Combine chained `spirv::AccessChainOp` operations into one
+// `spirv::AccessChainOp` operation.
+struct CombineChainedAccessChain
+    : public OpRewritePattern<spirv::AccessChainOp> {
+  using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::AccessChainOp accessChainOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentAccessChainOp = dyn_cast_or_null<spirv::AccessChainOp>(
+        accessChainOp.base_ptr()->getDefiningOp());
+
+    if (!parentAccessChainOp) {
+      return matchFailure();
+    }
+
+    // Combine indices.
+    SmallVector<Value *, 4> indices(parentAccessChainOp.indices());
+    indices.append(accessChainOp.indices().begin(),
+                   accessChainOp.indices().end());
+
+    rewriter.replaceOpWithNewOp<spirv::AccessChainOp>(
+        accessChainOp, parentAccessChainOp.base_ptr(), indices);
+
+    return matchSuccess();
+  }
+};
+} // namespace
+
+void spirv::AccessChainOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<CombineChainedAccessChain>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // spv._address_of
 //===----------------------------------------------------------------------===//
@@ -597,28 +669,6 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
 //===----------------------------------------------------------------------===//
 // spv.BitcastOp
 //===----------------------------------------------------------------------===//
-
-static ParseResult parseBitcastOp(OpAsmParser &parser, OperationState &state) {
-  OpAsmParser::OperandType operandInfo;
-  Type operandType, resultType;
-  if (parser.parseOperand(operandInfo) || parser.parseKeyword("from") ||
-      parser.parseType(operandType) || parser.parseKeyword("to") ||
-      parser.parseType(resultType)) {
-    return failure();
-  }
-  if (parser.resolveOperands(operandInfo, operandType, state.operands)) {
-    return failure();
-  }
-  state.addTypes(resultType);
-  return success();
-}
-
-static void print(spirv::BitcastOp bitcastOp, OpAsmPrinter &printer) {
-  printer << spirv::BitcastOp::getOperationName() << ' ';
-  printer.printOperand(bitcastOp.operand());
-  printer << " from " << bitcastOp.operand()->getType() << " to "
-          << bitcastOp.result()->getType();
-}
 
 static LogicalResult verify(spirv::BitcastOp bitcastOp) {
   // TODO: The SPIR-V spec validation rules are different for different
@@ -801,7 +851,7 @@ static ParseResult parseCompositeExtractOp(OpAsmParser &parser,
     } else {
       return parser.emitError(
                  attrLocation,
-                 "expexted an 32-bit integer for index, but found '")
+                 "expected an 32-bit integer for index, but found '")
              << indexAttr << "'";
     }
 
@@ -835,7 +885,7 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 
   if (!indicesArrayAttr.size()) {
     return compExOp.emitOpError(
-        "expexted at least one index for spv.CompositeExtractOp");
+        "expected at least one index for spv.CompositeExtractOp");
   }
 
   int32_t index;
@@ -950,7 +1000,7 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
 
   if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
       type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
-    // TODO(antiagainst): support contant struct
+    // TODO(antiagainst): support constant struct
     return type.isa<spirv::ArrayType>();
   }
 
@@ -1198,6 +1248,14 @@ static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
   return success();
 }
 
+CallInterfaceCallable spirv::FunctionCallOp::getCallableForCallee() {
+  return getAttrOfType<SymbolRefAttr>(kCallee);
+}
+
+Operation::operand_range spirv::FunctionCallOp::getArgOperands() {
+  return arguments();
+}
+
 //===----------------------------------------------------------------------===//
 // spv.globalVariable
 //===----------------------------------------------------------------------===//
@@ -1233,7 +1291,7 @@ static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
   if (!type.isa<spirv::PointerType>()) {
     return parser.emitError(loc, "expected spv.ptr type");
   }
-  state.addAttribute(kTypeAttrName, parser.getBuilder().getTypeAttr(type));
+  state.addAttribute(kTypeAttrName, TypeAttr::get(type));
 
   return success();
 }
@@ -1372,7 +1430,7 @@ static void print(spirv::LoopOp loopOp, OpAsmPrinter &printer) {
 /// given `dstBlock`.
 static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
   // Check that there is only one op in the `srcBlock`.
-  if (srcBlock.empty() || std::next(srcBlock.begin()) != srcBlock.end())
+  if (!has_single_element(srcBlock))
     return false;
 
   auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
@@ -1798,6 +1856,11 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 // spv.Select
 //===----------------------------------------------------------------------===//
 
+void spirv::SelectOp::build(Builder *builder, OperationState &state,
+                            Value *cond, Value *trueValue, Value *falseValue) {
+  build(builder, state, trueValue->getType(), cond, trueValue, falseValue);
+}
+
 static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &state) {
   OpAsmParser::OperandType condition;
   SmallVector<OpAsmParser::OperandType, 2> operands;
@@ -1939,6 +2002,170 @@ void spirv::SelectionOp::addMergeBlock() {
   builder.create<spirv::MergeOp>(getLoc());
 }
 
+namespace {
+// Blocks from the given `spv.selection` operation must satisfy the following
+// layout:
+//
+//       +-----------------------------------------------+
+//       | header block                                  |
+//       | spv.BranchConditionalOp %cond, ^case0, ^case1 |
+//       +-----------------------------------------------+
+//                            /   \
+//                             ...
+//
+//
+//   +------------------------+    +------------------------+
+//   | case #0                |    | case #1                |
+//   | spv.Store %ptr %value0 |    | spv.Store %ptr %value1 |
+//   | spv.Branch ^merge      |    | spv.Branch ^merge      |
+//   +------------------------+    +------------------------+
+//
+//
+//                             ...
+//                            \   /
+//                              v
+//                       +-------------+
+//                       | merge block |
+//                       +-------------+
+//
+struct ConvertSelectionOpToSelect
+    : public OpRewritePattern<spirv::SelectionOp> {
+  using OpRewritePattern<spirv::SelectionOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::SelectionOp selectionOp,
+                                     PatternRewriter &rewriter) const override {
+    auto *op = selectionOp.getOperation();
+    auto &body = op->getRegion(0);
+    // Verifier allows an empty region for `spv.selection`.
+    if (body.empty()) {
+      return matchFailure();
+    }
+
+    // Check that region consists of 4 blocks:
+    // header block, `true` block, `false` block and merge block.
+    if (std::distance(body.begin(), body.end()) != 4) {
+      return matchFailure();
+    }
+
+    auto *headerBlock = selectionOp.getHeaderBlock();
+    if (!onlyContainsBranchConditionalOp(headerBlock)) {
+      return matchFailure();
+    }
+
+    auto brConditionalOp =
+        cast<spirv::BranchConditionalOp>(headerBlock->front());
+
+    auto *trueBlock = brConditionalOp.getSuccessor(0);
+    auto *falseBlock = brConditionalOp.getSuccessor(1);
+    auto *mergeBlock = selectionOp.getMergeBlock();
+
+    if (!canCanonicalizeSelection(trueBlock, falseBlock, mergeBlock)) {
+      return matchFailure();
+    }
+
+    auto *trueValue = getSrcValue(trueBlock);
+    auto *falseValue = getSrcValue(falseBlock);
+    auto *ptrValue = getDstPtr(trueBlock);
+    auto storeOpAttributes =
+        cast<spirv::StoreOp>(trueBlock->front()).getOperation()->getAttrs();
+
+    auto selectOp = rewriter.create<spirv::SelectOp>(
+        selectionOp.getLoc(), trueValue->getType(), brConditionalOp.condition(),
+        trueValue, falseValue);
+    rewriter.create<spirv::StoreOp>(selectOp.getLoc(), ptrValue,
+                                    selectOp.getResult(), storeOpAttributes);
+
+    // `spv.selection` is not needed anymore.
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+
+private:
+  // Checks that given blocks follow the following rules:
+  // 1. Each conditional block consists of two operations, the first operation
+  //    is a `spv.Store` and the last operation is a `spv.Branch`.
+  // 2. Each `spv.Store` uses the same pointer and the same memory attributes.
+  // 3. A control flow goes into the given merge block from the given
+  //    conditional blocks.
+  PatternMatchResult canCanonicalizeSelection(Block *trueBlock,
+                                              Block *falseBlock,
+                                              Block *mergeBlock) const;
+
+  bool onlyContainsBranchConditionalOp(Block *block) const {
+    return std::next(block->begin()) == block->end() &&
+           isa<spirv::BranchConditionalOp>(block->front());
+  }
+
+  bool isSameAttrList(spirv::StoreOp lhs, spirv::StoreOp rhs) const {
+    return lhs.getOperation()->getAttrList().getDictionary() ==
+           rhs.getOperation()->getAttrList().getDictionary();
+  }
+
+  // Checks that given type is valid for `spv.SelectOp`.
+  // According to SPIR-V spec:
+  // "Before version 1.4, Result Type must be a pointer, scalar, or vector.
+  // Starting with version 1.4, Result Type can additionally be a composite type
+  // other than a vector."
+  bool isValidType(Type type) const {
+    return spirv::SPIRVDialect::isValidScalarType(type) ||
+           type.isa<VectorType>();
+  }
+
+  // Returns a soruce value for the given block.
+  Value *getSrcValue(Block *block) const {
+    auto storeOp = cast<spirv::StoreOp>(block->front());
+    return storeOp.value();
+  }
+
+  // Returns a destination value for the given block.
+  Value *getDstPtr(Block *block) const {
+    auto storeOp = cast<spirv::StoreOp>(block->front());
+    return storeOp.ptr();
+  }
+};
+
+PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
+    Block *trueBlock, Block *falseBlock, Block *mergeBlock) const {
+  // Each block must consists of 2 operations.
+  if ((std::distance(trueBlock->begin(), trueBlock->end()) != 2) ||
+      (std::distance(falseBlock->begin(), falseBlock->end()) != 2)) {
+    return matchFailure();
+  }
+
+  auto trueBrStoreOp = dyn_cast<spirv::StoreOp>(trueBlock->front());
+  auto trueBrBranchOp =
+      dyn_cast<spirv::BranchOp>(*std::next(trueBlock->begin()));
+  auto falseBrStoreOp = dyn_cast<spirv::StoreOp>(falseBlock->front());
+  auto falseBrBranchOp =
+      dyn_cast<spirv::BranchOp>(*std::next(falseBlock->begin()));
+
+  if (!trueBrStoreOp || !trueBrBranchOp || !falseBrStoreOp ||
+      !falseBrBranchOp) {
+    return matchFailure();
+  }
+
+  // Check that each `spv.Store` uses the same pointer, memory access
+  // attributes and a valid type of the value.
+  if ((trueBrStoreOp.ptr() != falseBrStoreOp.ptr()) ||
+      !isSameAttrList(trueBrStoreOp, falseBrStoreOp) ||
+      !isValidType(trueBrStoreOp.value()->getType())) {
+    return matchFailure();
+  }
+
+  if ((trueBrBranchOp.getOperation()->getSuccessor(0) != mergeBlock) ||
+      (falseBrBranchOp.getOperation()->getSuccessor(0) != mergeBlock)) {
+    return matchFailure();
+  }
+
+  return matchSuccess();
+}
+} // namespace
+
+void spirv::SelectionOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertSelectionOpToSelect>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // spv.specConstant
 //===----------------------------------------------------------------------===//
@@ -1949,8 +2176,19 @@ static ParseResult parseSpecConstantOp(OpAsmParser &parser,
   Attribute valueAttr;
 
   if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
-                             state.attributes) ||
-      parser.parseEqual() ||
+                             state.attributes))
+    return failure();
+
+  // Parse optional spec_id.
+  if (succeeded(parser.parseOptionalKeyword(kSpecIdAttrName))) {
+    IntegerAttr specIdAttr;
+    if (parser.parseLParen() ||
+        parser.parseAttribute(specIdAttr, kSpecIdAttrName, state.attributes) ||
+        parser.parseRParen())
+      return failure();
+  }
+
+  if (parser.parseEqual() ||
       parser.parseAttribute(valueAttr, kDefaultValueAttrName, state.attributes))
     return failure();
 
@@ -1960,11 +2198,17 @@ static ParseResult parseSpecConstantOp(OpAsmParser &parser,
 static void print(spirv::SpecConstantOp constOp, OpAsmPrinter &printer) {
   printer << spirv::SpecConstantOp::getOperationName() << ' ';
   printer.printSymbolName(constOp.sym_name());
+  if (auto specID = constOp.getAttrOfType<IntegerAttr>(kSpecIdAttrName))
+    printer << ' ' << kSpecIdAttrName << '(' << specID.getInt() << ')';
   printer << " = ";
   printer.printAttribute(constOp.default_value());
 }
 
 static LogicalResult verify(spirv::SpecConstantOp constOp) {
+  if (auto specID = constOp.getAttrOfType<IntegerAttr>(kSpecIdAttrName))
+    if (specID.getValue().isNegative())
+      return constOp.emitOpError("SpecId cannot be negative");
+
   auto value = constOp.default_value();
 
   switch (value.getKind()) {
@@ -2051,6 +2295,26 @@ static ParseResult parseUndefOp(OpAsmParser &parser, OperationState &state) {
 
 static void print(spirv::UndefOp undefOp, OpAsmPrinter &printer) {
   printer << spirv::UndefOp::getOperationName() << " : " << undefOp.getType();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.Unreachable
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(spirv::UnreachableOp unreachableOp) {
+  auto *op = unreachableOp.getOperation();
+  auto *block = op->getBlock();
+  // Fast track: if this is in entry block, its invalid. Otherwise, if no
+  // predecessors, it's valid.
+  if (block->isEntryBlock())
+    return unreachableOp.emitOpError("cannot be used in reachable block");
+  if (block->hasNoPredecessors())
+    return success();
+
+  // TODO(antiagainst): further verification needs to analyze reachablility from
+  // the entry block.
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -214,6 +214,24 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
 }
 
 template <typename T>
+inline void ReluX(const tflite::ReluParams& params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 val = static_cast<int32_t>(input_data[i]);
+    int32 clamped = params.output_offset +
+                    MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                  params.output_multiplier,
+                                                  params.output_shift);
+    clamped = std::max(params.quantized_activation_min, clamped);
+    clamped = std::min(params.quantized_activation_max, clamped);
+    output_data[i] = static_cast<T>(clamped);
+  }
+}
+
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
@@ -350,7 +368,7 @@ inline void Mul(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] * input2_data[i], output_activation_min,
@@ -444,7 +462,7 @@ inline void Mul(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Mul/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -551,7 +569,7 @@ inline void Mul(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Mul/Int16");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -574,7 +592,7 @@ inline void Mul(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -655,7 +673,7 @@ inline void Div(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] / input2_data[i], output_activation_min,
@@ -706,7 +724,7 @@ inline void Div(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("Div/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   DivElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -779,7 +797,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& output_shape,
                             float* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -795,7 +813,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& output_shape,
                             int32* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -1043,7 +1061,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               int32* output_data) {
   gemmlowp::ScopedProfilingLabel label("SubWithActivation");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -1059,7 +1077,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const RuntimeShape& output_shape,
                               float* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -1074,7 +1092,7 @@ inline void Sub16(const ArithmeticParams& params,
   gemmlowp::ScopedProfilingLabel label("Sub/Int16");
   const int input1_shift = params.input1_shift;
   const int flat_size =
-      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int16 output_activation_min = params.quantized_activation_min;
   const int16 output_activation_max = params.quantized_activation_max;
 
@@ -2751,11 +2769,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
@@ -2795,11 +2813,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   const bool ordinary_mean =
       (input_zero_point == output_zero_point && input_scale == output_scale);
@@ -2906,11 +2924,12 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         float float_mean = static_cast<float>(temp_sum[idx]) /
                            static_cast<float>(num_elements_in_axis);
-
-        // Convert to float value.
-        output_data[idx] =
-            static_cast<T>(std::round(float_mean * scale + bias)) +
-            output_zero_point;
+        float result =
+            std::min(std::round(float_mean * scale + bias) + output_zero_point,
+                     static_cast<float>(std::numeric_limits<T>::max()));
+        result =
+            std::max(result, static_cast<float>(std::numeric_limits<T>::min()));
+        output_data[idx] = static_cast<T>(result);
       }
     }
   }

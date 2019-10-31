@@ -1469,11 +1469,11 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     if isinstance(x, ops.Tensor):
       rank = x.shape.rank
       if rank is not None:
-        return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+        return constant_op.constant(np.arange(rank, dtype=np.int32))
     elif (isinstance(x, sparse_tensor.SparseTensor) and
           x.dense_shape.shape.is_fully_defined()):
       rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
-      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+      return constant_op.constant(np.arange(rank, dtype=np.int32))
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.
     return range(0, array_ops.rank(x))
@@ -2564,8 +2564,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             keepdims=keepdims,
             dims=reduce_dim))
     if not keepdims:
-      my_max = array_ops.reshape(my_max,
-                                 result._maybe_constant_shape(gen_array_ops))  # pylint: disable=protected-access
+      my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
     result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
@@ -2809,7 +2808,8 @@ def matvec(a,
   """Multiplies matrix `a` by vector `b`, producing `a` * `b`.
 
   The matrix `a` must, following any transpositions, be a tensor of rank >= 2,
-  and we must have `shape(b) = shape(a)[:-2] + [shape(a)[-1]]`.
+  with `shape(a)[-1] == shape(b)[-1]`, and `shape(a)[:-2]` able to broadcast
+  with `shape(b)[:-1]`.
 
   Both `a` and `b` must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2864,7 +2864,7 @@ def matvec(a,
   Args:
     a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
       `complex128` and rank > 1.
-    b: `Tensor` with same type and rank = `rank(a) - 1`.
+    b: `Tensor` with same type as `a` and compatible dimensions.
     transpose_a: If `True`, `a` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
       multiplication.

@@ -100,7 +100,7 @@ class Sequential(training.Model):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
-    super(Sequential, self).__init__(name=name)
+    super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True

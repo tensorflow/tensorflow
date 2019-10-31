@@ -728,7 +728,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@FP16",
-        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/memory",
     ],
 )
 

@@ -21,7 +21,9 @@ import collections
 import json
 
 import numpy as np
+import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -82,39 +84,58 @@ class TextVectorization(CombinerPreprocessingLayer):
     5) transform each sample using this index, either into a vector of ints or
        a dense float vector.
 
+  Some notes on passing Callables to customize splitting and normalization for
+  this layer:
+    1) Any callable can be passed to this Layer, but if you want to serialize
+       this object you should only pass functions that are registered Keras
+       serializables (see `tf.keras.utils.register_keras_serializable` for more
+       details).
+    2) When using a custom callable for `standardize`, the data recieved
+       by the callable will be exactly as passed to this layer. The callable
+       should return a tensor of the same shape as the input.
+    3) When using a custom callable for `split`, the data recieved by the
+       callable will have the 1st dimension squeezed out - instead of
+       `[["string to split"], ["another string to split"]]`, the Callable will
+       see `["string to split", "another string to split"]`. The callable should
+       return a Tensor with the first dimension containing the split tokens -
+       in this example, we should see something like `[["string", "to", "split],
+       ["another", "string", "to", "split"]]`. This makes the callable site
+       natively compatible with `tf.strings.split()`.
+
   Attributes:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
     standardize: Optional specification for standardization to apply to the
       input text. Values can be None (no standardization),
-      LOWER_AND_STRIP_PUNCTUATION (lowercase and remove punctuation) or a
-      Callable. Default is LOWER_AND_STRIP_PUNCTUATION.
+      'lower_and_strip_punctuation' (lowercase and remove punctuation) or a
+      Callable. Default is 'lower_and_strip_punctuation'.
     split: Optional specification for splitting the input text. Values can be
-      None (no splitting), SPLIT_ON_WHITESPACE (split on ASCII whitespace), or a
-      Callable. Default is SPLIT_ON_WHITESPACE.
+      None (no splitting), 'whitespace' (split on ASCII whitespace), or a
+      Callable. The default is 'whitespace'.
     ngrams: Optional specification for ngrams to create from the possibly-split
       input text. Values can be None, an integer or tuple of integers; passing
       an integer will create ngrams up to that integer, and passing a tuple of
       integers will create ngrams for the specified values in the tuple. Passing
       None means that no ngrams will be created.
     output_mode: Optional specification for the output of the layer. Values can
-      be INT, BINARY, COUNT or TFIDF, which control the outputs as follows:
-        INT: Outputs integer indices, one integer index per split string token.
-        BINARY: Outputs a single int array per batch, of either vocab_size or
+      be "int", "binary", "count" or "tf-idf", configuring the layer as follows:
+        "int": Outputs integer indices, one integer index per split string
+          token.
+        "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
           to that index exists at least once in the batch item.
-        COUNT: As BINARY, but the int array contains a count of the number of
-          times the token at that index appeared in the batch item.
-        TFIDF: As BINARY, but the TF-IDF algorithm is applied to find the value
-          in each token slot.
+        "count": As "binary", but the int array contains a count of the number
+          of times the token at that index appeared in the batch item.
+        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
+          value in each token slot.
     output_sequence_length: Only valid in INT mode. If set, the output will have
       its time dimension padded or truncated to exactly `output_sequence_length`
       values, resulting in a tensor of shape [batch_size,
       output_sequence_length] regardless of how many tokens resulted from the
       splitting step. Defaults to None.
-    pad_to_max_tokens: Only valid in  BINARY, COUNT, and TFIDF modes. If True,
-      the output will have its feature axis padded to `max_tokens` even if the
-      number of unique tokens in the vocabulary is less than max_tokens,
+    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
+      True, the output will have its feature axis padded to `max_tokens` even if
+      the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
       vocabulary size. Defaults to True.
   """
@@ -137,13 +158,42 @@ class TextVectorization(CombinerPreprocessingLayer):
     elif "dtype" not in kwargs:
       kwargs["dtype"] = dtypes.string
 
-    # TODO(momernick): Validate the inputs. The following must apply:
-    # 'standardize' must be one of (None, LOWER_AND_STRIP, callable)
-    # 'split' must be one of (None, WHITESPACE, callable)
-    # 'ngrams' must be one of (None, int, tuple(int))
+    # 'standardize' must be one of (None, LOWER_AND_STRIP_PUNCTUATION, callable)
+    _validate_string_arg(
+        standardize,
+        allowable_strings=[LOWER_AND_STRIP_PUNCTUATION],
+        arg_name="standardize")
+
+    # 'split' must be one of (None, SPLIT_ON_WHITESPACE, callable)
+    _validate_string_arg(
+        split, allowable_strings=[SPLIT_ON_WHITESPACE], arg_name="split")
+
     # 'output_mode' must be one of (None, INT, COUNT, BINARY, TFIDF)
+    _validate_string_arg(
+        output_mode,
+        allowable_strings=[INT, COUNT, BINARY, TFIDF],
+        arg_name="output_mode",
+        allow_callables=False)
+
+    # 'ngrams' must be one of (None, int, tuple(int))
+    if not (ngrams is None or
+            isinstance(ngrams, int) or
+            isinstance(ngrams, tuple) and
+            all(isinstance(item, int) for item in ngrams)):
+      raise ValueError(("`ngrams` must be None, an integer, or a tuple of "
+                        "integers. Got %s") % (ngrams,))
+
     # 'output_sequence_length' must be one of (None, int) and is only
     # set if output_mode is INT.
+    if (output_mode == INT and not (isinstance(output_sequence_length, int) or
+                                    (output_sequence_length is None))):
+      raise ValueError("`output_sequence_length` must be either None or an "
+                       "integer when `output_mode` is 'int'. "
+                       "Got %s" % output_sequence_length)
+
+    if output_mode != INT and output_sequence_length is not None:
+      raise ValueError("`output_sequence_length` must not be set if "
+                       "`output_mode` is not 'int'.")
 
     self._max_tokens = max_tokens
 
@@ -164,7 +214,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # This is an explicit regex of all the tokens that will be stripped if
     # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
     # stripping, a Callable should be passed into the 'standardize' arg.
-    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\t\n\']'
+    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
 
     self._standardize = standardize
     self._split = split
@@ -276,12 +326,22 @@ class TextVectorization(CombinerPreprocessingLayer):
     """
     if not reset_state:
       raise ValueError("TextVectorization does not support streaming adapts.")
-    self.build(data.shape)
-    # TODO(askerryryan): Look into making preprocessing a model that can be
-    # passed as a subgraph to dataset.map.
-    preprocessed_inputs = self._preprocess(data)
-    super(TextVectorization,
-          self).adapt(self._to_numpy(preprocessed_inputs), reset_state)
+
+    # Build the layer explicitly with the original data shape instead of relying
+    # on an implicit call to `build` in the base layer's `adapt`, since
+    # preprocessing changes the input shape.
+    if isinstance(data, np.ndarray):
+      self.build(data.shape)
+      preprocessed_inputs = self._to_numpy(self._preprocess(data))
+    elif isinstance(data, dataset_ops.DatasetV2):
+      self.build(dataset_ops.get_legacy_output_shapes(data))
+      preprocessed_inputs = data.map(self._preprocess)
+    else:
+      raise ValueError(
+          "adapt() requires a Dataset or a Numpy array as input, got {}".format(
+              type(data)))
+
+    super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
     if not self._has_vocab:
@@ -433,21 +493,31 @@ class TextVectorization(CombinerPreprocessingLayer):
     if self._standardize is LOWER_AND_STRIP_PUNCTUATION:
       lowercase_inputs = gen_string_ops.string_lower(inputs)
       inputs = string_ops.regex_replace(lowercase_inputs, self._strip_regex, "")
+    elif callable(self._standardize):
+      inputs = self._standardize(inputs)
     elif self._standardize is not None:
-      # TODO(momernick): Support callables here.
-      raise RuntimeError("Not a supported standardization.")
+      raise ValueError(("%s is not a supported standardization. "
+                        "TextVectorization supports the following options "
+                        "for `standardize`: None, "
+                        "'lower_and_strip_punctuation', or a "
+                        "Callable.") % self._standardize)
 
-    if self._split is SPLIT_ON_WHITESPACE:
-      # If split isn't None, we validate that the 1st axis is of dimension 1 and
+    if self._split is not None:
+      # If we are splitting, we validate that the 1st axis is of dimension 1 and
       # so can be squeezed out. We do this here instead of after splitting for
       # performance reasons - it's more expensive to squeeze a ragged tensor.
       inputs = array_ops.squeeze(inputs, axis=1)
-      # This treats multiple whitespaces as one whitespace, and strips leading
-      # and trailing whitespace.
-      inputs = ragged_string_ops.string_split_v2(inputs)
-    elif self._split is not None:
-      # TODO(momernick): Support callables here.
-      raise RuntimeError("Not a supported splitting.")
+      if self._split is SPLIT_ON_WHITESPACE:
+        # This treats multiple whitespaces as one whitespace, and strips leading
+        # and trailing whitespace.
+        inputs = ragged_string_ops.string_split_v2(inputs)
+      elif callable(self._split):
+        inputs = self._split(inputs)
+      else:
+        raise ValueError(
+            ("%s is not a supported splitting."
+             "TextVectorization supports the following options "
+             "for `split`: None, 'whitespace', or a Callable.") % self._split)
 
     # Note that 'inputs' here can be either ragged or dense depending on the
     # configuration choices for this Layer. The strings.ngrams op, however, does
@@ -519,6 +589,28 @@ class TextVectorization(CombinerPreprocessingLayer):
     raise ValueError("Unknown output mode %s" % self._output_mode)
 
 
+def _validate_string_arg(input_data,
+                         allowable_strings,
+                         arg_name,
+                         allow_none=True,
+                         allow_callables=True):
+  """Validates the correctness of a string-based arg for VectorizeText."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = "`None`, " if allow_none else ""
+    allowed_args += "a `Callable`, " if allow_callables else ""
+    allowed_args += "or one of the following values: %s" % allowable_strings
+    raise ValueError(
+        ("VectorizeText's %s arg received an invalid value %s. " +
+         "Allowed values are %s.") % (arg_name, input_data, allowed_args))
+
+
 class _TextVectorizationCombiner(Combiner):
   """Combiner for the TextVectorization preprocessing layer.
 
@@ -544,6 +636,8 @@ class _TextVectorizationCombiner(Combiner):
     if dtypes.as_dtype(self._input_dtype) != dtypes.as_dtype(values.dtype):
       raise RuntimeError("Expected input type %s, got %s" %
                          (self._input_dtype, values.dtype))
+    if ragged_tensor.is_ragged(values):
+      values = values.to_list()
     flattened_batch = np.concatenate(values)
     vocab, counts = np.unique(flattened_batch, return_counts=True)
     if self._compute_idf:
@@ -562,14 +656,14 @@ class _TextVectorizationCombiner(Combiner):
 
   def merge(self, accumulators):
     """Merge several accumulators to a single accumulator."""
-    # TODO(askerryryan): Think about performance and benchmark different options
-    # for the merge algo.
+    # TODO(b/142871075): Benchmark different alternatives for merge algorithm.
     concat_vocab = np.concatenate(
         [getattr(acc, _ACCUMULATOR_VOCAB_NAME) for acc in accumulators])
     concat_counts = np.concatenate(
         [getattr(acc, _ACCUMULATOR_COUNTS_NAME) for acc in accumulators])
-    concat_document_counts = np.concatenate(
-        [getattr(acc, _ACCUMULATOR_DOCUMENT_COUNTS) for acc in accumulators])
+    if self._compute_idf:
+      concat_document_counts = np.concatenate(
+          [getattr(acc, _ACCUMULATOR_DOCUMENT_COUNTS) for acc in accumulators])
     merged_values, merged_indices = np.unique(concat_vocab, return_inverse=True)
 
     def sum_segment(index, array_to_segment):

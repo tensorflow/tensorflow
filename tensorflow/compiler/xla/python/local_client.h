@@ -155,6 +155,11 @@ class PyLocalClient {
     return &h2d_transfer_pool_;
   }
 
+  // Most platforms expect device-to-device transfers to be enqueued on the
+  // source d2d stream, but some platforms use the destination d2d stream. This
+  // function specifies which one the platform expects.
+  virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
+
   // Returns a platform-specific serialization of `executable`. This is meant
   // for transferring executables and not for storage, and the serialization is
   // not guaranteed to be stable over time.

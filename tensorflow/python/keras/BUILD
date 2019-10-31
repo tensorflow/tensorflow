@@ -67,6 +67,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
@@ -213,6 +214,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
+        "//tensorflow/python/profiler:traceme",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -352,6 +354,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -940,7 +943,7 @@ tf_py_test(
 
 tf_py_test(
     name = "merge_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/merge_test.py"],
     additional_deps = [
         ":keras",
@@ -996,8 +999,10 @@ tf_py_test(
     size = "medium",
     srcs = ["layers/preprocessing/text_vectorization_test.py"],
     additional_deps = [
+        ":generic_utils",
         ":keras",
         ":preprocessing_test_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
@@ -1330,6 +1335,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = False,  # b/142744009
 )
 
 cuda_py_test(

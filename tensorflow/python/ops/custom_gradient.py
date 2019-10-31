@@ -83,7 +83,7 @@ def copy_handle_data(source_t, target_t):
 
 
 @tf_export("custom_gradient")
-def custom_gradient(f=None, primals=None):
+def custom_gradient(f=None):
   """Decorator to define a function with a custom gradient.
 
   This decorator allows fine grained control over the gradients of a sequence
@@ -143,31 +143,7 @@ def custom_gradient(f=None, primals=None):
   gradient graphs from backward-mode gradient graphs, but is not the same as
   the second order gradient of `op` with respect to `x`.
 
-  Instead, when overriding `n`-th order gradients, specify a `primals` argument
-  to the inner decorator(s). For example overriding both first- and second-order
-  gradients is necessary when making an operation with a fused forward and
-  backward pass infinitely differentiable:
-
-  ```python
-  @tf.custom_gradient
-  def op_with_fused_backprop(x):
-    y, x_grad = fused_op(x)
-    @tf.custom_gradient(primals=x)
-    def grad_fn(dy):
-      def grad_grad_fn(ddy):
-        return infinitely_differentiable_second_order_grad_for_x(x, y, ddy)
-      return x_grad, grad_grad_fn
-    return y, grad_fn
-  ```
-
-  Likewise when also overriding third or higher-order gradients, `primals` will
-  typically be the original zeroth-order inputs.
-
-  You can achieve the same effect by wrapping nested `@tf.custom_gradients` in
-  another function. For example you may need to override gradients with respect
-  to output gradients in addition to second-order gradients. Gradients with
-  respect to output gradients are used for generating forward-mode gradient
-  graphs from backward graphs, transposing the gradient function.
+  Instead, wrap nested `@tf.custom_gradients` in another function:
 
   ```python
   @tf.custom_gradient
@@ -175,17 +151,16 @@ def custom_gradient(f=None, primals=None):
     y, x_grad = fused_op(x)
     def first_order_gradient(dy):
       @tf.custom_gradient
-      def first_order_custom(unused_x, unused_dy):
+      def first_order_custom(unused_x):
         def second_order_and_transpose(ddy):
           return second_order_for_x(...), gradient_wrt_dy(...)
         return x_grad, second_order_and_transpose
-      return first_order_custom(x, dy)
+      return dy * first_order_custom(x)
     return y, first_order_gradient
   ```
 
-  With the additional layer of nesting, `primals` is no longer
-  necessary. Additional arguments to the inner `@tf.custom_gradient`-decorated
-  function control the expected return values of the innermost function.
+  Additional arguments to the inner `@tf.custom_gradient`-decorated function
+  control the expected return values of the innermost function.
 
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
@@ -219,10 +194,6 @@ def custom_gradient(f=None, primals=None):
          `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
          with the derivatives of `Tensor`s in `y` with respect to the variables
          (that is, grad_vars has one Tensor per variable in variables).
-    primals: A `Tensor` or list of `Tensor`. The tensors with respect to which
-      the gradient function will be returning. When nesting custom gradients,
-      specifying `primals` allows you to control which original tensors the
-      higher-order gradients are for. See examples above.
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
@@ -230,15 +201,15 @@ def custom_gradient(f=None, primals=None):
   """
 
   if f is None:
-    return lambda f: custom_gradient(f=f, primals=primals)
+    return lambda f: custom_gradient(f=f)
 
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
     if context.executing_eagerly():
-      return _eager_mode_decorator(wrapped, primals, args, kwargs)
+      return _eager_mode_decorator(wrapped, args, kwargs)
     else:
-      return _graph_mode_decorator(wrapped, primals, args, kwargs)
+      return _graph_mode_decorator(wrapped, args, kwargs)
 
   return tf_decorator.make_decorator(f, decorated(f))  # pylint: disable=no-value-for-parameter
 
@@ -325,7 +296,7 @@ def get_dependent_variables(input_ops, output_ops):
   return tf_vars
 
 
-def _graph_mode_decorator(f, primals, args, kwargs):
+def _graph_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
   if kwargs:
@@ -356,11 +327,7 @@ def _graph_mode_decorator(f, primals, args, kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  if primals is None:
-    inputs = args
-  else:
-    primals = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
-    inputs = primals + args
+  inputs = args
   variables_in_tape = frozenset([
       v.experimental_ref() for v in tape.watched_variables()
   ]) - frozenset(v.experimental_ref() for v in inputs)
@@ -390,10 +357,7 @@ def _graph_mode_decorator(f, primals, args, kwargs):
   flat_result = nest.flatten(result)
   flat_result_len = len(flat_result)
 
-  if primals is None:
-    all_tensors = flat_result + args + variables
-  else:
-    all_tensors = flat_result + primals + variables
+  all_tensors = flat_result + args + variables
 
   def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
@@ -436,14 +400,11 @@ def _graph_mode_decorator(f, primals, args, kwargs):
       structure=result, flat_sequence=all_tensors[:flat_result_len])
 
 
-def _eager_mode_decorator(f, primals, args, kwargs):
+def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args, **kwargs)
-  if primals is None:
-    all_inputs = list(args) + list(kwargs.values())
-  else:
-    all_inputs = primals
+  all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
@@ -464,12 +425,8 @@ def _eager_mode_decorator(f, primals, args, kwargs):
   input_tensors = [ops.convert_to_tensor(x) for x
                    in list(args) + list(variables)]
 
-  if primals is None:
-    recorded_inputs = input_tensors
-    arg_count = len(args)
-  else:
-    recorded_inputs = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
-    arg_count = len(recorded_inputs)
+  recorded_inputs = input_tensors
+  arg_count = len(args)
 
   def actual_grad_fn(*result_grads):
     """Custom grad fn wrapper."""

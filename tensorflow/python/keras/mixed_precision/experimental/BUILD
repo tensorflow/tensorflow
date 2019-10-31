@@ -141,6 +141,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -171,4 +172,5 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    tags = ["no_rocm"],
 )

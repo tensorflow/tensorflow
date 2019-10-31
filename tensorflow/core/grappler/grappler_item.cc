@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -211,59 +212,9 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
     bool* ill_formed) {
-  *ill_formed = false;
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  std::unordered_map<string, const NodeDef*> name_to_send;
-  for (const auto& node : graph.node()) {
-    name_to_node[node.name()] = &node;
-    if (node.op() == "_Send") {
-      const auto& attr = node.attr();
-      name_to_send[attr.at("tensor_name").s()] = &node;
-    }
-  }
-
-  std::vector<const NodeDef*> queue;
-  for (const string& root : terminal_nodes) {
-    const NodeDef* node = name_to_node[NodeName(root)];
-    if (!node) {
-      *ill_formed = true;
-      VLOG(2) << "ComputeTransitiveFanin: problem with root node: " << root;
-      return {};
-    }
-    queue.push_back(node);
-  }
-
-  std::vector<const NodeDef*> result;
-  std::unordered_set<const NodeDef*> visited;
-
-  while (!queue.empty()) {
-    const NodeDef* node = queue.back();
-    queue.pop_back();
-    if (!visited.insert(node).second) {
-      // The node has already been visited.
-      continue;
-    }
-    result.push_back(node);
-    for (const string& input : node->input()) {
-      const NodeDef* in = name_to_node[NodeName(input)];
-      if (!in) {
-        VLOG(2) << "ComputeTransitiveFanin: problem with node: " << input;
-        *ill_formed = true;
-        return {};
-      }
-      queue.push_back(in);
-    }
-    if (node->op() == "_Recv") {
-      const auto& attr = node->attr();
-      const NodeDef* send = name_to_send[attr.at("tensor_name").s()];
-      if (send) {
-        queue.push_back(send);
-      }
-      // Subgraph after partitioning may have either _Send or _Recv, not both.
-      // So, we do not set ill_formed for missing _Send.
-    }
-  }
-  return result;
+  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
+  return ComputeTransitiveFanin(graph, terminal_nodes, &name_to_fanin_node,
+                                ill_formed);
 }
 
 }  // end namespace grappler

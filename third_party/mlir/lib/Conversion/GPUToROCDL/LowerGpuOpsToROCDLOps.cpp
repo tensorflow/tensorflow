@@ -29,6 +29,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "../GPUCommon/IndexIntrinsicsOpLowering.h"
+#include "../GPUCommon/OpToFuncCallLowering.h"
 
 using namespace mlir;
 
@@ -50,18 +51,21 @@ public:
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     patterns.insert<
-        GPUIndexIntrinsicOpLowering<gpu::ThreadId, ROCDL::ThreadIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::ThreadIdOp, ROCDL::ThreadIdXOp,
                                     ROCDL::ThreadIdYOp, ROCDL::ThreadIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockDim, ROCDL::BlockDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockDimOp, ROCDL::BlockDimXOp,
                                     ROCDL::BlockDimYOp, ROCDL::BlockDimZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockId, ROCDL::BlockIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockIdOp, ROCDL::BlockIdXOp,
                                     ROCDL::BlockIdYOp, ROCDL::BlockIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::GridDim, ROCDL::GridDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::GridDimOp, ROCDL::GridDimXOp,
                                     ROCDL::GridDimYOp, ROCDL::GridDimZOp>>(
         converter);
+    patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "_ocml_exp_f32",
+                                                 "_ocml_exp_f64");
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect, ROCDL::ROCDLDialect>();
+    target.addIllegalOp<LLVM::ExpOp>();
     target.addDynamicallyLegalOp<FuncOp>(
         [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
     if (failed(applyPartialConversion(m, target, patterns, &converter)))

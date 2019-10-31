@@ -17,18 +17,15 @@ limitations under the License.
 
 #include "Arduino.h"
 
-// Pins for the built-in RGB LEDs on the Arduino Nano 33 BLE Sense
-const int led_red = 22;
-const int led_green = 23;
-const int led_blue = 24;
-
 // Flash the blue LED after each inference
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
                         uint8_t person_score, uint8_t no_person_score) {
   static bool is_initialized = false;
   if (!is_initialized) {
-    pinMode(led_green, OUTPUT);
-    pinMode(led_blue, OUTPUT);
+    // Pins for the built-in RGB LEDs on the Arduino Nano 33 BLE Sense
+    pinMode(LEDR, OUTPUT);
+    pinMode(LEDG, OUTPUT);
+    pinMode(LEDB, OUTPUT);
     is_initialized = true;
   }
 
@@ -36,22 +33,22 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
   // Sense are on when the pin is LOW, off when HIGH.
 
   // Switch the person/not person LEDs off
-  digitalWrite(led_green, HIGH);
-  digitalWrite(led_red, HIGH);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDR, HIGH);
 
   // Flash the blue LED after every inference.
-  digitalWrite(led_blue, LOW);
+  digitalWrite(LEDB, LOW);
   delay(100);
-  digitalWrite(led_blue, HIGH);
+  digitalWrite(LEDB, HIGH);
 
   // Switch on the green LED when a person is detected,
   // the red when no person is detected
   if (person_score > no_person_score) {
-    digitalWrite(led_green, LOW);
-    digitalWrite(led_red, HIGH);
+    digitalWrite(LEDG, LOW);
+    digitalWrite(LEDR, HIGH);
   } else {
-    digitalWrite(led_green, HIGH);
-    digitalWrite(led_red, LOW);
+    digitalWrite(LEDG, HIGH);
+    digitalWrite(LEDR, LOW);
   }
 
   error_reporter->Report("Person score: %d No person score: %d", person_score,

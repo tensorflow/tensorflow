@@ -23,8 +23,15 @@
 #else
 #define LINALG_OPS
 
+#ifdef AFFINE_OPS_BASE
+#else
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+#endif // AFFINE_OPS_BASE
+
+#ifdef LINALG_BASE
+#else
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
+#endif // LINALG_BASE
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -290,16 +297,6 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         res.push_back(getRange(i));
       return res;
     }
-
-    // This requires `SubViewOp` to be declared, in the future it should be
-    // folded into the builders.
-    static void build(Builder *builder, OperationState &result, Value *view,
-        ArrayRef<SubViewOp::Range> ranges) {
-      result.addOperands(view);
-      for (auto r : ranges)
-        result.addOperands({r.min, r.max, r.step});
-      result.types.push_back(view->getType());
-    }
   }];
 }
 
@@ -352,7 +349,7 @@ def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
 
        %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
        %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-       %3 = linalg.view %1[%2, %2] : 
+       %3 = linalg.view %1[%2, %2] :
          memref<?x?xvector<4xf32>, stride_specification>
   }];
 

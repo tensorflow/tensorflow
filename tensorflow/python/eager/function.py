@@ -622,11 +622,12 @@ class _DelayedRewriteGradientFunctions(object):
           tensor_spec.TensorSpec(*default_gradient.shape_and_dtype(t)))
 
     def _backprop_function(*grad_ys):
-      return gradients_util._GradientsHelper(  # pylint: disable=protected-access
-          trainable_outputs,
-          self._func_graph.inputs,
-          grad_ys=grad_ys,
-          src_graph=self._func_graph)
+      with ops.device(None):
+        return gradients_util._GradientsHelper(  # pylint: disable=protected-access
+            trainable_outputs,
+            self._func_graph.inputs,
+            grad_ys=grad_ys,
+            src_graph=self._func_graph)
 
     with self._func_graph.as_default():
       backwards_graph = func_graph_module.FuncGraph(
@@ -862,11 +863,12 @@ class _TapeGradientFunctions(object):
             output)
         gradients_wrt_outputs.append(
             graph_placeholder(gradient_dtype, gradient_shape))
-      gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
-          trainable_outputs,
-          self._func_graph.inputs,
-          grad_ys=gradients_wrt_outputs,
-          src_graph=self._func_graph)
+      with ops.device(None):
+        gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
+            trainable_outputs,
+            self._func_graph.inputs,
+            grad_ys=gradients_wrt_outputs,
+            src_graph=self._func_graph)
 
       captures_from_forward = [
           c for c in backwards_graph.external_captures
@@ -1082,11 +1084,12 @@ class _TapeGradientFunctions(object):
             gradients_wrt_output_tangents.append(placeholder)
             tangent_doutputs.append(placeholder)
           num_processed_output_tangents = len(output_tangents)
-          gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
-              output_tangents,
-              forward_wrapper.graph.inputs,
-              grad_ys=gradients_wrt_output_tangents,
-              src_graph=forward_wrapper.graph)
+          with ops.device(None):
+            gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
+                output_tangents,
+                forward_wrapper.graph.inputs,
+                grad_ys=gradients_wrt_output_tangents,
+                src_graph=forward_wrapper.graph)
           dinputs = [
               backprop.aggregate_indexed_slices_gradients((existing, new))
               for existing, new in zip(dinputs, gradients_wrt_inputs)
@@ -1492,6 +1495,16 @@ class ConcreteFunction(object):
     # Cache the inference function to avoid a (Python) function call when not
     # building gradients.
     self._inference_function = self._delayed_rewrite_functions.forward()
+
+  @property
+  def variables(self):
+    """Sequence of variables for this function."""
+    return tuple(self._func_graph.variables)
+
+  @property
+  def trainable_variables(self):
+    """Sequence of trainable variables for this function."""
+    return tuple(self._func_graph.trainable_variables)
 
   def __call__(self, *args, **kwargs):
     """Executes the wrapped function.

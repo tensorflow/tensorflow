@@ -89,6 +89,10 @@ Status SelectBroadcastAdd(const AddAttributes& attr,
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
 
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -3,6 +3,7 @@ add_llvm_library(MLIRSPIRV
   SPIRVDialect.cpp
   SPIRVOps.cpp
   SPIRVTypes.cpp
+  LayoutUtils.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/SPIRV

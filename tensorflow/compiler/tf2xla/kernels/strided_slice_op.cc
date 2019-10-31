@@ -118,7 +118,7 @@ class StridedSliceOp : public XlaOpKernel {
     } else {
       // When output shape is fully defined, it must be a size one slice:
       //
-      // 1. The number of output elements has to equal to number of input
+      // 1. The number of output elements has to be equal to the number of input
       // elements that are sliced.
       // 2. The stride of the slice dimensions must be exact one.
       int64 output_elements = final_shape.num_elements();
@@ -126,6 +126,7 @@ class StridedSliceOp : public XlaOpKernel {
       int64 input_elements_sliced = 1;
       int64 slicing_dim_size = begin_shape.dim_size(0);
       // We only support slicing major dimensions, so minor dimensions after
+      // slicing dimension are all sliced with their full sizes.
       for (int64 d = slicing_dim_size; d < input_shape.dims(); ++d) {
         input_elements_sliced *= input_shape.dim_size(d);
       }
@@ -148,17 +149,25 @@ class StridedSliceOp : public XlaOpKernel {
       // inference size 1 slice.
       std::vector<int64> slice_sizes(slicing_dim_size, 1);
       std::vector<xla::XlaOp> start_indices;
+      auto zero = xla::Zero(ctx->builder(), ctx->InputXlaType("begin"));
       for (int64 d = 0; d < slicing_dim_size; ++d) {
         auto index = xla::Slice(ctx->Input("begin"), {d}, {d + 1}, {1});
         // Convert index to scalar.
-        start_indices.push_back(xla::Reshape(index, {}));
+        index = xla::Reshape(index, {});
+        // Negative index: wrap it around with dimension size.
+        auto index_negative = xla::Lt(index, zero);
+        auto dim_size = xla::ConvertElementType(
+            xla::ConstantR0<int32>(ctx->builder(), input_shape.dim_size(d)),
+            ctx->InputXlaType("begin"));
+        auto wrapped_index = xla::Add(dim_size, index);
+        index = xla::Select(index_negative, wrapped_index, index);
+        start_indices.push_back(index);
       }
 
       for (int64 d = slicing_dim_size; d < input_shape.dims(); ++d) {
         // For non-slice dims, naturally we get the full slice starting from 0.
         slice_sizes.push_back(input_shape.dim_size(d));
-        start_indices.push_back(
-            xla::Zero(ctx->builder(), ctx->InputXlaType("begin")));
+        start_indices.push_back(zero);
       }
 
       std::vector<int64> output_shape_dim_sizes;

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/experimental/micro/memory_helpers.h"
 #include "tensorflow/lite/experimental/micro/memory_planner/greedy_memory_planner.h"
+#include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
 
 namespace tflite {
 
@@ -89,14 +90,28 @@ TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
 TfLiteStatus MicroAllocator::AllocateTensors() {
   const size_t tensors_size = tensors_->size();
 
-  // It would be better not to allocate this memory for the lifetime of the
-  // model, but we don't have a straightforward way to avoid it.
-  TensorInfo* tensor_info =
-      reinterpret_cast<TensorInfo*>(memory_allocator_.AllocateFromTail(
-          sizeof(TensorInfo) * tensors_size, sizeof(TensorInfo)));
-
   const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
       model_->buffers();
+
+  // Initialize runtime tensors.
+  for (size_t i = 0; i < tensors_size; ++i) {
+    auto* runtime_tensor = &context_->tensors[i];
+    auto* flatbuffer_tensor = tensors_->Get(i);
+
+    // Preallocated inputs have already been set up earlier, so skip them.
+    const bool is_preallocated_input = (runtime_tensor->data.raw != nullptr);
+    if (!is_preallocated_input) {
+      TF_LITE_ENSURE_STATUS(InitializeRuntimeTensor(*flatbuffer_tensor, buffers,
+                                                    error_reporter_,
+                                                    runtime_tensor, nullptr));
+    }
+  }
+
+  // tensor_info is only used in this function.
+  auto tmp_allocator = memory_allocator_.CreateChildAllocator();
+  TensorInfo* tensor_info =
+      reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
+          sizeof(TensorInfo) * tensors_size, sizeof(TensorInfo)));
 
   // Set up the runtime data structures for all tensors.
   for (size_t i = 0; i < tensors_size; ++i) {
@@ -112,14 +127,6 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
       current->last_used = -1;
     }
     current->needs_allocating = false;
-    // Preallocated inputs have already been set up earlier, so skip them.
-    const bool is_preallocated_input =
-        (current->runtime_tensor->data.raw != nullptr);
-    if (!is_preallocated_input) {
-      TF_LITE_ENSURE_STATUS(InitializeRuntimeTensor(
-          *current->flatbuffer_tensor, buffers, error_reporter_,
-          current->runtime_tensor, nullptr));
-    }
   }
 
   // First go through the inputs and figure out if they need to be allocated.
@@ -181,8 +188,9 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
   uint8_t* aligned_arena = AlignPointerUp(arena_, kBufferAlignment);
   const size_t alignment_loss = (aligned_arena - arena_);
 
+  // Remaining arena size that memory planner can use for calculating offsets.
   int remaining_arena_size =
-      arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
+      arena_size_ - (tmp_allocator.GetDataSize() + alignment_loss);
   GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
 
   // Add the tensors to our allocation plan.
@@ -201,8 +209,12 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     }
   }
 
+  // Actual size available for placing tensors. This includes memory held by the
+  // tensor info array, which will be released.
+  int actual_available_arena_size =
+      arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
   // Make sure we have enough room.
-  if (planner.GetMaximumMemorySize() > remaining_arena_size) {
+  if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
     error_reporter_->Report(
         "Arena size is too small for activation buffers. Needed %d but only %d "
         "was available.",

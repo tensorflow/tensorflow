@@ -103,6 +103,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm//:aarch64_code_gen",  # fixdeps: keep
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:powerpc_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 

@@ -102,6 +102,12 @@ class AutotuneAlgorithm(enum.Enum):
   GRADIENT_DESCENT = 1
 
 
+class ExternalStatePolicy(enum.Enum):
+  WARN = 0
+  IGNORE = 1
+  FAIL = 2
+
+
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
@@ -162,32 +168,42 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
+  @deprecation.deprecated_args(None, "Use external_state_policy instead",
+                               "allow_stateful")
   def _as_serialized_graph(self,
                            allow_stateful=None,
-                           strip_device_assignment=None):
+                           strip_device_assignment=None,
+                           external_state_policy=ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
       allow_stateful: If true, we allow stateful ops to be present in the graph
-      def. In that case, the state in these ops would be thrown away.
+        def. In that case, the state in these ops would be thrown away.
       strip_device_assignment: If true, non-local (i.e. job and task) device
-      assignment is stripped from ops in the serialized graph.
+        assignment is stripped from ops in the serialized graph.
+      external_state_policy: The ExternalStatePolicy enum that determines how
+        we handle input pipelines that depend on external state. By default,
+        its set to WARN.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if allow_stateful is None:
-      allow_stateful = False
-
+    if compat.forward_compatible(2019, 11, 25) or external_state_policy:
+      policy = None
+      if external_state_policy:
+        policy = external_state_policy.value
+      return gen_dataset_ops.dataset_to_graph_v2(
+          self._variant_tensor,
+          external_state_policy=policy,
+          strip_device_assignment=strip_device_assignment)
     if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
       return gen_dataset_ops.dataset_to_graph(
           self._variant_tensor,
           allow_stateful=allow_stateful,
           strip_device_assignment=strip_device_assignment)
-    else:
-      return gen_dataset_ops.dataset_to_graph(
-          self._variant_tensor, allow_stateful=allow_stateful)
+    return gen_dataset_ops.dataset_to_graph(
+        self._variant_tensor, allow_stateful=allow_stateful)
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -352,7 +368,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     """
     if (context.executing_eagerly()
         or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -427,7 +443,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
         raise TypeError(
             "Dataset.as_numpy_iterator() does not support datasets containing "
-            + component_spec.value_type)
+            + str(component_spec.value_type))
 
     return _NumpyIterator(self)
 
@@ -912,6 +928,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def list_files(file_pattern, shuffle=None, seed=None):
     """A dataset of all files matching one or more glob patterns.
 
+    The `file_pattern` argument should be a small number of glob patterns.
+    If your filenames have already been globbed, use
+    `Dataset.from_tensor_slices(filenames)` instead, as re-globbing every
+    filename with `list_files` may result in poor performance with remote
+    storage systems.
+
     NOTE: The default behavior of this method is to return filenames in
     a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
     to get results in a deterministic order.
@@ -969,7 +991,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       return dataset
 
   def repeat(self, count=None):
-    """Repeats this dataset `count` times.
+    """Repeats this dataset so each original value is seen `count` times.
+
+    For example, the following code will evaluate to [0, 1, 0, 1]:
+
+    ```python
+    dataset = tf.data.Dataset.range(2)
+    [int(x.numpy()) for x in dataset.repeat(2)]
+    ```
 
     NOTE: If this dataset is a function of global state (e.g. a random number
     generator), then different repetitions may produce different elements.
@@ -1825,7 +1854,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.IteratorV2(self)
+      return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2314,7 +2343,7 @@ def get_legacy_output_classes(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_classes` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
     A nested structure of Python `type` objects matching the structure of the
@@ -2432,15 +2461,18 @@ class Options(options_lib.OptionsBase):
       "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
-  experimental_allow_stateful = options_lib.create_option(
-      name="experimental_allow_stateful",
-      ty=bool,
+  experimental_external_state_policy = options_lib.create_option(
+      name="experimental_external_state_policy",
+      ty=ExternalStatePolicy,
       docstring="By default, tf.data will refuse to serialize a dataset or "
       "checkpoint its iterator if the dataset contains a stateful op as the "
       "serialization / checkpointing won't be able to capture its state. "
       "Users can -- at their own risk -- override this restriction by "
       "explicitly specifying that they are fine throwing away the state "
-      "in these ops when they turn this option on.")
+      "in these ops. There are three settings available - IGNORE: in which we"
+      "completely ignore any state; WARN: We warn the user that some state "
+      "might be thrown away; FAIL: We fail if any state is being captured.",
+      default_factory=lambda: ExternalStatePolicy.WARN)
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
@@ -2763,7 +2795,7 @@ class StructuredFunctionWrapper(object):
       input_structure: (Optional.) A `Structure` object. If given, this argument
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
-        default graph.
+        default graph, if it exists.
       use_legacy_function: (Optional.) A boolean that determines whether the
         function be created using `tensorflow.python.eager.function.defun`
         (default behavior) or `tensorflow.python.framework.function.Defun`
@@ -2799,6 +2831,12 @@ class StructuredFunctionWrapper(object):
       self._input_structure = input_structure
 
     self._func = func
+
+    # There is no graph to add in eager mode.
+    add_to_graph &= not context.executing_eagerly()
+    # There are some lifetime issues when a legacy function is not added to a
+    # out-living graph. It's already deprecated so de-priotizing the fix.
+    add_to_graph |= use_legacy_function
 
     if defun_kwargs is None:
       defun_kwargs = {}
@@ -3366,9 +3404,9 @@ class BatchDataset(UnaryDataset):
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
       # pylint: disable=g-long-lambda
+      constant_batch_size = tensor_util.constant_value(self._batch_size)
       self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(
-              tensor_util.constant_value(self._batch_size)),
+          lambda component_spec: component_spec._batch(constant_batch_size),
           input_dataset.element_spec)
     else:
       self._structure = nest.map_structure(

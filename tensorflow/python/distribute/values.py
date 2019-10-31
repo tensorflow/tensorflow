@@ -1237,10 +1237,6 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
   def _is_mirrored(self):
-    if self.aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      # TODO(b/142440743): Remove this check once ONLY_FIRST_REPLICA aggregation
-      # works as expected.
-      return False
     return True
 
 
@@ -1265,8 +1261,17 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
+    # To preserve the sum across save and restore, we have to divide the
+    # total across all devices when restoring a variable that was summed
+    # when saving.
     tensor, = restored_tensors
-    return self._sync_on_read_variable.assign(tensor)
+    if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
+      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable.devices),
+                             self._sync_on_read_variable.dtype)
+    return control_flow_ops.group(
+        tuple(
+            _assign_on_device(v.device, v, tensor)
+            for v in self._sync_on_read_variable.values))
 
 
 def _assert_replica_context(strategy):

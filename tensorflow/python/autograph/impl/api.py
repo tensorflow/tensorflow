@@ -374,7 +374,7 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   For internal use only.
 
   Note: The argument list is optimized for readability of generated code, which
-  may looks something like this:
+  may look like this:
 
     ag__.converted_call(f, (arg1, arg2), None, fscope)
     ag__.converted_call(f, (), dict(arg1=val1, **kwargs), fscope)

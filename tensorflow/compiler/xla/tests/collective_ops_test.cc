@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -225,7 +224,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 
 // Check that the NCCL data structures in our all-reduce implementation are
 // cached as we expect.
-XLA_TEST_F(CollectiveOpsTest, AllReduce_NcclChannelCaching) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
   const int64 kNumElems = 1024;
 
   std::vector<float> input_vec(kNumElems);
@@ -399,7 +398,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {

@@ -55,8 +55,8 @@ public:
 };
 
 /// Helper class to sugar building loop.for loop nests from ranges.
-/// This is similar to edsc::LoopNestBuilder except it works on ranges directly.
-/// In the current implementation it produces loop.for operations.
+/// This is similar to edsc::AffineLoopNestBuilder except it works on ranges
+/// directly. In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
@@ -83,9 +83,13 @@ struct FusionInfo {
 
 // Fuses producer into consumer if the producer is structurally feasible and the
 // fusion would not violate dependencies.
-Optional<FusionInfo> fuseProducerOf(LinalgOp consumer, unsigned consumerIdx,
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
+                                    unsigned consumerIdx,
                                     LinalgDependenceGraph &graph,
-                                    OperationFolder &state);
+                                    OperationFolder *folder = nullptr);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
@@ -102,11 +106,13 @@ SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
 }
 
 /// Returns the values obtained by applying `map` to the list of values.
-/// Performs simplifications and foldings where possible.
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
 SmallVector<Value *, 4> applyMapToValues(OpBuilder &b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
-                                         OperationFolder &state);
+                                         OperationFolder *folder = nullptr);
 
 struct TiledLinalgOp {
   LinalgOp op;
@@ -114,26 +120,30 @@ struct TiledLinalgOp {
 };
 
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
                                            ArrayRef<Value *> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+                                           OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
-/// Inserts scoped local buffers and copies tiled views into/from those buffers
-/// when the corresponding entry in `viewsToPromote` is true.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-// TODO(ntv) implement a heuristic for view promotion.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(LinalgOp op,
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
                                            ArrayRef<int64_t> tileSizes,
-                                           OperationFolder &folder,
-                                           ArrayRef<bool> viewsToPromote = {});
+                                           OperationFolder *folder = nullptr);
+
+template <typename... Args>
+llvm::Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
+                                                  Args... args) {
+  return tileLinalgOp(b, cast<LinalgOp>(op), args...);
+}
 
 struct PromotionInfo {
   Value *buffer;
@@ -141,8 +151,8 @@ struct PromotionInfo {
   Value *partialLocalView;
 };
 
-/// Promotes the `views` into a new buffer allocated at the insertion point `b`.
-/// For now, promotion occurs in 3 steps:
+/// Promotes the `subViews` into a new buffer allocated at the insertion point
+/// `b`. For now, promotion occurs in 3 steps:
 ///   1. Create a new buffer for a full tile (i.e. not clipped at the boundary).
 ///   2. Take a full view on the buffer and `linalg.fill` it with zeros (use
 ///      float zero for now).
@@ -150,10 +160,9 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteLinalgViews(OpBuilder &b,
-                                                       Location loc,
-                                                       ArrayRef<Value *> views,
-                                                       OperationFolder &folder);
+llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
+                                                    ArrayRef<Value *> subViews,
+                                                    OperationFolder *folder);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

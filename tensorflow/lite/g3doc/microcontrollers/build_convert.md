@@ -10,9 +10,9 @@ microcontrollers. It also outlines the supported operations and gives some
 guidance on designing and training a model to fit in limited memory.
 
 For an end-to-end, runnable example of building and converting a model, see the
-following Jupyter notebook:
+following Colab which is part of the *Hello World* example:
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb">create_sine_model.ipynb</a>
+<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb">create_sine_model.ipynb</a>
 
 ## Model conversion
 
@@ -38,9 +38,9 @@ quantization:
 ```python
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
-tflite_quant_model = converter.convert()
-open("converted_model.tflite", "wb").write(tflite_quant_model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+quantized_model = converter.convert()
+open("converted_model.tflite", "wb").write(quantized_model)
 ```
 
 ### Convert to a C array
@@ -71,8 +71,8 @@ important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
 For an example of how to include and use a model in your program, see
-[`tiny_conv_micro_features_model_data.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h)
-in the micro speech example.
+[`sine_model_data.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.cc)
+in the *Hello World* example.
 
 ## Model architecture and training
 

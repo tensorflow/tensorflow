@@ -1588,10 +1588,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReplicaId:
       CHECK_EQ(new_operands.size(), 0);
       clone = CreateReplicaId();
+      *clone->mutable_shape() = shape;
       break;
     case HloOpcode::kPartitionId:
       CHECK_EQ(new_operands.size(), 0);
       clone = CreatePartitionId();
+      *clone->mutable_shape() = shape;
       break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
@@ -2893,7 +2895,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
-      break;
+      return Status::OK();
   }
   return InternalError(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "

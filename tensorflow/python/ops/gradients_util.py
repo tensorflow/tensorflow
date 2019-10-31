@@ -653,7 +653,10 @@ def _GradientsHelper(ys,
               # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
-              else:
+              elif default_gradient.supports_default_grad(op.outputs[i]):
+                # TODO(b/143286622): The supports_default_grad check is needed
+                # because While op emits non-differentiable resource tensors
+                # as outputs. Remove this check when that is not the case.
                 out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access

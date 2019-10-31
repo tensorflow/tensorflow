@@ -86,6 +86,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 // `op`.
 void LiftResourceOps(Operation* op);
 
+// Creates a pass that forms replica `tf_executor.island` from a single
+// `tf_device.replicate` island.
+std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -99,7 +103,7 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void createTPUBridge(OpPassManager& bridge);
+void createTPUBridge(OpPassManager& pm);
 
 }  // namespace TFTPU
 
