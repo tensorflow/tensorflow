@@ -19,12 +19,12 @@ the new model. This is done by using the `ARENA_SIZE` option when running
 `make`.
 
 ```
-make -f tensorflow/lite/experimental/micro/example/network_tester_test \
-                  NETWORK_MODEL=path/to/network_model.h \
-                  INPUT_DATA=path/to/input_data.h \
-                  OUTPUT_DATA=path/to/expected_output_data.h \
-                  ARENA_SIZE=<tensor arena size in bytes> \
-                  NUM_BYTES_TO_PRINT=<number of bytes to print> \
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_network_tester_test \
+                  NETWORK_MODEL=tensorflow/lite/experimental/micro/examples/network_tester/network_model.h \
+                  INPUT_DATA=tensorflow/lite/experimental/micro/examples/network_tester/input_data.h \
+                  OUTPUT_DATA=tensorflow/lite/experimental/micro/examples/network_tester/expected_output_data.h \
+                  ARENA_SIZE=1024 \
+                  NUM_BYTES_TO_PRINT=4 \
                   COMPARE_OUTPUT_DATA=no
 ```
 
