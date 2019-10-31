@@ -86,6 +86,16 @@ def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
 // Test Operands
 //===----------------------------------------------------------------------===//
 
+def SymbolScopeOp : TEST_Op<"symbol_scope",
+    [SymbolTable, SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let summary =  "operation which defines a new symbol table";
+  let regions = (region SizedRegion<1>:$region);
+}
+
+//===----------------------------------------------------------------------===//
+// Test Operands
+//===----------------------------------------------------------------------===//
+
 def MixedNormalVariadicOperandOp : TEST_Op<
     "mixed_normal_variadic_operand", [SameVariadicOperandSize]> {
   let arguments = (ins

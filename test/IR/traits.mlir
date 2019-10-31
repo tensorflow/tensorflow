@@ -205,3 +205,13 @@ func @failedSingleBlockImplicitTerminator_missing_terminator() {
   }) : () -> ()
 }
 
+// -----
+
+// Test that operation with the SymbolTable Trait define a new symbol scope.
+"test.symbol_scope"() ({
+  func @foo() {
+  }
+  "test.finish" () : () -> ()
+}) : () -> ()
+func @foo() {
+}
