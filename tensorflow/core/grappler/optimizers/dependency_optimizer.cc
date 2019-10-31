@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 
-#include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -469,6 +469,35 @@ Status DependencyOptimizer::OptimizeDependencies() {
   return Status::OK();
 }
 
+namespace {
+
+void LongestPathsLowerBounds(int source, int highest_control_target,
+                             const std::vector<std::vector<int>>& inputs,
+                             std::vector<int>* longest_distance) {
+  std::fill(longest_distance->begin() + source,
+            longest_distance->begin() + highest_control_target + 1, 0);
+  for (int target = source + 1; target <= highest_control_target; ++target) {
+    const auto& target_inputs = inputs[target];
+    for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
+      const int input = target_inputs[input_idx];
+      // If the input node is before source in the topo order, no path
+      // source -> input -> target can exits and we can skip it.
+      if (input < source) break;
+      // Also only extend a path from the source itself or from nodes that
+      // have a path from source, indicated by longest_distance[input] > 0.
+      const int input_dist = (*longest_distance)[input];
+      if ((input == source || input_dist > 0) &&
+          input_dist >= (*longest_distance)[target]) {
+        (*longest_distance)[target] = input_dist + 1;
+        // We only need a lower bound on the longest distance.
+        if ((*longest_distance)[target] > 1) break;
+      }
+    }
+  }
+}
+
+}  // namespace
+
 Status DependencyOptimizer::TransitiveReduction() {
   // PRECONDITION: optimized_graph_ must be sorted topologically.
   const int num_nodes = optimized_graph_->node_size();
@@ -476,7 +505,7 @@ Status DependencyOptimizer::TransitiveReduction() {
   // expensive algorithm below. Also cache the set of control outputs and the
   // highest index of a target of any control output from each node.
   int num_controls = 0;
-  std::vector<gtl::InlinedVector<int, 4>> inputs(num_nodes);
+  std::vector<std::vector<int>> inputs(num_nodes);
   std::vector<gtl::InlinedVector<std::pair<int, int>, 2>> control_outputs(
       num_nodes);
   for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
@@ -514,7 +543,7 @@ Status DependencyOptimizer::TransitiveReduction() {
   // such that when we swap them out so we don't clobber the
   // node(target).input() repeated field.
   typedef std::pair<int, int> InputSlotAndSource;
-  std::unordered_map<
+  absl::flat_hash_map<
       int, std::set<InputSlotAndSource, std::greater<InputSlotAndSource>>>
       control_edges_to_remove;
   for (int source = 0; source < num_nodes; ++source) {
@@ -527,24 +556,12 @@ Status DependencyOptimizer::TransitiveReduction() {
     if (highest_control_target <= source) {
       continue;
     }
-    std::fill(longest_distance.begin() + source,
-              longest_distance.begin() + highest_control_target + 1, 0);
-    for (int target = source + 1; target <= highest_control_target; ++target) {
-      const auto& target_inputs = inputs[target];
-      for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
-        const int input = target_inputs[input_idx];
-        // If the input node is before source in the topo order, no path
-        // source -> input -> target can exits and we can skip it.
-        if (input < source) break;
-        // Also only extend a path from the source itself or from nodes that
-        // have a path from source, indicated by longest_distance[input] > 0.
-        const int input_dist = longest_distance[input];
-        if ((input == source || input_dist > 0) &&
-            input_dist >= longest_distance[target]) {
-          longest_distance[target] = input_dist + 1;
-        }
-      }
-    }
+
+    // Compute a lower bound on the length of the longest path from source to
+    // all nodes with topological sort index in [source + 1 :
+    // highest_control_target].
+    LongestPathsLowerBounds(source, highest_control_target, inputs,
+                            &longest_distance);
 
     // If the longest path from source to target of a control dependency is
     // longer than 1, there exists an alternate path, and we can eliminate the
