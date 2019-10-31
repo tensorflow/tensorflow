@@ -22,6 +22,17 @@ namespace tflite {
 namespace optimize {
 namespace operator_property {
 
+// The scales of a certain tensor can be derived from the multiplications of all
+// the scales. For example, for bias in conv, derived_scale = {{0, 1}, {}, {}}
+// and for lstm gate bias, the derived scale is {{}, {0}, {2^-10}}
+struct DerivedScale {
+  std::vector<int> input_tensors = {};
+  std::vector<int> intermediate_tensors = {};
+  // This is a list of extra factors that are not associated with any other
+  // tensor.
+  std::vector<float> factors = {};
+};
+
 struct TensorProperty {
   // per_axis also implies symmetric currently.
   bool per_axis = false;
