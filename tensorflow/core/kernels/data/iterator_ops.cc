@@ -77,9 +77,10 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &captured_state->cancellation_manager;
     std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                   params.cancellation_manager,
-                                                   &deregister_fn));
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [cm = params.cancellation_manager]() { cm->StartCancel(); },
+        &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
     return captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                              out_tensors, end_of_sequence);
@@ -122,9 +123,10 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
     params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &captured_state->cancellation_manager;
     std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                   params.cancellation_manager,
-                                                   &deregister_fn));
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [cm = params.cancellation_manager]() { cm->StartCancel(); },
+        &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
     IteratorContext iter_ctx(std::move(params));
     return captured_state->iterator->Restore(&iter_ctx, reader);
@@ -154,9 +156,10 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = &new_state->cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                 params.cancellation_manager,
-                                                 &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = params.cancellation_manager]() { cm->StartCancel(); },
+      &deregister_fn));
   {
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
@@ -456,11 +459,13 @@ class ToSingleElementOp : public AsyncOpKernel {
           CancellationManager cancellation_manager;
           params.cancellation_manager = &cancellation_manager;
           std::function<void()> deregister_fn;
-          OP_REQUIRES_OK_ASYNC(ctx,
-                               ConnectCancellationManagers(
-                                   ctx->cancellation_manager(),
-                                   params.cancellation_manager, &deregister_fn),
-                               done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              RegisterCancellationCallback(
+                  ctx->cancellation_manager(),
+                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                  &deregister_fn),
+              done);
 
           // Update the `done` callback to deregister the cancellation callback.
           done = std::bind(
@@ -578,11 +583,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
           CancellationManager cancellation_manager;
           params.cancellation_manager = &cancellation_manager;
           std::function<void()> deregister_fn;
-          OP_REQUIRES_OK_ASYNC(ctx,
-                               ConnectCancellationManagers(
-                                   ctx->cancellation_manager(),
-                                   params.cancellation_manager, &deregister_fn),
-                               done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              RegisterCancellationCallback(
+                  ctx->cancellation_manager(),
+                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                  &deregister_fn),
+              done);
 
           // Update the `done` callback to deregister the cancellation callback.
           done = std::bind(
