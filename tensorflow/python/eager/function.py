@@ -851,11 +851,6 @@ class _TapeGradientFunctions(object):
 
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
-    # Keep track of the forward graph so that if the backwards graph
-    # tries to capture tensors those will be correctly captured first in
-    # the forward graph. This is an edge case that can only happen with
-    # tf.custom_gradient.
-    backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
     with backwards_graph.as_default():
       gradients_wrt_outputs = []
       for output in trainable_outputs:
