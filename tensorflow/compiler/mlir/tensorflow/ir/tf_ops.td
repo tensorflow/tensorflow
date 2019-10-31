@@ -24,14 +24,12 @@ limitations under the License.
 // all ops whose definitions are generated from TensorFlow codebase.
 // Changes made there are not respected.
 
-#ifdef TF_OPS
-#else
+#ifndef TF_OPS
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
 #endif // MLIR_CALLINTERFACES
 

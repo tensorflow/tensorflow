@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the definition file for the TensorFlow Device Dialect.
 
-#ifdef TF_DEVICE_DIALECT
-#else
+#ifndef TF_DEVICE_DIALECT
 #define TF_DEVICE_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

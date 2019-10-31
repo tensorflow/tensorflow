@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the operation definition file for TensorFlow Lite.
 
-#ifdef TFL_OPS
-#else
+#ifndef TFL_OPS
 #define TFL_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
