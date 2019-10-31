@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import numpy as np
-import scipy.sparse
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -33,6 +32,9 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import Tensor
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -419,27 +421,61 @@ def is_sparse(x):
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))
 
-def from_dense(x):
-    """Convert a dense `np.array` to a `tf.SparseTensor`
+def from_dense(dense, name=None):
+    """Convert a dense `np.array` or a dense tensor to a `tf.SparseTensor`
+
+    The code to convert a dense tensor to a `SparseTensor` is borrowed from
+    the tf1.15 release.
 
   Args:
-    x: A `np.ndarray`
+    dense: A `np.ndarray` or tensor
 
   Returns:
     A `SparseTensor`
 
   Raises:
-    RuntimeError: If input type is not `np.ndarray`
+    RuntimeError: If input type is not `np.ndarray` or tensor
 
   """
-    if isinstance(x, np.ndarray):
-        coo_matrix = scipy.sparse.coo_matrix(x)
-        sparse_matrix_tf = SparseTensor(
-            indices=np.array([coo_matrix.row, coo_matrix.col]).T,
-            values=coo_matrix.data,
-            dense_shape=coo_matrix.shape,
-        )
+    if isinstance(dense, np.ndarray):
+      sp_shape = dense.shape
+      sp_data = []
+      sp_row = []
+      sp_col = []
+
+      # Simply looping through the dense matrix row by row
+      for ir in range(dense.shape[0]):
+        # And column by column
+        for ic in range(dense.shape[1]):
+          # If non-zero, store
+          if dense[ir, ic] != 0:
+            sp_row.append(ir)
+            sp_col.append(ic)
+            sp_data.append(dense[ir, ic])
+
+      sp_data = np.array(sp_data)
+      sp_row = np.array(sp_row)
+      sp_col = np.array(sp_col)
+
+      sparse_matrix_tf = SparseTensor(
+          indices=np.array([sp_row, sp_col]).T,
+          values=sp_data,
+          dense_shape=sp_shape,
+      )
+
+    elif isinstance(dense, Tensor):
+    # the following is from tf 1.15 as requested by the commenter for this Pull Request.
+      with ops.name_scope(name, "dense_to_sparse"):
+        dense = ops.convert_to_tensor(dense)
+        indices = array_ops.where_v2(
+          math_ops.not_equal(dense, array_ops.constant(0, dense.dtype)))
+        values = array_ops.gather_nd(dense, indices)
+        shape = array_ops.shape(dense, out_type=dtypes.int64)
+        return SparseTensor(indices, values, shape)
+
     else:
-        raise RuntimeError("numpy.ndarray requested, got %s instead" % type(x))
+      raise RuntimeError("numpy.ndarray requested, got %s instead" % type(x))
 
     return sparse_matrix_tf
+
+
