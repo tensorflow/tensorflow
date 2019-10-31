@@ -324,7 +324,8 @@ def divide(x, y, name=None):
   >>> x = tf.constant([16, 12, 11])
   >>> y = tf.constant([4, 6, 2])
   >>> tf.divide(x,y)
-  <tf.Tensor: id=..., shape=(3,), dtype=float64, numpy=array([4. , 2. , 5.5])>
+  <tf.Tensor: id=..., shape=(3,), dtype=float64, 
+  numpy=array([4. , 2. , 5.5])>
   
   Args:
     x: A `Tensor`
