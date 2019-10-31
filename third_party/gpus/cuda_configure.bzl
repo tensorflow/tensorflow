@@ -1139,7 +1139,8 @@ def _create_local_cuda_repository(repository_ctx):
     )
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+    if is_cuda_clang:
+        cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
 
     host_compiler_prefix = "/usr/bin"
     if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
