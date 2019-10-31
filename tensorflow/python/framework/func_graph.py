@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +37,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
@@ -253,6 +253,9 @@ class FuncGraph(ops.Graph):
     self._saveable = True
     self._saving_errors = set()
 
+    # Keep track of callbacks to run when this graph exits default scope
+    self._scope_exit_callbacks = None
+
   def __str__(self):
     return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
 
@@ -397,15 +400,23 @@ class FuncGraph(ops.Graph):
       self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
+      old_scope_exit_callbacks = self._scope_exit_callbacks
+      self._scope_exit_callbacks = []
+
       with outer_cm as g:
         try:
           yield g
         finally:
-          self._distribution_strategy_stack = old_strategy_stack
-          self._device_function_stack = old_device_stack
-          self._variable_creator_stack = old_creator_stack
-          self._graph_key = old_graph_key
-          self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
+          try:
+            for fn in self._scope_exit_callbacks:
+              fn()
+          finally:
+            self._scope_exit_callbacks = old_scope_exit_callbacks
+            self._distribution_strategy_stack = old_strategy_stack
+            self._device_function_stack = old_device_stack
+            self._variable_creator_stack = old_creator_stack
+            self._graph_key = old_graph_key
+            self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -763,6 +774,17 @@ class FuncGraph(ops.Graph):
     """Returns set of errors preventing this FuncGraph from being saved."""
     return self._saving_errors
 
+  def _add_scope_exit_callback(self, fn):
+    """Add a function to call when this graph exits the default scope."""
+    if not callable(fn):
+      raise TypeError("fn is not callable: {}".format(fn))
+    if self._scope_exit_callbacks is None:
+      raise RuntimeError(
+          "Attempting to add a scope exit callback, but the default graph is "
+          "not the context scope graph.  Did you forget to call "
+          "'with graph.as_default(): ...'?")
+    self._scope_exit_callbacks.append(fn)
+
 
 def func_graph_from_py_func(name,
                             python_func,
@@ -839,10 +861,11 @@ def func_graph_from_py_func(name,
                            capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    control_manager = AutomaticControlDependencies()
+    deps_control_manager = auto_control_deps.AutomaticControlDependencies()
   else:
-    control_manager = ops.NullContextmanager()
-  with func_graph.as_default(), control_manager as a:
+    deps_control_manager = ops.NullContextmanager()
+
+  with func_graph.as_default(), deps_control_manager as deps_ctx:
     current_scope = variable_scope.get_variable_scope()
     default_use_recource = current_scope.use_resource
     current_scope.set_use_resource(True)
@@ -912,7 +935,7 @@ def func_graph_from_py_func(name,
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
       if add_control_dependencies:
-        x = a.mark_as_return(x)
+        x = deps_ctx.mark_as_return(x)
       return x
 
     try:
@@ -989,7 +1012,7 @@ def func_graph_from_py_func(name,
     func_graph.variables = variables
 
   if add_control_dependencies:
-    func_graph.control_outputs.extend(control_manager.ops_which_must_run)
+    func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
 
   return func_graph
 
@@ -1231,3 +1254,36 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
+
+
+def add_exit_callback_to_default_func_graph(fn):
+  """Add a callback to run when the default function graph goes out of scope.
+
+  Usage:
+
+  ```python
+  @tf.function
+  def fn(x, v):
+    expensive = expensive_object(v)
+    add_exit_callback_to_default_func_graph(lambda: expensive.release())
+    return g(x, expensive)
+
+  fn(x=tf.constant(...), v=...)
+  # `expensive` has been released.
+  ```
+
+  Args:
+    fn: A callable that takes no arguments and whose output is ignored.
+      To be executed when exiting func graph scope.
+
+  Raises:
+    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+      or not currently executing in function creation mode (e.g., if inside
+      an init_scope).
+  """
+  default_graph = ops.get_default_graph()
+  if not default_graph._building_function:  # pylint: disable=protected-access
+    raise RuntimeError(
+        "Cannot add scope exit callbacks when not building a function.  "
+        "Default graph: {}".format(default_graph))
+  default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access
