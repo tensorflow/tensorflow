@@ -3659,7 +3659,6 @@ tf_cc_test(
     deps = [
         ":hlo",
         ":hlo_matchers",
-        ":hlo_parser",
         ":shape_inference",
         ":transpose_folding",
         "//tensorflow/compiler/xla:literal",
@@ -3943,11 +3942,11 @@ tf_cc_test(
     srcs = ["while_util_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":hlo_parser",
         ":while_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
     ],
