@@ -38,7 +38,7 @@ There are seven artifacts and thus `pom.xml`s involved in this release:
     Native code for all supported platforms is packaged into a single `.jar`.
 
 4.  `libtensorflow_jni_gpu`: The native libraries required by `libtensorflow`
-    with GPU (CUDA) support enabled. Programs requiring GPU-enabled TensorFlow
+    with [GPU (CUDA)](https://developer.nvidia.com/cuda-gpus) support enabled. Programs requiring GPU-enabled TensorFlow
     should add a dependency on `libtensorflow` and `libtensorflow_jni_gpu`.
     As of January 2018, this artifact is *Linux only*.
 
