@@ -141,11 +141,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
         bool component_end_of_sequence = false;
-        Status component_status = input_impl->GetNext(ctx, &input_tensors, &component_end_of_sequence);
+        status.Update(input_impl->GetNext(ctx, &input_tensors, &component_end_of_sequence));
         *end_of_sequence |= component_end_of_sequence;
-        if (!component_status.ok() && status.ok()) {
-          status.Update(component_status);
-        }
         // Even if an error is encountered for one of the components,
         // we need to make sure to advance all components, to keep them in sync.
         if (!status.ok()) {
@@ -153,7 +150,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         }
         if (*end_of_sequence) {
           break;
-	}
+        }
         out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                             input_tensors.end());
       }
