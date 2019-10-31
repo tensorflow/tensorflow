@@ -49,6 +49,7 @@ inline void OptIntDotProdWithOffsets(
       const T* x_ptr = x_data + (b * accum_depth);
       const T* y_ptr = y_data + (out_c * accum_depth);
 
+      ae_int32x2 acc_32x2;
       for (int d = 0; d < num_iters; d++) {
         ae_int32x2 x_32x2 = AE_MOVDA32X2(*x_ptr++, *x_ptr++);
         ae_int32x2 y_32x2 = AE_MOVDA32X2(*y_ptr++, *y_ptr++);
@@ -59,8 +60,11 @@ inline void OptIntDotProdWithOffsets(
         // TODO(kreeger): use AE_ADD32_HL_LH() instead of the two moves to keep
         // acc as an ae_int32.
         ae_int32x2 x_y_sums = AE_MULP32X2(x_offsets_sum, y_offsets_sum);
-        acc += AE_MOVAD32_H(x_y_sums) + AE_MOVAD32_L(x_y_sums);
+        acc_32x2 = AE_ADD32_HL_LH(x_y_sums);
+        // acc += AE_MOVAD32_H(x_y_sums) + AE_MOVAD32_L(x_y_sums);
       }
+
+      int acc = AE_MOVAD32_H(acc_32x2) + AE_MOVAD32_L(acc);
 
       for (int d = 0; d < extra; d++) {
         // Fallback and handle odd tensor lengths:
