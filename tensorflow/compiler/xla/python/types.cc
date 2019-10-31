@@ -23,6 +23,16 @@ namespace xla {
 
 namespace py = pybind11;
 
+bool InitializeNumpyAPIForTypes() {
+  // Caution: import_array1 works by initializing a static variable
+  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
+  // therefore be called from the *same translation unit* as any users of
+  // NumPy C APIs (here PyArray_View). This awkward wrapper function
+  // must not be inlined into its caller.
+  import_array1(false);
+  return true;
+}
+
 xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto* types =
       new absl::flat_hash_map<std::pair<char, int>, PrimitiveType>({
@@ -234,6 +244,48 @@ std::vector<int64> IntSequenceToVector(const py::object& sequence) {
     output.push_back(item.cast<int64>());
   }
   return output;
+}
+
+absl::optional<CastToArrayResult> CastToArray(py::handle h) {
+  py::array array = py::array::ensure(
+      h, py::array::c_style | py::detail::npy_api::NPY_ARRAY_ALIGNED_);
+  if (!array) {
+    return absl::nullopt;
+  }
+
+  auto type_or_status = DtypeToPrimitiveType(array.dtype());
+  if (!type_or_status.ok()) {
+    throw std::runtime_error(type_or_status.status().ToString());
+  }
+  PrimitiveType type = type_or_status.ValueOrDie();
+
+  if (type == BF16) {
+    // The NumPy array protocol has no way to describe our custom bfloat16
+    // type, so we cast to an array of uint16 instead. We are going to pass
+    // a raw buffer pointer to BorrowingLiteral anyway, so it doesn't
+    // really matter what type we use here, so long as it has the correct size
+    // and alignment.
+    array = py::reinterpret_steal<py::array>(
+        PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
+                     reinterpret_cast<PyArray_Descr*>(
+                         py::dtype::of<uint16>().release().ptr()),
+                     static_cast<PyTypeObject*>(nullptr)));
+  }
+
+  py::buffer_info buffer_info = array.request();
+
+  absl::InlinedVector<int64, 4> dims(array.ndim());
+  for (int i = 0; i < array.ndim(); ++i) {
+    dims[i] = array.shape(i);
+  }
+  Shape shape = ShapeUtil::MakeShape(type, dims);
+  if (buffer_info.size * buffer_info.itemsize != ShapeUtil::ByteSizeOf(shape)) {
+    throw std::runtime_error(absl::StrCat(
+        "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
+        " vs. ", ShapeUtil::ByteSizeOf(shape)));
+  }
+  return CastToArrayResult{array, static_cast<const char*>(buffer_info.ptr),
+                           shape};
 }
 
 }  // namespace xla
