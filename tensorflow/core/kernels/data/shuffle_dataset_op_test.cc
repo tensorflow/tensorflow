@@ -383,14 +383,18 @@ DatasetNodeNameTestCases() {
 DATASET_NODE_NAME_TEST_P(ShuffleDatasetOpTest, ShuffleDatasetParams,
                          DatasetNodeNameTestCases())
 
-TEST_F(ShuffleDatasetOpTest, DatasetTypeString) {
-  for (auto dataset_params :
-       {ShuffleDatasetParams1(), ShuffleDatasetParams7()}) {
-    TF_ASSERT_OK(Initialize(dataset_params));
-    TF_ASSERT_OK(CheckDatasetTypeString(
-        name_utils::OpName(dataset_params.dataset_type())));
-  }
+std::vector<DatasetTypeStringTestCase<ShuffleDatasetParams>>
+DatasetTypeStringTestCases() {
+  return {{/*dataset_params=*/ShuffleDatasetParams1(),
+           /*expected_dataset_type_string=*/name_utils::OpName(
+               ShuffleDatasetOp::kDatasetType)},
+          {/*dataset_params=*/ShuffleDatasetParams7(),
+           /*expected_dataset_type_string=*/
+           name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType)}};
 }
+
+DATASET_TYPE_STRING_TEST_P(ShuffleDatasetOpTest, ShuffleDatasetParams,
+                           DatasetTypeStringTestCases())
 
 TEST_F(ShuffleDatasetOpTest, DatasetOutputDtypes) {
   auto dataset_params = ShuffleDatasetParams1();

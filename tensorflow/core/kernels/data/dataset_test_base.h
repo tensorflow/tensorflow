@@ -759,6 +759,8 @@ class DatasetOpsTestBase : public ::testing::Test {
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
   std::unique_ptr<CancellationManager> cancellation_manager_;
 
+  // Indicates if the below fields have been initialized.
+  bool initialized_ = false;
   std::unique_ptr<OpKernel> dataset_kernel_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> dataset_ctx_;

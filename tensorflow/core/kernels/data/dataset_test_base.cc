@@ -718,12 +718,18 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
 }
 
 Status DatasetOpsTestBaseV2::Initialize(const DatasetParams& dataset_params) {
+  if (initialized_) {
+    return errors::Internal(
+        "The fields (e.g. dataset_kernel_, dataset_ctx_, dataset_, "
+        "iterator_ctx_, iterator_) have already been initialized.");
+  }
   TF_RETURN_IF_ERROR(InitializeRuntime(dataset_params));
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
   TF_RETURN_IF_ERROR(dataset_->MakeIterator(
       iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  initialized_ = true;
   return Status::OK();
 }
 
@@ -792,11 +798,6 @@ Status DatasetOpsTestBaseV2::MakeDataset(
     std::unique_ptr<OpKernelContext>* dataset_ctx,
     std::vector<std::unique_ptr<Tensor>>* created_tensors,
     DatasetBase** dataset) {
-  // If `*dataset` is not null, manually release it to avoid the memory leak.
-  if (dataset && *dataset) {
-    (*dataset)->Unref();
-  }
-
   TF_RETURN_IF_ERROR(RunDatasetOp(dataset_params, dataset_kernel,
                                   dataset_ctx_params, created_tensors,
                                   dataset_ctx));
