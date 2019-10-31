@@ -1623,7 +1623,7 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
@@ -1639,10 +1639,10 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_var = os.environ.get("TF_CUDNN_USE_AUTOTUNE", "")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_var
       return result
 
     return decorated
