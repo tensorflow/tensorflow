@@ -120,7 +120,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   }
 
   OpBuilder builder(func);
-  bool is_signed = quant_specs_.IsSignedInferneceType();
+  bool is_signed = quant_specs_.IsSignedInferenceType();
   IntegerAttr num_bits =
       builder.getI32IntegerAttr(quant_specs_.GetQuantizationTypeWidth());
   BoolAttr narrow_range = builder.getBoolAttr(false);
@@ -179,7 +179,7 @@ void PrepareQuantizePass::runOnFunction() {
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
   OwningRewritePatternList patterns;
-  bool is_signed = quant_specs_.IsSignedInferneceType();
+  bool is_signed = quant_specs_.IsSignedInferenceType();
   if (is_signed) {
     patterns.insert<ConvertUnsignedToSigned<TFL::QuantizeOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
