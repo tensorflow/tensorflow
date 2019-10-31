@@ -136,7 +136,6 @@ cuda_py_test(
     ],
     grpc_enabled = True,
     xla_enable_strict_auto_jit = True,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3474,9 +3473,6 @@ cuda_py_test(
     ],
     shard_count = 20,
     xla_enable_strict_auto_jit = True,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
 )
 
 cuda_py_test(
