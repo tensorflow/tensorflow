@@ -123,6 +123,12 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
           stride=stride).flat_map(lambda x: x.batch(batch_size=size))
       self.evaluate(ds._variant_tensor)
 
+  def testWindowDifferentNestedStructures(self):
+    ds = dataset_ops.Dataset.from_tensor_slices(([1, 2], [3, 4])).window(2)
+    self.getNext(ds)
+    ds = dataset_ops.Dataset.from_tensor_slices({"a": [1, 2]}).window(2)
+    self.getNext(ds)
+
   def testWindowSparse(self):
 
     def _sparse(i):

@@ -598,16 +598,6 @@ class FuncGraph(ops.Graph):
       bypasses the mechanisms required for the data dependencies to be correctly
       wired.
     """
-    # Note: _forward_func_graph is currently only set when building the gradient
-    # graph graph of a defun call. If the backwards graph tries to capture
-    # tensors those will be captured first in the forward graph. This
-    # makes sure that any tensor needed by a custom_gradient is correctly
-    # captured.
-
-    if (getattr(tensor, "graph", None) is not self and
-        hasattr(self, "_forward_func_graph") and
-        isinstance(self._forward_func_graph, FuncGraph)):
-      tensor = self._forward_func_graph.capture(tensor)
     if isinstance(tensor, ops.EagerTensor):
       if name is None:
         name = str(ops.uid())

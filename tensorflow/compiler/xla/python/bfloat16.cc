@@ -20,6 +20,8 @@ limitations under the License.
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
 
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
 #include "absl/strings/str_cat.h"
@@ -171,14 +173,15 @@ bool CastToBfloat16(PyObject* arg, bfloat16* output) {
   if (PyArray_IsZeroDim(arg)) {
     Safe_PyObjectPtr ref;
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(arg);
-    if (arr->descr->type_num != npy_bfloat16) {
+    if (PyArray_TYPE(arr) != npy_bfloat16) {
       ref = make_safe(PyArray_Cast(arr, npy_bfloat16));
       if (PyErr_Occurred()) {
         return false;
       }
       arg = ref.get();
+      arr = reinterpret_cast<PyArrayObject*>(arg);
     }
-    *output = *reinterpret_cast<bfloat16*>(PyArray_DATA(arg));
+    *output = *reinterpret_cast<bfloat16*>(PyArray_DATA(arr));
     return true;
   }
   return false;
@@ -326,7 +329,7 @@ PyObject* PyBfloat16_New(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     return PyBfloat16_FromBfloat16(value).release();
   } else if (PyArray_Check(arg)) {
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(arg);
-    if (arr->descr->type_num != npy_bfloat16) {
+    if (PyArray_TYPE(arr) != npy_bfloat16) {
       return PyArray_Cast(arr, npy_bfloat16);
     } else {
       Py_INCREF(arg);
@@ -402,7 +405,7 @@ PyTypeObject PyBfloat16_Type = {
     sizeof(PyBfloat16),    // tp_basicsize
     0,                     // tp_itemsize
     nullptr,               // tp_dealloc
-    nullptr,               // tp_print
+    0,                     // tp_print  NOLINT
     nullptr,               // tp_getattr
     nullptr,               // tp_setattr
     nullptr,               // tp_compare / tp_reserved
@@ -824,18 +827,44 @@ struct Multiply {
 struct TrueDivide {
   bfloat16 operator()(bfloat16 a, bfloat16 b) { return a / b; }
 };
+
+std::pair<float, float> divmod(float a, float b) {
+  if (b == 0.0f) {
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    return {nan, nan};
+  }
+  float mod = std::fmod(a, b);
+  float div = (a - mod) / b;
+  if (mod != 0.0f) {
+    if ((b < 0.0f) != (mod < 0.0f)) {
+      mod += b;
+      div -= 1.0f;
+    }
+  } else {
+    mod = std::copysign(0.0f, b);
+  }
+
+  float floordiv;
+  if (div != 0.0f) {
+    floordiv = std::floor(div);
+    if (div - floordiv > 0.5f) {
+      floordiv += 1.0f;
+    }
+  } else {
+    floordiv = std::copysign(0.0f, a / b);
+  }
+  return {floordiv, mod};
+}
+
 struct FloorDivide {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    float mod;
-    return bfloat16(
-        npy_divmodf(static_cast<float>(a), static_cast<float>(b), &mod));
+    return bfloat16(divmod(static_cast<float>(a), static_cast<float>(b)).first);
   }
 };
 struct Remainder {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    float mod;
-    npy_divmodf(static_cast<float>(a), static_cast<float>(b), &mod);
-    return bfloat16(mod);
+    return bfloat16(
+        divmod(static_cast<float>(a), static_cast<float>(b)).second);
   }
 };
 struct DivmodUFunc {
@@ -851,9 +880,10 @@ struct DivmodUFunc {
     for (npy_intp k = 0; k < *dimensions; k++) {
       bfloat16 x = *reinterpret_cast<const bfloat16*>(i0);
       bfloat16 y = *reinterpret_cast<const bfloat16*>(i1);
-      float mod;
-      *reinterpret_cast<bfloat16*>(o0) = bfloat16(
-          npy_divmodf(static_cast<float>(x), static_cast<float>(y), &mod));
+      float floordiv, mod;
+      std::tie(floordiv, mod) =
+          divmod(static_cast<float>(x), static_cast<float>(y));
+      *reinterpret_cast<bfloat16*>(o0) = bfloat16(floordiv);
       *reinterpret_cast<bfloat16*>(o1) = bfloat16(mod);
       i0 += steps[0];
       i1 += steps[1];
@@ -927,9 +957,18 @@ struct Frexp {
   }
 };
 struct Heaviside {
-  bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    return bfloat16(
-        npy_heavisidef(static_cast<float>(a), static_cast<float>(b)));
+  bfloat16 operator()(bfloat16 bx, bfloat16 h0) {
+    float x = static_cast<float>(bx);
+    if (std::isnan(x)) {
+      return bx;
+    }
+    if (x < 0) {
+      return bfloat16(0.0f);
+    }
+    if (x > 0) {
+      return bfloat16(1.0f);
+    }
+    return h0;  // x == 0
   }
 };
 struct Conjugate {
@@ -970,15 +1009,37 @@ struct Log1p {
   }
 };
 struct LogAddExp {
-  bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    return bfloat16(
-        npy_logaddexpf(static_cast<float>(a), static_cast<float>(b)));
+  bfloat16 operator()(bfloat16 bx, bfloat16 by) {
+    float x = static_cast<float>(bx);
+    float y = static_cast<float>(by);
+    if (x == y) {
+      // Handles infinities of the same sign.
+      return bfloat16(x + std::log(2.0f));
+    }
+    float out = std::numeric_limits<float>::quiet_NaN();
+    if (x > y) {
+      out = x + std::log1p(std::exp(y - x));
+    } else if (x < y) {
+      out = y + std::log1p(std::exp(x - y));
+    }
+    return bfloat16(out);
   }
 };
 struct LogAddExp2 {
-  bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    return bfloat16(
-        npy_logaddexp2f(static_cast<float>(a), static_cast<float>(b)));
+  bfloat16 operator()(bfloat16 bx, bfloat16 by) {
+    float x = static_cast<float>(bx);
+    float y = static_cast<float>(by);
+    if (x == y) {
+      // Handles infinities of the same sign.
+      return bfloat16(x + 1.0f);
+    }
+    float out = std::numeric_limits<float>::quiet_NaN();
+    if (x > y) {
+      out = x + std::log1p(std::exp2(y - x)) / std::log(2.0f);
+    } else if (x < y) {
+      out = y + std::log1p(std::exp2(x - y)) / std::log(2.0f);
+    }
+    return bfloat16(out);
   }
 };
 struct Modf {
@@ -1104,12 +1165,14 @@ struct Arctanh {
 };
 struct Deg2rad {
   bfloat16 operator()(bfloat16 a) {
-    return bfloat16(npy_deg2radf(static_cast<float>(a)));
+    static constexpr float radians_per_degree = M_PI / 180.0f;
+    return bfloat16(static_cast<float>(a) * radians_per_degree);
   }
 };
 struct Rad2deg {
   bfloat16 operator()(bfloat16 a) {
-    return bfloat16(npy_rad2degf(static_cast<float>(a)));
+    static constexpr float degrees_per_radian = 180.0f / M_PI;
+    return bfloat16(static_cast<float>(a) * degrees_per_radian);
   }
 };
 

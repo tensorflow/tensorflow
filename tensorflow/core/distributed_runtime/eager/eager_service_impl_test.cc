@@ -502,14 +502,14 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     TF_EXPECT_OK(eager_service_impl_.Enqueue(&remote_enqueue_request,
                                              &remote_enqueue_response));
     eager_cluster_flr_ = absl::make_unique<EagerClusterFunctionLibraryRuntime>(
-        ctx, device_mgr_.get());
+        context_id_, ctx, device_mgr_.get());
 
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
     eager_pflr_ = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-        TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(), nullptr,
-        eager_cluster_flr_.get(), nullptr);
+        TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
+        /*thread_pool=*/nullptr, eager_cluster_flr_.get());
   }
 
   void CheckOutputsAndClose(const int64 op_id) {
@@ -606,8 +606,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, nullptr, nullptr,
-      local_device, fdef_.signature().name(),
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       []() { return op_id; }));
 
@@ -631,7 +631,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       });
   std::vector<Tensor> outputs;
 
-  TF_ASSERT_OK(kernel->Run(inputs, &outputs, nullptr, absl::nullopt));
+  TF_ASSERT_OK(kernel->Run(inputs, &outputs, /*cancellation_manager=*/nullptr,
+                           /*remote_func_params=*/absl::nullopt));
 
   CheckOutputsAndClose(op_id);
 }
@@ -710,15 +711,17 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false,
-      device_mgr_.get(), false, rendezvous, GetDefaultCustomKernelCreator(),
-      nullptr);
+      device_mgr_.get(), false, rendezvous, GetDefaultCustomKernelCreator());
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
   auto remote_mgr =
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
-  TF_ASSERT_OK(ctx->InitializeRemoteWorker(nullptr, nullptr, {}, context_id, 0,
-                                           nullptr, std::move(remote_mgr)));
+  TF_ASSERT_OK(ctx->InitializeRemoteWorker(
+      /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
+      /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,
+      /*rendezvous_creator=*/nullptr,
+      /*cluster_flr=*/nullptr, std::move(remote_mgr)));
 
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 

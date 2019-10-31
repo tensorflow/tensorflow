@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -84,17 +84,6 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
       RankedTensorType::get(static_cast<int64_t>(attr.size()),
                             IntegerType::get(64, attr.getContext()));
   return DenseElementsAttr::get(ty, attr.getValue())
-      .cast<DenseIntElementsAttr>();
-}
-
-// Converts a ElementsAttr to a 1D 64-bit dense elements attribute.
-static DenseIntElementsAttr ConvertAttrToI64(ElementsAttr attr) {
-  llvm::function_ref<APInt(const APInt &)> conversion_func =
-      [](const APInt &int_value) -> APInt {
-    return APInt(64, int_value.getSExtValue(), /*isSigned=*/true);
-  };
-  return attr
-      .mapValues(IntegerType::get(64, attr.getContext()), conversion_func)
       .cast<DenseIntElementsAttr>();
 }
 
@@ -1430,7 +1419,7 @@ class ConvertConv2DBackpropInputOp
     int64_t filter_in_depth = filter_shape[num_spatial_dims];
     int64_t feature_group_count = in_depth / filter_in_depth;
 
-    // Reuse dimension computation logic from conv_grad_ops.cc.
+    // Reuse dimension computation logic from conv_grad_shape_utils.cc.
     tensorflow::ConvBackpropDimensions dims;
     if (!tensorflow::ConvBackpropComputeDimensionsV2(
              "", num_spatial_dims, ToTensorShape<int>(input_shape),
@@ -1569,7 +1558,7 @@ class ConvertConv2DBackpropFilterOp
         llvm::to_vector<4>(filter_shape_attr.getValues<int32_t>());
     if (filter_shape.size() != num_dims) return matchFailure();
 
-    // Reuse dimension computation logic from conv_grad_ops.cc.
+    // Reuse dimension computation logic from conv_grad_shape_utils.cc.
     tensorflow::ConvBackpropDimensions dims;
     if (!tensorflow::ConvBackpropComputeDimensionsV2(
              "", num_spatial_dims, ToTensorShape<int64_t>(input_shape),

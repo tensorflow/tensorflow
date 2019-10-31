@@ -57,7 +57,6 @@ struct OpData {
   int32_t input_range_radius = 0;
   int diff_min = 0;
   uint8_t table[256] = {0};
-  uint8_t* table_zero = nullptr;
 };
 
 struct SoftmaxOpData {
@@ -113,7 +112,6 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
   const float inverse_scale = 1 / output->params.scale;
   int32_t maxval = std::numeric_limits<T>::max();
   int32_t minval = std::numeric_limits<T>::min();
-  data->table_zero = &data->table[-minval];
   for (int32_t val = minval; val <= maxval; ++val) {
     const float dequantized =
         input->params.scale * (val - input->params.zero_point);
@@ -121,21 +119,20 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
     const float rescaled = std::round(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output->params.zero_point);
-    data->table_zero[val] =
-        static_cast<uint8_t>(std::max(std::min(maxval, quantized), minval));
+    data->table[static_cast<uint8_t>(static_cast<T>(val))] =
+        static_cast<uint8_t>(
+            static_cast<T>(std::max(std::min(maxval, quantized), minval)));
   }
 }
 
-template <typename T>
 void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
                           TfLiteTensor* output) {
-  static_assert(sizeof(T) == 1, "Lookup table valid only for 8bit");
   const int size =
       MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-  T* output_data = GetTensorData<T>(output);
-  const T* input_data = GetTensorData<T>(input);
+  uint8_t* output_data = GetTensorData<uint8_t>(output);
+  const uint8_t* input_data = GetTensorData<uint8_t>(input);
   for (int i = 0; i < size; ++i) {
-    *output_data++ = static_cast<T>(data->table_zero[*input_data++]);
+    output_data[i] = data->table[input_data[i]];
   }
 }
 
@@ -771,7 +768,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
-        EvalUsingLookupTable<uint8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       return kTfLiteOk;
     } break;
@@ -786,7 +783,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
-        EvalUsingLookupTable<int8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       return kTfLiteOk;
     } break;
@@ -843,7 +840,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
-        EvalUsingLookupTable<uint8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       break;
     }
@@ -858,7 +855,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
-        EvalUsingLookupTable<int8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       break;
     }

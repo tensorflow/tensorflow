@@ -23,6 +23,7 @@ import json
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -325,11 +326,22 @@ class TextVectorization(CombinerPreprocessingLayer):
     """
     if not reset_state:
       raise ValueError("TextVectorization does not support streaming adapts.")
-    self.build(data.shape)
-    # TODO(b/142870340): Look at passing preprocess as subgraph to dataset.map.
-    preprocessed_inputs = self._preprocess(data)
-    super(TextVectorization,
-          self).adapt(self._to_numpy(preprocessed_inputs), reset_state)
+
+    # Build the layer explicitly with the original data shape instead of relying
+    # on an implicit call to `build` in the base layer's `adapt`, since
+    # preprocessing changes the input shape.
+    if isinstance(data, np.ndarray):
+      self.build(data.shape)
+      preprocessed_inputs = self._to_numpy(self._preprocess(data))
+    elif isinstance(data, dataset_ops.DatasetV2):
+      self.build(dataset_ops.get_legacy_output_shapes(data))
+      preprocessed_inputs = data.map(self._preprocess)
+    else:
+      raise ValueError(
+          "adapt() requires a Dataset or a Numpy array as input, got {}".format(
+              type(data)))
+
+    super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
     if not self._has_vocab:
@@ -624,6 +636,8 @@ class _TextVectorizationCombiner(Combiner):
     if dtypes.as_dtype(self._input_dtype) != dtypes.as_dtype(values.dtype):
       raise RuntimeError("Expected input type %s, got %s" %
                          (self._input_dtype, values.dtype))
+    if ragged_tensor.is_ragged(values):
+      values = values.to_list()
     flattened_batch = np.concatenate(values)
     vocab, counts = np.unique(flattened_batch, return_counts=True)
     if self._compute_idf:
@@ -647,8 +661,9 @@ class _TextVectorizationCombiner(Combiner):
         [getattr(acc, _ACCUMULATOR_VOCAB_NAME) for acc in accumulators])
     concat_counts = np.concatenate(
         [getattr(acc, _ACCUMULATOR_COUNTS_NAME) for acc in accumulators])
-    concat_document_counts = np.concatenate(
-        [getattr(acc, _ACCUMULATOR_DOCUMENT_COUNTS) for acc in accumulators])
+    if self._compute_idf:
+      concat_document_counts = np.concatenate(
+          [getattr(acc, _ACCUMULATOR_DOCUMENT_COUNTS) for acc in accumulators])
     merged_values, merged_indices = np.unique(concat_vocab, return_inverse=True)
 
     def sum_segment(index, array_to_segment):

@@ -12,6 +12,30 @@ func @simple_pack(%arg0: tensor<3x5xf32>, %arg1: tensor<3x5xf32>) -> tensor<2x3x
   return %0 : tensor<2x3x5xf32>
 }
 
+// CHECK-LABEL: func @square
+func @square(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: "tf.Mul"(%arg0, %arg0)
+  %1 = "tf.Square"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @squared_difference_real
+func @squared_difference_real(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: [[R1:%.+]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK: "tf.Mul"([[R1]], [[R1]])
+  %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @squared_difference_complex
+func @squared_difference_complex(%arg0: tensor<3xcomplex<f32>>, %arg1: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
+  // CHECK-DAG: [[R1:%.+]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK-DAG: [[R2:%.+]] = "tf.Conj"([[R1]])
+  // CHECK-DAG: "tf.Mul"([[R1]], [[R2]])
+  %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xcomplex<f32>>, tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
+  return %1 : tensor<3xcomplex<f32>>
+}
+
 // CHECK-LABEL: pack_with_unranked
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x5xf32>, %[[ARG1:.*]]: tensor<*xf32>
 func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {

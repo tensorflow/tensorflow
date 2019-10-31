@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -77,11 +78,6 @@ StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
-// Converts the given elements attr to the specified elements type.
-// Requires type of the elements and new_type to be either integer or float
-// type.
-mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
-                                       mlir::Type new_type);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_

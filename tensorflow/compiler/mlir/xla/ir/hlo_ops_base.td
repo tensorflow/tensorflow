@@ -193,6 +193,16 @@ class BASE_HLO_SignOp {
   }];
 }
 
+class BASE_HLO_SinOp {
+  string summary = "Sin operator";
+
+  string description = [{
+    Returns `Sin(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 
 class BASE_HLO_SqrtOp {
   string summary = "Square-root operator";
@@ -275,6 +285,16 @@ class BASE_HLO_MulOp {
 
   string description = [{
     Returns `lhs * rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+class BASE_HLO_PowOp {
+  string summary = "Power operator";
+
+  string description = [{
+    Returns `lhs ^ rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
