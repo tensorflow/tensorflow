@@ -533,18 +533,15 @@ Status DependencyOptimizer::TransitiveReduction() {
       const auto& target_inputs = inputs[target];
       for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
         const int input = target_inputs[input_idx];
-        if (input < source) break;
         // If the input node is before source in the topo order, no path
         // source -> input -> target can exits and we can skip it.
+        if (input < source) break;
         // Also only extend a path from the source itself or from nodes that
         // have a path from source, indicated by longest_distance[input] > 0.
-        if (input == source || longest_distance[input] > 0) {
-          // If source -> input -> target is longer than the longest
-          // path so far from source -> target, update the longest_distance.
-          int candidate_longest_distance = longest_distance[input] + 1;
-          if (candidate_longest_distance > longest_distance[target]) {
-            longest_distance[target] = candidate_longest_distance;
-          }
+        const int input_dist = longest_distance[input];
+        if ((input == source || input_dist > 0) &&
+            input_dist >= longest_distance[target]) {
+          longest_distance[target] = input_dist + 1;
         }
       }
     }
