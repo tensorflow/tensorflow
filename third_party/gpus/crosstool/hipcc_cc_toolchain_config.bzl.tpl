@@ -114,7 +114,7 @@ def _impl(ctx):
 
     cc_target_os = None
 
-    builtin_sysroot = None
+    builtin_sysroot = ctx.attr.builtin_sysroot
 
     all_link_actions = [
         ACTION_NAMES.cpp_link_executable,
@@ -1493,6 +1493,8 @@ cc_toolchain_config = rule(
         "host_compiler_warnings": attr.string_list(),
         "host_unfiltered_compile_flags": attr.string_list(),
         "linker_bin_path": attr.string(),
+        "builtin_sysroot": attr.string(),
+        "cuda_path": attr.string(),
         "msvc_cl_path": attr.string(default = "msvc_not_used"),
         "msvc_env_include": attr.string(default = "msvc_not_used"),
         "msvc_env_lib": attr.string(default = "msvc_not_used"),

@@ -11,6 +11,7 @@
   * `TF_MIOPEN_VERSION`: The version of the MIOpen library.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets. Default is
     `gfx803,gfx900`.
+  * `TF_SYSROOT`: The sysroot to use when compiling.
 """
 
 load(
@@ -24,6 +25,7 @@ load(
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
+_TF_SYSROOT = "TF_SYSROOT"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
 _TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
@@ -78,13 +80,16 @@ def _cxx_inc_convert(path):
     path = path.strip()
     return path
 
-def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
+def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
         lang = "c++"
     else:
         lang = "c"
 
+    sysroot = []
+    if tf_sysroot:
+        sysroot += ["--sysroot", tf_sysroot]
     # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
     #       but in rocm_clang CROSSTOOL file that is a `feature` and we should
     #       handle the case when it's disabled and no flag is passed
@@ -95,7 +100,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
         "-x" + lang,
         "-",
         "-v",
-    ])
+    ] + sysroot)
     index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
@@ -116,14 +121,24 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
         for p in inc_dirs.split("\n")
     ]
 
-def get_cxx_inc_directories(repository_ctx, cc):
+def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
     """Compute the list of default C and C++ include directories."""
 
     # For some reason `clang -xc` sometimes returns include paths that are
     # different from the ones from `clang -xc++`. (Symlink and a dir)
     # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
-    includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
-    includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
+    includes_cpp = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        True,
+        tf_sysroot,
+    )
+    includes_c = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        False,
+        tf_sysroot,
+    )
 
     includes_cpp_set = depset(includes_cpp)
     return includes_cpp + [
@@ -150,7 +165,7 @@ def _host_compiler_includes(repository_ctx, cc):
     Returns:
       A list of gcc include directories.
     """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
+    inc_dirs = get_cxx_inc_directories(repository_ctx, cc, "")
 
     # Add numpy headers
     inc_dirs.append("/usr/lib/python2.7/dist-packages/numpy/core/include")
@@ -663,6 +678,11 @@ def _read_dir(repository_ctx, src_dir):
     result = find_result.stdout
     return result
 
+def _tf_sysroot(repository_ctx):
+    if _TF_SYSROOT in repository_ctx.os.environ:
+        return repository_ctx.os.environ[_TF_SYSROOT]
+    return ""
+
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
     if False:
         amdgpu_target_flags = ["--amdgpu-target=" +
@@ -757,9 +777,15 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     # Set up crosstool/
+    tf_sysroot = _tf_sysroot(repository_ctx)
+
     cc = find_cc(repository_ctx)
 
-    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
+    host_compiler_includes = get_cxx_inc_directories(
+        repository_ctx,
+        cc,
+        tf_sysroot,
+    )
 
     host_compiler_prefix = "/usr/bin"
     if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
@@ -767,6 +793,7 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines = {}
 
+    rocm_defines["%{builtin_sysroot}"] = tf_sysroot
     rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
 
     rocm_defines["%{linker_bin_path}"] = "/opt/rocm/hcc/compiler/bin"
