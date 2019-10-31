@@ -99,6 +99,9 @@ def convert_structure_to_signature(structure, arg_names=None):
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
+    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      name = "/".join([str(p) for p in path])
+      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
         float,
@@ -292,7 +295,7 @@ class FuncGraph(ops.Graph):
     if key not in self._deferred_captures:
 
       def convert_to_placeholder(s):
-        if not isinstance(s, tensor_spec.TensorSpec):
+        if not isinstance(s, tensor_spec.DenseSpec):
           raise TypeError(
               "Expected a nest of `TypeSpec` objects, found %s of type %s." %
               (s, type(s)))
@@ -1177,7 +1180,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
 
     flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
+        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
     ]
     specified_names = [arg.name for arg in tensor_specs if arg.name]
     if specified_names and len(specified_names) < len(tensor_specs):
@@ -1209,7 +1212,20 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
               "_user_specified_name",
               attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
         function_inputs.append(placeholder)
-      elif isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      elif isinstance(arg, (resource_variable_ops.BaseResourceVariable,
+                            resource_variable_ops.VariableSpec)):
+        if isinstance(arg, resource_variable_ops.VariableSpec):
+          name = arg.name or name
+          with func_graph.outer_graph.as_default():
+            placeholder = graph_placeholder(dtypes.resource, arg.shape,
+                                            name=name)
+
+            arg = resource_variable_ops.BaseResourceVariable(
+                name=name,
+                shape=arg.shape,
+                dtype=arg.dtype,
+                handle=placeholder,
+                handle_name=name)
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
         # just add it back with a new placeholder when the variable was

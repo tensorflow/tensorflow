@@ -54,9 +54,9 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -975,8 +975,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                                     x=constant_op.constant(2.)).numpy())
 
   def test_concrete_function_variable_argument(self, cycles):
-    # TODO(allenl): Fix variables in input signatures.
-    self.skipTest("Need to fix encoding of variables in inputs signatures")
     capture = variables.Variable(0)
 
     @def_function.function
@@ -984,14 +982,29 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       v.assign_add(1)
       capture.assign_sub(1)
 
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ])
+    def func_with_input_signature(v):
+      v.assign_add(5)
+      capture.assign_sub(5)
+      return 1
+
     vsave = variables.Variable(1)
     root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
+    root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
+
     self.assertEqual(1, vsave.numpy())
     root.f(vsave)
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
+
+    root.f_sig(vsave)
+    self.assertEqual(7, vsave.numpy())
+    self.assertEqual(-6, capture.numpy())
+
     imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
@@ -999,8 +1012,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, vload.numpy())
     imported.f(v=vload)
     self.assertEqual(3, vload.numpy())
-    self.assertEqual(-3, imported.capture.numpy())
-    self.assertEqual(-1, capture.numpy())
+    self.assertEqual(-8, imported.capture.numpy())
+
+    imported.f_sig(v=vload)
+    self.assertEqual(8, vload.numpy())
+    self.assertEqual(-13, imported.capture.numpy())
+
+    self.assertEqual(-6, capture.numpy())
 
   def test_function_and_component(self, cycles):
 
@@ -1644,7 +1662,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
   def test_destroy_resource(self, cycles):
 
     def get_handle():
-      return gen_resource_variable_ops.var_handle_op(
+      return resource_variable_ops.var_handle_op(
           shape=tensor_shape.as_shape([]),
           dtype=dtypes.float32,
           shared_name="my_var_name",
@@ -1655,7 +1673,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
       def destroy_resource(self):
         handle = get_handle()
-        gen_resource_variable_ops.destroy_resource_op(
+        resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=True)
 
     class MyResource(tracking.TrackableResource):
@@ -1669,7 +1687,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return get_handle()
 
       def _initialize(self):
-        gen_resource_variable_ops.assign_variable_op(
+        resource_variable_ops.assign_variable_op(
             self.resource_handle, 1.0, name="assign")
 
     class MyModel(tracking.AutoTrackable):
@@ -1681,10 +1699,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       @def_function.function(input_signature=[])
       def increase(self):
         handle = self.resource.resource_handle
-        gen_resource_variable_ops.assign_add_variable_op(
+        resource_variable_ops.assign_add_variable_op(
             handle, 10.0, name="assign_add")
-        return gen_resource_variable_ops.read_variable_op(
-            handle, dtypes.float32)
+        return resource_variable_ops.read_variable_op(handle, dtypes.float32)
 
     root = MyModel()
     imported = cycle(root, cycles)
@@ -1699,7 +1716,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Try to destroy the resource again, should fail.
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  r"Resource .* does not exist."):
-      gen_resource_variable_ops.destroy_resource_op(
+      resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
 
   def test_function_called_as_operation(self, cycles):

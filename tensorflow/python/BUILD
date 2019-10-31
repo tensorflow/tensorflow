@@ -4672,6 +4672,18 @@ cuda_py_test(
     tags = ["no_windows_gpu"],
 )
 
+tf_py_test(
+    name = "variable_spec_test",
+    size = "small",
+    srcs = ["ops/variable_spec_test.py"],
+    additional_deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "training_lib",
     srcs = glob(
