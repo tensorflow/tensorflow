@@ -140,22 +140,20 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = false;
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
-        bool end_of_sequence_component = false;
-        Status status_component = input_impl->GetNext(ctx, &input_tensors, &end_of_sequence_component);
-        if (end_of_sequence_component) {
-          *end_of_sequence = end_of_sequence_component;
+        bool component_end_of_sequence = false;
+        Status component_status = input_impl->GetNext(ctx, &input_tensors, &component_end_of_sequence);
+        *end_of_sequence |= component_end_of_sequence;
+        if (!component_status.ok() && status.ok()) {
+          status.Update(component_status);
         }
-        if (!status_component.ok() && status.ok()) {
-          status = status_component;
-        }
-        // Even if there is error or end_of_sequence encountered,
-        // we should still run to "flush out" any record
-        // for each component, so that ignore_errors could be processed
-        // correctly.
-        // No need to copy the component data though so just continue here.
-        if (*end_of_sequence || !status.ok()) {
+        // Even if an error is encountered for one of the components,
+        // we need to make sure to advance all components, to keep them in sync.
+        if (!status.ok()) {
           continue;
         }
+        if (*end_of_sequence) {
+          break;
+	}
         out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                             input_tensors.end());
       }
