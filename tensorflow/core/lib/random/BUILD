@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -81,6 +82,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
     ],
+    alwayslink = 1,
 )
 
 filegroup(

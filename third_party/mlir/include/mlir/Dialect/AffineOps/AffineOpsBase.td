@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef AFFINE_OPS_BASE
-#else
+#ifndef AFFINE_OPS_BASE
 #define AFFINE_OPS_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

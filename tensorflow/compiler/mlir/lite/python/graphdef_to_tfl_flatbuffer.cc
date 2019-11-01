@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <ostream>
 
+#include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "mlir/Transforms/ViewOpGraph.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -34,6 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -60,9 +65,6 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const toco::ModelFlags& model_flags,
                         const toco::TocoFlags& toco_flags) {
-  if (toco_flags.inference_input_type()) {
-    LOG(WARNING) << "Ignored inference_input_type.";
-  }
   if (toco_flags.output_format()) {
     LOG(WARNING) << "Ignored output_format.";
   }
@@ -78,9 +80,6 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
   if (model_flags.change_concat_input_ranges()) {
     LOG(WARNING) << "Ignored change_concat_input_ranges.";
   }
-  if (toco_flags.dump_graphviz_dir().empty()) {
-    LOG(WARNING) << "Ignored dump_graphviz_dir.";
-  }
   if (toco_flags.dump_graphviz_include_video()) {
     LOG(WARNING) << "Ignored dump_graphviz_video.";
   }
@@ -88,6 +87,24 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
     LOG(WARNING) << "Allow allow_nonexistent_arrays.";
   }
 }
+
+// Dumps the op graph of the `module` to `filename` in DOT format.
+Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
+  std::string error_message;
+  auto output = mlir::openOutputFile(filename, &error_message);
+  if (!error_message.empty()) {
+    return errors::InvalidArgument("Failed to open file in %s.", filename);
+  }
+  mlir::PassManager pm(module.getContext());
+  pm.addPass(mlir::createPrintOpGraphPass(output->os()));
+  if (failed(pm.run(module))) {
+    return errors::Unknown("Failed to dump Op Graph from MLIR module.");
+  }
+  output->keep();
+  return Status::OK();
+}
+
+}  // namespace
 
 Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const toco::TocoFlags& toco_flags,
@@ -104,32 +121,28 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   std::vector<std::vector<int>> node_shapes;
   std::vector<double> node_mins;
   std::vector<double> node_maxs;
+  quant_specs.inference_input_type =
+      ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
       ConvertIODataTypeToDataType(toco_flags.inference_type());
-
-  // Build a map from placeholder to data types.
-  llvm::StringMap<DataType> placeholder_data_type_map;
-  for (const NodeDef& node_def : input.node()) {
-    if (node_def.op() == "Placeholder" && node_def.attr().count("dtype") > 0) {
-      placeholder_data_type_map[node_def.name()] =
-          node_def.attr().at("dtype").type();
-    }
+  // Use non-float flag `inference_input_type` to override the `inference_type`
+  // because we have to apply quantization to satisfy that.
+  if (quant_specs.inference_input_type != tensorflow::DT_FLOAT) {
+    inference_type = quant_specs.inference_input_type;
   }
 
   for (auto& flag : model_flags.input_arrays()) {
-    // TOCO doesn't required `data_type` to be filled for every input.
-    // If it's not filled, try to get the data type from the placeholder.
-    auto toco_data_type = flag.data_type();
-    DataType data_type;
-    if (toco_data_type == ::toco::IODataType::IO_DATA_TYPE_UNKNOWN &&
-        placeholder_data_type_map.find(flag.name()) !=
-            placeholder_data_type_map.end()) {
-      data_type = placeholder_data_type_map[flag.name()];
-    } else {
-      data_type = ConvertIODataTypeToDataType(toco_data_type);
-    }
     node_names.push_back(flag.name());
-    node_dtypes.push_back(DataType_Name(data_type));
+    // TOCO doesn't required `data_type` to be filled for every input.
+    // If it's not filled, make it an empty string so the importer will use
+    // the data type in the NodeDef.
+    auto toco_data_type = flag.data_type();
+    if (toco_data_type == ::toco::IODataType::IO_DATA_TYPE_UNKNOWN) {
+      node_dtypes.push_back("");
+    } else {
+      node_dtypes.push_back(
+          DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
+    }
     node_shapes.push_back(std::vector<int>(flag.shape().dims().begin(),
                                            flag.shape().dims().end()));
 
@@ -146,13 +159,17 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 
-  // Some extra flag related to post training quantization.
+  // Some extra flag related to post training quantization. If post-training
+  // quantization is enabled, `inference_type` and `inference_input_type` are
+  // not used by MLIR passes.
   if (toco_flags.post_training_quantize()) {
     quant_specs.weight_quantization = true;
     if (toco_flags.quantize_to_float16()) {
       quant_specs.inference_type = tensorflow::DT_HALF;
+      quant_specs.inference_input_type = tensorflow::DT_HALF;
     } else {
       quant_specs.inference_type = tensorflow::DT_QINT8;
+      quant_specs.inference_input_type = tensorflow::DT_QINT8;
     }
   }
 
@@ -175,6 +192,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
+  if (toco_flags.has_dump_graphviz_dir()) {
+    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
+        module.get(),
+        // rename once we enable the new converter feature flag.
+        absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
+  }
+
   mlir::PassManager pm(module->getContext());
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
@@ -182,10 +206,19 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
-  return ConvertTFExecutorToTFLOrFlatbuffer(
+  auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
       /*lower_tensor_list_ops=*/true, quant_specs, result, &pm);
+
+  if (toco_flags.has_dump_graphviz_dir()) {
+    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
+        // rename once we enable the new converter feature flag.
+        module.get(), absl::StrCat(toco_flags.dump_graphviz_dir(),
+                                   "/toco_AFTER_TRANSFORMATIONS.dot")));
+  }
+
+  return status;
 }
 
 }  // namespace tensorflow

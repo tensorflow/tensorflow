@@ -649,7 +649,15 @@ def outside_compilation(computation, *args, **kwargs):
   # we need to attach _xla_outside_compilation attribute directly because we are
   # not in TPUReplicateContext.
   if isinstance(graph, func_graph.FuncGraph):
-    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    try:
+      tpu_context, _ = _enclosing_tpu_context_and_graph()
+    except ValueError:
+      logging.warning(
+          "Outside compilation attempted outside TPUReplicateContext "
+          "scope. As no enclosing TPUReplicateContext can be found, "
+          "returning the result of `computation` as is.")
+      return computation(*args, **kwargs)
+
     # pylint: disable=protected-access
     outside_compilation_name = str(tpu_context._outside_compilation_counter)
     tpu_context._outside_compilation_counter = (

@@ -114,10 +114,10 @@ class EagerFunc(object):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
     with context.eager_mode(), backprop.GradientTape() as tape:
-      # Only watch tensors with a floating dtype.
+      # Only watch tensors with a floating or complex dtype.
       for tensor in args:
         for t in nest.flatten(tensor):
-          if t.dtype.is_floating:
+          if t.dtype.is_floating or t.dtype.is_complex:
             tape.watch(t)
       ret = self._func(*args)
       # copy the returned tensors to the PyFunc op's device if necessary.

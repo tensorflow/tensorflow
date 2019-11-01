@@ -19,13 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef LINALG_BASE
-#else
+#ifndef LINALG_BASE
 #define LINALG_BASE
 
 def Linalg_Dialect : Dialect {

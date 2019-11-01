@@ -44,7 +44,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -441,6 +441,51 @@ static LogicalResult Verify(ClampOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ComplexOp
+//===----------------------------------------------------------------------===//
+
+void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
+                      Value* rhs) {
+  auto type = lhs->getType();
+  auto element_ty = mlir::ComplexType::get(getElementTypeOrSelf(type));
+  Type result_ty;
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.isa<UnrankedTensorType>()) {
+    result_ty = UnrankedTensorType::get(element_ty);
+  } else {
+    result_ty = element_ty;
+  }
+
+  build(builder, state, result_ty, lhs, rhs);
+}
+
+namespace {
+Type CreateRealType(Type type) {
+  auto element_ty = getElementTypeOrSelf(type);
+  if (auto complex_ty = element_ty.dyn_cast<ComplexType>()) {
+    element_ty = complex_ty.getElementType();
+  }
+
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_ty);
+  }
+
+  return element_ty;
+}
+}  // namespace
+
+void ImagOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
+}
+
+void RealOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
@@ -736,6 +781,7 @@ BINARY_BUILDER(MinOp);
 BINARY_BUILDER(AndOp);
 BINARY_BUILDER(OrOp);
 BINARY_BUILDER(RemOp);
+BINARY_BUILDER(PowOp);
 
 #undef BINARY_BUILDER
 

@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LLVMIR_OPS
-#else
+#ifndef LLVMIR_OPS
 #define LLVMIR_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"

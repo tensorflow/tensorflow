@@ -212,7 +212,7 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, float);
+        TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, float);
       } else {
         TF_LITE_ADD(optimized_ops, Add, float);
       }
@@ -256,11 +256,8 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_ADD(reference_integer_ops, Add, int8_t);
         }
       } else {
-        if (op_params.broadcast_category ==
-            BroadcastableOpCategory::kGenericBroadcast) {
-          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
-        } else if (need_broadcast) {
-          TF_LITE_ADD(optimized_integer_ops, BroadcastAddFivefold, int8_t);
+        if (need_broadcast) {
+          TF_LITE_ADD(optimized_integer_ops, BroadcastAddDispatch, int8_t);
         } else {
           TF_LITE_ADD(optimized_integer_ops, Add, int8_t);
         }
@@ -273,11 +270,8 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_ADD(reference_ops, Add, uint8_t);
         }
       } else {
-        if (op_params.broadcast_category ==
-            BroadcastableOpCategory::kGenericBroadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, uint8_t);
-        } else if (need_broadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, uint8_t);
+        if (need_broadcast) {
+          TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, uint8_t);
         } else {
           TF_LITE_ADD(optimized_ops, Add, uint8_t);
         }

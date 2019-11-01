@@ -23,6 +23,7 @@ package_group(
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
         "//tensorflow/core/tfrt_delegate/...",
+        "//tensorflow/lite/experimental/tf_runtime/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
@@ -905,6 +906,7 @@ filegroup(
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",
@@ -2091,6 +2093,23 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "LinalgTransformPatterns",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
+    td_srcs = [
+        "include/mlir/IR/OpBase.td",
+        ":LinalgOpsTdFiles",
+        ":LinalgLibraryOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "Linalg",
     srcs = [
@@ -2098,6 +2117,7 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
@@ -2110,6 +2130,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
         "include/mlir/Dialect/Linalg/Passes.h",
+        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],

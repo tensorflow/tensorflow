@@ -20,12 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_LOGICAL_OPS
-#else
+#ifndef SPIRV_LOGICAL_OPS
 #define SPIRV_LOGICAL_OPS
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
@@ -858,6 +856,10 @@ def SPV_SelectOp : SPV_Op<"Select", [NoSideEffect]> {
   let results = (outs
     SPV_SelectType:$result
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              Value *cond, Value *trueValue,
+                              Value *falseValue}]>];
 }
 
 // -----

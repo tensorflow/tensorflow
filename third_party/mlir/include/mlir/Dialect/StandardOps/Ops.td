@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef STANDARD_OPS
-#else
+#ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

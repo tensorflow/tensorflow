@@ -3528,15 +3528,20 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
   Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
+  num_segments = ops.convert_to_tensor(num_segments)
   # bincount doesn't support negative indices so we use unsorted_segment_sum
   segment_ids_shape = array_ops.shape_internal(segment_ids)
   ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
-  N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+  n = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
-  ndims_output = data.shape.ndims - segment_ids.shape.ndims
-  broadcast_shape = [num_segments] + [1] * ndims_output
-  N = array_ops.reshape(N, broadcast_shape)
-  return gen_math_ops.maximum(N, 1)
+  broadcastable_shape = array_ops.concat(
+      [num_segments[array_ops.newaxis],
+       array_ops.ones([array_ops.rank(data)
+                       - array_ops.rank(segment_ids)],
+                      dtype=num_segments.dtype)],
+      axis=0)
+  n = array_ops.reshape(n, broadcastable_shape)
+  return gen_math_ops.maximum(n, 1)
 
 
 @tf_export(

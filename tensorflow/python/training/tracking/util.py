@@ -666,6 +666,11 @@ def streaming_restore(status, session=None):
   # pylint: enable=protected-access
 
 
+def _objects_with_attributes(full_list):
+  """Filters out objects with no direct variable dependencies for assertions."""
+  return [o for o in full_list if o._gather_saveables_for_checkpoint()]  # pylint: disable=protected-access
+
+
 class CheckpointLoadStatus(_LoadStatus):
   """Checks the status of checkpoint loading and manages restore ops.
 
@@ -706,6 +711,11 @@ class CheckpointLoadStatus(_LoadStatus):
         self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
+      if not node.attributes:
+        # Only raise exceptions for the nodes with attributes themselves. Either
+        # they're ultimately not important, or they have a child with an
+        # attribute.
+        continue
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if trackable is None:
         raise AssertionError("Unresolved object in checkpoint {}: {}"
@@ -761,7 +771,9 @@ class CheckpointLoadStatus(_LoadStatus):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
-        object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects) -
+        object_identity.ObjectIdentitySet(
+            _objects_with_attributes(
+                self._checkpoint.all_python_objects)) -
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
@@ -777,7 +789,8 @@ class CheckpointLoadStatus(_LoadStatus):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
-          object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects)
+          object_identity.ObjectIdentitySet(
+              _objects_with_attributes(self._checkpoint.all_python_objects))
           - object_identity.ObjectIdentitySet(
               self._checkpoint.object_by_proto_id.values()))
       if unused_python_objects:
@@ -932,7 +945,7 @@ class NameBasedSaverStatus(_LoadStatus):
 
 
   def assert_consumed(self):
-    """Raises an exception if any variables/objects are unmatched."""
+    """Raises an exception if any variables are unmatched."""
     unused_attributes = list(self._checkpoint.unused_attributes.items())
     if unused_attributes:
       unused_attribute_strings = [
@@ -1625,7 +1638,7 @@ class CheckpointV1(tracking.AutoTrackable):
       The returned status object has the following methods:
 
       * `assert_consumed()`:
-          Raises an exception if any variables/objects are unmatched: either
+          Raises an exception if any variables are unmatched: either
           checkpointed values which don't have a matching Python object or
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be
@@ -1938,7 +1951,7 @@ class Checkpoint(tracking.AutoTrackable):
       The returned status object has the following methods:
 
       * `assert_consumed()`:
-          Raises an exception if any variables/objects are unmatched: either
+          Raises an exception if any variables are unmatched: either
           checkpointed values which don't have a matching Python object or
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be

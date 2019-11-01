@@ -229,14 +229,14 @@ int64 Product(absl::Span<const int64> xs) {
                          std::multiplies<int64>());
 }
 
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
 
-  std::vector<std::pair<int64, int64>> bounds;
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
              partial_size_b = 1;
        ;) {

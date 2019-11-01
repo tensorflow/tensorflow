@@ -1074,26 +1074,29 @@ class NNAPIOpBuilder {
 namespace {
 struct OpValidationContext {
   bool is_valid;
-  std::vector<std::string>* validation_failures;
+  std::vector<NNAPIValidationFailure>* validation_failures;
 };
 
-#define EXPECT_INPUT_TYPE_IN(actual_type, ...) \
-  ExpectTypeIn(actual_type, {__VA_ARGS__},     \
+#define EXPECT_INPUT_TYPE_IN(actual_type, ...)                    \
+  ExpectTypeIn(actual_type, {__VA_ARGS__},                        \
+               NNAPIValidationFailureType::kUnsupportedInputType, \
                "Input type not in expected list " #__VA_ARGS__, &val_ctx)
 
-inline void AddValidationFailure(const char* message,
+inline void AddValidationFailure(NNAPIValidationFailureType failure_type,
+                                 const char* message,
                                  OpValidationContext* val_ctx) {
   val_ctx->is_valid = false;
 
 #ifdef NNAPI_VERBOSE_VALIDATION
   if (val_ctx->validation_failures) {
-    val_ctx->validation_failures->push_back(message);
+    val_ctx->validation_failures->push_back({failure_type, message});
   }
 #endif
 }
 
 template <typename... Args>
 inline void AddValidationFailureFmt(OpValidationContext* val_ctx,
+                                    NNAPIValidationFailureType failure_type,
                                     const char* message_fmt, Args... args) {
   val_ctx->is_valid = false;
 #ifdef NNAPI_VERBOSE_VALIDATION
@@ -1102,15 +1105,15 @@ inline void AddValidationFailureFmt(OpValidationContext* val_ctx,
     std::unique_ptr<char[]> tmp_buf(new char[req_buf_size]);
     snprintf(tmp_buf.get(), req_buf_size, message_fmt, args...);
 
-    val_ctx->validation_failures->push_back(tmp_buf.get());
+    val_ctx->validation_failures->push_back({failure_type, tmp_buf.get()});
   }
 #endif
 }
 
-inline bool Expect(bool condition, const char* message,
-                   OpValidationContext* val_ctx) {
+inline bool Expect(bool condition, NNAPIValidationFailureType failure_type,
+                   const char* message, OpValidationContext* val_ctx) {
   if (!condition) {
-    AddValidationFailure(message, val_ctx);
+    AddValidationFailure(failure_type, message, val_ctx);
     return false;
   }
   return true;
@@ -1118,9 +1121,10 @@ inline bool Expect(bool condition, const char* message,
 
 template <typename... Args>
 inline bool ExpectFmt(bool condition, OpValidationContext* val_ctx,
+                      NNAPIValidationFailureType failure_type,
                       const char* message_fmt, Args... args) {
   if (!condition) {
-    AddValidationFailureFmt(val_ctx, message_fmt, args...);
+    AddValidationFailureFmt(val_ctx, failure_type, message_fmt, args...);
     return false;
   }
   return true;
@@ -1128,27 +1132,31 @@ inline bool ExpectFmt(bool condition, OpValidationContext* val_ctx,
 
 inline bool ExpectTypeIn(TfLiteType actual_type,
                          std::initializer_list<TfLiteType> allowed_types,
+                         NNAPIValidationFailureType failure_type,
                          const char* msg, OpValidationContext* val_ctx) {
   return Expect(std::find(allowed_types.begin(), allowed_types.end(),
                           actual_type) != allowed_types.end(),
-                msg, val_ctx);
+                failure_type, msg, val_ctx);
 }
 
 inline bool ExpectMinAndroidSdkVersion(int curr_version, int min_version,
                                        OpValidationContext* val_ctx) {
   return ExpectFmt(curr_version >= min_version, val_ctx,
+                   NNAPIValidationFailureType::kUnsupportedAndroidVersion,
                    "Android sdk version less than %d", min_version);
 }
 
 inline bool ExpectMaxOpVersion(int curr_version, int max_version,
                                OpValidationContext* val_ctx) {
   return ExpectFmt(curr_version <= max_version, val_ctx,
+                   NNAPIValidationFailureType::kUnsupportedOperatorVersion,
                    "OP Version higher than %d", max_version);
 }
 
 inline bool ExpectOpVersion(int curr_version, int max_version,
                             OpValidationContext* val_ctx) {
   return ExpectFmt(curr_version <= max_version, val_ctx,
+                   NNAPIValidationFailureType::kUnsupportedOperatorVersion,
                    "OP Version different from %d", max_version);
 }
 
@@ -1156,15 +1164,18 @@ inline bool ExpectIsFloatOperator(const TfLiteContext* context,
                                   const TfLiteNode* node,
                                   OpValidationContext* val_ctx) {
   const auto input_type = context->tensors[node->inputs->data[0]].type;
-  return Expect(IsFloat(input_type), "Input should be Float", val_ctx);
+  return Expect(IsFloat(input_type),
+                NNAPIValidationFailureType::kUnsupportedInputType,
+                "Input should be Float", val_ctx);
 }
 
 bool ExpectIsFloatOrUint8Operator(const TfLiteContext* context,
                                   const TfLiteNode* node,
                                   OpValidationContext* val_ctx) {
   const auto input_type = context->tensors[node->inputs->data[0]].type;
-  return Expect(IsFloatOrUInt8(input_type), "Input should be Float or UINT8",
-                val_ctx);
+  return Expect(IsFloatOrUInt8(input_type),
+                NNAPIValidationFailureType::kUnsupportedInputType,
+                "Input should be Float or UINT8", val_ctx);
 }
 
 bool ExpectIsFloatOrQuant8Operator(const TfLiteContext* context,
@@ -1172,6 +1183,7 @@ bool ExpectIsFloatOrQuant8Operator(const TfLiteContext* context,
                                    OpValidationContext* val_ctx) {
   const auto input_type = context->tensors[node->inputs->data[0]].type;
   return Expect(IsFloat(input_type) || IsQuantized(input_type),
+                NNAPIValidationFailureType::kUnsupportedInputType,
                 "Input should be Float or Quant8", val_ctx);
 }
 
@@ -1191,6 +1203,7 @@ bool ExpectIsRestrictedScalesCompliant(const TfLiteContext* context,
   const float filter_scale = context->tensors[filter_id].params.scale;
   const float output_scale = context->tensors[output_id].params.scale;
   return Expect(input_scale * filter_scale < output_scale,
+                NNAPIValidationFailureType::kNotRestrictedScaleCompliant,
                 "When using NN API version 1.0 or 1.1, input_scale * "
                 "filter_scale < output_scale:",
                 val_ctx);
@@ -1201,12 +1214,11 @@ bool ExpectIsRestrictedScalesCompliant(const TfLiteContext* context,
 // Return a function that knows how to translate a node into its operands
 // when called. You can use this function to see if a node is supported
 // (i.e. if the returned MappingFn is null, then the node is not supported).
-bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
-                                   int builtin_code, int version,
-                                   int android_sdk_version,
-                                   const TfLiteNode* node,
-                                   bool is_accelerator_specified,
-                                   std::vector<string>* map_failures) {
+bool NNAPIDelegateKernel::Validate(
+    const TfLiteContext* context, int builtin_code, int version,
+    int android_sdk_version, const TfLiteNode* node,
+    bool is_accelerator_specified,
+    std::vector<NNAPIValidationFailure>* map_failures) {
   OpValidationContext val_ctx{true, map_failures};
 
   switch (builtin_code) {
@@ -1231,23 +1243,27 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
             axis_tensor.allocation_type == kTfLiteMmapRo &&
                 *axis_tensor.data.i64 <= std::numeric_limits<int32_t>::max() &&
                 *axis_tensor.data.i64 >= std::numeric_limits<int32_t>::min(),
+            NNAPIValidationFailureType::kUnsupportedInputType,
             "NNAPI only supports axis as int32. If the axis type is int64 and "
             "constant we can convert it to int32 if the value isn't too "
             "large.",
             &val_ctx);
       } else {
-        Expect(axis_tensor.type == kTfLiteInt32, "Axis should be Int32",
-               &val_ctx);
+        Expect(axis_tensor.type == kTfLiteInt32,
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "Axis should be Int32", &val_ctx);
       }
       if (builtin_code == kTfLiteBuiltinArgMax) {
         auto builtin =
             reinterpret_cast<TfLiteArgMaxParams*>(node->builtin_data);
         Expect(builtin->output_type == kTfLiteInt32,
+               NNAPIValidationFailureType::kUnsupportedOutputType,
                "NNAPI only supports int32 output.", &val_ctx);
       } else {
         auto builtin =
             reinterpret_cast<TfLiteArgMinParams*>(node->builtin_data);
         Expect(builtin->output_type == kTfLiteInt32,
+               NNAPIValidationFailureType::kUnsupportedOutputType,
                "NNAPI only supports int32 output.", &val_ctx);
       }
     } break;
@@ -1263,6 +1279,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       // reference CPU path.
       Expect(is_accelerator_specified ||
                  (builtin->filter_width * builtin->filter_height <= 256),
+             NNAPIValidationFailureType::kUnsupportedOperandSize,
              "Large filter window would overflow on the reference CPU path",
              &val_ctx);
     } break;
@@ -1274,17 +1291,20 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
 
-      auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
-      Expect(
-          (android_sdk_version >= kMinSdkVersionForNNAPI12 ||
-           builtin->activation == kTfLiteActNone),
-          "Before NNAPI 1.2 fused activation for l2_pool may not be supported.",
-          &val_ctx);
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+        auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
+        Expect(builtin->activation == kTfLiteActNone,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "Before NNAPI 1.2 fused activation for l2_pool may not be "
+               "supported.",
+               &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinConv2d: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(!IsHybridOperator(context, builtin_code, node),
+               NNAPIValidationFailureType::kUnsupportedHybridOperator,
                "Hybrid operators not supported before NNAPI 1.2", &val_ctx);
         ExpectIsFloatOrUint8Operator(context, node, &val_ctx);
 
@@ -1294,6 +1314,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
               static_cast<TfLiteAffineQuantization*>(
                   filter_tensor.quantization.params);
           Expect(quantization_params->scale->size <= 1,
+                 NNAPIValidationFailureType::kUnsupportedQuantizationType,
                  "Per-channel quantized convolution not supported before NNAPI "
                  "1.2.",
                  &val_ctx);
@@ -1306,11 +1327,13 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       }
       auto builtin = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
       // TODO(b/132950584): Add support for Conv2D with omitted bias.
-      Expect(node->inputs->size == 3, "Conv2D with omitted bias not supported",
-             &val_ctx);
+      Expect(node->inputs->size == 3,
+             NNAPIValidationFailureType::kMissingRequiredOperand,
+             "Conv2D with omitted bias not supported", &val_ctx);
       if (builtin->dilation_width_factor != 1 ||
           builtin->dilation_height_factor != 1) {
         Expect(android_sdk_version >= kMinSdkVersionForNNAPI12,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI supports dilated Conv2D since NNAPI 1.2.", &val_ctx);
       }
     } break;
@@ -1329,6 +1352,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
             reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
         Expect(builtin->dilation_width_factor == 1 &&
                    builtin->dilation_height_factor == 1,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
                "dilation_width_factor and dilation_height_factor expected to "
                "be equal to 1",
                &val_ctx);
@@ -1339,12 +1363,15 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       // TODO(b/132950584): Add support for FullyConnected with no bias.
       Expect(
           node->inputs->size == 3 && node->inputs->data[2] != kOptionalTensor,
+          NNAPIValidationFailureType::kMissingRequiredOperand,
           "FullyConnected with no bias not supported", &val_ctx);
       const auto output_type = context->tensors[node->outputs->data[0]].type;
       Expect(output_type != kTfLiteInt16,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "Unsupported output of type kTfLiteInt16", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(!IsHybridOperator(context, builtin_code, node),
+               NNAPIValidationFailureType::kUnsupportedHybridOperator,
                "Hybrid operators not supported before NNAPI 1.2", &val_ctx);
         ExpectIsFloatOrUint8Operator(context, node, &val_ctx);
       }
@@ -1355,8 +1382,9 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       }
       auto builtin =
           reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
-      Expect(!builtin->keep_num_dims, "keep_num_dims == true not supported",
-             &val_ctx);
+      Expect(!builtin->keep_num_dims,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "keep_num_dims == true not supported", &val_ctx);
     } break;
     case kTfLiteBuiltinHardSwish: {
       // Add support for hardswish. For Pre-Q devices, deconstructing it into
@@ -1369,10 +1397,13 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       const auto& input = context->tensors[node->outputs->data[0]];
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       const int input_rank = input.dims->size;
-      Expect(input_rank <= 4, "Input rank should be <= 4", &val_ctx);
+      Expect(input_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank should be <= 4", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(
             input_rank == 2 || input_rank == 4,
+            NNAPIValidationFailureType::kUnsupportedOperandRank,
             "Before API level 29 only 2D and 4D input tensors were supported.",
             &val_ctx);
       }
@@ -1380,10 +1411,13 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
     case kTfLiteBuiltinReshape: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
-      Expect(node->inputs->size >= 2, "Expected at least 2 inputs", &val_ctx);
+      Expect(node->inputs->size >= 2,
+             NNAPIValidationFailureType::kMissingRequiredOperand,
+             "Expected at least 2 inputs", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(context->tensors[node->inputs->data[1]].allocation_type ==
                    kTfLiteMmapRo,
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "The shape input tensor must be constant.", &val_ctx);
       }
     } break;
@@ -1391,16 +1425,22 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMaxOpVersion(version, 2, &val_ctx);
       const auto& input = context->tensors[node->inputs->data[0]];
       const auto output_dims = context->tensors[node->outputs->data[0]].dims;
-      Expect(input.dims->size == 4, "Input should have rank 4", &val_ctx);
+      Expect(input.dims->size == 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input should have rank 4", &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
-      Expect(node->inputs->size >= 2, "Expected at least 2 inputs", &val_ctx);
+      Expect(node->inputs->size >= 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expected at least 2 inputs", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(context->tensors[node->inputs->data[1]].allocation_type ==
                    kTfLiteMmapRo,
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "The size input tensor must be constant.", &val_ctx);
       }
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(output_dims->data[1] == output_dims->data[2],
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
                "Require width == height due to driver differences in NNAPI "
                "< 1.2",
                &val_ctx);
@@ -1408,9 +1448,11 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       auto builtin =
           reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
       Expect(!builtin->align_corners,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "NNAPI 1.0 & 1.1 only supports float input.", &val_ctx);
       }
     } break;
@@ -1422,6 +1464,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
       Expect(!builtin->align_corners,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
     } break;
     case kTfLiteBuiltinSqueeze: {
@@ -1431,6 +1474,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       auto builtin = reinterpret_cast<TfLiteSqueezeParams*>(node->builtin_data);
       if (android_sdk_version == kMinSdkVersionForNNAPI11) {
         Expect(builtin->num_squeeze_dims != 0,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI 1.1 does not support null squeeze_dims properly.",
                &val_ctx);
       }
@@ -1441,9 +1485,11 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
                                  &val_ctx);
 
       Expect(!IsHybridOperator(context, builtin_code, node),
+             NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "Hybrid version of this op is not supported by NN API.", &val_ctx);
 
       Expect(node->inputs->size == 20 || node->inputs->size == 24,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
              "Supporting only operation with 20 or 24 inputs", &val_ctx);
     } break;
     case kTfLiteBuiltinL2Normalization: {
@@ -1453,11 +1499,14 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
         ExpectIsFloatOperator(context, node, &val_ctx);
 
         const auto& input = context->tensors[node->inputs->data[0]];
-        Expect(input.dims->size == 4, "Expected 4 inputs", &val_ctx);
+        Expect(input.dims->size == 4,
+               NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+               "Expected 4 inputs", &val_ctx);
       }
       auto builtin = reinterpret_cast<TfLiteL2NormParams*>(node->builtin_data);
-      Expect(builtin->activation == kTfLiteActNone, "Expected no activation",
-             &val_ctx);
+      Expect(builtin->activation == kTfLiteActNone,
+             NNAPIValidationFailureType::kNoActivationExpected,
+             "Expected no activation", &val_ctx);
     } break;
     case kTfLiteBuiltinLocalResponseNormalization: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -1470,9 +1519,11 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
         // NNAPI does not support sparse projection correctly pre-Q
         // (b/111751836).
         Expect(android_sdk_version >= kMinSdkVersionForNNAPI12,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "NNAPI does not support sparse projection correctly pre-Q",
                &val_ctx);
         Expect(node->inputs->size == 2,
+               NNAPIValidationFailureType::kUnsupportedOperatorVariant,
                " NNAPI does not support weights for sparse projects.",
                &val_ctx);
       }
@@ -1481,8 +1532,10 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMaxOpVersion(version, 2, &val_ctx);
       Expect(reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data)
                      ->activation == kTfLiteActNone,
+             NNAPIValidationFailureType::kNoActivationExpected,
              "No activation function supported", &val_ctx);
       Expect(context->tensors[node->inputs->data[0]].dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
              "Input rank should be less than 4", &val_ctx);
 
       if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
@@ -1492,6 +1545,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
           auto curr_param = context->tensors[node->inputs->data[i]].params;
           if (!Expect(curr_param.scale == first_param.scale &&
                           curr_param.zero_point == first_param.zero_point,
+                      NNAPIValidationFailureType::kUnsupportedOperandValue,
                       "NNAPI 1.0-1 only supported concatenating quantized "
                       "tensor of the same scale and offset.",
                       &val_ctx)) {
@@ -1502,16 +1556,19 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
     } break;
     case kTfLiteBuiltinDequantize: {
       Expect(version == 1 || version == 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVersion,
              "Supported op versions are 1 and 2 only", &val_ctx);
 
       const auto& input = context->tensors[node->inputs->data[0]];
       Expect(input.type != kTfLiteFloat16,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "kTfLiteFloat16 not supported as input", &val_ctx);
 
       const auto zero_point = input.params.zero_point;
       Expect(input.type != kTfLiteInt8 ||
                  (zero_point == 0 &&
                   android_sdk_version >= kMinSdkVersionForNNAPI12),
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NN API supports int8 type since version 1.2 but only for "
              "symmetric quantization.",
              &val_ctx);
@@ -1533,6 +1590,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       Expect(IsFloat(input_type) ||
                  (IsQuantized(input_type) &&
                   android_sdk_version >= kMinSdkVersionForNNAPI12),
+             NNAPIValidationFailureType::kUnsupportedInputType,
              " NNAPI only support float tanh.", &val_ctx);
     } break;
     case kTfLiteBuiltinSub: {
@@ -1543,6 +1601,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
               IsFloat(input_type)) ||
                  (android_sdk_version >= kMinSdkVersionForNNAPI12 &&
                   IsQuantized(input_type)),
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
     } break;
     case kTfLiteBuiltinDiv: {
@@ -1550,6 +1609,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float div.", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
@@ -1562,20 +1622,25 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       const TfLiteIntArrayView input_shape(
           context->tensors[node->inputs->data[0]].dims);
       Expect(!HasZeroes(input_shape),
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NN API pad ops do not support input tensors with no elements",
              &val_ctx);
 
-      Expect(node->inputs->size >= 2, "Expecting at least 2 inputs", &val_ctx);
+      Expect(node->inputs->size >= 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expecting at least 2 inputs", &val_ctx);
 
       if (node->inputs->size == 3) {
         // This is going to be mapped with a PadV2
         Expect(
             android_sdk_version >= kMinSdkVersionForNNAPI12,
+            NNAPIValidationFailureType::kUnsupportedOperatorVariant,
             "Specification of the padding value is supported from NNAPI 1.2.",
             &val_ctx);
       } else {  // this is going to be mapped as Pad
         if (android_sdk_version < kMinSdkVersionForNNAPI12) {
           Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
+                 NNAPIValidationFailureType::kUnsupportedInputType,
                  "Only Float32 inputs are supported before NNAPI 1.2",
                  &val_ctx);
         }
@@ -1586,6 +1651,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(!IsHybridOperator(context, builtin_code, node),
+             NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "Hybrid version of this op is not supported by NN API.", &val_ctx);
     } break;
     case kTfLiteBuiltinSpaceToBatchNd: {
@@ -1601,6 +1667,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       auto crops_data = crops.data.i32;
       Expect(crops_data && crops.bytes == 16 && crops_data[0] == 0 &&
                  crops_data[1] == 0 && crops_data[2] == 0 && crops_data[3] == 0,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
              "All crops should be 0.", &val_ctx);
     } break;
     case kTfLiteBuiltinStridedSlice: {
@@ -1618,6 +1685,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       Expect((node->inputs->size > 1) &&
                  (context->tensors[node->inputs->data[1]].allocation_type ==
                   kTfLiteMmapRo),
+             NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
              "Dynamically-sized tensors not supported.", &val_ctx);
     } break;
     case kTfLiteBuiltinAbs:
@@ -1639,9 +1707,12 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       const auto size_type = context->tensors[node->inputs->data[2]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt32,
                            kTfLiteUInt8, kTfLiteInt8);
-      Expect(begin_type == kTfLiteInt32, "Begin type should be Int32",
-             &val_ctx);
-      Expect(size_type == kTfLiteInt32, "Size type should be Int32", &val_ctx);
+      Expect(begin_type == kTfLiteInt32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Begin type should be Int32", &val_ctx);
+      Expect(size_type == kTfLiteInt32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Size type should be Int32", &val_ctx);
     } break;
     case kTfLiteBuiltinSin: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -1662,11 +1733,14 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
     } break;
     case kTfLiteBuiltinRnn: {
       ExpectOpVersion(version, 1, &val_ctx);
-      Expect(node->inputs->size == 5, "Expected 5 input", &val_ctx);
+      Expect(node->inputs->size == 5,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expected 5 input", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(
             context->tensors[node->inputs->data[/*kWeightsTensor*/ 1]].type ==
                 kTfLiteFloat32,
+            NNAPIValidationFailureType::kUnsupportedInputType,
             "NNAPI only support float32 weights.", &val_ctx);
       }
     } break;
@@ -1679,27 +1753,34 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
     } break;
     case kTfLiteBuiltinSvdf: {
       ExpectOpVersion(version, 1, &val_ctx);
-      Expect(node->inputs->size == 5, "Expected input of rank 5", &val_ctx);
+      Expect(node->inputs->size == 5,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Expected input of rank 5", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(
             context->tensors[node->inputs->data[/*kWeightsTensor*/ 1]].type ==
                 kTfLiteFloat32,
+            NNAPIValidationFailureType::kUnsupportedInputType,
             "NNAPI only support float32 weights.", &val_ctx);
       }
       Expect(android_sdk_version >= kMinSdkVersionForNNAPI11,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
              "SVDF does not support rank > 1 on NNAPI 1.0.", &val_ctx);
       Expect(context->tensors[node->inputs->data[/*kWeightsFeatureTensor*/ 1]]
                      .type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "Weights should be Float32", &val_ctx);
     } break;
     case kTfLiteBuiltinLstm: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
       Expect(
           android_sdk_version >= kMinSdkVersionForNNAPI11,
+          NNAPIValidationFailureType::kUnsupportedAndroidVersion,
           "NNAPI 1.0 has a bug for optional tensors which would affect LSTM.",
           &val_ctx);
       Expect(android_sdk_version >= kMinSdkVersionForNNAPI12 ||
                  !IsHybridOperator(context, builtin_code, node),
+             NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "Hybrid operators not supported before NNAPI 1.2.", &val_ctx);
 
       const auto weight_input_index =
@@ -1711,24 +1792,28 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
 
       if (isLstmBasicKernel(node)) {
         Expect(weight_type == kTfLiteUInt8,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "Basic LSTM Kernels support only UINT8 weights", &val_ctx);
 
         const auto input_quantization_params =
             context->tensors[node->inputs->data[0]].params;
         Expect(input_quantization_params.scale == 1. / 128. &&
                    input_quantization_params.zero_point == 128,
+               NNAPIValidationFailureType::kUnsupportedQuantizationParameters,
                "Invalid input quantization", &val_ctx);
 
         const auto output_quantization_params =
             context->tensors[node->outputs->data[0]].params;
         Expect(output_quantization_params.scale == 1. / 128. &&
                    output_quantization_params.zero_point == 128,
+               NNAPIValidationFailureType::kUnsupportedQuantizationParameters,
                "Invalid output quantization", &val_ctx);
 
         const auto cell_state_quantization_params =
             context->tensors[node->outputs->data[1]].params;
         Expect(cell_state_quantization_params.scale == 16. / 32768. ||
                    cell_state_quantization_params.zero_point == 0,
+               NNAPIValidationFailureType::kUnsupportedQuantizationParameters,
                "Invalid cell state quantization", &val_ctx);
 
         auto is_const_tensor = [&node, &context](int tensor_idx) {
@@ -1737,8 +1822,10 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
         };
 
         Expect(is_const_tensor(2 /* kInputWeights */),
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "Weights tensor should be constant", &val_ctx);
         Expect(is_const_tensor(3 /* kInputBiases */),
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "Biases tensor should be constant", &val_ctx);
 
         return val_ctx.is_valid;
@@ -1749,6 +1836,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
         }
 
         Expect(weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "Weight has to be Float32 or UINT8", &val_ctx);
       }
     } break;
@@ -1759,12 +1847,15 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       if (android_sdk_version >= kMinSdkVersionForNNAPI12) {
         Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||
                    IsQuantized(context->tensors[node->inputs->data[0]].type),
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "Expected Float32 or Quantized input", &val_ctx);
       } else {
         Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "Expected Float32 input", &val_ctx);
       }
       Expect(context->tensors[node->outputs->data[0]].dims->size > 0,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output for MEAN.",
              &val_ctx);
 
@@ -1772,6 +1863,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       auto output_param = context->tensors[node->outputs->data[0]].params;
       Expect(input_param.scale == output_param.scale &&
                  input_param.zero_point == output_param.zero_point,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI requires that the input and output have the same "
              "quantization parameters.",
              &val_ctx);
@@ -1779,11 +1871,13 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
     case kTfLiteBuiltinEmbeddingLookup: {
       ExpectOpVersion(version, 1, &val_ctx);
       Expect(context->tensors[node->inputs->data[1]].type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float32 values.", &val_ctx);
     } break;
     case kTfLiteBuiltinHashtableLookup: {
       ExpectOpVersion(version, 1, &val_ctx);
       Expect(context->tensors[node->outputs->data[0]].type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI only support float32 output.", &val_ctx);
     } break;
     case kTfLiteBuiltinMaximum:
@@ -1806,6 +1900,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       const TfLiteType output_type =
           context->tensors[node->outputs->data[0]].type;
       ExpectTypeIn(output_type, {kTfLiteFloat32, kTfLiteInt32, kTfLiteUInt8},
+                   NNAPIValidationFailureType::kUnsupportedOutputType,
                    "Output type should be one of kTfLiteFloat32, kTfLiteInt32, "
                    "kTfLiteUInt8.",
                    &val_ctx);
@@ -1825,8 +1920,9 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
                            kTfLiteUInt8, kTfLiteInt32);
       const auto multipliers_type =
           context->tensors[node->inputs->data[1]].type;
-      Expect(multipliers_type == kTfLiteInt32, "Multipliers should be Int32",
-             &val_ctx);
+      Expect(multipliers_type == kTfLiteInt32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Multipliers should be Int32", &val_ctx);
     } break;
     case kTfLiteBuiltinLogicalOr:
     case kTfLiteBuiltinLogicalAnd:
@@ -1835,7 +1931,9 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      Expect(input_type == kTfLiteBool, "Input should be bool", &val_ctx);
+      Expect(input_type == kTfLiteBool,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Input should be bool", &val_ctx);
     } break;
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
@@ -1867,6 +1965,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       const auto& k_param = context->tensors[node->inputs->data[1]];
       Expect(k_param.type == kTfLiteInt32 &&
                  k_param.allocation_type == kTfLiteMmapRo,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "K param should be a constant of type Int32", &val_ctx);
     } break;
     case kTfLiteBuiltinSelect: {
@@ -1881,6 +1980,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       TfLiteIntArray* input_shape =
           context->tensors[node->inputs->data[1]].dims;
       Expect(TfLiteIntArrayEqual(condition_shape, input_shape),
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
              "Condition and inputs tensors shuld have the same shape",
              &val_ctx);
     } break;
@@ -1894,10 +1994,12 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
                            kTfLiteInt32, kTfLiteUInt8);
       ExpectTypeIn(positions.type,
                    {kTfLiteFloat32, kTfLiteFloat16, kTfLiteInt32, kTfLiteUInt8},
+                   NNAPIValidationFailureType::kUnsupportedInputType,
                    "Positions type should be one of kTfLiteFloat32, "
                    "kTfLiteFloat16, kTfLiteInt32, kTfLiteUInt8",
                    &val_ctx);
       Expect(positions.dims->size != 0,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
              "0-dimension args are not supported by NNAPI.", &val_ctx);
     } break;
     case kTfLiteBuiltinBidirectionalSequenceLstm: {
@@ -1905,6 +2007,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(!IsHybridOperator(context, builtin_code, node),
+             NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "Hybrid version of this op is not supported by NN API.", &val_ctx);
     } break;
     case kTfLiteBuiltinExpandDims: {
@@ -1916,6 +2019,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
                            kTfLiteInt32, kTfLiteUInt8, kTfLiteInt8);
       const auto axis = context->tensors[node->inputs->data[1]];
       Expect(axis.type == kTfLiteInt32 && axis.allocation_type == kTfLiteMmapRo,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
     case kTfLiteBuiltinSplit: {
@@ -1928,6 +2032,7 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
                            kTfLiteInt32);
       const TfLiteTensor& axis = context->tensors[node->inputs->data[0]];
       Expect(axis.type == kTfLiteInt32 && axis.allocation_type == kTfLiteMmapRo,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
     case kTfLiteBuiltinLogSoftmax: {
@@ -1935,22 +2040,26 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      Expect(input_type == kTfLiteFloat32, "Input should be Float32.",
-             &val_ctx);
+      Expect(input_type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Input should be Float32.", &val_ctx);
     } break;
     case kTfLiteBuiltinQuantize: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto value_type = context->tensors[node->inputs->data[0]].type;
-      Expect(value_type == kTfLiteFloat32, "Value should be Float32.",
-             &val_ctx);
+      Expect(value_type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "Value should be Float32.", &val_ctx);
       const auto output_type = context->tensors[node->outputs->data[0]].type;
-      Expect(output_type == kTfLiteUInt8, "Output should be kTfLiteUInt8.",
-             &val_ctx);
+      Expect(output_type == kTfLiteUInt8,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
+             "Output should be kTfLiteUInt8.", &val_ctx);
       const auto quantization_params =
           context->tensors[node->outputs->data[0]].params;
       Expect(quantization_params.scale > 0.f,
+             NNAPIValidationFailureType::kUnsupportedQuantizationParameters,
              "Quantization scale should be > 0.", &val_ctx);
     } break;
     case kTfLiteBuiltinReduceAny:
@@ -1960,10 +2069,12 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(context->tensors[node->outputs->data[0]].dims->size != 0,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output.", &val_ctx);
       if (builtin_code == kTfLiteBuiltinReduceProd) {
         const auto input_type = context->tensors[node->inputs->data[0]].type;
         Expect(input_type == kTfLiteFloat32,
+               NNAPIValidationFailureType::kUnsupportedInputType,
                "NNAPI only supports floating point REDUCE_PROD.", &val_ctx);
       }
     } break;
@@ -1988,14 +2099,17 @@ bool NNAPIDelegateKernel::Validate(const TfLiteContext* context,
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(context->tensors[node->outputs->data[0]].dims->size != 0,
+             NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output", &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       Expect(input_type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports floating point input.", &val_ctx);
     } break;
     default:
       // All other operators are not mapped.
-      AddValidationFailure("Unsupported operation type.", &val_ctx);
+      AddValidationFailure(NNAPIValidationFailureType::kUnsupportedOperator,
+                           "Unsupported operation type.", &val_ctx);
   }
   return val_ctx.is_valid;
 }

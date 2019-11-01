@@ -21,11 +21,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.ops.ragged import ragged_tensor_value
 
 
-class TextVectorization(text_vectorization.TextVectorization):
+class TextVectorization(text_vectorization.TextVectorization,
+                        base_preprocessing_layer_v1.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It

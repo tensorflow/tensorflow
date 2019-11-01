@@ -501,6 +501,15 @@ def load(export_dir, tags=None):
   `tf.saved_model.save`, variables are instead assigned to whichever attributes
   they were assigned before export.
 
+  _Consuming SavedModels asynchronously_
+
+  When consuming SavedModels asynchronously (the producer is a separate
+  process), the SavedModel directory will appear before all files have been
+  written, and `tf.saved_model.load` will fail if pointed at an incomplete
+  SavedModel. Rather than checking for the directory, check for
+  "saved_model_dir/saved_model.pb". This file is written atomically as the last
+  `tf.saved_model.save` file operation.
+
   Args:
     export_dir: The SavedModel directory to load from.
     tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
