@@ -836,6 +836,16 @@ class IntEnumAttrCaseBase<I intType, string sym, int val> :
 class I32EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I32, sym, val>;
 class I64EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I64, sym, val>;
 
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getZExtValue() & " # val # "u">;
+}
+
 // Additional information for an enum attribute.
 class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // The C++ enum class name
@@ -843,10 +853,6 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
 
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
-
-  // Whether to skip automatically generating C++ enum class and utility
-  // functions for this enum attribute with EnumsGen.
-  bit skipAutoGen = 0;
 
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
@@ -938,6 +944,33 @@ class I64EnumAttr<string name, string description,
                   list<I64EnumAttrCase> cases> :
     IntEnumAttr<I64, name, description, cases> {
   let underlyingType = "uint64_t";
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set. Besides,
+// helper methods are generated to parse a string separated with a specified
+// delimiter to a symbol and vice versa.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let underlyingType = "uint32_t";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The delimiter used to separate bit enum cases in strings.
+  string separator = "|";
 }
 
 //===----------------------------------------------------------------------===//

@@ -716,23 +716,35 @@ duplication, which is being worked on right now.
 
 ### Enum attributes
 
-Enum attributes can be defined using `EnumAttr`, which requires all its cases to
-be defined with `EnumAttrCase`. To facilitate the interaction between
-`EnumAttr`s and their C++ consumers, the [`EnumsGen`][EnumsGen] TableGen backend
-can generate a few common utilities, including an enum class,
-`llvm::DenseMapInfo` for the enum class, conversion functions from/to strings.
-This is controlled via the `-gen-enum-decls` and `-gen-enum-defs` command-line
-options of `mlir-tblgen`.
+Some attributes can only take values from an predefined enum, e.g., the
+comparsion kind of a comparsion op. To define such attributes, ODS provides
+several mechanisms: `StrEnumAttr`, `IntEnumAttr`, and `BitEnumAttr`.
+
+*   `StrEnumAttr`: each enum case is a string, the attribute is stored as a
+    [`StringAttr`][StringAttr] in the op.
+*   `IntEnumAttr`: each enum case is an integer, the attribute is stored as a
+    [`IntegerAttr`][IntegerAttr] in the op.
+*   `BitEnumAttr`: each enum case is a bit, the attribute is stored as a
+    [`IntegerAttr`][IntegerAttr] in the op.
+
+All these `*EnumAttr` attributes require fully specifying all of the the allowed
+cases via their corresponding `*EnumAttrCase`. With this, ODS is able to
+generate additional verification to only accept allowed cases. To facilitate the
+interaction between `*EnumAttr`s and their C++ consumers, the
+[`EnumsGen`][EnumsGen] TableGen backend can generate a few common utilities: a
+C++ enum class, `llvm::DenseMapInfo` for the enum class, conversion functions
+from/to strings. This is controlled via the `-gen-enum-decls` and
+`-gen-enum-defs` command-line options of `mlir-tblgen`.
 
 For example, given the following `EnumAttr`:
 
 ```tablegen
-def CaseA: EnumAttrCase<"caseA", 0>;
-def CaseB: EnumAttrCase<"caseB", 10>;
+def Case15: I32EnumAttrCase<"Case15", 15>;
+def Case20: I32EnumAttrCase<"Case20", 20>;
 
-def MyEnum: EnumAttr<"MyEnum", "An example enum", [CaseA, CaseB]> {
+def MyIntEnum: I32EnumAttr<"MyIntEnum", "An example int enum",
+                           [Case15, Case20]> {
   let cppNamespace = "Outer::Inner";
-  let underlyingType = "uint64_t";
   let stringToSymbolFnName = "ConvertToEnum";
   let symbolToStringFnName = "ConvertToString";
 }
@@ -743,35 +755,39 @@ The following will be generated via `mlir-tblgen -gen-enum-decls`:
 ```c++
 namespace Outer {
 namespace Inner {
-// An example enum
-enum class MyEnum : uint64_t {
-  caseA = 0,
-  caseB = 10,
+// An example int enum
+enum class MyIntEnum : uint32_t {
+  Case15 = 15,
+  Case20 = 20,
 };
 
-llvm::StringRef ConvertToString(MyEnum);
-llvm::Optional<MyEnum> ConvertToEnum(llvm::StringRef);
+llvm::Optional<MyIntEnum> symbolizeMyIntEnum(uint32_t);
+llvm::StringRef ConvertToString(MyIntEnum);
+llvm::Optional<MyIntEnum> ConvertToEnum(llvm::StringRef);
+inline constexpr unsigned getMaxEnumValForMyIntEnum() {
+  return 20;
+}
+
 } // namespace Inner
 } // namespace Outer
 
 namespace llvm {
-template<> struct DenseMapInfo<Outer::Inner::MyEnum> {
-  using StorageInfo = llvm::DenseMapInfo<uint64_t>;
+template<> struct DenseMapInfo<Outer::Inner::MyIntEnum> {
+  using StorageInfo = llvm::DenseMapInfo<uint32_t>;
 
-  static inline Outer::Inner::MyEnum getEmptyKey() {
-    return static_cast<Outer::Inner::MyEnum>(StorageInfo::getEmptyKey());
+  static inline Outer::Inner::MyIntEnum getEmptyKey() {
+    return static_cast<Outer::Inner::MyIntEnum>(StorageInfo::getEmptyKey());
   }
 
-  static inline Outer::Inner::MyEnum getTombstoneKey() {
-    return static_cast<Outer::Inner::MyEnum>(StorageInfo::getTombstoneKey());
+  static inline Outer::Inner::MyIntEnum getTombstoneKey() {
+    return static_cast<Outer::Inner::MyIntEnum>(StorageInfo::getTombstoneKey());
   }
 
-  static unsigned getHashValue(const Outer::Inner::MyEnum &val) {
-    return StorageInfo::getHashValue(static_cast<uint64_t>(val));
+  static unsigned getHashValue(const Outer::Inner::MyIntEnum &val) {
+    return StorageInfo::getHashValue(static_cast<uint32_t>(val));
   }
 
-  static bool isEqual(const Outer::Inner::MyEnum &lhs,
-                      const Outer::Inner::MyEnum &rhs) {
+  static bool isEqual(const Outer::Inner::MyIntEnum &lhs, const Outer::Inner::MyIntEnum &rhs) {
     return lhs == rhs;
   }
 };
@@ -783,22 +799,131 @@ The following will be generated via `mlir-tblgen -gen-enum-defs`:
 ```c++
 namespace Outer {
 namespace Inner {
-llvm::StringRef ConvertToString(MyEnum val) {
+llvm::StringRef ConvertToString(MyIntEnum val) {
   switch (val) {
-    case MyEnum::caseA: return "caseA";
-    case MyEnum::caseB: return "caseB";
-    default: return "";
+    case MyIntEnum::Case15: return "Case15";
+    case MyIntEnum::Case20: return "Case20";
+  }
+  return "";
+}
+
+llvm::Optional<MyIntEnum> ConvertToEnum(llvm::StringRef str) {
+  return llvm::StringSwitch<llvm::Optional<MyIntEnum>>(str)
+      .Case("Case15", MyIntEnum::Case15)
+      .Case("Case20", MyIntEnum::Case20)
+      .Default(llvm::None);
+}
+llvm::Optional<MyIntEnum> symbolizeMyIntEnum(uint32_t value) {
+  switch (value) {
+  case 15: return MyIntEnum::Case15;
+  case 20: return MyIntEnum::Case20;
+  default: return llvm::None;
   }
 }
 
-llvm::Optional<MyEnum> ConvertToEnum(llvm::StringRef str) {
-  return llvm::StringSwitch<llvm::Optional<MyEnum>>(str)
-      .Case("caseA", MyEnum::caseA)
-      .Case("caseB", MyEnum::caseB)
-      .Default(llvm::None);
-}
 } // namespace Inner
 } // namespace Outer
+```
+
+Similarly for the following `BitEnumAttr` definition:
+
+```tablegen
+def None: BitEnumAttrCase<"None", 0x0000>;
+def Bit1: BitEnumAttrCase<"Bit1", 0x0001>;
+def Bit2: BitEnumAttrCase<"Bit2", 0x0002>;
+def Bit3: BitEnumAttrCase<"Bit3", 0x0004>;
+
+def MyBitEnum: BitEnumAttr<"MyBitEnum", "An example bit enum",
+                           [None, Bit1, Bit2, Bit3]>;
+```
+
+We can have:
+
+```c++
+// An example bit enum
+enum class MyBitEnum : uint32_t {
+  None = 0,
+  Bit1 = 1,
+  Bit2 = 2,
+  Bit3 = 4,
+};
+
+llvm::Optional<MyBitEnum> symbolizeMyBitEnum(uint32_t);
+std::string stringifyMyBitEnum(MyBitEnum);
+llvm::Optional<MyBitEnum> symbolizeMyBitEnum(llvm::StringRef);
+inline MyBitEnum operator|(MyBitEnum lhs, MyBitEnum rhs) {
+  return static_cast<MyBitEnum>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+}
+inline MyBitEnum operator&(MyBitEnum lhs, MyBitEnum rhs) {
+  return static_cast<MyBitEnum>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs));
+}
+inline bool bitEnumContains(MyBitEnum bits, MyBitEnum bit) {
+  return (static_cast<uint32_t>(bits) & static_cast<uint32_t>(bit)) != 0;
+}
+
+namespace llvm {
+template<> struct DenseMapInfo<::MyBitEnum> {
+  using StorageInfo = llvm::DenseMapInfo<uint32_t>;
+
+  static inline ::MyBitEnum getEmptyKey() {
+    return static_cast<::MyBitEnum>(StorageInfo::getEmptyKey());
+  }
+
+  static inline ::MyBitEnum getTombstoneKey() {
+    return static_cast<::MyBitEnum>(StorageInfo::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const ::MyBitEnum &val) {
+    return StorageInfo::getHashValue(static_cast<uint32_t>(val));
+  }
+
+  static bool isEqual(const ::MyBitEnum &lhs, const ::MyBitEnum &rhs) {
+    return lhs == rhs;
+  }
+};
+```
+
+```c++
+std::string stringifyMyBitEnum(MyBitEnum symbol) {
+  auto val = static_cast<uint32_t>(symbol);
+  // Special case for all bits unset.
+  if (val == 0) return "None";
+
+  llvm::SmallVector<llvm::StringRef, 2> strs;
+  if (1u & val) { strs.push_back("Bit1"); val &= ~1u; }
+  if (2u & val) { strs.push_back("Bit2"); val &= ~2u; }
+  if (4u & val) { strs.push_back("Bit3"); val &= ~4u; }
+
+  if (val) return "";
+  return llvm::join(strs, "|");
+}
+
+llvm::Optional<MyBitEnum> symbolizeMyBitEnum(llvm::StringRef str) {
+  // Special case for all bits unset.
+  if (str == "None") return MyBitEnum::None;
+
+  llvm::SmallVector<llvm::StringRef, 2> symbols;
+  str.split(symbols, "|");
+
+  uint32_t val = 0;
+  for (auto symbol : symbols) {
+    auto bit = llvm::StringSwitch<llvm::Optional<uint32_t>>(symbol)
+      .Case("Bit1", 1)
+      .Case("Bit2", 2)
+      .Case("Bit3", 4)
+      .Default(llvm::None);
+    if (bit) { val |= *bit; } else { return llvm::None; }
+  }
+  return static_cast<MyBitEnum>(val);
+}
+
+llvm::Optional<MyBitEnum> symbolizeMyBitEnum(uint32_t value) {
+  // Special case for all bits unset.
+  if (value == 0) return MyBitEnum::None;
+
+  if (value & ~(1u | 2u | 4u)) return llvm::None;
+  return static_cast<MyBitEnum>(value);
+}
 ```
 
 TODO(b/132506080): This following is outdated. Update it.
@@ -954,7 +1079,6 @@ function, the reference implementation of the operation will be used to derive
 the shape function. The reference implementation is general and can support the
 arbitrary computations needed to specify output shapes.
 
-
 [TableGen]: https://llvm.org/docs/TableGen/index.html
 [TableGenIntro]: https://llvm.org/docs/TableGen/LangIntro.html
 [TableGenRef]: https://llvm.org/docs/TableGen/LangRef.html
@@ -962,3 +1086,5 @@ arbitrary computations needed to specify output shapes.
 [OpBase]: https://github.com/tensorflow/mlir/blob/master/include/mlir/IR/OpBase.td
 [OpDefinitionsGen]: https://github.com/tensorflow/mlir/blob/master/tools/mlir-tblgen/OpDefinitionsGen.cpp
 [EnumsGen]: https://github.com/tensorflow/mlir/blob/master/tools/mlir-tblgen/EnumsGen.cpp
+[StringAttr]: https://github.com/tensorflow/mlir/blob/master/g3doc/LangRef.md#string-attribute
+[IntegerAttr]: https://github.com/tensorflow/mlir/blob/master/g3doc/LangRef.md#integer-attribute

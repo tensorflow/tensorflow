@@ -17,6 +17,8 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "gmock/gmock.h"
 #include <type_traits>
@@ -67,4 +69,39 @@ TEST(EnumsGenTest, GeneratedStringToSymbolFn) {
 TEST(EnumsGenTest, GeneratedUnderlyingType) {
   bool v = std::is_same<uint32_t, std::underlying_type<I32Enum>::type>::value;
   EXPECT_TRUE(v);
+}
+
+TEST(EnumsGenTest, GeneratedBitEnumDefinition) {
+  EXPECT_EQ(0u, static_cast<uint32_t>(BitEnumWithNone::None));
+  EXPECT_EQ(1u, static_cast<uint32_t>(BitEnumWithNone::Bit1));
+  EXPECT_EQ(4u, static_cast<uint32_t>(BitEnumWithNone::Bit3));
+}
+
+TEST(EnumsGenTest, GeneratedSymbolToStringFnForBitEnum) {
+  EXPECT_THAT(stringifyBitEnumWithNone(BitEnumWithNone::None), StrEq("None"));
+  EXPECT_THAT(stringifyBitEnumWithNone(BitEnumWithNone::Bit1), StrEq("Bit1"));
+  EXPECT_THAT(stringifyBitEnumWithNone(BitEnumWithNone::Bit3), StrEq("Bit3"));
+  EXPECT_THAT(
+      stringifyBitEnumWithNone(BitEnumWithNone::Bit1 | BitEnumWithNone::Bit3),
+      StrEq("Bit1|Bit3"));
+}
+
+TEST(EnumsGenTest, GeneratedStringToSymbolForBitEnum) {
+  EXPECT_EQ(symbolizeBitEnumWithNone("None"), BitEnumWithNone::None);
+  EXPECT_EQ(symbolizeBitEnumWithNone("Bit1"), BitEnumWithNone::Bit1);
+  EXPECT_EQ(symbolizeBitEnumWithNone("Bit3"), BitEnumWithNone::Bit3);
+  EXPECT_EQ(symbolizeBitEnumWithNone("Bit3|Bit1"),
+            BitEnumWithNone::Bit3 | BitEnumWithNone::Bit1);
+
+  EXPECT_EQ(symbolizeBitEnumWithNone("Bit2"), llvm::None);
+  EXPECT_EQ(symbolizeBitEnumWithNone("Bit3|Bit4"), llvm::None);
+
+  EXPECT_EQ(symbolizeBitEnumWithoutNone("None"), llvm::None);
+}
+
+TEST(EnumsGenTest, GeneratedOperator) {
+  EXPECT_TRUE(bitEnumContains(BitEnumWithNone::Bit1 | BitEnumWithNone::Bit3,
+                              BitEnumWithNone::Bit1));
+  EXPECT_FALSE(bitEnumContains(BitEnumWithNone::Bit1 & BitEnumWithNone::Bit3,
+                               BitEnumWithNone::Bit1));
 }
