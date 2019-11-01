@@ -86,6 +86,13 @@ Value *Aliases::find(Value *v) {
   }
 }
 
+LinalgDependenceGraph
+LinalgDependenceGraph::buildDependenceGraph(Aliases &aliases, FuncOp f) {
+  SmallVector<Operation *, 8> linalgOps;
+  f.walk([&](LinalgOp op) { linalgOps.push_back(op); });
+  return LinalgDependenceGraph(aliases, linalgOps);
+}
+
 LinalgDependenceGraph::LinalgDependenceGraph(Aliases &aliases,
                                              ArrayRef<Operation *> ops)
     : aliases(aliases), linalgOps(ops.begin(), ops.end()) {

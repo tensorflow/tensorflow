@@ -81,8 +81,21 @@ struct FusionInfo {
   LinalgOp fusedProducer;
 };
 
-// Fuses producer into consumer if the producer is structurally feasible and the
-// fusion would not violate dependencies.
+/// Checks whether the specific `producer` is the last write to exactly the
+/// whole `consumedView`. This checks structural dominance, that the dependence
+/// is a RAW without any interleaved write to any piece of `consumedView`.
+bool isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
+                               LinalgOp consumer, Value *consumedView,
+                               LinalgOp producer);
+
+/// Checks whether fusing the specific `producer` of the `consumedView` is
+/// feasible. This checks `producer` is the last write of `consumedView` and
+/// that no interleaved dependence would be violated (RAW, WAR or WAW).
+bool isFusableInto(const LinalgDependenceGraph &graph, LinalgOp consumer,
+                   Value *consumedView, LinalgOp producer);
+
+/// Fuses producer into consumer if the producer is structurally feasible and
+/// the fusion would not violate dependencies.
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
