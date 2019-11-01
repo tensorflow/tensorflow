@@ -6,8 +6,10 @@ func @map1d(%lb: index, %ub: index, %step: index) {
   // CHECK: %[[threads:.*]]:2 = "new_processor_id_and_range"() : () -> (index, index)
   %0:2 = "new_processor_id_and_range"() : () -> (index, index)
 
-  // CHECK: %[[new_lb:.*]] = addi %[[lb]], %[[threads]]#0
-  // CHECK: loop.for %{{.*}} = %[[new_lb]] to %[[ub]] step %[[threads]]#1 {
+  // CHECK: %[[thread_offset:.*]] = muli %[[step]], %[[threads]]#0
+  // CHECK: %[[new_lb:.*]] = addi %[[lb]], %[[thread_offset]]
+  // CHECK: %[[new_step:.*]] = muli %[[step]], %[[threads]]#1
+  // CHECK: loop.for %{{.*}} = %[[new_lb]] to %[[ub]] step %[[new_step]] {
   loop.for %i = %lb to %ub step %step {}
   return
 }
@@ -27,11 +29,17 @@ func @map2d(%lb : index, %ub : index, %step : index) {
   // threadIdx.x + blockIdx.x * blockDim.x
   // CHECK: %[[tidxpbidxXbdimx:.*]] = addi %[[bidxXbdimx]], %[[threads]]#0 : index
   //
-  // new_lb = lb + threadIdx.x + blockIdx.x * blockDim.x
-  // CHECK: %[[new_lb:.*]] = addi %[[lb]], %[[tidxpbidxXbdimx]] : index
+  // thread_offset = step * (threadIdx.x + blockIdx.x * blockDim.x)
+  // CHECK: %[[thread_offset:.*]] = muli %[[step]], %[[tidxpbidxXbdimx]] : index
   //
-  // new_step = gridDim.x * blockDim.x
-  // CHECK: %[[new_step:.*]] = muli %[[blocks]]#1, %[[threads]]#1 : index
+  // new_lb = lb + thread_offset
+  // CHECK: %[[new_lb:.*]] = addi %[[lb]], %[[thread_offset]] : index
+  //
+  // stepXgdimx = step * gridDim.x
+  // CHECK: %[[stepXgdimx:.*]] = muli %[[step]], %[[blocks]]#1 : index
+  //
+  // new_step = step * gridDim.x * blockDim.x
+  // CHECK: %[[new_step:.*]] = muli %[[stepXgdimx]], %[[threads]]#1 : index
   //
   // CHECK: loop.for %{{.*}} = %[[new_lb]] to %[[ub]] step %[[new_step]] {
   loop.for %i = %lb to %ub step %step {}

@@ -224,8 +224,8 @@ void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 /// is rewritten into a version resembling the following pseudo-IR:
 ///
 /// ```
-///    loop.for %i = %lb + threadIdx.x + blockIdx.x * blockDim.x to %ub
-///       step %gridDim.x * blockDim.x {
+///    loop.for %i = %lb + %step * (threadIdx.x + blockIdx.x * blockDim.x)
+///       to %ub step %gridDim.x * blockDim.x * %step {
 ///      ...
 ///    }
 /// ```
