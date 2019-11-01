@@ -1241,6 +1241,14 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
 def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
 
+// An attribute constraint on SymbolRefAttr that requires the SymbolRefAttr
+// pointing to an op of `opClass` within the closest parent with a symbol table.
+class ReferToOp<string opClass> : AttrConstraint<
+    CPred<"isa_and_nonnull<" # opClass # ">("
+            "::mlir::SymbolTable::lookupNearestSymbolFrom("
+              "&$_op, $_self.cast<SymbolRefAttr>().getValue()))">,
+    "referencing to a '" # opClass # "' symbol">;
+
 //===----------------------------------------------------------------------===//
 // Region definitions
 //===----------------------------------------------------------------------===//
