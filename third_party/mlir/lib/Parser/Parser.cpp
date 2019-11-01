@@ -633,6 +633,11 @@ public:
     return success(static_cast<bool>(result));
   }
 
+  ParseResult parseDimensionList(SmallVectorImpl<int64_t> &dimensions,
+                                 bool allowDynamic) override {
+    return parser.parseDimensionListRanked(dimensions, allowDynamic);
+  }
+
 private:
   /// The full symbol specification.
   StringRef fullSpec;
