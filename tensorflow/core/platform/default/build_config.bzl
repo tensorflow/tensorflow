@@ -584,10 +584,10 @@ def tf_additional_libdevice_srcs():
     return ["default/cuda_libdevice_path.cc"]
 
 def tf_additional_rocdl_deps():
-  return ["@local_config_rocm//rocm:rocm_headers"]
+    return ["@local_config_rocm//rocm:rocm_headers"]
 
 def tf_additional_rocdl_srcs():
-  return ["default/rocm_rocdl_path.cc"]
+    return ["default/rocm_rocdl_path.cc"]
 
 def tf_additional_test_deps():
     return []
@@ -671,7 +671,7 @@ def tf_additional_binary_deps():
             "//tensorflow/stream_executor:rocm_platform",
             "//tensorflow/core/platform/default/build_config:rocm",
         ],
-    )  + [
+    ) + [
         # TODO(allenl): Split these out into their own shared objects (they are
         # here because they are shared between contrib/ op shared objects and
         # core).
