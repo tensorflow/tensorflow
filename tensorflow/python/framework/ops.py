@@ -5456,15 +5456,14 @@ def init_scope():
     (3) The gradient tape is paused while the scope is active.
 
   When eager execution is enabled, code inside an init_scope block runs with
-  eager execution enabled even when defining graph functions via
-  tf.contrib.eager.defun. For example:
+  eager execution enabled even when tracing a `tf.function`. For example:
 
   ```python
   tf.compat.v1.enable_eager_execution()
 
-  @tf.contrib.eager.defun
+  @tf.function
   def func():
-    # A defun-decorated function constructs TensorFlow graphs,
+    # A function constructs TensorFlow graphs,
     # it does not execute eagerly.
     assert not tf.executing_eagerly()
     with tf.init_scope():
