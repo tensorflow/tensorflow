@@ -616,8 +616,8 @@ bool TypeParser::parseQuantParams(double &scale, int64_t &zeroPoint) {
 }
 
 /// Parse a type registered to this dialect.
-Type QuantizationDialect::parseType(DialectAsmParser &parser,
-                                    Location loc) const {
+Type QuantizationDialect::parseType(DialectAsmParser &parser) const {
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   TypeParser typeParser(parser.getFullSymbolSpec(), getContext(), loc);
   Type parsedType = typeParser.parseType();
   if (parsedType == nullptr) {

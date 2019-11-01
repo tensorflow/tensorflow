@@ -610,8 +610,9 @@ static Type parseStructType(SPIRVDialect const &dialect, StringRef spec,
 //              | pointer-type
 //              | runtime-array-type
 //              | struct-type
-Type SPIRVDialect::parseType(DialectAsmParser &parser, Location loc) const {
+Type SPIRVDialect::parseType(DialectAsmParser &parser) const {
   StringRef spec = parser.getFullSymbolSpec();
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
 
   if (spec.startswith("array"))
     return parseArrayType(*this, spec, loc);

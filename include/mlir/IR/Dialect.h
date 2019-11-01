@@ -117,8 +117,7 @@ public:
 
   /// Parse an attribute registered to this dialect. If 'type' is nonnull, it
   /// refers to the expected type of the attribute.
-  virtual Attribute parseAttribute(DialectAsmParser &parser, Type type,
-                                   Location loc) const;
+  virtual Attribute parseAttribute(DialectAsmParser &parser, Type type) const;
 
   /// Print an attribute registered to this dialect. Note: The type of the
   /// attribute need not be printed by this method as it is always printed by
@@ -128,7 +127,7 @@ public:
   }
 
   /// Parse a type registered to this dialect.
-  virtual Type parseType(DialectAsmParser &parser, Location loc) const;
+  virtual Type parseType(DialectAsmParser &parser) const;
 
   /// Print a type registered to this dialect.
   virtual void printType(Type, DialectAsmPrinter &) const {
