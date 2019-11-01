@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
@@ -1249,7 +1250,9 @@ llvm::LLVMContext &LLVMDialect::getLLVMContext() { return impl->llvmContext; }
 llvm::Module &LLVMDialect::getLLVMModule() { return impl->module; }
 
 /// Parse a type registered to this dialect.
-Type LLVMDialect::parseType(StringRef tyData, Location loc) const {
+Type LLVMDialect::parseType(DialectAsmParser &parser, Location loc) const {
+  StringRef tyData = parser.getFullSymbolSpec();
+
   // LLVM is not thread-safe, so lock access to it.
   llvm::sys::SmartScopedLock<true> lock(impl->mutex);
 
@@ -1261,11 +1264,11 @@ Type LLVMDialect::parseType(StringRef tyData, Location loc) const {
 }
 
 /// Print a type registered to this dialect.
-void LLVMDialect::printType(Type type, raw_ostream &os) const {
+void LLVMDialect::printType(Type type, DialectAsmPrinter &os) const {
   auto llvmType = type.dyn_cast<LLVMType>();
   assert(llvmType && "printing wrong type");
   assert(llvmType.getUnderlyingType() && "no underlying LLVM type");
-  llvmType.getUnderlyingType()->print(os);
+  llvmType.getUnderlyingType()->print(os.getStream());
 }
 
 /// Verify LLVMIR function argument attributes.

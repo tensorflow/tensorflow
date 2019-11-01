@@ -25,6 +25,8 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class DialectAsmParser;
+class DialectAsmPrinter;
 class DialectInterface;
 class OpBuilder;
 class Type;
@@ -115,21 +117,21 @@ public:
 
   /// Parse an attribute registered to this dialect. If 'type' is nonnull, it
   /// refers to the expected type of the attribute.
-  virtual Attribute parseAttribute(StringRef attrData, Type type,
+  virtual Attribute parseAttribute(DialectAsmParser &parser, Type type,
                                    Location loc) const;
 
   /// Print an attribute registered to this dialect. Note: The type of the
   /// attribute need not be printed by this method as it is always printed by
   /// the caller.
-  virtual void printAttribute(Attribute, raw_ostream &) const {
+  virtual void printAttribute(Attribute, DialectAsmPrinter &) const {
     llvm_unreachable("dialect has no registered attribute printing hook");
   }
 
   /// Parse a type registered to this dialect.
-  virtual Type parseType(StringRef tyData, Location loc) const;
+  virtual Type parseType(DialectAsmParser &parser, Location loc) const;
 
   /// Print a type registered to this dialect.
-  virtual void printType(Type, raw_ostream &) const {
+  virtual void printType(Type, DialectAsmPrinter &) const {
     llvm_unreachable("dialect has no registered type printing hook");
   }
 

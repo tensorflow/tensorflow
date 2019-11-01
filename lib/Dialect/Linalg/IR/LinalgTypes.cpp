@@ -20,9 +20,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
 #include "mlir/Support/LLVM.h"
 
@@ -107,8 +108,9 @@ Optional<int64_t> mlir::linalg::BufferType::getBufferSize() {
   return getImpl()->getBufferSize();
 }
 
-Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
+Type mlir::linalg::LinalgDialect::parseType(DialectAsmParser &parser,
                                             Location loc) const {
+  StringRef spec = parser.getFullSymbolSpec();
   StringRef origSpec = spec;
   MLIRContext *context = getContext();
   if (spec == "range")
@@ -146,9 +148,8 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
   return (emitError(loc, "unknown Linalg type: " + origSpec), Type());
 }
 
-
 /// BufferType prints as "buffer<element_type>".
-static void print(BufferType bt, raw_ostream &os) {
+static void print(BufferType bt, DialectAsmPrinter &os) {
   os << "buffer<";
   auto bs = bt.getBufferSize();
   if (bs) {
@@ -160,9 +161,10 @@ static void print(BufferType bt, raw_ostream &os) {
 }
 
 /// RangeType prints as just "range".
-static void print(RangeType rt, raw_ostream &os) { os << "range"; }
+static void print(RangeType rt, DialectAsmPrinter &os) { os << "range"; }
 
-void mlir::linalg::LinalgDialect::printType(Type type, raw_ostream &os) const {
+void mlir::linalg::LinalgDialect::printType(Type type,
+                                            DialectAsmPrinter &os) const {
   switch (type.getKind()) {
   default:
     llvm_unreachable("Unhandled Linalg type");

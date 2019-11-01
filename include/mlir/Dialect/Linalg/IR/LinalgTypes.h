@@ -37,10 +37,10 @@ public:
   static StringRef getDialectNamespace() { return "linalg"; }
 
   /// Parse a type registered to this dialect.
-  Type parseType(llvm::StringRef spec, Location loc) const override;
+  Type parseType(DialectAsmParser &parser, Location loc) const override;
 
   /// Print a type registered to this dialect.
-  void printType(Type type, llvm::raw_ostream &os) const override;
+  void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
 /// A BufferType represents a contiguous block of memory that can be allocated

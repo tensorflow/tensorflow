@@ -27,6 +27,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -51,37 +52,43 @@ namespace {
 class Parser;
 
 //===----------------------------------------------------------------------===//
-// ParserState
+// AliasState
 //===----------------------------------------------------------------------===//
 
-/// This class refers to all of the state maintained globally by the parser,
-/// such as the current lexer position etc. The Parser base class provides
-/// methods to access this.
-class ParserState {
-public:
-  ParserState(const llvm::SourceMgr &sourceMgr, MLIRContext *ctx)
-      : context(ctx), lex(sourceMgr, ctx), curToken(lex.lexToken()) {}
-
+/// This class contains record of any parsed top-level aliases.
+struct AliasState {
   // A map from attribute alias identifier to Attribute.
   llvm::StringMap<Attribute> attributeAliasDefinitions;
 
   // A map from type alias identifier to Type.
   llvm::StringMap<Type> typeAliasDefinitions;
+};
 
-private:
+//===----------------------------------------------------------------------===//
+// ParserState
+//===----------------------------------------------------------------------===//
+
+/// This class refers to all of the state maintained globally by the parser,
+/// such as the current lexer position etc.
+struct ParserState {
+  ParserState(const llvm::SourceMgr &sourceMgr, MLIRContext *ctx,
+              AliasState &aliases)
+      : context(ctx), lex(sourceMgr, ctx), curToken(lex.lexToken()),
+        aliases(aliases) {}
   ParserState(const ParserState &) = delete;
   void operator=(const ParserState &) = delete;
 
-  friend class Parser;
-
-  // The context we're parsing into.
+  /// The context we're parsing into.
   MLIRContext *const context;
 
-  // The lexer for the source file we're parsing.
+  /// The lexer for the source file we're parsing.
   Lexer lex;
 
-  // This is the next token that hasn't been consumed yet.
+  /// This is the next token that hasn't been consumed yet.
   Token curToken;
+
+  /// Any parsed alias state.
+  AliasState &aliases;
 };
 
 //===----------------------------------------------------------------------===//
@@ -348,6 +355,55 @@ ParseResult Parser::parseCommaSeparatedListUntil(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// DialectAsmParser
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class provides the main implementation of the DialectAsmParser that
+/// allows for dialects to parse attributes and types. This allows for dialect
+/// hooking into the main MLIR parsing logic.
+class CustomDialectAsmParser : public DialectAsmParser {
+public:
+  CustomDialectAsmParser(StringRef fullSpec, Parser &parser)
+      : fullSpec(fullSpec), nameLoc(parser.getToken().getLoc()),
+        parser(parser) {}
+  ~CustomDialectAsmParser() override {}
+
+  /// Emit a diagnostic at the specified location and return failure.
+  InFlightDiagnostic emitError(llvm::SMLoc loc, const Twine &message) override {
+    return parser.emitError(loc, message);
+  }
+
+  /// Return a builder which provides useful access to MLIRContext, global
+  /// objects like types and attributes.
+  Builder &getBuilder() const override { return parser.builder; }
+
+  /// Get the location of the next token and store it into the argument.  This
+  /// always succeeds.
+  llvm::SMLoc getCurrentLocation() override {
+    return parser.getToken().getLoc();
+  }
+
+  /// Return the location of the original name token.
+  llvm::SMLoc getNameLoc() const override { return nameLoc; }
+
+  /// Returns the full specification of the symbol being parsed. This allows
+  /// for using a separate parser if necessary.
+  StringRef getFullSymbolSpec() const override { return fullSpec; }
+
+private:
+  /// The full symbol specification.
+  StringRef fullSpec;
+
+  /// The source location of the dialect symbol.
+  SMLoc nameLoc;
+
+  /// The main parser.
+  Parser &parser;
+};
+} // namespace
+
 /// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
 /// and may be recursive.  Return with the 'prettyName' StringRef encompassing
 /// the entire pretty name.
@@ -486,8 +542,42 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
   }
 
   // Call into the provided symbol construction function.
-  auto encodedLoc = p.getEncodedSourceLocation(loc);
-  return createSymbol(dialectName, symbolData, encodedLoc);
+  return createSymbol(dialectName, symbolData, loc);
+}
+
+/// Parses a symbol, of type 'T', and returns it if parsing was successful. If
+/// parsing failed, nullptr is returned. The number of bytes read from the input
+/// string is returned in 'numRead'.
+template <typename T, typename ParserFn>
+static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+                     AliasState &aliasState, ParserFn &&parserFn,
+                     size_t *numRead = nullptr) {
+  SourceMgr sourceMgr;
+  auto memBuffer = MemoryBuffer::getMemBuffer(
+      inputStr, /*BufferName=*/"<mlir_parser_buffer>",
+      /*RequiresNullTerminator=*/false);
+  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
+  ParserState state(sourceMgr, context, aliasState);
+  Parser parser(state);
+
+  Token startTok = parser.getToken();
+  T symbol = parserFn(parser);
+  if (!symbol)
+    return T();
+
+  // If 'numRead' is valid, then provide the number of bytes that were read.
+  Token endTok = parser.getToken();
+  if (numRead) {
+    *numRead = static_cast<size_t>(endTok.getLoc().getPointer() -
+                                   startTok.getLoc().getPointer());
+
+    // Otherwise, ensure that all of the tokens were parsed.
+  } else if (startTok.getLoc() != endTok.getLoc() && endTok.isNot(Token::eof)) {
+    parser.emitError(endTok.getLoc(),
+                     "encountered unexpected tokens after parsing");
+    return T();
+  }
+  return symbol;
 }
 
 //===----------------------------------------------------------------------===//
@@ -611,16 +701,24 @@ Type Parser::parseComplexType() {
 ///
 Type Parser::parseExtendedType() {
   return parseExtendedSymbol<Type>(
-      *this, Token::exclamation_identifier, state.typeAliasDefinitions,
-      [&](StringRef dialectName, StringRef symbolData, Location loc) -> Type {
+      *this, Token::exclamation_identifier, state.aliases.typeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData,
+          llvm::SMLoc loc) -> Type {
+        Location encodedLoc = getEncodedSourceLocation(loc);
+
         // If we found a registered dialect, then ask it to parse the type.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseType(symbolData, loc);
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName)) {
+          return parseSymbol<Type>(
+              symbolData, state.context, state.aliases, [&](Parser &parser) {
+                CustomDialectAsmParser customParser(symbolData, parser);
+                return dialect->parseType(customParser, encodedLoc);
+              });
+        }
 
         // Otherwise, form a new opaque type.
         return OpaqueType::getChecked(
             Identifier::get(dialectName, state.context), symbolData,
-            state.context, loc);
+            state.context, encodedLoc);
       });
 }
 
@@ -1217,22 +1315,29 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
 ///
 Attribute Parser::parseExtendedAttr(Type type) {
   Attribute attr = parseExtendedSymbol<Attribute>(
-      *this, Token::hash_identifier, state.attributeAliasDefinitions,
+      *this, Token::hash_identifier, state.aliases.attributeAliasDefinitions,
       [&](StringRef dialectName, StringRef symbolData,
-          Location loc) -> Attribute {
+          llvm::SMLoc loc) -> Attribute {
         // Parse an optional trailing colon type.
         Type attrType = type;
         if (consumeIf(Token::colon) && !(attrType = parseType()))
           return Attribute();
 
         // If we found a registered dialect, then ask it to parse the attribute.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseAttribute(symbolData, attrType, loc);
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName)) {
+          return parseSymbol<Attribute>(
+              symbolData, state.context, state.aliases, [&](Parser &parser) {
+                CustomDialectAsmParser customParser(symbolData, parser);
+                return dialect->parseAttribute(customParser, attrType,
+                                               getEncodedSourceLocation(loc));
+              });
+        }
 
         // Otherwise, form a new opaque attribute.
         return OpaqueAttr::getChecked(
             Identifier::get(dialectName, state.context), symbolData,
-            attrType ? attrType : NoneType::get(state.context), loc);
+            attrType ? attrType : NoneType::get(state.context),
+            getEncodedSourceLocation(loc));
       });
 
   // Ensure that the attribute has the same type as requested.
@@ -4137,7 +4242,7 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
   StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().attributeAliasDefinitions.count(aliasName) > 0)
+  if (getState().aliases.attributeAliasDefinitions.count(aliasName) > 0)
     return emitError("redefinition of attribute alias id '" + aliasName + "'");
 
   // Make sure this isn't invading the dialect attribute namespace.
@@ -4156,7 +4261,7 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
   if (!attr)
     return failure();
 
-  getState().attributeAliasDefinitions[aliasName] = attr;
+  getState().aliases.attributeAliasDefinitions[aliasName] = attr;
   return success();
 }
 
@@ -4169,7 +4274,7 @@ ParseResult ModuleParser::parseTypeAliasDef() {
   StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().typeAliasDefinitions.count(aliasName) > 0)
+  if (getState().aliases.typeAliasDefinitions.count(aliasName) > 0)
     return emitError("redefinition of type alias id '" + aliasName + "'");
 
   // Make sure this isn't invading the dialect type namespace.
@@ -4190,7 +4295,7 @@ ParseResult ModuleParser::parseTypeAliasDef() {
     return failure();
 
   // Register this alias with the parser state.
-  getState().typeAliasDefinitions.try_emplace(aliasName, aliasedType);
+  getState().aliases.typeAliasDefinitions.try_emplace(aliasName, aliasedType);
   return success();
 }
 
@@ -4269,7 +4374,8 @@ OwningModuleRef mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
   OwningModuleRef module(ModuleOp::create(FileLineColLoc::get(
       sourceBuf->getBufferIdentifier(), /*line=*/0, /*column=*/0, context)));
 
-  ParserState state(sourceMgr, context);
+  AliasState aliasState;
+  ParserState state(sourceMgr, context, aliasState);
   if (ModuleParser(state).parseModule(*module))
     return nullptr;
 
@@ -4334,23 +4440,16 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
 template <typename T, typename ParserFn>
 static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
                      size_t &numRead, ParserFn &&parserFn) {
-  SourceMgr sourceMgr;
-  auto memBuffer = MemoryBuffer::getMemBuffer(
-      inputStr, /*BufferName=*/"<mlir_parser_buffer>",
-      /*RequiresNullTerminator=*/false);
-  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
-  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
-  ParserState state(sourceMgr, context);
-  Parser parser(state);
-
-  auto start = parser.getToken().getLoc();
-  T symbol = parserFn(parser);
-  if (!symbol)
-    return T();
-
-  auto end = parser.getToken().getLoc();
-  numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
-  return symbol;
+  AliasState aliasState;
+  return parseSymbol<T>(
+      inputStr, context, aliasState,
+      [&](Parser &parser) {
+        SourceMgrDiagnosticHandler handler(
+            const_cast<llvm::SourceMgr &>(parser.getSourceMgr()),
+            parser.getContext());
+        return parserFn(parser);
+      },
+      &numRead);
 }
 
 Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
