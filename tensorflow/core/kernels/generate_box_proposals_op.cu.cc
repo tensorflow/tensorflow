@@ -195,11 +195,11 @@ __global__ void WriteUprightBoxesOutput(
 }
 
 template <typename T>
-void ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
+Status ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
   CudaLaunchConfig zconfig = GetCudaLaunchConfig(t->NumElements(), d);
-  TF_CHECK_OK(GpuLaunchKernel(
+  return GpuLaunchKernel(
       SetZero<T>, zconfig.block_count, zconfig.thread_per_block, 0, d.stream(),
-      zconfig.virtual_thread_count, (*t).flat<T>().data()));
+      zconfig.virtual_thread_count, (*t).flat<T>().data());
 }
 // Allocate scratch spaces that are needed for operation
 //
@@ -216,29 +216,29 @@ Status AllocateGenerationTempTensors(
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images, conv_layer_nboxes}),
       d_conv_layer_indexes));
-  ResetTensor<int>(d_conv_layer_indexes, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int>(d_conv_layer_indexes, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images + 1}), d_image_offset));
-  ResetTensor<int>(d_image_offset, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int>(d_image_offset, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)cub_temp_storage_bytes}),
       d_cub_temp_buffer));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images, conv_layer_nboxes}),
       d_sorted_conv_layer_indexes));
-  ResetTensor<int32>(d_sorted_conv_layer_indexes, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int32>(d_sorted_conv_layer_indexes, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_images, conv_layer_nboxes}),
       d_sorted_scores));
-  ResetTensor<float>(d_sorted_scores, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(d_sorted_scores, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT,
       TensorShape({num_images, box_dim * num_boxes_to_generate}), dev_boxes));
-  ResetTensor<float>(dev_boxes, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(dev_boxes, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({num_images, num_boxes_to_generate}),
       dev_boxes_keep_flags));
-  ResetTensor<int8>(dev_boxes_keep_flags, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int8>(dev_boxes_keep_flags, d));
   return Status::OK();
 }
 
@@ -253,33 +253,33 @@ Status AllocatePreNMSTempTensors(
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({box_dim * num_boxes_to_generate}),
       dev_image_prenms_boxes));
-  ResetTensor<float>(dev_image_prenms_boxes, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(dev_image_prenms_boxes, d));
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_boxes_to_generate}),
       dev_image_prenms_scores));
-  ResetTensor<float>(dev_image_prenms_scores, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(dev_image_prenms_scores, d));
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_boxes_to_generate}),
       dev_image_boxes_keep_list));
-  ResetTensor<int32>(dev_image_boxes_keep_list, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_image_boxes_keep_list, d));
 
   const int max_postnms_nboxes = std::min(num_boxes_to_generate, post_nms_topn);
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT,
       TensorShape({box_dim * num_images * max_postnms_nboxes}),
       dev_postnms_rois));
-  ResetTensor<float>(dev_postnms_rois, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(dev_postnms_rois, d));
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_images * max_postnms_nboxes}),
       dev_postnms_rois_probs));
-  ResetTensor<float>(dev_postnms_rois_probs, d);
+  TF_RETURN_IF_ERROR(ResetTensor<float>(dev_postnms_rois_probs, d));
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images}), dev_prenms_nboxes));
-  ResetTensor<int32>(dev_prenms_nboxes, d);
+  TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_prenms_nboxes, d));
 
   return Status::OK();
 }
@@ -313,7 +313,8 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
-    CHECK_GT(post_nms_topn_, 0);
+    OP_REQUIRES(context, post_nms_topn_<=0,
+      errors::InvalidArgument("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);
   }
 
@@ -407,7 +408,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     Cuda2DLaunchConfig conf2d =
         GetCuda2DLaunchConfig(conv_layer_nboxes, num_images, d);
     // create box indices and offsets for each image on device
-    TF_CHECK_OK(GpuLaunchKernel(InitializeDataKernel, conf2d.block_count,
+    OP_REQUIRES_OK(context,GpuLaunchKernel(InitializeDataKernel, conf2d.block_count,
                                 conf2d.thread_per_block, 0, d.stream(), conf2d,
                                 d_image_offset.flat<int>().data(),
                                 d_conv_layer_indexes.flat<int>().data()));
@@ -431,7 +432,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
 
     // create box y1,x1,y2,x2 from box_deltas and anchors (decode the boxes) and
     // mark the boxes which are smaller that min_size ignored.
-    TF_CHECK_OK(GpuLaunchKernel(
+    OP_REQUIRES_OK(context,GpuLaunchKernel(
         GeneratePreNMSUprightBoxesKernel, conf2d.block_count,
         conf2d.thread_per_block, 0, d.stream(), conf2d,
         d_sorted_conv_layer_indexes.flat<int>().data(),
@@ -490,7 +491,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     // Do  per-image nms
     for (int image_index = 0; image_index < num_images; ++image_index) {
       // reset output workspaces
-      ResetTensor<int32>(&dev_image_boxes_keep_list, d);
+      OP_REQUIRES_OK(context,ResetTensor<int32>(&dev_image_boxes_keep_list, d));
       // Sub matrices for current image
       // boxes
       const float* d_image_boxes =
@@ -541,7 +542,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       // adding the image_index dimension on the fly
       CudaLaunchConfig config = GetCudaLaunchConfig(post_nms_topn_, d);
       // make this single kernel
-      TF_CHECK_OK(GpuLaunchKernel(
+      OP_REQUIRES_OK(context,GpuLaunchKernel(
           WriteUprightBoxesOutput, config.block_count, config.thread_per_block,
           0, d.stream(), config,
           reinterpret_cast<const float4*>(d_image_prenms_boxes),
