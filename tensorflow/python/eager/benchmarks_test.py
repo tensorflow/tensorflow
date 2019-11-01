@@ -1014,7 +1014,7 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_keras_model_predict(self, model, run_eagerly=False):
     data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    dataset = dataset_ops.Dataset.from_tensors([data]).repeat()
+    dataset = dataset_ops.Dataset.from_tensors(data).repeat()
     model.compile(
         gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
         loss="mse", run_eagerly=run_eagerly)
