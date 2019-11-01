@@ -471,18 +471,21 @@ Status DependencyOptimizer::OptimizeDependencies() {
 
 namespace {
 
-void LongestPathsLowerBounds(int source, int highest_control_target,
+void LongestPathsLowerBounds(int source, std::pair<int, int> target_range,
                              const std::vector<std::vector<int>>& inputs,
                              std::vector<int>* longest_distance) {
-  std::fill(longest_distance->begin() + source,
-            longest_distance->begin() + highest_control_target + 1, 0);
-  for (int target = source + 1; target <= highest_control_target; ++target) {
+  (*longest_distance)[source] = 0;
+  (*longest_distance)[target_range.first] = 1;
+  std::fill(longest_distance->begin() + target_range.first + 1,
+            longest_distance->begin() + target_range.second + 1, 0);
+  for (int target = target_range.first + 1; target <= target_range.second;
+       ++target) {
     const auto& target_inputs = inputs[target];
     for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
       const int input = target_inputs[input_idx];
       // If the input node is before source in the topo order, no path
       // source -> input -> target can exits and we can skip it.
-      if (input < source) break;
+      if (input < target_range.first) break;
       // Also only extend a path from the source itself or from nodes that
       // have a path from source, indicated by longest_distance[input] > 0.
       const int input_dist = (*longest_distance)[input];
@@ -508,6 +511,9 @@ Status DependencyOptimizer::TransitiveReduction() {
   std::vector<std::vector<int>> inputs(num_nodes);
   std::vector<gtl::InlinedVector<std::pair<int, int>, 2>> control_outputs(
       num_nodes);
+  // target_range[i] contains the range of node indices for which to compute
+  // longest paths starting from node i.
+  std::vector<std::pair<int, int>> target_range(num_nodes, {num_nodes, -1});
   for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
     const NodeDef& node = optimized_graph_->node(node_idx);
     if (ModifiesFrameInfo(node) || !HasOpDef(node)) {
@@ -524,9 +530,13 @@ Status DependencyOptimizer::TransitiveReduction() {
       }
       const int input_node_idx = node_to_idx_[input_node];
       inputs[node_idx].push_back(input_node_idx);
+      target_range[input_node_idx].first =
+          std::min(target_range[input_node_idx].first, node_idx);
       if (IsControlInput(input)) {
         ++num_controls;
         control_outputs[input_node_idx].emplace_back(node_idx, input_slot);
+        target_range[input_node_idx].second =
+            std::max(target_range[input_node_idx].second, node_idx);
       }
     }
     std::sort(inputs[node_idx].begin(), inputs[node_idx].end(),
@@ -547,20 +557,14 @@ Status DependencyOptimizer::TransitiveReduction() {
       int, std::set<InputSlotAndSource, std::greater<InputSlotAndSource>>>
       control_edges_to_remove;
   for (int source = 0; source < num_nodes; ++source) {
-    int highest_control_target = -1;
-    for (const auto& control_output : control_outputs[source]) {
-      if (control_output.first > highest_control_target) {
-        highest_control_target = control_output.first;
-      }
-    }
-    if (highest_control_target <= source) {
+    if (target_range[source].first >= target_range[source].second ||
+        target_range[source].second <= source) {
       continue;
     }
-
     // Compute a lower bound on the length of the longest path from source to
     // all nodes with topological sort index in [source + 1 :
     // highest_control_target].
-    LongestPathsLowerBounds(source, highest_control_target, inputs,
+    LongestPathsLowerBounds(source, target_range[source], inputs,
                             &longest_distance);
 
     // If the longest path from source to target of a control dependency is
@@ -574,7 +578,6 @@ Status DependencyOptimizer::TransitiveReduction() {
       }
     }
   }
-
   for (const auto& it : control_edges_to_remove) {
     const int target = it.first;
     NodeDef* target_node = optimized_graph_->mutable_node(target);
