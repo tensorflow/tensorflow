@@ -41,7 +41,6 @@ static LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter,
     return failure();
   tileRes->op.setAttr(kLinalgTransformMarker,
                       rewriter.getStringAttr(linalgMarker));
-  tileRes->op.getParentOfType<FuncOp>().dump();
   return success();
 }
 
@@ -74,7 +73,6 @@ static LogicalResult tileAndFuseLinalgOpAndSetMarker(PatternRewriter &rewriter,
   // The originalProducer can now be safely erased. This is similar to SSA-value
   // use-def but in the world of buffer + structured ops.
   rewriter.eraseOp(fusionRes->originalProducer);
-  fusionRes->fusedProducer.getParentOfType<FuncOp>().dump();
   return success();
 }
 
