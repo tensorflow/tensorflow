@@ -865,6 +865,25 @@ llvm.func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
   llvm.return %2 : !llvm.i32
 }
 
+llvm.func @fpconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
+// CHECK:      %2 = sitofp i32 %0 to float
+// CHECK-NEXT: %3 = fptosi float %2 to i32
+// CHECK-NEXT: %4 = uitofp i32 %3 to float
+// CHECK-NEXT: %5 = fptoui float %4 to i32
+  %1 = llvm.sitofp %arg0 : !llvm.i32 to !llvm.float
+  %2 = llvm.fptosi %1 : !llvm.float to !llvm.i32
+  %3 = llvm.uitofp %2 : !llvm.i32 to !llvm.float
+  %4 = llvm.fptoui %3 : !llvm.float to !llvm.i32
+  llvm.return %4 : !llvm.i32
+}
+
+// CHECK-LABEL: @addrspace
+llvm.func @addrspace(%arg0 : !llvm<"i32*">) -> !llvm<"i32 addrspace(2)*"> {
+// CHECK: %2 = addrspacecast i32* %0 to i32 addrspace(2)*
+  %1 = llvm.addrspacecast %arg0 : !llvm<"i32*"> to !llvm<"i32 addrspace(2)*">
+  llvm.return %1 : !llvm<"i32 addrspace(2)*">
+}
+
 llvm.func @stringconstant() -> !llvm<"i8*"> {
   %1 = llvm.mlir.constant("Hello world!") : !llvm<"i8*">
   // CHECK: ret [12 x i8] c"Hello world!"

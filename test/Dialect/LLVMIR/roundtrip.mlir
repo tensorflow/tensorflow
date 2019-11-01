@@ -159,7 +159,7 @@ func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
 
 // CHECK-LABEL: @casts
 func @casts(%arg0: !llvm.i32, %arg1: !llvm.i64, %arg2: !llvm<"<4 x i32>">,
-            %arg3: !llvm<"<4 x i64>">) {
+            %arg3: !llvm<"<4 x i64>">, %arg4: !llvm<"i32*">) {
 // CHECK-NEXT:  = llvm.sext %arg0 : !llvm.i32 to !llvm.i56
   %0 = llvm.sext %arg0 : !llvm.i32 to !llvm.i56
 // CHECK-NEXT:  = llvm.zext %arg0 : !llvm.i32 to !llvm.i64
@@ -172,6 +172,16 @@ func @casts(%arg0: !llvm.i32, %arg1: !llvm.i64, %arg2: !llvm<"<4 x i32>">,
   %4 = llvm.zext %arg2 : !llvm<"<4 x i32>"> to !llvm<"<4 x i64>">
 // CHECK-NEXT:  = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
   %5 = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
+// CHECK-NEXT:  = llvm.sitofp %arg0 : !llvm.i32 to !llvm.float
+  %6 = llvm.sitofp %arg0 : !llvm.i32 to !llvm.float
+// CHECK-NEXT:  = llvm.uitofp %arg0 : !llvm.i32 to !llvm.float
+  %7 = llvm.uitofp %arg0 : !llvm.i32 to !llvm.float
+// CHECK-NEXT:  = llvm.fptosi %7 : !llvm.float to !llvm.i32
+  %8 = llvm.fptosi %7 : !llvm.float to !llvm.i32
+// CHECK-NEXT:  = llvm.fptoui %7 : !llvm.float to !llvm.i32
+  %9 = llvm.fptoui %7 : !llvm.float to !llvm.i32
+// CHECK-NEXT:  = llvm.addrspacecast %arg4 : !llvm<"i32*"> to !llvm<"i32 addrspace(2)*">
+  %10 = llvm.addrspacecast %arg4 : !llvm<"i32*"> to !llvm<"i32 addrspace(2)*">
   llvm.return
 }
 
