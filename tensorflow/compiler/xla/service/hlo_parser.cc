@@ -2611,6 +2611,13 @@ struct MinMaxFiniteValue<bfloat16> {
 
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
+  if (std::is_floating_point<ParsedElemT>::value) {
+    auto value_as_native_t = static_cast<LiteralNativeT>(value);
+    auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
+    if (!std::isfinite(value) || std::isfinite(value_double_converted)) {
+      value = value_double_converted;
+    }
+  }
   PrimitiveType literal_ty =
       primitive_util::NativeToPrimitiveType<LiteralNativeT>();
   if (std::isnan(value) ||
