@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/run_handler_util.h"
@@ -686,8 +687,8 @@ class RunHandlerPool::Impl {
 
       num_active_requests = sorted_active_handlers_.size();
       thread_work_sources =
-          std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
-              num_active_requests);
+          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
       thread_work_sources->resize(num_active_requests);
       for (int i = 0; i < num_active_requests; ++i) {
         (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
@@ -731,8 +732,8 @@ class RunHandlerPool::Impl {
 
       num_active_requests = sorted_active_handlers_.size();
       thread_work_sources =
-          std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
-              num_active_requests);
+          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
       thread_work_sources->resize(num_active_requests);
       for (int i = 0; i < num_active_requests; ++i) {
         (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
