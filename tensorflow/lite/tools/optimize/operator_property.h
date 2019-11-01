@@ -61,6 +61,9 @@ struct OperatorProperty {
   // Bias indexes.
   std::vector<int> biases = {};
 
+  // Intermediate indexes -> intermediate tensor property.
+  std::vector<std::pair<int, TensorProperty>> intermediates = {};
+
   // Force output to reuse the same scale and zero point of input.
   bool restrict_same_input_output_scale = false;
 
