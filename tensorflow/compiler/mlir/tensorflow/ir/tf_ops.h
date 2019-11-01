@@ -52,7 +52,7 @@ class TensorFlowDialect : public Dialect {
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
 
   // Parse a type registered to this dialect.
-  Type parseType(DialectAsmParser &parser, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   // Prints a type registered to this dialect.
   void printType(Type ty, DialectAsmPrinter &os) const override;

@@ -129,6 +129,9 @@ public:
   /// Return the location of the original name token.
   virtual llvm::SMLoc getNameLoc() const = 0;
 
+  /// Re-encode the given source location as an MLIR location and return it.
+  virtual Location getEncodedSourceLoc(llvm::SMLoc loc) = 0;
+
   /// Returns the full specification of the symbol being parsed. This allows for
   /// using a separate parser if necessary.
   virtual StringRef getFullSymbolSpec() const = 0;

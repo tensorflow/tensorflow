@@ -1250,7 +1250,7 @@ llvm::LLVMContext &LLVMDialect::getLLVMContext() { return impl->llvmContext; }
 llvm::Module &LLVMDialect::getLLVMModule() { return impl->module; }
 
 /// Parse a type registered to this dialect.
-Type LLVMDialect::parseType(DialectAsmParser &parser, Location loc) const {
+Type LLVMDialect::parseType(DialectAsmParser &parser) const {
   StringRef tyData = parser.getFullSymbolSpec();
 
   // LLVM is not thread-safe, so lock access to it.
@@ -1259,7 +1259,8 @@ Type LLVMDialect::parseType(DialectAsmParser &parser, Location loc) const {
   llvm::SMDiagnostic errorMessage;
   llvm::Type *type = llvm::parseType(tyData, errorMessage, impl->module);
   if (!type)
-    return (emitError(loc, errorMessage.getMessage()), nullptr);
+    return (parser.emitError(parser.getNameLoc(), errorMessage.getMessage()),
+            nullptr);
   return LLVMType::get(getContext(), type);
 }
 

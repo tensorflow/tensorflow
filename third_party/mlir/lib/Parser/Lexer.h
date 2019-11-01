@@ -45,6 +45,9 @@ public:
   /// at the designated point in the input.
   void resetPointer(const char *newPointer) { curPtr = newPointer; }
 
+  /// Returns the start of the buffer.
+  const char *getBufferBegin() { return curBuffer.data(); }
+
 private:
   // Helpers.
   Token formToken(Token::Kind kind, const char *tokStart) {

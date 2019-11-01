@@ -108,8 +108,8 @@ Optional<int64_t> mlir::linalg::BufferType::getBufferSize() {
   return getImpl()->getBufferSize();
 }
 
-Type mlir::linalg::LinalgDialect::parseType(DialectAsmParser &parser,
-                                            Location loc) const {
+Type mlir::linalg::LinalgDialect::parseType(DialectAsmParser &parser) const {
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   StringRef spec = parser.getFullSymbolSpec();
   StringRef origSpec = spec;
   MLIRContext *context = getContext();

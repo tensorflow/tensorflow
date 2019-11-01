@@ -132,13 +132,13 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
   addTypes<ControlType, TokenType>();
 }
 
-Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser,
-                                          Location loc) const {
+Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser) const {
   StringRef data_type = parser.getFullSymbolSpec();
 
   if (data_type == "control") return ControlType::get(getContext());
   if (data_type == "token") return TokenType::get(getContext());
-  emitError(loc) << "unknown tf_executor type: " << data_type;
+  parser.emitError(parser.getNameLoc())
+      << "unknown tf_executor type: " << data_type;
   return nullptr;
 }
 

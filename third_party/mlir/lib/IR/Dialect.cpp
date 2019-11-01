@@ -102,23 +102,23 @@ LogicalResult Dialect::verifyRegionResultAttribute(Operation *, unsigned,
 }
 
 /// Parse an attribute registered to this dialect.
-Attribute Dialect::parseAttribute(DialectAsmParser &parser, Type type,
-                                  Location loc) const {
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no attribute parsing hook";
+Attribute Dialect::parseAttribute(DialectAsmParser &parser, Type type) const {
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace()
+      << "' provides no attribute parsing hook";
   return Attribute();
 }
 
 /// Parse a type registered to this dialect.
-Type Dialect::parseType(DialectAsmParser &parser, Location loc) const {
+Type Dialect::parseType(DialectAsmParser &parser) const {
   // If this dialect allows unknown types, then represent this with OpaqueType.
   if (allowsUnknownTypes()) {
     auto ns = Identifier::get(getNamespace(), getContext());
     return OpaqueType::get(ns, parser.getFullSymbolSpec(), getContext());
   }
 
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no type parsing hook";
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace() << "' provides no type parsing hook";
   return Type();
 }
 

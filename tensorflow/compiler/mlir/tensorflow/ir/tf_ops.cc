@@ -1840,9 +1840,9 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TensorFlowDialect::parseType(DialectAsmParser &parser,
-                                  Location loc) const {
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
   StringRef data = parser.getFullSymbolSpec();
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
