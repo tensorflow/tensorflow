@@ -295,6 +295,19 @@ public:
       return emitError(loc, "invalid kind of type specified");
     return success();
   }
+
+  /// Parse a 'x' separated dimension list. This populates the dimension list,
+  /// using -1 for the `?` dimensions if `allowDynamic` is set and errors out on
+  /// `?` otherwise.
+  ///
+  ///   dimension-list ::= (dimension `x`)*
+  ///   dimension ::= `?` | integer
+  ///
+  /// When `allowDynamic` is not set, this is used to parse:
+  ///
+  ///   static-dimension-list ::= (integer `x`)*
+  virtual ParseResult parseDimensionList(SmallVectorImpl<int64_t> &dimensions,
+                                         bool allowDynamic = true) = 0;
 };
 
 } // end namespace mlir

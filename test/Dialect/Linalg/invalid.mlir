@@ -349,3 +349,23 @@ func @generic_fun_result_0_element_type(%arg0: memref<?xf32, (i)[off]->(off + i)
       linalg.yield %0: i1
   }: memref<?xf32, (i)[off]->(off + i)>
 }
+
+// -----
+
+// expected-error @+1 {{unknown Linalg type}}
+!invalid_type = type !linalg.unknown
+
+// -----
+
+// expected-error @+1 {{expected single element in size list}}
+!invalid_type = type !linalg.buffer<1x1xf32>
+
+// -----
+
+// expected-error @+1 {{expected '>'}}
+!invalid_type = type !linalg<"buffer<1xf32">
+
+// -----
+
+// expected-error @+1 {{expected valid keyword}}
+!invalid_type = type !linalg<"?">
