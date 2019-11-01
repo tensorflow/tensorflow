@@ -3345,6 +3345,9 @@ tf_cuda_library(
     ],
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),
+    cuda_deps = [
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
     deps = [
         ":core_cpu_impl",
         ":core_cpu_lib",

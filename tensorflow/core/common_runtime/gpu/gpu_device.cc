@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/platform/cuda.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -1074,6 +1075,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
       return errors::Internal("hipSetDevice() on GPU:", original_device,
                               " failed. Status: ", hipGetErrorString(err));
     }
+#endif
+
+#if GOOGLE_CUDA
+    // Log the version of CUDA and cuDNN
+    int cuda_major_version = CUDART_VERSION / 1000;
+    int cuda_minor_version = (CUDART_VERSION / 10) % 10;
+    VLOG(1) << "TensorFlow compiled with CUDA " << cuda_major_version << "."
+            << cuda_minor_version << " and cuDNN " << CUDNN_MAJOR << "."
+            << CUDNN_MINOR << "." << CUDNN_PATCHLEVEL;
 #endif
   }
 
