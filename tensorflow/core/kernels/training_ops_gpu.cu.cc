@@ -530,8 +530,10 @@ template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
+#endif
 
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagradV2<GPUDevice, float>;
