@@ -191,12 +191,17 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
-    case BuiltinOperator_RELU6: {
+    case BuiltinOperator_RELU:
+    case BuiltinOperator_RELU6:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
-    }
+    case BuiltinOperator_RELU_N1_TO_1:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
