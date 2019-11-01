@@ -60,6 +60,9 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
+  int32 combined_offset;
+  int32 multiplier1;
+  int32 multiplier2;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -131,6 +134,33 @@ TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
   tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
                                               &op_params->output_multiplier,
                                               &op_params->output_shift);
+  // Simplify elementwise subtraction.
+  // This part of the code adds entries in two quantized tensors as follows
+  // x1 = (q1 - z1)s1
+  // x2 = (q2 - z2)s2
+  // y = (x1 - x2)/s + z
+  // s1, s2 and s are constant scales for input and output tensors.
+  // z1, z2 and z are constant zero points.
+  // The above equation can be simplified as below
+  // y = s1.q1/s - s1.z1/s - s2.q2/s + s2.z2/s + z
+  // rearranging
+  // y = q1.s1/s - q2.s2/s - s1.z1/s + s2.z2/s + z
+  // Setting mul1 = s1/s, mul2 = -s2/s and combined_offset=-s1.z1/s +s2.z2/s + z
+  // y = q1.mul1 + q2.mul2 + combined_offset.
+  // These operations are performed by fixed point (12.20) arithmetic.
+  const float mul1 = (input_1->params.scale / output->params.scale);
+  const float mul2 = (input_2->params.scale / output->params.scale);
+  const int32 mul1_fixed =
+      static_cast<int32>(mul1 * (1 << op_params->left_shift));
+  const int32 mul2_fixed =
+      static_cast<int32>(mul2 * (1 << op_params->left_shift));
+  const int32 combined_offset = static_cast<int32>(
+      (output->params.zero_point << op_params->left_shift) -
+      (input_1->params.zero_point << op_params->left_shift) * mul1 +
+      (input_2->params.zero_point << op_params->left_shift) * mul2);
+  op_params->combined_offset = combined_offset;
+  op_params->multiplier1 = mul1_fixed;
+  op_params->multiplier2 = -mul2_fixed;
   if (output->type == kTfLiteUInt8) {
     CalculateActivationRangeUint8(params->activation, output,
                                   &op_params->output_activation_min,
@@ -287,6 +317,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_offset = data->output_offset;
   op_params.output_multiplier = data->output_multiplier;
   op_params.output_shift = data->output_shift;
+  op_params.multiplier1 = data->multiplier1;
+  op_params.multiplier2 = data->multiplier2;
+  op_params.combined_offset = data->combined_offset;
   SetActivationParams(data->output_activation_min, data->output_activation_max,
                       &op_params);
 

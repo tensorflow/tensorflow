@@ -17,19 +17,23 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <limits>
 #include <numeric>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -133,6 +137,26 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation) {
     }
   }
   return true;
+}
+
+string RoundTripFpToString(tensorflow::bfloat16 value) {
+  return absl::StrFormat("%.4g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(Eigen::half value) {
+  return absl::StrFormat("%.5g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(float value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::FloatToBuffer(value, buffer);
+  return buffer;
+}
+
+string RoundTripFpToString(double value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::DoubleToBuffer(value, buffer);
+  return buffer;
 }
 
 PaddingConfig MakeNoPaddingConfig(int64 rank) {

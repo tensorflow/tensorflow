@@ -230,6 +230,13 @@ def LLVM_FCmpOp : LLVM_OneResultOp<"fcmp", [NoSideEffect]>,
   let llvmBuilder = [{
     $res = builder.CreateFCmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState &result, FCmpPredicate predicate, Value *lhs, "
+    "Value *rhs", [{
+      LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
+      build(b, result, LLVMType::getInt1Ty(dialect),
+            b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
+    }]>];
   let parser = [{ return parseCmpOp<FCmpPredicate>(parser, result); }];
   let printer = [{ printFCmpOp(p, *this); }];
 }
@@ -309,13 +316,16 @@ class LLVM_CastOp<string mnemonic, string builderFunc,
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
 }
 def LLVM_BitcastOp : LLVM_CastOp<"bitcast", "CreateBitCast">;
+def LLVM_AddrSpaceCastOp : LLVM_CastOp<"addrspacecast", "CreateAddrSpaceCast">;
 def LLVM_IntToPtrOp : LLVM_CastOp<"inttoptr", "CreateIntToPtr">;
 def LLVM_PtrToIntOp : LLVM_CastOp<"ptrtoint", "CreatePtrToInt">;
 def LLVM_SExtOp : LLVM_CastOp<"sext", "CreateSExt">;
 def LLVM_ZExtOp : LLVM_CastOp<"zext", "CreateZExt">;
 def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
 def LLVM_SIToFPOp : LLVM_CastOp<"sitofp", "CreateSIToFP">;
+def LLVM_UIToFPOp : LLVM_CastOp<"uitofp", "CreateUIToFP">;
 def LLVM_FPToSIOp : LLVM_CastOp<"fptosi", "CreateFPToSI">;
+def LLVM_FPToUIOp : LLVM_CastOp<"fptoui", "CreateFPToUI">;
 def LLVM_FPExtOp : LLVM_CastOp<"fpext", "CreateFPExt">;
 def LLVM_FPTruncOp : LLVM_CastOp<"fptrunc", "CreateFPTrunc">;
 

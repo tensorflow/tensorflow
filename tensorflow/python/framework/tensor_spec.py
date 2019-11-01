@@ -76,7 +76,7 @@ class DenseSpec(type_spec.TypeSpec):
     return self._name
 
   def is_compatible_with(self, spec_or_value):
-    return (isinstance(spec_or_value, (type(self), self.value_type)) and
+    return (isinstance(spec_or_value, (DenseSpec, self.value_type)) and
             self._dtype.is_compatible_with(spec_or_value.dtype) and
             self._shape.is_compatible_with(spec_or_value.shape))
 

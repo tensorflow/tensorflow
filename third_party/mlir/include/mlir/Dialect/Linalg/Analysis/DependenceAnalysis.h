@@ -22,6 +22,8 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
+class FuncOp;
+
 namespace linalg {
 
 class LinalgOp;
@@ -71,6 +73,8 @@ public:
 
   enum DependenceType { RAR = 0, RAW, WAR, WAW, NumTypes };
 
+  // Builds a linalg dependence graph for the ops of type LinalgOp under `f`.
+  static LinalgDependenceGraph buildDependenceGraph(Aliases &aliases, FuncOp f);
   LinalgDependenceGraph(Aliases &aliases, ArrayRef<Operation *> ops);
 
   /// Returns the X such that op -> X is a dependence of type dt.

@@ -151,8 +151,8 @@ public:
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
 
-  // Returns whether skipping auto-generation is requested.
-  bool skipAutoGen() const;
+  // Returns true if this is a bit enum attribute.
+  bool isBitEnum() const;
 
   // Returns the enum class name.
   StringRef getEnumClassName() const;

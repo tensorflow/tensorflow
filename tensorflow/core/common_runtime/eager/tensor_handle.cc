@@ -62,19 +62,23 @@ const int32 kInvalidOutputNum = -1;
 #endif
 }  // namespace
 
+void TensorHandle::SetResourceHandleDtypeAndShape(
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes) {
+  handle_dtypes_and_shapes_ = std::move(dtypes_and_shapes);
+}
+
 Status TensorHandle::GetResourceHandleDtypesAndShapes(
     std::vector<DtypeAndPartialTensorShape>* result) {
-  if (IsRemote()) {
-    return errors::Unimplemented(
-        "Getting resource data type and shape for a remote tensor is not "
-        "implemented yet");
-  }
-
   if (dtype != DT_RESOURCE) {
     return errors::InvalidArgument(
         "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
         "handles with data type DT_RESOURCE. Actual tensor: ",
         dtype);
+  }
+
+  if (IsRemote()) {
+    *result = handle_dtypes_and_shapes_;
+    return Status::OK();
   }
 
   // Wait for this TensorHandle to be ready.

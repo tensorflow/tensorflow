@@ -27,8 +27,7 @@
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
-#include "mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc"
-#include "mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVEnums.h.inc"
 
 #include <tuple>
 

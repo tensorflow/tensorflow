@@ -166,6 +166,9 @@ tf_cuda_library(
         "tf_status.h",
         "tf_status_internal.h",
     ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+    ],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",

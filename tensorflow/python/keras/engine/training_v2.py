@@ -250,12 +250,15 @@ class Loop(training_utils.TrainingLoop):
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
+      inferred_steps = training_utils.infer_steps_for_dataset(
           model,
           training_dataset,
           steps_per_epoch,
           steps_name='steps_per_epoch',
           epochs=0)
+
+      steps_per_epoch = (
+          inferred_steps if steps_per_epoch is None else steps_per_epoch)
 
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)

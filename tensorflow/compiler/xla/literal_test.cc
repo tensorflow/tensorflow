@@ -118,15 +118,16 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
   auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
-  EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
+  EXPECT_EQ("c128[] (3.1400001049041748, 2.7799999713897705)",
+            c128_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
-  // 3.14 will be rounded to 3.14062 in bfloat16 format.
+  // 3.14 will be rounded to 3.140625 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("bf16[] 3.14062", bf16_lit_truncated.ToString());
+  ASSERT_EQ("bf16[] 3.141", bf16_lit_truncated.ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
