@@ -1278,6 +1278,8 @@ cc_library(
         ":LoopOps",
         ":LoopsToGPU",
         ":Pass",
+        ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
     alwayslink = 1,
