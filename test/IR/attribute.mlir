@@ -227,3 +227,19 @@ func @correct_type_pass() {
   } : () -> ()
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Test SymbolRefAttr
+//===----------------------------------------------------------------------===//
+
+func @fn() { return }
+
+// CHECK: test.symbol_ref_attr
+"test.symbol_ref_attr"() {symbol = @fn} : () -> ()
+
+// -----
+
+// expected-error @+1 {{referencing to a 'FuncOp' symbol}}
+"test.symbol_ref_attr"() {symbol = @foo} : () -> ()

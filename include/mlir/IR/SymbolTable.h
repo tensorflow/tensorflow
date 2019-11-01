@@ -63,7 +63,7 @@ public:
   static Operation *lookupSymbolIn(Operation *symbolTableOp, StringRef symbol);
 
   /// Returns the operation registered with the given symbol name within the
-  /// closes parent operation of, or including, 'from' with the
+  /// closest parent operation of, or including, 'from' with the
   /// 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol was
   /// found.
   static Operation *lookupNearestSymbolFrom(Operation *from, StringRef symbol);
