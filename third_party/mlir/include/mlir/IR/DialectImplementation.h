@@ -135,6 +135,166 @@ public:
   /// Returns the full specification of the symbol being parsed. This allows for
   /// using a separate parser if necessary.
   virtual StringRef getFullSymbolSpec() const = 0;
+
+  // These methods emit an error and return failure or success. This allows
+  // these to be chained together into a linear sequence of || expressions in
+  // many cases.
+
+  /// Parse a floating point value from the stream.
+  virtual ParseResult parseFloat(double &result) = 0;
+
+  /// Parse an integer value from the stream.
+  virtual ParseResult parseInteger(uint64_t &result) = 0;
+
+  template <typename IntT> ParseResult parseInteger(IntT &result) {
+    auto loc = getCurrentLocation();
+    // Parse the unsigned variant.
+    uint64_t uintResult;
+    if (failed(parseInteger(uintResult)))
+      return failure();
+
+    // Try to convert to the provided integer type.
+    result = IntT(uintResult);
+    if (uint64_t(result) != uintResult)
+      return emitError(loc, "integer value too large");
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Token Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a '->' token.
+  virtual ParseResult parseArrow() = 0;
+
+  /// Parse a '->' token if present
+  virtual ParseResult parseOptionalArrow() = 0;
+
+  /// Parse a '{' token.
+  virtual ParseResult parseLBrace() = 0;
+
+  /// Parse a `}` token.
+  virtual ParseResult parseRBrace() = 0;
+
+  /// Parse a `:` token.
+  virtual ParseResult parseColon() = 0;
+
+  /// Parse a `:` token if present.
+  virtual ParseResult parseOptionalColon() = 0;
+
+  /// Parse a `,` token.
+  virtual ParseResult parseComma() = 0;
+
+  /// Parse a `,` token if present.
+  virtual ParseResult parseOptionalComma() = 0;
+
+  /// Parse a `=` token.
+  virtual ParseResult parseEqual() = 0;
+
+  /// Parse a given keyword.
+  ParseResult parseKeyword(StringRef keyword, const Twine &msg = "") {
+    auto loc = getCurrentLocation();
+    if (parseOptionalKeyword(keyword))
+      return emitError(loc, "expected '") << keyword << "'" << msg;
+    return success();
+  }
+
+  /// Parse a keyword into 'keyword'.
+  ParseResult parseKeyword(StringRef *keyword) {
+    auto loc = getCurrentLocation();
+    if (parseOptionalKeyword(keyword))
+      return emitError(loc, "expected valid keyword");
+    return success();
+  }
+
+  /// Parse the given keyword if present.
+  virtual ParseResult parseOptionalKeyword(StringRef keyword) = 0;
+
+  /// Parse a keyword, if present, into 'keyword'.
+  virtual ParseResult parseOptionalKeyword(StringRef *keyword) = 0;
+
+  /// Parse a '<' token.
+  virtual ParseResult parseLess() = 0;
+
+  /// Parse a `<` token if present.
+  virtual ParseResult parseOptionalLess() = 0;
+
+  /// Parse a '>' token.
+  virtual ParseResult parseGreater() = 0;
+
+  /// Parse a `(` token.
+  virtual ParseResult parseLParen() = 0;
+
+  /// Parse a `(` token if present.
+  virtual ParseResult parseOptionalLParen() = 0;
+
+  /// Parse a `)` token.
+  virtual ParseResult parseRParen() = 0;
+
+  /// Parse a `)` token if present.
+  virtual ParseResult parseOptionalRParen() = 0;
+
+  /// Parse a `[` token.
+  virtual ParseResult parseLSquare() = 0;
+
+  /// Parse a `[` token if present.
+  virtual ParseResult parseOptionalLSquare() = 0;
+
+  /// Parse a `]` token.
+  virtual ParseResult parseRSquare() = 0;
+
+  /// Parse a `]` token if present.
+  virtual ParseResult parseOptionalRSquare() = 0;
+
+  /// Parse a `...` token if present;
+  virtual ParseResult parseOptionalEllipsis() = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an arbitrary attribute and return it in result.
+  virtual ParseResult parseAttribute(Attribute &result, Type type = {}) = 0;
+
+  /// Parse an attribute of a specific kind and type.
+  template <typename AttrType>
+  ParseResult parseAttribute(AttrType &result, Type type = {}) {
+    llvm::SMLoc loc = getCurrentLocation();
+
+    // Parse any kind of attribute.
+    Attribute attr;
+    if (parseAttribute(attr))
+      return failure();
+
+    // Check for the right kind of attribute.
+    result = attr.dyn_cast<AttrType>();
+    if (!result)
+      return emitError(loc, "invalid kind of constant specified");
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Type Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a type.
+  virtual ParseResult parseType(Type &result) = 0;
+
+  /// Parse a type of a specific kind, e.g. a FunctionType.
+  template <typename TypeType> ParseResult parseType(TypeType &result) {
+    llvm::SMLoc loc = getCurrentLocation();
+
+    // Parse any kind of type.
+    Type type;
+    if (parseType(type))
+      return failure();
+
+    // Check for the right kind of attribute.
+    result = type.dyn_cast<TypeType>();
+    if (!result)
+      return emitError(loc, "invalid kind of type specified");
+    return success();
+  }
 };
 
 } // end namespace mlir

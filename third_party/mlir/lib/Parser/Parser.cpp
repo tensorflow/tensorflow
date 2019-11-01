@@ -445,6 +445,194 @@ public:
   /// for using a separate parser if necessary.
   StringRef getFullSymbolSpec() const override { return fullSpec; }
 
+  /// Parse a floating point value from the stream.
+  ParseResult parseFloat(double &result) override {
+    bool negative = parser.consumeIf(Token::minus);
+    Token curTok = parser.getToken();
+
+    // Check for a floating point value.
+    if (curTok.is(Token::floatliteral)) {
+      auto val = curTok.getFloatingPointValue();
+      if (!val.hasValue())
+        return emitError(curTok.getLoc(), "floating point value too large");
+      parser.consumeToken(Token::floatliteral);
+      result = negative ? -*val : *val;
+      return success();
+    }
+
+    // TODO(riverriddle) support hex floating point values.
+    return emitError(getCurrentLocation(), "expected floating point literal");
+  }
+
+  /// Parse an integer value from the stream.
+  ParseResult parseInteger(uint64_t &result) override {
+    bool negative = parser.consumeIf(Token::minus);
+
+    Token curTok = parser.getToken();
+    if (parser.parseToken(Token::integer, "expected integer value"))
+      return failure();
+
+    auto val = curTok.getUInt64IntegerValue();
+    if (!val)
+      return emitError(curTok.getLoc(), "integer value too large");
+    result = negative ? -*val : *val;
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Token Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a `->` token.
+  ParseResult parseArrow() override {
+    return parser.parseToken(Token::arrow, "expected '->'");
+  }
+
+  /// Parses a `->` if present.
+  ParseResult parseOptionalArrow() override {
+    return success(parser.consumeIf(Token::arrow));
+  }
+
+  /// Parse a '{' token.
+  ParseResult parseLBrace() override {
+    return parser.parseToken(Token::l_brace, "expected '{'");
+  }
+
+  /// Parse a `}` token.
+  ParseResult parseRBrace() override {
+    return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `:` token.
+  ParseResult parseColon() override {
+    return parser.parseToken(Token::colon, "expected ':'");
+  }
+
+  /// Parse a `:` token if present.
+  ParseResult parseOptionalColon() override {
+    return success(parser.consumeIf(Token::colon));
+  }
+
+  /// Parse a `,` token.
+  ParseResult parseComma() override {
+    return parser.parseToken(Token::comma, "expected ','");
+  }
+
+  /// Parse a `,` token if present.
+  ParseResult parseOptionalComma() override {
+    return success(parser.consumeIf(Token::comma));
+  }
+
+  /// Parses a `...` if present.
+  ParseResult parseOptionalEllipsis() override {
+    return success(parser.consumeIf(Token::ellipsis));
+  }
+
+  /// Parse a `=` token.
+  ParseResult parseEqual() override {
+    return parser.parseToken(Token::equal, "expected '='");
+  }
+
+  /// Parse a '<' token.
+  ParseResult parseLess() override {
+    return parser.parseToken(Token::less, "expected '<'");
+  }
+
+  /// Parse a `<` token if present.
+  ParseResult parseOptionalLess() override {
+    return success(parser.consumeIf(Token::less));
+  }
+
+  /// Parse a '>' token.
+  ParseResult parseGreater() override {
+    return parser.parseToken(Token::greater, "expected '>'");
+  }
+
+  /// Parse a `(` token.
+  ParseResult parseLParen() override {
+    return parser.parseToken(Token::l_paren, "expected '('");
+  }
+
+  /// Parses a '(' if present.
+  ParseResult parseOptionalLParen() override {
+    return success(parser.consumeIf(Token::l_paren));
+  }
+
+  /// Parse a `)` token.
+  ParseResult parseRParen() override {
+    return parser.parseToken(Token::r_paren, "expected ')'");
+  }
+
+  /// Parses a ')' if present.
+  ParseResult parseOptionalRParen() override {
+    return success(parser.consumeIf(Token::r_paren));
+  }
+
+  /// Parse a `[` token.
+  ParseResult parseLSquare() override {
+    return parser.parseToken(Token::l_square, "expected '['");
+  }
+
+  /// Parses a '[' if present.
+  ParseResult parseOptionalLSquare() override {
+    return success(parser.consumeIf(Token::l_square));
+  }
+
+  /// Parse a `]` token.
+  ParseResult parseRSquare() override {
+    return parser.parseToken(Token::r_square, "expected ']'");
+  }
+
+  /// Parses a ']' if present.
+  ParseResult parseOptionalRSquare() override {
+    return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Returns if the current token corresponds to a keyword.
+  bool isCurrentTokenAKeyword() const {
+    return parser.getToken().is(Token::bare_identifier) ||
+           parser.getToken().isKeyword();
+  }
+
+  /// Parse the given keyword if present.
+  ParseResult parseOptionalKeyword(StringRef keyword) override {
+    // Check that the current token has the same spelling.
+    if (!isCurrentTokenAKeyword() || parser.getTokenSpelling() != keyword)
+      return failure();
+    parser.consumeToken();
+    return success();
+  }
+
+  /// Parse a keyword, if present, into 'keyword'.
+  ParseResult parseOptionalKeyword(StringRef *keyword) override {
+    // Check that the current token is a keyword.
+    if (!isCurrentTokenAKeyword())
+      return failure();
+
+    *keyword = parser.getTokenSpelling();
+    parser.consumeToken();
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an arbitrary attribute and return it in result.
+  ParseResult parseAttribute(Attribute &result, Type type) override {
+    result = parser.parseAttribute(type);
+    return success(static_cast<bool>(result));
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Type Parsing
+  //===--------------------------------------------------------------------===//
+
+  ParseResult parseType(Type &result) override {
+    result = parser.parseType();
+    return success(static_cast<bool>(result));
+  }
+
 private:
   /// The full symbol specification.
   StringRef fullSpec;
