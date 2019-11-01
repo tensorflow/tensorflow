@@ -448,7 +448,7 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=1,
           steps_per_epoch=steps,
-          samples=use_sample,
+          samples=total_samples,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=mode)
