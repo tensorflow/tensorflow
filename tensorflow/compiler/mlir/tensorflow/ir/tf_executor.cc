@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -131,15 +132,18 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
   addTypes<ControlType, TokenType>();
 }
 
-Type TensorFlowExecutorDialect::parseType(StringRef data_type,
+Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser,
                                           Location loc) const {
+  StringRef data_type = parser.getFullSymbolSpec();
+
   if (data_type == "control") return ControlType::get(getContext());
   if (data_type == "token") return TokenType::get(getContext());
   emitError(loc) << "unknown tf_executor type: " << data_type;
   return nullptr;
 }
 
-void TensorFlowExecutorDialect::printType(Type type, raw_ostream &os) const {
+void TensorFlowExecutorDialect::printType(Type type,
+                                          DialectAsmPrinter &os) const {
   if (type.isa<ControlType>()) {
     os << "control";
     return;

@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/QuantOps/QuantOps.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
@@ -615,9 +616,10 @@ bool TypeParser::parseQuantParams(double &scale, int64_t &zeroPoint) {
 }
 
 /// Parse a type registered to this dialect.
-Type QuantizationDialect::parseType(StringRef spec, Location loc) const {
-  TypeParser parser(spec, getContext(), loc);
-  Type parsedType = parser.parseType();
+Type QuantizationDialect::parseType(DialectAsmParser &parser,
+                                    Location loc) const {
+  TypeParser typeParser(parser.getFullSymbolSpec(), getContext(), loc);
+  Type parsedType = typeParser.parseType();
   if (parsedType == nullptr) {
     // Error.
     // TODO(laurenzo): Do something?
@@ -723,19 +725,20 @@ static void printUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type,
 }
 
 /// Print a type registered to this dialect.
-void QuantizationDialect::printType(Type type, raw_ostream &os) const {
+void QuantizationDialect::printType(Type type, DialectAsmPrinter &os) const {
   switch (type.getKind()) {
   default:
     llvm_unreachable("Unhandled quantized type");
   case QuantizationTypes::Any:
-    printAnyQuantizedType(type.cast<AnyQuantizedType>(), os);
+    printAnyQuantizedType(type.cast<AnyQuantizedType>(), os.getStream());
     break;
   case QuantizationTypes::UniformQuantized:
-    printUniformQuantizedType(type.cast<UniformQuantizedType>(), os);
+    printUniformQuantizedType(type.cast<UniformQuantizedType>(),
+                              os.getStream());
     break;
   case QuantizationTypes::UniformQuantizedPerAxis:
     printUniformQuantizedPerAxisType(type.cast<UniformQuantizedPerAxisType>(),
-                                     os);
+                                     os.getStream());
     break;
   }
 }

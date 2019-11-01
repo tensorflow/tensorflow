@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -1839,7 +1840,9 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
+Type TensorFlowDialect::parseType(DialectAsmParser &parser,
+                                  Location loc) const {
+  StringRef data = parser.getFullSymbolSpec();
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
@@ -1869,7 +1872,7 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 }
 
 // Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
+void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
   switch (ty.getKind()) {
     default:
@@ -1878,9 +1881,9 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
   case TensorFlowTypes::enumerant:              \
     os << name;                                 \
     break;
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:                     \
-    Print##tftype##Type(ty.cast<tftype##Type>(), os);  \
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)            \
+  case TensorFlowTypes::enumerant:                                \
+    Print##tftype##Type(ty.cast<tftype##Type>(), os.getStream()); \
     break;
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"

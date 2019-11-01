@@ -14,6 +14,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
@@ -609,7 +610,9 @@ static Type parseStructType(SPIRVDialect const &dialect, StringRef spec,
 //              | pointer-type
 //              | runtime-array-type
 //              | struct-type
-Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
+Type SPIRVDialect::parseType(DialectAsmParser &parser, Location loc) const {
+  StringRef spec = parser.getFullSymbolSpec();
+
   if (spec.startswith("array"))
     return parseArrayType(*this, spec, loc);
   if (spec.startswith("image"))
@@ -629,7 +632,7 @@ Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
 // Type Printing
 //===----------------------------------------------------------------------===//
 
-static void print(ArrayType type, llvm::raw_ostream &os) {
+static void print(ArrayType type, DialectAsmPrinter &os) {
   os << "array<" << type.getNumElements() << " x " << type.getElementType();
   if (type.hasLayout()) {
     os << " [" << type.getArrayStride() << "]";
@@ -637,16 +640,16 @@ static void print(ArrayType type, llvm::raw_ostream &os) {
   os << ">";
 }
 
-static void print(RuntimeArrayType type, llvm::raw_ostream &os) {
+static void print(RuntimeArrayType type, DialectAsmPrinter &os) {
   os << "rtarray<" << type.getElementType() << ">";
 }
 
-static void print(PointerType type, llvm::raw_ostream &os) {
+static void print(PointerType type, DialectAsmPrinter &os) {
   os << "ptr<" << type.getPointeeType() << ", "
      << stringifyStorageClass(type.getStorageClass()) << ">";
 }
 
-static void print(ImageType type, llvm::raw_ostream &os) {
+static void print(ImageType type, DialectAsmPrinter &os) {
   os << "image<" << type.getElementType() << ", " << stringifyDim(type.getDim())
      << ", " << stringifyImageDepthInfo(type.getDepthInfo()) << ", "
      << stringifyImageArrayedInfo(type.getArrayedInfo()) << ", "
@@ -655,7 +658,7 @@ static void print(ImageType type, llvm::raw_ostream &os) {
      << stringifyImageFormat(type.getImageFormat()) << ">";
 }
 
-static void print(StructType type, llvm::raw_ostream &os) {
+static void print(StructType type, DialectAsmPrinter &os) {
   os << "struct<";
   auto printMember = [&](unsigned i) {
     os << type.getElementType(i);
@@ -680,7 +683,7 @@ static void print(StructType type, llvm::raw_ostream &os) {
   os << ">";
 }
 
-void SPIRVDialect::printType(Type type, llvm::raw_ostream &os) const {
+void SPIRVDialect::printType(Type type, DialectAsmPrinter &os) const {
   switch (type.getKind()) {
   case TypeKind::Array:
     print(type.cast<ArrayType>(), os);
