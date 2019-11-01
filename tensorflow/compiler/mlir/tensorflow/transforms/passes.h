@@ -86,6 +86,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 // `op`.
 void LiftResourceOps(Operation* op);
 
+// Creates a pass that hoists invariant operations in a `tf_device.replicate`.
+std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
+
 // Creates a pass that forms replica `tf_executor.island` from a single
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
