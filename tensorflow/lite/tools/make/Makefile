@@ -85,7 +85,9 @@ MINIMAL_SRCS := \
 # build files.
 
 PROFILER_SRCS := \
+  tensorflow/lite/profiling/memory_info.cc \
 	tensorflow/lite/profiling/time.cc
+
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
 	tensorflow/core/util/stats_calculator.cc

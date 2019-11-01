@@ -916,20 +916,29 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array or a scalar with the same contents as the Tensor.
+    """Copy of the contents of this Tensor into a NumPy array or scalar.
 
-    TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
-    buffer but instead always explicitly copy? Note that currently it may or may
-    not copy based on whether the numpy data is properly aligned or not.
+    Unlike NumPy arrays, Tensors are immutable, so this method has to copy
+    the contents to ensure safety. Use `memoryview` to get a readonly
+    view of the contents without doing a copy:
+
+    >>> t = tf.constant([42])
+    >>> np.array(memoryview(t))
+    array([42], dtype=int32)
+
+    Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
+    is on GPU, it will have to be transferred to CPU first in order for
+    `memoryview` to work.
 
     Returns:
-      A numpy array or a scalar. Numpy array may share memory with the
-      Tensor object. Any changes to one may be reflected in the other. A scalar
-      value is returned when self has rank 0.
+      A NumPy array of the same shape and dtype or a NumPy scalar, if this
+      Tensor has rank 0.
 
     Raises:
-      ValueError: if the type of this Tensor is not representable in numpy.
+      ValueError: If the dtype of this Tensor does not have a compatible
+        NumPy dtype.
     """
+    # TODO(slebedev): Consider avoiding a copy for non-CPU or remote tensors.
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 

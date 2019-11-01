@@ -104,12 +104,12 @@ cc_library(
         "transforms/legalize_tf.cc",
     ],
     deps = [
+        ":convert_op_folder",
         ":hlo",
-        ":hlo_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -258,9 +258,9 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":convert_op_folder",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
-        ":hlo_utils",
         ":xla_canonicalize_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
@@ -306,6 +306,7 @@ cc_library(
     hdrs = ["hlo_utils.h"],
     includes = ["include"],
     deps = [
+        ":convert_op_folder",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "@local_config_mlir//:IR",
@@ -471,4 +472,13 @@ genrule(
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
+)
+
+cc_library(
+    name = "convert_op_folder",
+    srcs = ["convert_op_folder.cc"],
+    hdrs = ["convert_op_folder.h"],
+    deps = [
+        "@local_config_mlir//:IR",
+    ],
 )

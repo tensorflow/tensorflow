@@ -55,22 +55,23 @@ std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
   // Special precise version, in case we cover dst_shape poorly with standard
   // work group size.
+  auto gpu_type = GetGpuType();
+  bool a11_12 = gpu_type == GpuType::kA11 || gpu_type == GpuType::kA12;
   const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
   if (GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
     // Special version for PowerVR >= IPhone6S/SE
     // Metal has bad driver for PowerVR in IPhone6, so for Iphone6 we should use
     // default kernel with shared memory.
-    if ((GetAppleSocVersion() == 9 || GetAppleSocVersion() == 10) &&
+    if ((gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10) &&
         CheckConvolutionPrecise1x1Support(attr)) {
       return ConvolutionPrecise1x1PowerVR(id, input_id, output_id, attr,
                                           options);
     }
-    if (GetAppleSocVersion() >= 11 &&
-        GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    if (a11_12 && GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
       return ConvolutionPrecise(id, input_id, output_id, attr, options);
     }
   }
-  if (GetAppleSocVersion() >= 11) {
+  if (a11_12) {
     if (CheckConvolution1x1Support(attr)) {
       return Convolution1x1(id, input_id, output_id, attr, options);
     } else {

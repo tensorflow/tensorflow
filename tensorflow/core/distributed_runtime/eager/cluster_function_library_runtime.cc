@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 
 #include <map>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -83,8 +84,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   EnqueueRequest* request = new EnqueueRequest;
   EnqueueResponse* response = new EnqueueResponse;
 
-  const uint64 context_id = ctx_->GetContextId();
-  request->set_context_id(context_id);
+  request->set_context_id(context_id_);
 
   RegisterFunctionOp* register_function =
       request->add_queue()->mutable_register_function();
@@ -95,20 +95,20 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
       func_lib_def.ReachableDefinitions(register_function->function_def())
           .ToProto();
 
-  eager_client->EnqueueAsync(
-      request, response,
-      [this, request, response, handle, released_op, target, context_id,
-       eager_client, done](const Status& s) {
-        {
-          mutex_lock l(mu_);
-          *handle = function_data_.size();
-          function_data_.emplace_back(target, context_id, eager_client,
-                                      absl::WrapUnique(released_op));
-        }
-        done(s);
-        delete request;
-        delete response;
-      });
+  eager_client->EnqueueAsync(request, response,
+                             [this, request, response, handle, released_op,
+                              target, eager_client, done](const Status& s) {
+                               {
+                                 mutex_lock l(mu_);
+                                 *handle = function_data_.size();
+                                 function_data_.emplace_back(
+                                     target, eager_client,
+                                     absl::WrapUnique(released_op));
+                               }
+                               done(s);
+                               delete request;
+                               delete response;
+                             });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
@@ -151,7 +151,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
   }
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
-  request->set_context_id(function_data->context_id);
+  request->set_context_id(context_id_);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
   for (size_t i = 0; i < args->size(); ++i) {
     remote_op->add_inputs()->Swap(&(*args)[i]);
@@ -201,7 +201,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   EnqueueResponse* response = new EnqueueResponse;
-  request->set_context_id(function_data->context_id);
+  request->set_context_id(context_id_);
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
   cleanup_function->set_step_id(step_id);
@@ -211,6 +211,16 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
         delete request;
         delete response;
       });
+}
+
+DistributedFunctionLibraryRuntime* CreateClusterFLR(
+    const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
+  if (ctx->LazilyCopyFunctionRemoteInputs()) {
+    return new EagerClusterFunctionLibraryRuntime(
+        context_id, ctx, worker_session->remote_device_mgr());
+  } else {
+    return worker_session->cluster_flr();
+  }
 }
 
 }  // namespace eager

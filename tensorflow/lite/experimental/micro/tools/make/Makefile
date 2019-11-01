@@ -184,6 +184,12 @@ KEIL_PROJECT_FILES := \
 ARDUINO_PROJECT_FILES := \
   library.properties
 
+ESP_PROJECT_FILES := \
+  README_ESP.md \
+  CMakeLists.txt \
+  main/CMakeLists.txt \
+  components/tfmicro/CMakeLists.txt
+
 ALL_PROJECT_TARGETS :=
 
 ARDUINO_LIBRARY_TARGETS :=

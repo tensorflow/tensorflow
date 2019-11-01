@@ -1337,8 +1337,7 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
   PatternMatchResult matchAndRewrite(AffineForOp forOp,
                                      PatternRewriter &rewriter) const override {
     // Check that the body only contains a terminator.
-    auto *body = forOp.getBody();
-    if (std::next(body->begin()) != body->end())
+    if (!has_single_element(*forOp.getBody()))
       return matchFailure();
     rewriter.eraseOp(forOp);
     return matchSuccess();

@@ -207,6 +207,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/replicate_to_island.cc",
         "transforms/resource_op_lifting.cc",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",

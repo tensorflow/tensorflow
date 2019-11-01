@@ -58,6 +58,7 @@ from tensorflow.python import _pywrap_quantize_training
 from tensorflow.python import _pywrap_scoped_annotation
 from tensorflow.python import _pywrap_transform_graph
 from tensorflow.python import _pywrap_traceme
+from tensorflow.python import _pywrap_stacktrace_handler
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *

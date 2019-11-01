@@ -289,7 +289,7 @@ int NumNonControlInputs(const NodeDef& node) {
 bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
-      if (IsControlInput(node_as_input)) continue;
+      if (IsControlInput(node_as_input)) break;
 
       TensorId tensor = ParseTensorName(node_as_input);
       if (tensor.node() == node.name()) {

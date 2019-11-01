@@ -64,6 +64,8 @@ cc_toolchain_config(
     host_compiler_warnings = [%{host_compiler_warnings}],
     host_unfiltered_compile_flags = [%{unfiltered_compile_flags}],
     linker_bin_path = "%{linker_bin_path}",
+    builtin_sysroot = "%{builtin_sysroot}",
+    cuda_path = "%{cuda_toolkit_path}",
 )
 
 cc_toolchain(

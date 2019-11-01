@@ -15,17 +15,14 @@ limitations under the License.
 
 // This is the operation definition file for LXLA.
 
-#ifdef LHLO_OPS
-#else
+#ifndef LHLO_OPS
 #define LHLO_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 #endif
 

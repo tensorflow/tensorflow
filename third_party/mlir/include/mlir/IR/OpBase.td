@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
@@ -1285,6 +1284,8 @@ def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a symbol.
 def Symbol : NativeOpTrait<"Symbol">;
+// Op defines a symbol table.
+def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

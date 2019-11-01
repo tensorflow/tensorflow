@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -72,6 +70,15 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -116,6 +123,14 @@ class BASE_HLO_FloorOp {
   }];
 }
 
+class BASE_HLO_ImagOp {
+  string summary = "Imag operator";
+
+  string description = [{
+    Returns `Imag(operand)` element-wise.
+  }];
+}
+
 class BASE_HLO_LogOp {
   string summary = "Logarithm operator";
 
@@ -135,6 +150,14 @@ class BASE_HLO_NegOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_RealOp {
+  string summary = "Real operator";
+
+  string description = [{
+    Returns `Real(operand)` element-wise.
   }];
 }
 
@@ -162,6 +185,28 @@ class BASE_HLO_SignOp {
             = +0  : x = +0
             = 1   : x > 0
     ```
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_SinOp {
+  string summary = "Sin operator";
+
+  string description = [{
+    Returns `Sin(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_SqrtOp {
+  string summary = "Square-root operator";
+
+  string description = [{
+    Returns `sqrt(operand)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -238,6 +283,16 @@ class BASE_HLO_MulOp {
 
   string description = [{
     Returns `lhs * rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+class BASE_HLO_PowOp {
+  string summary = "Power operator";
+
+  string description = [{
+    Returns `lhs ^ rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

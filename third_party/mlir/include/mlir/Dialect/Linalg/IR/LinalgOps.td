@@ -19,12 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LINALG_OPS
-#else
+#ifndef LINALG_OPS
 #define LINALG_OPS
 
+#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+#endif // AFFINE_OPS_BASE
+
+#ifndef LINALG_BASE
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
+#endif // LINALG_BASE
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :

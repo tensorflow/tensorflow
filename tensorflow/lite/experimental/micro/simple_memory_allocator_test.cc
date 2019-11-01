@@ -56,4 +56,32 @@ TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
   TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
 }
 
+TF_LITE_MICRO_TEST(TestChildAllocator) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(arena, arena_size);
+
+  uint8_t* first = allocator.AllocateFromTail(16, 4);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, first);
+
+  {
+    auto child_allocator = allocator.CreateChildAllocator();
+    uint8_t* second = child_allocator.AllocateFromTail(16, 4);
+    TF_LITE_MICRO_EXPECT_EQ(second, first - 16);
+
+    auto grand_child_allocator = child_allocator.CreateChildAllocator();
+    uint8_t* third = grand_child_allocator.AllocateFromTail(15, 4);
+    TF_LITE_MICRO_EXPECT_EQ(third, second - 16);
+
+    // Parent allocator is locked.
+    TF_LITE_MICRO_EXPECT_EQ(nullptr, allocator.AllocateFromTail(16, 4));
+    TF_LITE_MICRO_EXPECT_EQ(nullptr, child_allocator.AllocateFromTail(16, 4));
+  }
+
+  // Parent allocator is unlocked.
+  auto child_allocator = allocator.CreateChildAllocator();
+  uint8_t* fourth = child_allocator.AllocateFromTail(16, 4);
+  TF_LITE_MICRO_EXPECT_EQ(fourth, first - 16);
+}
+
 TF_LITE_MICRO_TESTS_END

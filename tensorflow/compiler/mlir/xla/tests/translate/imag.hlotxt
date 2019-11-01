@@ -1,0 +1,12 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule main.5
+
+// CHECK-LABEL: func @main
+ENTRY %foo.5 (Arg_0.1: c64[4]) -> f32[4] {
+  %Arg_0.1 = c64[4] parameter(0)
+
+  // CHECK-NEXT: "xla_hlo.imag"(%arg0) {name = "imag.3"} : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
+  ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
+}
+

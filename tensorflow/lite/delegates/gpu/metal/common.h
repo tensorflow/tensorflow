@@ -29,12 +29,6 @@ namespace metal {
 /// Returns system default device on iOS or Intel GPU on macOS.
 id<MTLDevice> GetBestSupportedMetalDevice();
 
-/// Returns version of the GPU that supports Metal.
-/// @param device Used as a parameter because mac can contain multiple devices.
-/// @discussion Refer to Apple docs for MTLFeatureSet_macOS_GPUFamily1_v1 for details.
-///     1 - Intel integrated GPU the only device that is supported
-int GetMacOsGpuVersion(id<MTLDevice> device);
-
 /// Metal compute shader compilation
 /// @param device The device on which that shader program will be stored.
 /// @param code Shader source.

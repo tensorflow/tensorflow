@@ -351,7 +351,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           If None or 0, no rescaling is applied,
           otherwise we multiply the data by the value provided
           (after applying all other transformations).
-      preprocessing_function: function that will be implied on each input.
+      preprocessing_function: function that will be applied on each input.
           The function will run after the image is resized and augmented.
           The function should take one argument:
           one image (Numpy tensor with rank 3),

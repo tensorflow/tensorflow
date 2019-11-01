@@ -30,7 +30,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           bool emit_quant_adaptor_ops,
                            mlir::PassManager* pass_manager);
 
 }  // namespace tensorflow

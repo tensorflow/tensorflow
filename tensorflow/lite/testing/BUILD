@@ -491,8 +491,11 @@ edgetpu_ops = [
     "fully_connected",
     "l2norm",  # high error
     "max_pool",
+    "mean",
     "mul",
     "pad",  # high error
+    "relu",
+    "relu1",
     "relu6",
     "reshape",
     "resize_bilinear",

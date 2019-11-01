@@ -39,8 +39,10 @@ function readable_run {
   echo "Command completed successfully at $(date)"
   set -x
 }
-# LINT.ThenChange()
+# LINT.ThenChange(
+# ) # common_.sh
 
+# LINT.IfChange
 # Redirect bazel output dir b/73748835
 function set_bazel_outdir {
   mkdir -p /tmpfs/bazel_output
@@ -76,10 +78,14 @@ function update_bazel_linux {
   popd
 
   PATH="/home/kbuilder/bin:$PATH"
-
   set_bazel_outdir
+  which bazel
+  bazel version
 }
+# LINT.ThenChange(
+#   //tensorflow_estimator/google/kokoro/common.sh)
 
+# LINT.IfChange
 # Install the given bazel version on macos
 function update_bazel_macos {
   if [[ -z "$1" ]]; then
@@ -94,6 +100,9 @@ function update_bazel_macos {
   run_with_retry "${BAZEL_COMMAND}"
   # Add new bazel installation to path
   PATH="/Users/kbuilder/bin:$PATH"
+  set_bazel_outdir
+  which bazel
+  bazel version
 }
 
 function install_pip2 {
@@ -122,8 +131,11 @@ function install_pip_deps {
     shift
   done
 
-  # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
+  # TODO(hyey): Add back IfChange lint check (b/143530103).
+  # ===================================================================
+  # Please change dependencies in `install_ubuntu_16_pip_deps` as well.
+  # ===================================================================
   ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
@@ -137,7 +149,7 @@ function install_pip_deps {
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
-  # LINT.ThenChange(:ubuntu_16_pip_installations)
+  # ===================================================================
 }
 
 function install_ubuntu_16_pip_deps {
@@ -153,7 +165,10 @@ function install_ubuntu_16_pip_deps {
     shift
   done
 
-  # LINT.IfChange(ubuntu_16_pip_installations)
+  # TODO(hyey): Add back IfChange lint check (b/143530103).
+  # ===================================================================
+  # Please change dependencies in `install_pip_deps` as well.
+  # ===================================================================
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_applications==1.0.8 --no-deps --user
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
@@ -168,7 +183,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
-  # LINT.ThenChange(:ubuntu_pip_installations)
+  # ===================================================================
 }
 
 function install_macos_pip_deps {
@@ -190,6 +205,12 @@ function install_macos_pip_deps {
     shift
   done
 
+   # High Sierra pip for Python2.7 installs don't work as expected.
+   if [[ "${PIP_CMD}" == "pip" ]]; then
+    PIP_CMD="python -m pip"
+    SUDO_CMD="sudo -H "
+   fi
+
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
   ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
@@ -202,9 +223,9 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
-  ${PIP_CMD} install --upgrade attrs
-  ${PIP_CMD} install --upgrade tf-estimator-nightly
-  ${PIP_CMD} install --upgrade "future>=0.17.1"
+  ${PIP_CMD} install --user --upgrade attrs
+  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }
 
 function maybe_skip_v1 {
@@ -253,3 +274,5 @@ function copy_to_new_project_name {
   popd
   rm -rf "${TMP_DIR}"
 }
+# LINT.ThenChange(
+# ) # common.sh

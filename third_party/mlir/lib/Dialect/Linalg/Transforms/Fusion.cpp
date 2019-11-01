@@ -227,11 +227,9 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 // Only consider RAW atm.
-Optional<FusionInfo> mlir::linalg::fuseProducerOf(OpBuilder &b,
-                                                  LinalgOp consumer,
-                                                  unsigned consumerIdx,
-                                                  LinalgDependenceGraph &graph,
-                                                  OperationFolder *folder) {
+Optional<FusionInfo> mlir::linalg::fuseProducerOf(
+    OpBuilder &b, LinalgOp consumer, unsigned consumerIdx,
+    const LinalgDependenceGraph &graph, OperationFolder *folder) {
   LLVM_DEBUG(dbgs() << "\nStart examining consumer: "
                     << *consumer.getOperation());
   for (auto dependence : graph.getDependencesInto(
