@@ -2283,7 +2283,6 @@ cc_library(
         "//tensorflow/core/lib/gtl:map_util",
         "//tensorflow/core/lib/gtl:optional",
         "//tensorflow/core/lib/gtl:priority_queue_util",
-        "//tensorflow/core/lib/gtl:stl_util",
         "//tensorflow/core/lib/gtl:top_n",
         "//tensorflow/core/lib/hash:crc32c",
         "//tensorflow/core/lib/hash:hash",
