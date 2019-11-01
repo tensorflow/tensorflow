@@ -51,10 +51,13 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
 bool IsAnyMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -860,6 +863,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "ArgMin",
                                 "AudioSpectrogram",
                                 "BatchMatMul",
+                                "BatchMatMulV2",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
@@ -880,8 +884,10 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "CudnnRNNBackpropV2",
                                 "CudnnRNNBackpropV3",
                                 "CudnnRNNCanonicalToParams",
+                                "CudnnRNNCanonicalToParamsV2",
                                 "CudnnRNNParamsSize",
                                 "CudnnRNNParamsToCanonical",
+                                "CudnnRNNParamsToCanonicalV2",
                                 "CudnnRNNV2",
                                 "CudnnRNNV3",
                                 "CumSum",
@@ -914,7 +920,9 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "LowerBound",
                                 "MatMul",
                                 "MatrixDiag",
+                                "MatrixDiagV2",
                                 "MatrixDiagPart",
+                                "MatrixDiagPartV2",
                                 "Mfcc",
                                 "OneHot",
                                 "Pack",
