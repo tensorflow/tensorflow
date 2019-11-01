@@ -704,8 +704,8 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
-        ":amdgpu_target_gen",
         ":amdgpu_r600_target_gen",
+        ":amdgpu_target_gen",
         ":config",
         ":core",
         ":support",
@@ -727,8 +727,8 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
-        ":amdgpu_target_gen",
         ":amdgpu_r600_target_gen",
+        ":amdgpu_target_gen",
         ":binary_format",
         ":config",
         ":core",
