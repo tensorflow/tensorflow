@@ -133,7 +133,8 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
 }
 
 Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser) const {
-  StringRef data_type = parser.getFullSymbolSpec();
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
 
   if (data_type == "control") return ControlType::get(getContext());
   if (data_type == "token") return TokenType::get(getContext());

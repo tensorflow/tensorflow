@@ -53,11 +53,8 @@ TFControlFlowDialect::TFControlFlowDialect(MLIRContext *context)
 
 // Parses a type registered to this dialect.
 Type TFControlFlowDialect::parseType(DialectAsmParser &parser) const {
-  StringRef ty_data = parser.getFullSymbolSpec();
-  if (ty_data != "control")
-    return (parser.emitError(parser.getNameLoc(),
-                             "unknown TFControl type: " + ty_data),
-            nullptr);
+  if (parser.parseKeyword("control", ": unknown TFControl type")) return Type();
+
   return TFControlType::get(getContext());
 }
 
