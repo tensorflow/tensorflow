@@ -78,11 +78,13 @@ class ToTFRecordOp : public AsyncOpKernel {
           CancellationManager cancellation_manager;
           params.cancellation_manager = &cancellation_manager;
           std::function<void()> deregister_fn;
-          OP_REQUIRES_OK_ASYNC(ctx,
-                               ConnectCancellationManagers(
-                                   ctx->cancellation_manager(),
-                                   params.cancellation_manager, &deregister_fn),
-                               done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              RegisterCancellationCallback(
+                  ctx->cancellation_manager(),
+                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                  &deregister_fn),
+              done);
 
           // Update the `done` callback to deregister the cancellation callback.
           done = std::bind(

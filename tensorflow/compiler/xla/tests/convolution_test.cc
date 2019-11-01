@@ -1884,10 +1884,9 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 
 // Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
 // (We run this test on all platforms, because, what the heck.)
-// TODO(b/143704975): Disabled flaky test.
-XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU(NoCudnnAlgorithmPicker)) {
+XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-conv-algorithm-picker");
+      "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});

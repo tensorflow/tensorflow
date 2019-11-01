@@ -319,18 +319,21 @@ Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
   return Status::OK();
 }
 
-Status ConnectCancellationManagers(CancellationManager* parent,
-                                   CancellationManager* child,
-                                   std::function<void()>* deregister_fn) {
-  if (parent) {
-    CancellationToken token = parent->get_cancellation_token();
-    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> register_fn,
+                                    std::function<void()>* deregister_fn) {
+  if (cancellation_manager) {
+    CancellationToken token = cancellation_manager->get_cancellation_token();
+    if (!cancellation_manager->RegisterCallback(token,
+                                                std::move(register_fn))) {
       return errors::Cancelled("Operation was cancelled");
     }
-    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
+    *deregister_fn = [cancellation_manager, token]() {
+      cancellation_manager->DeregisterCallback(token);
+    };
   } else {
-    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
-               "not be propagated to the child cancellation manager.";
+    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
+               "not be registered.";
     *deregister_fn = []() {};
   }
   return Status::OK();

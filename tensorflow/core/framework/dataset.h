@@ -693,7 +693,12 @@ class DatasetBase : public core::RefCounted {
       (*iterator)->AddCleanupFunction(
           [model, prefix]() { model->RemoveNode(prefix); });
     }
-    return (*iterator)->Initialize(ctx);
+    Status s = (*iterator)->Initialize(ctx);
+    if (!s.ok()) {
+      // Reset the iterator to avoid returning an uninitialized iterator.
+      iterator->reset();
+    }
+    return s;
   }
 
   Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,

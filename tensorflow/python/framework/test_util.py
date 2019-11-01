@@ -287,6 +287,10 @@ def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
 
 
+def IsBuiltWithNvcc():
+  return _pywrap_util_port.IsBuiltWithNvcc()
+
+
 def GpuSupportsHalfMatMulAndConv():
   return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 

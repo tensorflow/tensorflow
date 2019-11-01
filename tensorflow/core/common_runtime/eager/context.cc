@@ -183,11 +183,13 @@ void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
 }
 
 void EagerContext::ClearCaches() {
+  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
   {
-    mutex_lock ml(executor_map_mu_);
-    for (auto& entry : thread_local_executor_) {
-      entry.second->WaitForAllPendingNodes().IgnoreError();
-    }
+    mutex_lock l(executor_map_mu_);
+    executors_copy = thread_local_executor_;
+  }
+  for (const auto& entry : executors_copy) {
+    entry.second->WaitForAllPendingNodes().IgnoreError();
   }
   {
     // The executor stores pointers to kernels, so we need to make sure that no

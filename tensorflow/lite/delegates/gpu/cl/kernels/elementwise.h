@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_SIGMOID_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_SIGMOID_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ELEMENTWISE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ELEMENTWISE_H_
 
 #include <string>
 
@@ -25,24 +25,31 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Sigmoid : public ElementwiseOperation {
+// Class for simple one input operations without any parameters, for example
+// log, sin, cos and etc.
+class ElementwiseOneInput : public ElementwiseOperation {
  public:
-  explicit Sigmoid(const OperationDef& definition)
-      : ElementwiseOperation(definition) {}
+  explicit ElementwiseOneInput(const OperationDef& definition,
+                               const OperationType& op_type)
+      : ElementwiseOperation(definition), op_type_(op_type) {}
 
   // Move only
-  Sigmoid(Sigmoid&& operation);
-  Sigmoid& operator=(Sigmoid&& operation);
-  Sigmoid(const Sigmoid&) = delete;
-  Sigmoid& operator=(const Sigmoid&) = delete;
+  ElementwiseOneInput(ElementwiseOneInput&& operation);
+  ElementwiseOneInput& operator=(ElementwiseOneInput&& operation);
+  ElementwiseOneInput(const ElementwiseOneInput&) = delete;
+  ElementwiseOneInput& operator=(const ElementwiseOneInput&) = delete;
 
   std::string GetCoreCode(const LinkingContext& context) const override;
+
+ private:
+  OperationType op_type_;
 };
 
-Sigmoid CreateSigmoid(const OperationDef& definition);
+ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
+                                              const OperationType& op_type);
 
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_SIGMOID_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ELEMENTWISE_H_

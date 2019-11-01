@@ -110,9 +110,10 @@ class MultiDeviceIterator : public ResourceBase {
     params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &cancellation_manager_;
     std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                   params.cancellation_manager,
-                                                   &deregister_fn));
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [cm = params.cancellation_manager]() { cm->StartCancel(); },
+        &deregister_fn));
     IteratorContext iter_ctx(std::move(params));
     MultiDeviceIteratorCallback callback_new = std::bind(
         [](const HostBufferElement& elem, MultiDeviceIteratorCallback callback,
@@ -563,9 +564,11 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     params.resource_mgr = resource->resource_mgr();
     params.cancellation_manager = resource->cancellation_manager();
     std::function<void()> deregister_fn;
-    OP_REQUIRES_OK(ctx, ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                    params.cancellation_manager,
-                                                    &deregister_fn));
+    OP_REQUIRES_OK(
+        ctx, RegisterCancellationCallback(
+                 ctx->cancellation_manager(),
+                 [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                 &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
     IteratorContext iter_ctx(std::move(params));

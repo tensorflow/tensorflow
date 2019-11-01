@@ -132,29 +132,34 @@ void ProfileSummarizer::ProcessProfiles(
   int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
   auto tag_string = [](const string& s, const string& t) {
-    return t == "OpInvoke" || t == "DelegateOpInvoke" ? s : s + "/" + t;
+    return (t == "OpInvoke" || t == "DelegateOpInvoke") ? s : s + "/" + t;
   };
 
   // Total time will be accumulated per subgraph.
   std::map<uint32_t, int64_t> total_us_per_subgraph_map;
 
   for (auto event : events) {
-    auto stats_calculator = GetStatsCalculator(event->event_subgraph_index);
-    auto op_details = GetOperatorDetails(
-        interpreter, event->event_subgraph_index, event->event_metadata);
+    auto subgraph_index = event->event_subgraph_index;
+    auto node_index = event->event_metadata;
+    auto stats_calculator = GetStatsCalculator(subgraph_index);
+    auto op_details =
+        GetOperatorDetails(interpreter, subgraph_index, node_index);
     auto node_name = ToString(op_details.outputs);
     int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
         event->end_timestamp_us - event->begin_timestamp_us;
-    stats_calculator->AddNodeStats(tag_string(node_name, event->tag),
-                                   tag_string(op_details.name, event->tag),
-                                   node_num, start_us, node_exec_time,
-                                   0 /*memory */);
+    // Append node index to node name since stats calculator can not distinguish
+    // nodes that have the same node name. E.g, "[Unknown]:1", "[Unknown]:7".
+    auto node_name_in_stats =
+        tag_string(node_name + ":" + std::to_string(node_index), event->tag);
+    auto type_in_stats = tag_string(op_details.name, event->tag);
+    stats_calculator->AddNodeStats(node_name_in_stats, type_in_stats, node_num,
+                                   start_us, node_exec_time, 0 /*memory */);
 
     // Add total time except actual delegate ops since the elapsed time of the
     // delegate ops inside are already combined at a fused DELEGATE op.
     if (strcmp(event->tag, "DelegateOpInvoke") != 0) {
-      total_us_per_subgraph_map[event->event_subgraph_index] += node_exec_time;
+      total_us_per_subgraph_map[subgraph_index] += node_exec_time;
     }
     ++node_num;
   }

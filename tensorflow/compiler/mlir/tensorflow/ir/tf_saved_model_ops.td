@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the definition file for the TensorFlow SavedModel dialect.
 
-#ifdef SAVED_MODEL_DIALECT
-#else
+#ifndef SAVED_MODEL_DIALECT
 #define SAVED_MODEL_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
