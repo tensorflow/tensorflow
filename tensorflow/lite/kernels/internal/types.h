@@ -765,6 +765,9 @@ struct ArithmeticParams {
   int input1_shift;
   int32 input2_multiplier;
   int input2_shift;
+  int32 combined_offset;
+  int32 multiplier1;
+  int32 multiplier2;
   // uint8, etc, activation params.
   int32 quantized_activation_min;
   int32 quantized_activation_max;
