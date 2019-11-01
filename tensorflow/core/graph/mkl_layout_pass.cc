@@ -328,6 +328,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedMatMulWithBiasAndRelu";
     csinfo_.quantized_matmul_with_bias_and_relu_and_requantize =
         "QuantizedMatMulWithBiasAndReluAndRequantize";
+    csinfo_.quantized_matmul_with_bias_and_requantize =
+        "QuantizedMatMulWithBiasAndRequantize";
     csinfo_.quantized_depthwise_conv2d = "QuantizedDepthwiseConv2D";
     csinfo_.quantized_depthwise_conv2d_with_bias =
         "QuantizedDepthwiseConv2DWithBias";
@@ -621,6 +623,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_matmul_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_requantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_matmul_with_bias_and_requantize),
+                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
@@ -955,6 +961,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string quantized_matmul_with_bias;
     string quantized_matmul_with_bias_and_relu;
     string quantized_matmul_with_bias_and_relu_and_requantize;
+    string quantized_matmul_with_bias_and_requantize;
     string quantized_depthwise_conv2d;
     string quantized_depthwise_conv2d_with_bias;
     string quantized_depthwise_conv2d_with_bias_and_relu;
@@ -2218,6 +2225,7 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedConv2DWithBiasSumAndReluAndRequantize",
       "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
       "QuantizedMatMulWithBias",
+      "QuantizedMatMulWithBiasAndRequantize",
       "QuantizedMatMulWithBiasAndRelu",
       "QuantizedMatMulWithBiasAndReluAndRequantize",
       "QuantizedDepthwiseConv2D",
