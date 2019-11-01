@@ -48,6 +48,12 @@ bool SetterForXlaAutoJitFlag(const string& value) {
     return true;
   }
 
+  if (value == "fusible") {
+    mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 1;
+    mark_for_compilation_flags->tf_xla_supported_nodes = "FUSIBLE";
+    return true;
+  }
+
   absl::string_view value_sv(value);
   if (!absl::ConsumePrefix(&value_sv, "single-gpu(") ||
       !absl::ConsumeSuffix(&value_sv, ")") ||
@@ -65,7 +71,8 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_auto_jit", SetterForXlaAutoJitFlag, "0",
            "Control compilation of operators into XLA computations on CPU and "
            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
-           "things very likely to be improved; 2 = on for everything.  "
+           "things very likely to be improved; 2 = on for everything; "
+           "fusible = only for Tensorflow operation that XLA know how to fuse.  "
            "If set to single-gpu(<N>) then this resolves to <N> for single-GPU "
            "graphs (graphs that have at least one node placed on a GPU and no "
            "more than one GPU is in use through the entire graph) and 0 "
