@@ -543,8 +543,6 @@ class WrappedGraphTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testImportedFunctionsRegistered(self):
-    if test.is_built_with_gpu_support():
-      self.skipTest("Disabling this new test due to errors with cuda and rocm")
     if test_util.is_gpu_available():
       self.skipTest('not a GPU test')
     with ops.Graph().as_default() as graph:

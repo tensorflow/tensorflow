@@ -573,7 +573,7 @@ py_library(
 
 tf_py_test(
     name = "integration_test",
-    size = "large",
+    size = "medium",
     srcs = ["integration_test.py"],
     additional_deps = [
         ":keras",
@@ -583,7 +583,10 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan"
+    ],
 )
 
 tf_py_test(
