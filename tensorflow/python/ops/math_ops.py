@@ -324,7 +324,7 @@ def divide(x, y, name=None):
   >>> x = tf.constant([16, 12, 11])
   >>> y = tf.constant([4, 6, 2])
   >>> tf.divide(x,y)
-  <tf.Tensor: id=..., shape=(3,), dtype=float64, 
+  <tf.Tensor: shape=(3,), dtype=float64, 
   numpy=array([4. , 2. , 5.5])>
   
   Args:
@@ -3310,18 +3310,18 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x)
-  <tf.Tensor: id=..., shape=(4,), dtype=int32, numpy=array([ 2,  6, 12, 20], dtype=int32)>
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([ 2,  6, 12, 20], dtype=int32)>
   
   # using varying `axis` values
   >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
 
   >>> tf.cumsum(y, axis=0)
-  <tf.Tensor: id=..., shape=(2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  4,  6,  8],
          [ 3,  7, 11, 15]], dtype=int32)>
 
   >>> tf.cumsum(y, axis=1)
-  <tf.Tensor: id=..., shape=(2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
  
@@ -3331,7 +3331,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True)
-  <tf.Tensor: id=..., shape=(4,), dtype=int32, numpy=array([ 0,  2,  6, 12], dtype=int32)>
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([ 0,  2,  6, 12], dtype=int32)>
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
@@ -3339,7 +3339,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, reverse=True) 
-  <tf.Tensor: id=..., shape=(4,), dtype=int32, numpy=array([20, 18, 14,  8], dtype=int32)>
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
 
@@ -3348,7 +3348,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True, reverse=True)
-  <tf.Tensor: id=..., shape=(4,), dtype=int32, numpy=array([18, 14,  8,  0], dtype=int32)>
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([18, 14,  8,  0], dtype=int32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
