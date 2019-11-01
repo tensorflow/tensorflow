@@ -1081,11 +1081,6 @@ func @bad_complex(complex<i32)
 
 // -----
 
-// expected-error @+1 {{unexpected additional tokens 'f32' after parsing type: 'i32'}}
-func @bad_tuple(!spv.ptr<i32 f32, Uniform>)
-
-// -----
-
 func @invalid_region_dominance() {
   "foo.region"() ({
     // expected-error @+1 {{operand #0 does not dominate this use}}

@@ -464,10 +464,13 @@ public:
     return emitError(getCurrentLocation(), "expected floating point literal");
   }
 
-  /// Parse an integer value from the stream.
-  ParseResult parseInteger(uint64_t &result) override {
-    bool negative = parser.consumeIf(Token::minus);
+  /// Parse an optional integer value from the stream.
+  OptionalParseResult parseOptionalInteger(uint64_t &result) override {
+    Token curToken = parser.getToken();
+    if (curToken.isNot(Token::integer, Token::minus))
+      return llvm::None;
 
+    bool negative = parser.consumeIf(Token::minus);
     Token curTok = parser.getToken();
     if (parser.parseToken(Token::integer, "expected integer value"))
       return failure();
@@ -546,6 +549,11 @@ public:
   /// Parse a '>' token.
   ParseResult parseGreater() override {
     return parser.parseToken(Token::greater, "expected '>'");
+  }
+
+  /// Parse a `>` token if present.
+  ParseResult parseOptionalGreater() override {
+    return success(parser.consumeIf(Token::greater));
   }
 
   /// Parse a `(` token.

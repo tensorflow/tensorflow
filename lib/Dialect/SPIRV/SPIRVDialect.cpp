@@ -127,34 +127,15 @@ std::string SPIRVDialect::getAttributeName(Decoration decoration) {
 
 // Forward declarations.
 template <typename ValTy>
-static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect, Location loc,
-                                      StringRef spec);
+static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect,
+                                      DialectAsmParser &parser);
 template <>
-Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect, Location loc,
-                                    StringRef spec);
+Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect,
+                                    DialectAsmParser &parser);
 
 template <>
 Optional<uint64_t> parseAndVerify<uint64_t>(SPIRVDialect const &dialect,
-                                            Location loc, StringRef spec);
-
-// Parses "<number> x" from the beginning of `spec`.
-static bool parseNumberX(StringRef &spec, int64_t &number) {
-  spec = spec.ltrim();
-  if (spec.empty() || !llvm::isDigit(spec.front()))
-    return false;
-
-  number = 0;
-  do {
-    number = number * 10 + spec.front() - '0';
-    spec = spec.drop_front();
-  } while (!spec.empty() && llvm::isDigit(spec.front()));
-
-  spec = spec.ltrim();
-  if (!spec.consume_front("x"))
-    return false;
-
-  return true;
-}
+                                            DialectAsmParser &parser);
 
 static bool isValidSPIRVIntType(IntegerType type) {
   return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
@@ -192,21 +173,12 @@ bool SPIRVDialect::isValidType(Type type) {
   return false;
 }
 
-static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
-                               Location loc) {
-  spec = spec.trim();
-  auto *context = dialect.getContext();
-  size_t numCharsRead = 0;
-  auto type = mlir::parseType(spec.trim(), context, numCharsRead);
-  if (!type) {
-    emitError(loc, "cannot parse type: ") << spec;
+static Type parseAndVerifyType(SPIRVDialect const &dialect,
+                               DialectAsmParser &parser) {
+  Type type;
+  llvm::SMLoc typeLoc = parser.getCurrentLocation();
+  if (parser.parseType(type))
     return Type();
-  }
-  if (numCharsRead < spec.size()) {
-    emitError(loc, "unexpected additional tokens '")
-        << spec.substr(numCharsRead) << "' after parsing type: " << type;
-    return Type();
-  }
 
   // Allow SPIR-V dialect types
   if (&type.getDialect() == &dialect)
@@ -215,28 +187,30 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
   // Check other allowed types
   if (auto t = type.dyn_cast<FloatType>()) {
     if (type.isBF16()) {
-      emitError(loc, "cannot use 'bf16' to compose SPIR-V types");
+      parser.emitError(typeLoc, "cannot use 'bf16' to compose SPIR-V types");
       return Type();
     }
   } else if (auto t = type.dyn_cast<IntegerType>()) {
     if (!isValidSPIRVIntType(t)) {
-      emitError(loc, "only 1/8/16/32/64-bit integer type allowed but found ")
+      parser.emitError(typeLoc,
+                       "only 1/8/16/32/64-bit integer type allowed but found ")
           << type;
       return Type();
     }
   } else if (auto t = type.dyn_cast<VectorType>()) {
     if (t.getRank() != 1) {
-      emitError(loc, "only 1-D vector allowed but found ") << t;
+      parser.emitError(typeLoc, "only 1-D vector allowed but found ") << t;
       return Type();
     }
     if (t.getNumElements() > 4) {
-      emitError(loc,
-                "vector length has to be less than or equal to 4 but found ")
+      parser.emitError(
+          typeLoc, "vector length has to be less than or equal to 4 but found ")
           << t.getNumElements();
       return Type();
     }
   } else {
-    emitError(loc, "cannot use ") << type << " to compose SPIR-V types";
+    parser.emitError(typeLoc, "cannot use ")
+        << type << " to compose SPIR-V types";
     return Type();
   }
 
@@ -250,71 +224,51 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
 //
 // array-type ::= `!spv.array<` integer-literal `x` element-type
 //                (`[` integer-literal `]`)? `>`
-static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
-                           Location loc) {
-  if (!spec.consume_front("array<") || !spec.consume_back(">")) {
-    emitError(loc, "spv.array delimiter <...> mismatch");
+static Type parseArrayType(SPIRVDialect const &dialect,
+                           DialectAsmParser &parser) {
+  if (parser.parseLess())
     return Type();
-  }
 
-  int64_t count = 0;
-  spec = spec.trim();
-  if (!parseNumberX(spec, count)) {
-    emitError(loc, "expected array element count followed by 'x' but found '")
-        << spec << "'";
+  SmallVector<int64_t, 1> countDims;
+  llvm::SMLoc countLoc = parser.getCurrentLocation();
+  if (parser.parseDimensionList(countDims, /*allowDynamic=*/false))
+    return Type();
+  if (countDims.size() != 1) {
+    parser.emitError(countLoc,
+                     "expected single integer for array element count");
     return Type();
   }
 
   // According to the SPIR-V spec:
   // "Length is the number of elements in the array. It must be at least 1."
-  if (!count) {
-    emitError(loc, "expected array length greater than 0");
+  int64_t count = countDims[0];
+  if (count == 0) {
+    parser.emitError(countLoc, "expected array length greater than 0");
     return Type();
   }
 
-  if (spec.trim().empty()) {
-    emitError(loc, "expected element type");
-    return Type();
-  }
-
-  ArrayType::LayoutInfo layoutInfo = 0;
-  size_t lastLSquare;
-
-  // Handle case when element type is not a trivial type
-  auto lastRDelimiter = spec.rfind('>');
-  if (lastRDelimiter != StringRef::npos) {
-    lastLSquare = spec.find('[', lastRDelimiter);
-  } else {
-    lastLSquare = spec.rfind('[');
-  }
-
-  if (lastLSquare != StringRef::npos) {
-    auto layoutSpec = spec.substr(lastLSquare);
-    layoutSpec = layoutSpec.trim();
-    if (!layoutSpec.consume_front("[") || !layoutSpec.consume_back("]")) {
-      emitError(loc, "expected array stride within '[' ']' in '")
-          << layoutSpec << "'";
-      return Type();
-    }
-    layoutSpec = layoutSpec.trim();
-    auto layout =
-        parseAndVerify<ArrayType::LayoutInfo>(dialect, loc, layoutSpec);
-    if (!layout) {
-      return Type();
-    }
-
-    if (!(layoutInfo = layout.getValue())) {
-      emitError(loc, "ArrayStride must be greater than zero");
-      return Type();
-    }
-
-    spec = spec.substr(0, lastLSquare);
-  }
-
-  Type elementType = parseAndVerifyType(dialect, spec, loc);
+  Type elementType = parseAndVerifyType(dialect, parser);
   if (!elementType)
     return Type();
 
+  ArrayType::LayoutInfo layoutInfo = 0;
+  if (succeeded(parser.parseOptionalLSquare())) {
+    llvm::SMLoc layoutLoc = parser.getCurrentLocation();
+    auto layout = parseAndVerify<ArrayType::LayoutInfo>(dialect, parser);
+    if (!layout)
+      return Type();
+
+    if (!(layoutInfo = layout.getValue())) {
+      parser.emitError(layoutLoc, "ArrayStride must be greater than zero");
+      return Type();
+    }
+
+    if (parser.parseRSquare())
+      return Type();
+  }
+
+  if (parser.parseGreater())
+    return Type();
   return ArrayType::get(elementType, count, layoutInfo);
 }
 
@@ -327,104 +281,86 @@ static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
 //                 | <and other storage classes...>
 //
 // pointer-type ::= `!spv.ptr<` element-type `,` storage-class `>`
-static Type parsePointerType(SPIRVDialect const &dialect, StringRef spec,
-                             Location loc) {
-  if (!spec.consume_front("ptr<") || !spec.consume_back(">")) {
-    emitError(loc, "spv.ptr delimiter <...> mismatch");
+static Type parsePointerType(SPIRVDialect const &dialect,
+                             DialectAsmParser &parser) {
+  if (parser.parseLess())
     return Type();
-  }
 
-  // Split into pointee type and storage class
-  StringRef scSpec, ptSpec;
-  std::tie(ptSpec, scSpec) = spec.rsplit(',');
-  if (scSpec.empty()) {
-    emitError(loc,
-              "expected comma to separate pointee type and storage class in '")
-        << spec << "'";
-    return Type();
-  }
-
-  scSpec = scSpec.trim();
-  auto storageClass = symbolizeStorageClass(scSpec);
-  if (!storageClass) {
-    emitError(loc, "unknown storage class: ") << scSpec;
-    return Type();
-  }
-
-  if (ptSpec.trim().empty()) {
-    emitError(loc, "expected pointee type");
-    return Type();
-  }
-
-  auto pointeeType = parseAndVerifyType(dialect, ptSpec, loc);
+  auto pointeeType = parseAndVerifyType(dialect, parser);
   if (!pointeeType)
     return Type();
 
+  StringRef storageClassSpec;
+  llvm::SMLoc storageClassLoc = parser.getCurrentLocation();
+  if (parser.parseComma() || parser.parseKeyword(&storageClassSpec))
+    return Type();
+
+  auto storageClass = symbolizeStorageClass(storageClassSpec);
+  if (!storageClass) {
+    parser.emitError(storageClassLoc, "unknown storage class: ")
+        << storageClassSpec;
+    return Type();
+  }
+  if (parser.parseGreater())
+    return Type();
   return PointerType::get(pointeeType, *storageClass);
 }
 
 // runtime-array-type ::= `!spv.rtarray<` element-type `>`
-static Type parseRuntimeArrayType(SPIRVDialect const &dialect, StringRef spec,
-                                  Location loc) {
-  if (!spec.consume_front("rtarray<") || !spec.consume_back(">")) {
-    emitError(loc, "spv.rtarray delimiter <...> mismatch");
+static Type parseRuntimeArrayType(SPIRVDialect const &dialect,
+                                  DialectAsmParser &parser) {
+  if (parser.parseLess())
     return Type();
-  }
 
-  if (spec.trim().empty()) {
-    emitError(loc, "expected element type");
-    return Type();
-  }
-
-  Type elementType = parseAndVerifyType(dialect, spec, loc);
+  Type elementType = parseAndVerifyType(dialect, parser);
   if (!elementType)
     return Type();
 
+  if (parser.parseGreater())
+    return Type();
   return RuntimeArrayType::get(elementType);
 }
 
 // Specialize this function to parse each of the parameters that define an
 // ImageType. By default it assumes this is an enum type.
 template <typename ValTy>
-static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect, Location loc,
-                                      StringRef spec) {
-  auto val = spirv::symbolizeEnum<ValTy>()(spec);
-  if (!val) {
-    emitError(loc, "unknown attribute: '") << spec << "'";
+static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect,
+                                      DialectAsmParser &parser) {
+  StringRef enumSpec;
+  llvm::SMLoc enumLoc = parser.getCurrentLocation();
+  if (parser.parseKeyword(&enumSpec)) {
+    return llvm::None;
   }
+
+  auto val = spirv::symbolizeEnum<ValTy>()(enumSpec);
+  if (!val)
+    parser.emitError(enumLoc, "unknown attribute: '") << enumSpec << "'";
   return val;
 }
 
 template <>
-Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect, Location loc,
-                                    StringRef spec) {
+Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect,
+                                    DialectAsmParser &parser) {
   // TODO(ravishankarm): Further verify that the element type can be sampled
-  auto ty = parseAndVerifyType(dialect, spec, loc);
-  if (!ty) {
+  auto ty = parseAndVerifyType(dialect, parser);
+  if (!ty)
     return llvm::None;
-  }
   return ty;
 }
 
 template <typename IntTy>
 static Optional<IntTy> parseAndVerifyInteger(SPIRVDialect const &dialect,
-                                             Location loc, StringRef spec) {
+                                             DialectAsmParser &parser) {
   IntTy offsetVal = std::numeric_limits<IntTy>::max();
-  spec = spec.trim();
-  if (spec.consumeInteger(10, offsetVal)) {
+  if (parser.parseInteger(offsetVal))
     return llvm::None;
-  }
-  spec = spec.trim();
-  if (!spec.empty()) {
-    return llvm::None;
-  }
   return offsetVal;
 }
 
 template <>
 Optional<uint64_t> parseAndVerify<uint64_t>(SPIRVDialect const &dialect,
-                                            Location loc, StringRef spec) {
-  return parseAndVerifyInteger<uint64_t>(dialect, loc, spec);
+                                            DialectAsmParser &parser) {
+  return parseAndVerifyInteger<uint64_t>(dialect, parser);
 }
 
 // Functor object to parse a comma separated list of specs. The function
@@ -433,28 +369,17 @@ Optional<uint64_t> parseAndVerify<uint64_t>(SPIRVDialect const &dialect,
 // (termination condition) needs partial specialization.
 template <typename ParseType, typename... Args> struct parseCommaSeparatedList {
   Optional<std::tuple<ParseType, Args...>>
-  operator()(SPIRVDialect const &dialect, Location loc, StringRef spec) const {
+  operator()(SPIRVDialect const &dialect, DialectAsmParser &parser) const {
+    auto parseVal = parseAndVerify<ParseType>(dialect, parser);
+    if (!parseVal)
+      return llvm::None;
+
     auto numArgs = std::tuple_size<std::tuple<Args...>>::value;
-    StringRef parseSpec, restSpec;
-    std::tie(parseSpec, restSpec) = spec.split(',');
-
-    parseSpec = parseSpec.trim();
-    if (numArgs != 0 && restSpec.empty()) {
-      emitError(loc, "expected more parameters for image type '")
-          << parseSpec << "'";
+    if (numArgs != 0 && failed(parser.parseComma()))
       return llvm::None;
-    }
-
-    auto parseVal = parseAndVerify<ParseType>(dialect, loc, parseSpec);
-    if (!parseVal) {
+    auto remainingValues = parseCommaSeparatedList<Args...>{}(dialect, parser);
+    if (!remainingValues)
       return llvm::None;
-    }
-
-    auto remainingValues =
-        parseCommaSeparatedList<Args...>{}(dialect, loc, restSpec);
-    if (!remainingValues) {
-      return llvm::None;
-    }
     return std::tuple_cat(std::tuple<ParseType>(parseVal.getValue()),
                           remainingValues.getValue());
   }
@@ -463,14 +388,11 @@ template <typename ParseType, typename... Args> struct parseCommaSeparatedList {
 // Partial specialization of the function to parse a comma separated list of
 // specs to parse the last element of the list.
 template <typename ParseType> struct parseCommaSeparatedList<ParseType> {
-  Optional<std::tuple<ParseType>>
-  operator()(SPIRVDialect const &dialect, Location loc, StringRef spec) const {
-    spec = spec.trim();
-    auto value = parseAndVerify<ParseType>(dialect, loc, spec);
-    if (!value) {
-      return llvm::None;
-    }
-    return std::tuple<ParseType>(value.getValue());
+  Optional<std::tuple<ParseType>> operator()(SPIRVDialect const &dialect,
+                                             DialectAsmParser &parser) const {
+    if (auto value = parseAndVerify<ParseType>(dialect, parser))
+      return std::tuple<ParseType>(value.getValue());
+    return llvm::None;
   }
 };
 
@@ -489,118 +411,103 @@ template <typename ParseType> struct parseCommaSeparatedList<ParseType> {
 // image-type ::= `!spv.image<` element-type `,` dim `,` depth-info `,`
 //                              arrayed-info `,` sampling-info `,`
 //                              sampler-use-info `,` format `>`
-static Type parseImageType(SPIRVDialect const &dialect, StringRef spec,
-                           Location loc) {
-  if (!spec.consume_front("image<") || !spec.consume_back(">")) {
-    emitError(loc, "spv.image delimiter <...> mismatch");
+static Type parseImageType(SPIRVDialect const &dialect,
+                           DialectAsmParser &parser) {
+  if (parser.parseLess())
     return Type();
-  }
 
   auto value =
       parseCommaSeparatedList<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
                               ImageSamplingInfo, ImageSamplerUseInfo,
-                              ImageFormat>{}(dialect, loc, spec);
-  if (!value) {
+                              ImageFormat>{}(dialect, parser);
+  if (!value)
     return Type();
-  }
 
+  if (parser.parseGreater())
+    return Type();
   return ImageType::get(value.getValue());
 }
 
 // Parse decorations associated with a member.
 static ParseResult parseStructMemberDecorations(
-    SPIRVDialect const &dialect, Location loc, StringRef spec,
+    SPIRVDialect const &dialect, DialectAsmParser &parser,
     ArrayRef<Type> memberTypes,
     SmallVectorImpl<StructType::LayoutInfo> &layoutInfo,
     SmallVectorImpl<StructType::MemberDecorationInfo> &memberDecorationInfo) {
-  spec = spec.trim();
-  auto memberInfo = spec.split(',');
+
   // Check if the first element is offset.
-  auto layout =
-      parseAndVerify<StructType::LayoutInfo>(dialect, loc, memberInfo.first);
-  if (layout) {
+  llvm::SMLoc layoutLoc = parser.getCurrentLocation();
+  StructType::LayoutInfo layout = 0;
+  OptionalParseResult layoutParseResult = parser.parseOptionalInteger(layout);
+  if (layoutParseResult.hasValue()) {
+    if (failed(*layoutParseResult))
+      return failure();
+
     if (layoutInfo.size() != memberTypes.size() - 1) {
-      return emitError(loc,
-                       "layout specification must be given for all members");
+      return parser.emitError(
+          layoutLoc, "layout specification must be given for all members");
     }
-    layoutInfo.push_back(layout.getValue());
-    spec = memberInfo.second.trim();
+    layoutInfo.push_back(layout);
   }
 
+  // Check for no spirv::Decorations.
+  if (succeeded(parser.parseOptionalRSquare()))
+    return success();
+
+  // If there was a layout, make sure to parse the comma.
+  if (layoutParseResult.hasValue() && parser.parseComma())
+    return failure();
+
   // Check for spirv::Decorations.
-  while (!spec.empty()) {
-    memberInfo = spec.split(',');
-    auto memberDecoration =
-        parseAndVerify<spirv::Decoration>(dialect, loc, memberInfo.first);
-    if (!memberDecoration) {
+  do {
+    auto memberDecoration = parseAndVerify<spirv::Decoration>(dialect, parser);
+    if (!memberDecoration)
       return failure();
-    }
+
     memberDecorationInfo.emplace_back(
         static_cast<uint32_t>(memberTypes.size() - 1),
         memberDecoration.getValue());
-    spec = memberInfo.second.trim();
-  }
-  return success();
+  } while (succeeded(parser.parseOptionalComma()));
+
+  return parser.parseRSquare();
 }
 
 // struct-member-decoration ::= integer-literal? spirv-decoration*
 // struct-type ::= `!spv.struct<` spirv-type (`[` struct-member-decoration `]`)?
-//                     (`, ` spirv-type (`[` struct-member-decoration `]`)?
-static Type parseStructType(SPIRVDialect const &dialect, StringRef spec,
-                            Location loc) {
-  if (!spec.consume_front("struct<") || !spec.consume_back(">")) {
-    emitError(loc, "spv.struct delimiter <...> mismatch");
+//                     (`, ` spirv-type (`[` struct-member-decoration `]`)? `>`
+static Type parseStructType(SPIRVDialect const &dialect,
+                            DialectAsmParser &parser) {
+  if (parser.parseLess())
     return Type();
-  }
+
+  if (succeeded(parser.parseOptionalGreater()))
+    return StructType::getEmpty(dialect.getContext());
 
   SmallVector<Type, 4> memberTypes;
   SmallVector<StructType::LayoutInfo, 4> layoutInfo;
   SmallVector<StructType::MemberDecorationInfo, 4> memberDecorationInfo;
 
-  auto *context = dialect.getContext();
-  while (!spec.empty()) {
-    spec = spec.trim();
-    size_t pos = 0;
-    auto memberType = mlir::parseType(spec, context, pos);
-    if (!memberType) {
-      emitError(loc, "cannot parse type from '") << spec << "'";
-    }
+  do {
+    Type memberType;
+    if (parser.parseType(memberType))
+      return Type();
     memberTypes.push_back(memberType);
 
-    spec = spec.substr(pos).trim();
-    if (spec.consume_front("[")) {
-      auto rSquare = spec.find(']');
-      if (rSquare == StringRef::npos) {
-        emitError(loc, "missing matching ']' in ") << spec;
-        return Type();
-      }
-      if (parseStructMemberDecorations(dialect, loc, spec.substr(0, rSquare),
-                                       memberTypes, layoutInfo,
+    if (succeeded(parser.parseOptionalLSquare())) {
+      if (parseStructMemberDecorations(dialect, parser, memberTypes, layoutInfo,
                                        memberDecorationInfo)) {
         return Type();
       }
-      spec = spec.substr(rSquare + 1).trim();
     }
+  } while (succeeded(parser.parseOptionalComma()));
 
-    // Handle comma.
-    if (!spec.consume_front(",")) {
-      // End of decorations list.
-      break;
-    }
-  }
-  spec = spec.trim();
-  if (!spec.empty()) {
-    emitError(loc, "unexpected substring '")
-        << spec << "' while parsing StructType";
-    return Type();
-  }
   if (!layoutInfo.empty() && memberTypes.size() != layoutInfo.size()) {
-    emitError(loc, "layout specification must be given for all members");
+    parser.emitError(parser.getNameLoc(),
+                     "layout specification must be given for all members");
     return Type();
   }
-  if (memberTypes.empty()) {
-    return StructType::getEmpty(dialect.getContext());
-  }
+  if (parser.parseGreater())
+    return Type();
   return StructType::get(memberTypes, layoutInfo, memberDecorationInfo);
 }
 
@@ -611,21 +518,22 @@ static Type parseStructType(SPIRVDialect const &dialect, StringRef spec,
 //              | runtime-array-type
 //              | struct-type
 Type SPIRVDialect::parseType(DialectAsmParser &parser) const {
-  StringRef spec = parser.getFullSymbolSpec();
-  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
+  StringRef keyword;
+  if (parser.parseKeyword(&keyword))
+    return Type();
 
-  if (spec.startswith("array"))
-    return parseArrayType(*this, spec, loc);
-  if (spec.startswith("image"))
-    return parseImageType(*this, spec, loc);
-  if (spec.startswith("ptr"))
-    return parsePointerType(*this, spec, loc);
-  if (spec.startswith("rtarray"))
-    return parseRuntimeArrayType(*this, spec, loc);
-  if (spec.startswith("struct"))
-    return parseStructType(*this, spec, loc);
+  if (keyword == "array")
+    return parseArrayType(*this, parser);
+  if (keyword == "image")
+    return parseImageType(*this, parser);
+  if (keyword == "ptr")
+    return parsePointerType(*this, parser);
+  if (keyword == "rtarray")
+    return parseRuntimeArrayType(*this, parser);
+  if (keyword == "struct")
+    return parseStructType(*this, parser);
 
-  emitError(loc, "unknown SPIR-V type: ") << spec;
+  parser.emitError(parser.getNameLoc(), "unknown SPIR-V type: ") << keyword;
   return Type();
 }
 

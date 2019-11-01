@@ -17,32 +17,32 @@ func @array_type_stride(!spv.array< 4 x !spv.array<4 x f32 [4]> [128]>) -> ()
 
 // -----
 
-// expected-error @+1 {{spv.array delimiter <...> mismatch}}
+// expected-error @+1 {{expected '<'}}
 func @missing_left_angle_bracket(!spv.array 4xf32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected array element count followed by 'x' but found 'f32'}}
+// expected-error @+1 {{expected single integer for array element count}}
 func @missing_count(!spv.array<f32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected array element count followed by 'x' but found 'f32'}}
+// expected-error @+1 {{expected 'x' in dimension list}}
 func @missing_x(!spv.array<4 f32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected element type}}
+// expected-error @+1 {{expected non-function type}}
 func @missing_element_type(!spv.array<4x>) -> ()
 
 // -----
 
-// expected-error @+1 {{cannot parse type: blabla}}
+// expected-error @+1 {{expected non-function type}}
 func @cannot_parse_type(!spv.array<4xblabla>) -> ()
 
 // -----
 
-// expected-error @+1 {{cannot parse type: 3xf32}}
+// expected-error @+1 {{expected single integer for array element count}}
 func @more_than_one_dim(!spv.array<4x3xf32>) -> ()
 
 // -----
@@ -102,17 +102,17 @@ func @vector_ptr_type(!spv.ptr<vector<4xi32>,PushConstant>) -> ()
 
 // -----
 
-// expected-error @+1 {{spv.ptr delimiter <...> mismatch}}
+// expected-error @+1 {{expected '<'}}
 func @missing_left_angle_bracket(!spv.ptr f32, Uniform>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected comma to separate pointee type and storage class in 'f32 Uniform'}}
+// expected-error @+1 {{expected ','}}
 func @missing_comma(!spv.ptr<f32 Uniform>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected pointee type}}
+// expected-error @+1 {{expected non-function type}}
 func @missing_pointee_type(!spv.ptr<, Uniform>) -> ()
 
 // -----
@@ -134,17 +134,17 @@ func @vector_runtime_array_type(!spv.rtarray< vector<4xf32> >) -> ()
 
 // -----
 
-// expected-error @+1 {{spv.rtarray delimiter <...> mismatch}}
+// expected-error @+1 {{expected '<'}}
 func @missing_left_angle_bracket(!spv.rtarray f32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected element type}}
+// expected-error @+1 {{expected non-function type}}
 func @missing_element_type(!spv.rtarray<>) -> ()
 
 // -----
 
-// expected-error @+1 {{cannot parse type: 4xf32}}
+// expected-error @+1 {{expected non-function type}}
 func @redundant_count(!spv.rtarray<4xf32>) -> ()
 
 // -----
@@ -153,68 +153,68 @@ func @redundant_count(!spv.rtarray<4xf32>) -> ()
 // ImageType
 //===----------------------------------------------------------------------===//
 
-// CHECK: func @image_parameters_1D(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>)
-func @image_parameters_1D(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+// CHECK: func @image_parameters_1D(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>)
+func @image_parameters_1D(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'f32'}}
+// expected-error @+1 {{expected ','}}
 func @image_parameters_one_element(!spv.image<f32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type '1D'}}
-func @image_parameters_two_elements(!spv.image<f32, 1D>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_two_elements(!spv.image<f32, Dim1D>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'NoDepth'}}
-func @image_parameters_three_elements(!spv.image<f32, 1D, NoDepth>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_three_elements(!spv.image<f32, Dim1D, NoDepth>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'NonArrayed'}}
-func @image_parameters_four_elements(!spv.image<f32, 1D, NoDepth, NonArrayed>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_four_elements(!spv.image<f32, Dim1D, NoDepth, NonArrayed>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'SingleSampled'}}
-func @image_parameters_five_elements(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_five_elements(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'SamplerUnknown'}}
-func @image_parameters_six_elements(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_six_elements(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{spv.image delimiter <...> mismatch}}
-func @image_parameters_delimiter(!spv.image f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+// expected-error @+1 {{expected '<'}}
+func @image_parameters_delimiter(!spv.image f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown attribute: '1D NoDepth'}}
-func @image_parameters_nocomma_1(!spv.image<f32, 1D NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_nocomma_1(!spv.image<f32, Dim1D NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown attribute: 'NoDepth NonArrayed'}}
-func @image_parameters_nocomma_2(!spv.image<f32, 1D, NoDepth NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_nocomma_2(!spv.image<f32, Dim1D, NoDepth NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown attribute: 'NonArrayed SingleSampled'}}
-func @image_parameters_nocomma_3(!spv.image<f32, 1D, NoDepth, NonArrayed SingleSampled, SamplerUnknown, Unknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_nocomma_3(!spv.image<f32, Dim1D, NoDepth, NonArrayed SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown attribute: 'SingleSampled SamplerUnknown'}}
-func @image_parameters_nocomma_4(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled SamplerUnknown, Unknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_nocomma_4(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected more parameters for image type 'SamplerUnknown Unknown'}}
-func @image_parameters_nocomma_5(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown Unknown>) -> ()
+// expected-error @+1 {{expected ','}}
+func @image_parameters_nocomma_5(!spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown Unknown>) -> ()
 
 // -----
 
@@ -228,8 +228,8 @@ func @struct_type(!spv.struct<f32>) -> ()
 // CHECK: func @struct_type2(!spv.struct<f32 [0]>)
 func @struct_type2(!spv.struct<f32 [0]>) -> ()
 
-// CHECK: func @struct_type_simple(!spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>)
-func @struct_type_simple(!spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>) -> ()
+// CHECK: func @struct_type_simple(!spv.struct<f32, !spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>)
+func @struct_type_simple(!spv.struct<f32, !spv.image<f32, Dim1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>) -> ()
 
 // CHECK: func @struct_type_with_offset(!spv.struct<f32 [0], i32 [4]>)
 func @struct_type_with_offset(!spv.struct<f32 [0], i32 [4]>) -> ()
@@ -282,18 +282,13 @@ func @struct_type_missing_offset2(!spv.struct<f32 [3], i32>) -> ()
 
 // -----
 
-// expected-error @+1 {{unexpected substring 'i32' while parsing StructType}}
+// expected-error @+1 {{expected '>'}}
 func @struct_type_missing_comma1(!spv.struct<f32 i32>) -> ()
 
 // -----
 
-// expected-error @+1 {{unexpected substring 'i32' while parsing StructType}}
+// expected-error @+1 {{expected '>'}}
 func @struct_type_missing_comma2(!spv.struct<f32 [0] i32>) -> ()
-
-// -----
-
-//  expected-error @+1 {{unknown attribute: '-1'}}
-func @struct_type_neg_offset(!spv.struct<f32 [-1]>) -> ()
 
 // -----
 
@@ -307,20 +302,20 @@ func @struct_type_neg_offset(!spv.struct<f32 0]>) -> ()
 
 // -----
 
-//  expected-error @+1 {{unknown attribute: 'NonWritable 0'}}
+//  expected-error @+1 {{expected ']'}}
 func @struct_type_neg_offset(!spv.struct<f32 [NonWritable 0]>) -> ()
 
 // -----
 
-//  expected-error @+1 {{unknown attribute: '0'}}
+//  expected-error @+1 {{expected valid keyword}}
 func @struct_type_neg_offset(!spv.struct<f32 [NonWritable, 0]>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown attribute: '0 NonWritable'}}
+// expected-error @+1 {{expected ','}}
 func @struct_type_missing_comma(!spv.struct<f32 [0 NonWritable], i32 [4]>)
 
 // -----
 
-// expected-error @+1 {{unknown attribute: 'NonWritable NonReadable'}}
+// expected-error @+1 {{expected ']'}}
 func @struct_type_missing_comma(!spv.struct<f32 [0, NonWritable NonReadable], i32 [4]>)
