@@ -66,6 +66,8 @@ struct GraphExportConfig {
   bool export_library = true;
   // Whether to export debug original node name in the GraphDef.
   bool export_debug_info = true;
+  // If true, the main graph will be treated as a function.
+  bool graph_as_function = false;
 };
 
 // Parses the command line flag strings to the specification of nodes in
