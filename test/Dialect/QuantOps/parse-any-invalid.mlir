@@ -2,27 +2,27 @@
 
 // -----
 // Unrecognized token: missing storage type maximum
-// expected-error@+1 {{unrecognized token: >}}
+// expected-error@+1 {{expected ':'}}
 !qalias = type !quant.any<i8<16>:f32>
 
 // -----
 // Unrecognized token: missing closing angle bracket
-// expected-error@+1 {{unrecognized token: :}}
+// expected-error@+1 {{expected '>'}}
 !qalias = type !quant<"any<i8<-4:3:f32>">
 
 // -----
 // Unrecognized token: missing type colon
-// expected-error@+1 {{unrecognized token: f}}
+// expected-error@+1 {{expected '>'}}
 !qalias = type !quant.any<i8<-4:3>f32>
 
 // -----
 // Unrecognized storage type: illegal prefix
-// expected-error@+1 {{illegal storage type prefix: int}}
+// expected-error@+1 {{illegal storage type prefix}}
 !qalias = type !quant.any<int8<-4:3>:f32>
 
 // -----
 // Unrecognized storage type: no width
-// expected-error@+1 {{expected storage type width}}
+// expected-error@+1 {{illegal storage type prefix}}
 !qalias = type !quant.any<i<-4:3>:f32>
 
 // -----
@@ -32,12 +32,12 @@
 
 // -----
 // Unrecognized storage type: storage size < 0
-// expected-error@+1 {{illegal storage type size: -1}}
-!qalias = type !quant.any<i-1<-4:3>:f32>
+// expected-error@+1 {{illegal storage type size: 1024}}
+!qalias = type !quant.any<i1024<-4:3>:f32>
 
 // -----
 // Unrecognized storage type: storage size == 0
-// expected-error@+1 {{illegal storage type size: 0}}
+// expected-error@+1 {{invalid integer width}}
 !qalias = type !quant.any<i0<-4:3>:f32>
 
 // -----
