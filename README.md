@@ -131,6 +131,7 @@ Build Type                                                                      
 *   [TensorFlow official models](https://github.com/tensorflow/models/tree/master/official)
 *   [TensorFlow examples](https://github.com/tensorflow/examples)
 *   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
+*   [Intro to TensorFlow for Deep Learning](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [TensorFlow blog](https://blog.tensorflow.org)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
 *   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
