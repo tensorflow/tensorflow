@@ -4,7 +4,6 @@
 
 # CHECK: func @main(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>)
 # CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "out:1,out"}} {
-# CHECK:  "tf.Placeholder.input"(%arg0)
 
 # CHECK: tf.Relu
 # CHECK:  %[[IDENTITY:[0-9]+]]:3 = tf_executor.island wraps "tf.IdentityN"
