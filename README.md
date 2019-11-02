@@ -45,7 +45,7 @@ $ pip install tensorflow
 ```
 
 Use the GPU package for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu):
+[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and Windows)*:
 
 ```
 $ pip install tensorflow-gpu
