@@ -48,7 +48,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
 
   def _readAndCheckMetadataFile(self):
     """Read and check the .metadata debug-events file."""
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     metadata_iter = reader.metadata_iterator()
     metadata = next(metadata_iter).debug_metadata
     self.assertEqual(metadata.tensorflow_version, versions.__version__)
@@ -60,7 +60,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
     Returns:
       A dict mapping stack frame IDs to stack frames (FileLineCol).
     """
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     # Check the content of the .source_files file.
     source_files_iter = reader.source_files_iterator()
     source_file_paths = []
@@ -116,7 +116,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         the same length as `context_ids`.
       op_name_to_op_type: A `dict` mapping op name to op type.
     """
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     graphs_iter = reader.graphs_iterator()
     prev_wall_time = 0
     op_types = []
@@ -153,7 +153,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         execution event. Each item of the inner `list` corresponds to one
         output tensor slot of the executed op or Function.
     """
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = reader.execution_iterator()
     prev_wall_time = 1
     executed_op_types = []
@@ -196,7 +196,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       tensor_values: Tensor values or their concise summaries, depending on
         TensorDebugMode.
     """
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     graph_execution_traces_iter = reader.graph_execution_traces_iterator()
     op_names = []
     device_names = []
