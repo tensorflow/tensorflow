@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
+        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
