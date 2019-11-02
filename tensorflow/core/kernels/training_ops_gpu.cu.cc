@@ -524,31 +524,41 @@ struct ApplyPowerSign<GPUDevice, T> {
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
 template struct functor::ApplyGradientDescent<GPUDevice, float>;
 template struct functor::ApplyGradientDescent<GPUDevice, double>;
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyGradientDescent<GPUDevice, complex64>;
 template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
+#endif
+#endif
 
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagradV2<GPUDevice, float>;
 template struct functor::ApplyAdagradV2<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdadelta<GPUDevice, complex64>;
 template struct functor::ApplyAdadelta<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyFtrl<GPUDevice, Eigen::half>;
@@ -563,16 +573,20 @@ template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyMomentum<GPUDevice, complex64>;
 template struct functor::ApplyMomentum<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyKerasMomentum<GPUDevice, float>;
 template struct functor::ApplyKerasMomentum<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyKerasMomentum<GPUDevice, complex64>;
 template struct functor::ApplyKerasMomentum<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
@@ -584,18 +598,22 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int64>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
+#endif
 #endif
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdam<GPUDevice, complex64>;
 template struct functor::ApplyAdam<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, Eigen::half>;
@@ -610,16 +628,20 @@ template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyRMSProp<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
 #ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex128>;
+#endif
 #endif
 
 template struct functor::ApplyAddSign<GPUDevice, Eigen::half>;
