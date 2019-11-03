@@ -426,14 +426,15 @@ class CollectiveOpTest(test.TestCase):
     in_value = [1, 2, 3, 4]
     in_tensor = constant_op.constant(in_value)
 
-    reduced_tensor = collective_ops.all_reduce(
-        in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
-    self.assertAllEqual(in_value, reduced_tensor.numpy())
+    with ops.device('/CPU:0'):
+        reduced_tensor = collective_ops.all_reduce(
+            in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
+        self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    gathered_tensor = collective_ops.all_gather(
-        in_tensor, group_size, group_key, instance_key)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
-
+    with ops.device('/CPU:0'):
+        gathered_tensor = collective_ops.all_gather(
+            in_tensor, group_size, group_key, instance_key)
+        self.assertAllEqual(in_value, gathered_tensor.numpy())
 
 if __name__ == '__main__':
   test.main()
