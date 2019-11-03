@@ -567,6 +567,7 @@ cc_library(
     hdrs = ["elementwise.h"],
     deps = [
         ":gpu_operation",
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_absl//absl/strings",
     ],
