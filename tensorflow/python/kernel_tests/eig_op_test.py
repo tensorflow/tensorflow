@@ -262,6 +262,6 @@ if __name__ == "__main__":
           shape = batch_dims + (size, size)
           name = "%s_%s_%s" % (dtype.name, "_".join(map(str, shape)), compute_v)
           _AddTest(EigTest, "Eig", name, _GetEigTest(dtype, shape, compute_v))
-          _AddTest(EigGradTest, "EigGrad", name,
+          _AddTest(EigGradTest, "EigGrad", name, 
                    _GetEigGradTest(dtype, shape, compute_v))
   test.main()
