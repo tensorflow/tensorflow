@@ -35,7 +35,7 @@ def make_relu1_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     # Note that the following is not supported:
     #   out = tf.maximum(-1.0, tf.minimum(input_tensor, 1.0))

@@ -141,7 +141,7 @@ class HloToLhloTensorStoreConverter : public ConversionPattern {
   PatternMatchResult matchAndRewrite(
       Operation* op, ArrayRef<Value*> operands,
       ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -151,9 +151,12 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   patterns
       ->insert<HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
                HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
+               HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
+                                    xla_lhlo::BroadcastInDimOp>,
                HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
                HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
                HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
+               HloToLhloOpConverter<xla_hlo::IotaOp, xla_lhlo::IotaOp>,
                HloToLhloOpConverter<xla_hlo::MaxOp, xla_lhlo::MaxOp>,
                HloToLhloOpConverter<xla_hlo::MinOp, xla_lhlo::MinOp>,
                HloToLhloOpConverter<xla_hlo::MulOp, xla_lhlo::MulOp>,

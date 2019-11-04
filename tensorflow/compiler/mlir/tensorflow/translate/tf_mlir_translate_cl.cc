@@ -29,7 +29,9 @@ opt<std::string> input_arrays(
 // NOLINTNEXTLINE
 opt<std::string> input_dtypes(
     "tf-input-data-types",
-    llvm::cl::desc("Input tensor data types, separated by ','"),
+    llvm::cl::desc("(Optional) Input tensor data types, separated by ','. Use "
+                   "'' if a single data type is skipped. The data type from "
+                   "the import graph is used if it is skipped."),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE

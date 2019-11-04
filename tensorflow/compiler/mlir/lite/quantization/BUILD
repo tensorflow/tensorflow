@@ -17,7 +17,10 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
-exports_files(["quantization_traits.h"])
+exports_files([
+    "quantization_traits.h",
+    "quantization_config.h",
+])
 
 filegroup(
     name = "quantization_td_files",

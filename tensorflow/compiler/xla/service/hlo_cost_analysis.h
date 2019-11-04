@@ -150,6 +150,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
+  int64 operand_bytes_accessed(const HloInstruction& hlo, int64 operand_num,
+                               ShapeIndex index = {}) const;
+  int64 output_bytes_accessed(const HloInstruction& hlo,
+                              ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
   const Properties& properties() const { return properties_sum_; }
@@ -197,6 +201,21 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.
   int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
+
+  // Set bytes accessed by the specified operand and shape index.
+  void SetOperandBytesAccessed(int64 operand_num, float value);
+  void SetOperandBytesAccessed(int64 operand_num, ShapeIndex index,
+                               float value);
+
+  // Set bytes accessed by the output at the shape index.
+  void SetOutputBytesAccessed(float value);
+  void SetOutputBytesAccessed(ShapeIndex index, float value);
+
+  // Return the key that is used to index into Properties for the specified
+  // input/output at the shape index.
+  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+                                                ShapeIndex index = {});
+  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

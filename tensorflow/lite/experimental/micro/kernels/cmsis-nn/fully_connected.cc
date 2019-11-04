@@ -89,7 +89,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
-  TfLiteStatus status = kTfLiteOk;
   RuntimeShape output_shape = GetTensorShape(output);
   const int batches = output_shape.Dims(0);
   const int output_depth = output_shape.Dims(1);
@@ -100,18 +99,21 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
 #if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
   int16_t* buf = nullptr;
-  status = get_cmsis_scratch_buffer(context, &buf, buf_size);
-  arm_fully_connected_s8(
-      GetTensorData<int8_t>(input), GetTensorData<int8_t>(filter), accum_depth,
-      output_depth, batches, -input->params.zero_point,
-      -filter->params.zero_point, data->output_multiplier, -data->output_shift,
-      output->params.zero_point, GetTensorData<int32_t>(bias),
-      GetTensorData<int8_t>(output), data->output_activation_min,
-      data->output_activation_max, buf);
+  TF_LITE_ENSURE_OK(context, get_cmsis_scratch_buffer(context, &buf, buf_size));
+  TF_LITE_ENSURE_EQ(
+      context,
+      arm_fully_connected_s8(
+          GetTensorData<int8_t>(input), GetTensorData<int8_t>(filter),
+          accum_depth, output_depth, batches, -input->params.zero_point,
+          -filter->params.zero_point, data->output_multiplier,
+          -data->output_shift, output->params.zero_point,
+          GetTensorData<int32_t>(bias), GetTensorData<int8_t>(output),
+          data->output_activation_min, data->output_activation_max, buf),
+      ARM_MATH_SUCCESS);
 #else
 #error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
 #endif
-  return status;
+  return kTfLiteOk;
 }
 
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,

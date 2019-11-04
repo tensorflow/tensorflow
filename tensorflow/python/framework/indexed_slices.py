@@ -110,6 +110,18 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     return self._dense_shape
 
   @property
+  def shape(self):
+    """Gets the `tf.TensorShape` representing the shape of the dense tensor.
+
+    Returns:
+      A `tf.TensorShape` object.
+    """
+    if self._dense_shape is None:
+      return tensor_shape.TensorShape(None)
+
+    return tensor_util.constant_value_as_shape(self._dense_shape)
+
+  @property
   def name(self):
     """The name of this `IndexedSlices`."""
     return self.values.name

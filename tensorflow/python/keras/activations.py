@@ -186,23 +186,39 @@ def softsign(x):
 
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
-  """Rectified Linear Unit.
+  """Applies the rectified linear unit activation function.
 
-  With default values, it returns element-wise `max(x, 0)`.
+  With default values, this returns the standard ReLU activation:
+  `max(x, 0)`, the element-wise maximum of 0 and the input tensor.
 
-  Otherwise, it follows:
-  `f(x) = max_value` for `x >= max_value`,
-  `f(x) = x` for `threshold <= x < max_value`,
-  `f(x) = alpha * (x - threshold)` otherwise.
+  Modifying default parameters allows you to use non-zero thresholds,
+  change the max value of the activation,
+  and to use a non-zero multiple of the input for values below the threshold.
+
+  For example:
+  >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
+  >>> tf.keras.activations.relu(foo).numpy()
+  array([ 0.,  0.,  0.,  5., 10.], dtype=float32)
+  >>> tf.keras.activations.relu(foo, alpha=0.5).numpy()
+  array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
+  >>> tf.keras.activations.relu(foo, max_value=5).numpy()
+  array([0., 0., 0., 5., 5.], dtype=float32)
+  >>> tf.keras.activations.relu(foo, threshold=5).numpy()
+  array([-0., -0.,  0.,  0., 10.], dtype=float32)
 
   Arguments:
-      x: A tensor or variable.
-      alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
-      threshold: float. Threshold value for thresholded activation.
+      x: Input `tensor` or `variable`.
+      alpha: A `float` that governs the slope for values lower than the
+        threshold.
+      max_value: A `float` that sets the saturation threshold (the largest value
+        the function will return).
+      threshold: A `float` giving the threshold value of the activation function
+        below which values will be damped or set to zero.
 
   Returns:
-      A tensor.
+      A `Tensor` representing the input tensor,
+      transformed by the relu activation function.
+      Tensor will be of the same shape and dtype of input `x`.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 

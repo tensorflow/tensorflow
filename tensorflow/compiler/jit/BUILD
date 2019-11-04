@@ -314,6 +314,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -960,7 +961,7 @@ cc_library(
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
-        "//tensorflow/core:logger",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,

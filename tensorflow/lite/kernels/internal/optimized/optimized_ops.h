@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -863,11 +864,11 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   const bool ordinary_mean =
       (input_zero_point == output_zero_point && input_scale == output_scale);
@@ -1008,11 +1009,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   constexpr int kMinDepthPerThread = 8;
   int thread_count = output_depth / kMinDepthPerThread;
@@ -7067,15 +7068,10 @@ inline void Logistic16bitPercision(const LogisticParams& params,
 // Perform transpose by transposing 4x4 blocks of the input, proceeding from
 // left to right (down the rows) of the input, and then from top to bottom.
 template <typename T>
-inline void Transpose2DImpl(const TransposeParams& params,
-                            const RuntimeShape& input_shape,
-                            const T* input_data,
-                            const RuntimeShape& output_shape, T* output_data) {
+inline void Transpose2D(const RuntimeShape& input_shape, const T* input_data,
+                        const RuntimeShape& output_shape, T* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(params.perm_count, 2);
-  TFLITE_DCHECK_EQ(params.perm[0], 1);
-  TFLITE_DCHECK_EQ(params.perm[1], 0);
 
   const int d0 = input_shape.DimsData()[0];
   const int d1 = input_shape.DimsData()[1];
@@ -7168,16 +7164,12 @@ inline void Transpose2DImpl(const TransposeParams& params,
 }
 
 template <>
-inline void Transpose2DImpl(const TransposeParams& params,
-                            const RuntimeShape& input_shape,
-                            const int32_t* input_data,
-                            const RuntimeShape& output_shape,
-                            int32_t* output_data) {
+inline void Transpose2D(const RuntimeShape& input_shape,
+                        const int32_t* input_data,
+                        const RuntimeShape& output_shape,
+                        int32_t* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(params.perm_count, 2);
-  TFLITE_DCHECK_EQ(params.perm[0], 1);
-  TFLITE_DCHECK_EQ(params.perm[1], 0);
 
   const int d0 = input_shape.DimsData()[0];
   const int d1 = input_shape.DimsData()[1];
@@ -7250,92 +7242,16 @@ inline void Transpose2DImpl(const TransposeParams& params,
   }
 }
 
-template <typename T>
-void Transpose2D(const TransposeParams& params, const RuntimeShape& input_shape,
-                 const T* input_data, const RuntimeShape& output_shape,
-                 T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      Transpose2DImpl(params, input_shape,
-                      reinterpret_cast<const int8_t*>(input_data), output_shape,
-                      reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 4:
-      Transpose2DImpl(params, input_shape,
-                      reinterpret_cast<const int32_t*>(input_data),
-                      output_shape, reinterpret_cast<int32_t*>(output_data));
-      break;
-    default:
-      // Reroute to the reference version if an optimized method for the given
-      // data is not available.
-      reference_ops::Transpose(params, input_shape, input_data, output_shape,
-                               output_data);
-  }
-}
-
 // TODO(alanchiao): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
-inline void Transpose3DImpl(const TransposeParams& params,
-                            const RuntimeShape& input_shape,
-                            const T* input_data,
-                            const RuntimeShape& output_shape, T* output_data) {
+inline void Transpose3D(const TransposeParams& params,
+                        const RuntimeShape& input_shape, const T* input_data,
+                        const RuntimeShape& output_shape, T* output_data) {
   int s1, s2, s3;
   s1 = input_shape.Dims(0);
   s2 = input_shape.Dims(1);
   s3 = input_shape.Dims(2);
-
-  // TODO(b/141169757): generalize the following logics and move to the
-  // Transpose method.
-  const bool hasOneInDimension = (s1 == 1 || s2 == 1 || s3 == 1);
-  // Can fast path as 2D transpose in this case.
-  if (hasOneInDimension) {
-    int d1, d2;
-    bool is_identity = false;
-    // Check for identity to just return.
-    if (s1 == 1) {
-      // (0, 1, 2), (1, 0, 2), (1, 2, 0)
-      if ((params.perm[0] == 0 && params.perm[1] == 1) || params.perm[0] == 1) {
-        is_identity = true;
-      }
-      d1 = s2;
-      d2 = s3;
-    } else if (s2 == 1) {
-      //  (0, 1, 2), (0, 2, 1), (1, 0, 2)
-      if ((params.perm[0] == 1 && params.perm[1] == 0) || params.perm[0] == 0) {
-        is_identity = true;
-      }
-      d1 = s1;
-      d2 = s3;
-    } else {
-      // (0, 1, 2), (0, 2, 1), (2, 0, 1)
-      if ((params.perm[0] == 2 && params.perm[1] == 0) || params.perm[0] == 0) {
-        is_identity = true;
-      }
-      d1 = s1;
-      d2 = s2;
-    }
-
-    if (is_identity) {
-      memcpy(output_data, input_data, sizeof(T) * input_shape.FlatSize());
-      return;
-    }
-
-    TransposeParams new_params;
-    new_params.perm_count = 2;
-    new_params.perm[0] = 1;
-    new_params.perm[1] = 0;
-
-    const RuntimeShape new_input_shape({d1, d2});
-    const RuntimeShape new_output_shape({d2, d1});
-
-    Transpose2D(new_params, new_input_shape, input_data, new_output_shape,
-                output_data);
-    return;
-  }
 
   int p1, p2, p3;
   if (params.perm[0] == 2) {
@@ -7379,44 +7295,16 @@ inline void Transpose3DImpl(const TransposeParams& params,
 }
 
 template <typename T>
-void Transpose3D(const TransposeParams& params, const RuntimeShape& input_shape,
-                 const T* input_data, const RuntimeShape& output_shape,
-                 T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      Transpose3DImpl(params, input_shape,
-                      reinterpret_cast<const int8_t*>(input_data), output_shape,
-                      reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 4:
-      Transpose3DImpl(params, input_shape,
-                      reinterpret_cast<const int32_t*>(input_data),
-                      output_shape, reinterpret_cast<int32_t*>(output_data));
-      break;
-    default:
-      // Reroute to the reference version if an optimized method for the given
-      // data is not available.
-      reference_ops::Transpose(params, input_shape, input_data, output_shape,
-                               output_data);
-  }
-}
+void TransposeImpl(const TransposeParams& params,
+                   const RuntimeShape& input_shape, const T* input_data,
+                   const RuntimeShape& output_shape, T* output_data) {
+  const int dims_cnt = input_shape.DimensionsCount();
 
-template <typename T>
-void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
-               const T* input_data, const RuntimeShape& output_shape,
-               T* output_data) {
-  const int output_size = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_size, 4);
-  TFLITE_DCHECK_EQ(output_size, params.perm_count);
-
-  // Apply 2-D transpose.
-  if (input_shape.DimensionsCount() == 2 && params.perm[0] == 1 &&
-      params.perm[1] == 0) {
-    Transpose2D(params, input_shape, input_data, output_shape, output_data);
+  int dim0, dim1;
+  if (transpose_utils::IsTranspose2DApplicable(params, input_shape, &dim0,
+                                               &dim1)) {
+    Transpose2D(RuntimeShape({dim0, dim1}), input_data,
+                RuntimeShape({dim1, dim0}), output_data);
     return;
   }
 
@@ -7430,7 +7318,7 @@ void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
   // 96^3 is not mobile-friendly for certain usecases
   // (e.g. model used in beam search for seq2seq) but is in others.
   // Consider tradeoffs.
-  if (input_shape.DimensionsCount() == 3) {
+  if (dims_cnt == 3) {
     Transpose3D(params, input_shape, input_data, output_shape, output_data);
     return;
   }
@@ -7439,6 +7327,66 @@ void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
   // is not available.
   reference_ops::Transpose(params, input_shape, input_data, output_shape,
                            output_data);
+}
+
+template <typename T>
+void Transpose(const TransposeParams& unshrinked_params,
+               const RuntimeShape& unshrinked_input_shape, const T* input_data,
+               const RuntimeShape& unshrinked_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Transpose");
+
+  const int output_size = unshrinked_output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_size, 4);
+  TFLITE_DCHECK_EQ(output_size, unshrinked_params.perm_count);
+
+  RuntimeShape shrinked_input_shape = RuntimeShape(unshrinked_input_shape);
+  RuntimeShape shrinked_output_shape = RuntimeShape(unshrinked_output_shape);
+  TransposeParams shrinked_params = unshrinked_params;
+
+  // Reduce any dimensions that have one size. Lower transpose op usually
+  // performs better since memory access patterns will be improved.
+  transpose_utils::RemoveOneSizeDimensions(
+      &shrinked_input_shape, &shrinked_output_shape, &shrinked_params);
+
+  // Handle identity cases.
+  // TODO(b/140779653): Add an optimization pass in the conversion process to
+  // remove transpose op nodes where they do nothing like the below one.
+  bool identical = true;
+  for (int i = 0; i < shrinked_params.perm_count; ++i) {
+    if (shrinked_params.perm[i] != i) {
+      identical = false;
+      break;
+    }
+  }
+  if (identical) {
+    memcpy(output_data, input_data,
+           unshrinked_input_shape.FlatSize() * sizeof(T));
+    return;
+  }
+
+  // Reduce dimensions by flattening.
+  if (shrinked_params.perm[0] == 0 && output_size >= 3) {
+    RuntimeShape non_flatten_input_shape;
+    RuntimeShape non_flatten_output_shape;
+    TransposeParams non_flatten_params;
+    const int total_size = shrinked_input_shape.FlatSize();
+    const int non_flatten_size = transpose_utils::Flatten(
+        shrinked_input_shape, shrinked_output_shape, shrinked_params,
+        &non_flatten_input_shape, &non_flatten_output_shape,
+        &non_flatten_params);
+    TFLITE_DCHECK_NE(non_flatten_params.perm[0], 0);
+
+    for (int i = 0; i < total_size; i += non_flatten_size) {
+      TransposeImpl(non_flatten_params, non_flatten_input_shape, input_data + i,
+                    non_flatten_output_shape, output_data + i);
+    }
+    return;
+  }
+
+  // Call non-flattened case.
+  TransposeImpl(shrinked_params, shrinked_input_shape, input_data,
+                shrinked_output_shape, output_data);
 }
 
 }  // namespace optimized_ops

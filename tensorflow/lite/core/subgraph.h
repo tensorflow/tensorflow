@@ -285,9 +285,15 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(std::unique_ptr<Profiler> profiler) {
-    profiler_ = std::move(profiler);
-    context_.profiler = profiler_.get();
+  void SetProfiler(Profiler* profiler, int associated_subgraph_idx) {
+    if (!profiler) {
+      profiler_.reset(nullptr);
+      context_.profiler = nullptr;
+    } else {
+      profiler_.reset(
+          new SubgraphAwareProfiler(profiler, associated_subgraph_idx));
+      context_.profiler = profiler_.get();
+    }
   }
 
   Profiler* GetProfiler() { return profiler_.get(); }
@@ -302,6 +308,40 @@ class Subgraph {
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
  private:
+  // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
+  // BufferedProfiler instance, and takes care of event profiling/tracing in a
+  // certain subgraph.
+  class SubgraphAwareProfiler : public Profiler {
+   public:
+    // Constructor should be called with the non-nullptr profiler argument.
+    SubgraphAwareProfiler(Profiler* profiler, uint32_t subgraph_index)
+        : profiler_(profiler), subgraph_index_(subgraph_index) {}
+    ~SubgraphAwareProfiler() override {}
+
+    uint32_t BeginEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata,
+                        uint32_t subgraph_index) override {
+      if (!profiler_) return 0;
+      return profiler_->BeginEvent(tag, event_type, event_metadata,
+                                   subgraph_index);
+    }
+
+    uint32_t BeginEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata) override {
+      return BeginEvent(tag, event_type, event_metadata, subgraph_index_);
+    }
+
+    void EndEvent(uint32_t event_handle) override {
+      if (!profiler_) return;
+      profiler_->EndEvent(event_handle);
+    }
+
+   private:
+    // Not own the memory.
+    Profiler* const profiler_;
+    const uint32_t subgraph_index_;
+  };
+
   // Prevent 'context_' from accessing functions that are only available to
   // delegated kernels.
   void SwitchToKernelContext();
@@ -570,7 +610,7 @@ class Subgraph {
   bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
-  std::unique_ptr<Profiler> profiler_;
+  std::unique_ptr<SubgraphAwareProfiler> profiler_;
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;

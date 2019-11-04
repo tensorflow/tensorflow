@@ -42,12 +42,12 @@ def make_shape_tests(options):
     # TODO(haoliang): Test shape op directly after we have better support for
     # dynamic input. Currently we need to introduce a Reshape op to prevent
     # shape being constant-folded.
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         shape=parameters["input_shape"],
         name="input")
     shape_of_new_shape = [len(parameters["new_shape"])]
-    new_shape = tf.placeholder(
+    new_shape = tf.compat.v1.placeholder(
         dtype=tf.int32, shape=shape_of_new_shape, name="new_shape")
     reshaped = tf.reshape(input_value, shape=new_shape)
     out = tf.shape(reshaped, out_type=parameters["out_type"])

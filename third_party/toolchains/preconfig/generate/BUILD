@@ -108,8 +108,8 @@ tensorflow_rbe_config(
     cuda_version = "10.0",
     cudnn_version = "7",
     os = "ubuntu16.04-manylinux2010",
-    python_version = "3.6",
-    tensorrt_install_path = "/usr/local/tensorrt",
+    python_version = "3",
+    tensorrt_install_path = "/usr",
     tensorrt_version = "5.1",
 )
 

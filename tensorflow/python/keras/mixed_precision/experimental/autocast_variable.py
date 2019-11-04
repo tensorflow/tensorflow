@@ -262,54 +262,56 @@ class AutoCastVariable(variables.Variable):
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.
+  # Also note: We call read_value() instead of value(), because value() causes
+  # gradients not to work properly when TPUStrategy is used: b/143380936
 
-  def __add__(self, o): return self.value() + o
-  def __radd__(self, o): return o + self.value()
-  def __sub__(self, o): return self.value() - o
-  def __rsub__(self, o): return o - self.value()
-  def __mul__(self, o): return self.value() * o
-  def __rmul__(self, o): return o * self.value()
-  def __truediv__(self, o): return self.value() / o
-  def __rtruediv__(self, o): return o / self.value()
-  def __floordiv__(self, o): return self.value() // o
+  def __add__(self, o): return self.read_value() + o
+  def __radd__(self, o): return o + self.read_value()
+  def __sub__(self, o): return self.read_value() - o
+  def __rsub__(self, o): return o - self.read_value()
+  def __mul__(self, o): return self.read_value() * o
+  def __rmul__(self, o): return o * self.read_value()
+  def __truediv__(self, o): return self.read_value() / o
+  def __rtruediv__(self, o): return o / self.read_value()
+  def __floordiv__(self, o): return self.read_value() // o
 
-  def __rfloordiv__(self, o): return o // self.value()
-  def __mod__(self, o): return self.value() % o
-  def __rmod__(self, o): return o % self.value()
-  def __lt__(self, o): return self.value() < o
-  def __le__(self, o): return self.value() <= o
-  def __gt__(self, o): return self.value() > o
-  def __ge__(self, o): return self.value() >= o
-  def __getitem__(self, o): return self.value()[o]
-  def __pow__(self, o, modulo=None): return pow(self.value(), o, modulo)
-  def __rpow__(self, o): return pow(o, self.value())
-  def __neg__(self): return -self.value()
-  def __abs__(self): return abs(self.value())
+  def __rfloordiv__(self, o): return o // self.read_value()
+  def __mod__(self, o): return self.read_value() % o
+  def __rmod__(self, o): return o % self.read_value()
+  def __lt__(self, o): return self.read_value() < o
+  def __le__(self, o): return self.read_value() <= o
+  def __gt__(self, o): return self.read_value() > o
+  def __ge__(self, o): return self.read_value() >= o
+  def __getitem__(self, o): return self.read_value()[o]
+  def __pow__(self, o, modulo=None): return pow(self.read_value(), o, modulo)
+  def __rpow__(self, o): return pow(o, self.read_value())
+  def __neg__(self): return -self.read_value()
+  def __abs__(self): return abs(self.read_value())
 
   def __div__(self, o):
     try:
-      return self.value().__div__(o)
+      return self.read_value().__div__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __rdiv__(self, o):
     try:
-      return self.value().__rdiv__(o)
+      return self.read_value().__rdiv__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __matmul__(self, o):
     try:
-      return self.value().__matmul__(o)
+      return self.read_value().__matmul__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
   def __rmatmul__(self, o):
     try:
-      return self.value().__rmatmul__(o)
+      return self.read_value().__rmatmul__(o)
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented

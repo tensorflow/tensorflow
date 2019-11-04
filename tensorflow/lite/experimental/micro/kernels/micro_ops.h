@@ -59,6 +59,8 @@ TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_PACK();
 TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_RELU();
+TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_ROUND();
 TfLiteRegistration* Register_RSQRT();

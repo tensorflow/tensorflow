@@ -375,11 +375,13 @@ tf_cuda_library(
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
+        "//tensorflow/python:__pkg__",  # pybind11 wrapper
     ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -438,6 +440,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "python_traceme_hdrs",
+    srcs = [
+        "python_traceme.h",
+        "traceme_recorder.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "python_traceme",
     hdrs = ["python_traceme.h"],
@@ -446,6 +460,17 @@ tf_cuda_library(
         ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+filegroup(
+    name = "python_scoped_annotation_hdrs",
+    srcs = [
+        "python_scoped_annotation.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

@@ -394,8 +394,8 @@ class Bidirectional(Wrapper):
    # With custom backward layer
    model = Sequential()
    forward_layer = LSTM(10, return_sequences=True)
-   backard_layer = LSTM(10, activation='relu', return_sequences=True,
-                        go_backwards=True)
+   backward_layer = LSTM(10, activation='relu', return_sequences=True,
+                         go_backwards=True)
    model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
                            input_shape=(5, 10)))
    model.add(Dense(5))

@@ -356,6 +356,12 @@ struct TestLegalizePatternDriver
       return op.getOperand()->getType().isF64();
     });
 
+    // Check support for marking certain operations as recursively legal.
+    target.markOpRecursivelyLegal<FuncOp, ModuleOp>([](Operation *op) {
+      return static_cast<bool>(
+          op->getAttrOfType<UnitAttr>("test.recursively_legal"));
+    });
+
     // Handle a partial conversion.
     if (mode == ConversionMode::Partial) {
       (void)applyPartialConversion(getModule(), target, patterns, &converter);

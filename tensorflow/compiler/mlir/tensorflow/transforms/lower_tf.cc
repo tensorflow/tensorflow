@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 
+#include <numeric>
+
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -22,10 +24,37 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
 namespace TF {
 namespace {
+
+// Returns 1D 64-bit dense elements attribute with the given values.
+static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseElementsAttr::get<int64_t>(ty, values)
+      .cast<DenseIntElementsAttr>();
+}
+
+// Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
+// op.
+DenseIntElementsAttr GetBiasAddGradReductionIndices(int64_t rank,
+                                                    StringAttr data_format,
+                                                    Builder *builder) {
+  tensorflow::TensorFormat format;
+  if (!FormatFromString(data_format.getValue().str(), &format)) return {};
+
+  // Reudce along all dimensions except the feature dimension.
+  int64_t feature_dim = GetTensorFeatureDimIndex(rank, format);
+  llvm::SmallVector<int64_t, 4> dims_to_reduce(rank - 1);
+  std::iota(dims_to_reduce.begin(), dims_to_reduce.begin() + feature_dim, 0);
+  std::iota(dims_to_reduce.begin() + feature_dim, dims_to_reduce.end(),
+            feature_dim + 1);
+  return GetI64ElementsAttr(dims_to_reduce, builder);
+}
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_lower_tf.inc"
 

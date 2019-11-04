@@ -30,13 +30,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import importlib
 import os
 import sys
 import uuid
 
 from tensorflow.python.platform import flags
-from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 FLAGS = flags.FLAGS
@@ -97,6 +97,19 @@ def calculate_parent_python_path(test_filepath):
   return path.replace('/', '.')
 
 
+def import_user_module():
+  """Imports the flag-specified user test code.
+
+  This runs all top-level statements in the user module, specifically flag
+  definitions.
+
+  Returns:
+    The user test module.
+  """
+  return importlib.import_module(FLAGS.wrapped_tpu_test_module_relative,
+                                 calculate_parent_python_path(sys.argv[0]))
+
+
 def _is_test_class(obj):
   """Check if arbitrary object is a test class (not a test object!).
 
@@ -115,29 +128,72 @@ def _is_test_class(obj):
 module_variables = vars()
 
 
-def move_test_classes_into_scope():
+def move_test_classes_into_scope(wrapped_test_module):
   """Add all test classes defined in wrapped module to our module.
 
   The test runner works by inspecting the main module for TestCase classes, so
   by adding a module-level reference to the TestCase we cause it to execute the
   wrapped TestCase.
-  """
-  wrapped_test_module = importlib.import_module(
-      FLAGS.wrapped_tpu_test_module_relative,
-      calculate_parent_python_path(sys.argv[0]))
 
+  Args:
+    wrapped_test_module: The user-provided test code to run.
+  """
   for name, obj in wrapped_test_module.__dict__.items():
     if _is_test_class(obj):
       module_variables['tpu_test_imported_%s' % name] = obj
 
 
+def run_user_main(wrapped_test_module):
+  """Runs the "if __name__ == '__main__'" at the bottom of a module.
+
+  TensorFlow practice is to have a main if at the bottom of the module which
+  might call an API compat function before calling test.main().
+
+  Since this is a statement, not a function, we can't cleanly reference it, but
+  we can inspect it from the user module and run it in the context of that
+  module so all imports and variables are available to it.
+
+  Args:
+    wrapped_test_module: The user-provided test code to run.
+
+  Raises:
+    NotImplementedError: If main block was not found in module. This should not
+      be caught, as it is likely an error on the user's part -- absltest is all
+      too happy to report a successful status (and zero tests executed) if a
+      user forgets to end a class with "test.main()".
+  """
+  tree = ast.parse(tf_inspect.getsource(wrapped_test_module))
+
+  # Get string representation of just the condition `__name == "__main__"`.
+  target = ast.dump(ast.parse('if __name__ == "__main__": pass').body[0].test)
+
+  # `tree.body` is a list of top-level statements in the module, like imports
+  # and class definitions. We search for our main block, starting from the end.
+  for expr in reversed(tree.body):
+    if isinstance(expr, ast.If) and ast.dump(expr.test) == target:
+      break
+  else:
+    raise NotImplementedError(
+        'Could not find `if __name__ == "main":` block in %s.' %
+        wrapped_test_module.__name__)
+
+  # expr is defined because we would have raised an error otherwise.
+  new_ast = ast.Module(body=expr.body)  # pylint:disable=undefined-loop-variable
+  exec(  # pylint:disable=exec-used
+      compile(new_ast, '<ast>', 'exec'),
+      globals(),
+      wrapped_test_module.__dict__,
+  )
+
+
 if __name__ == '__main__':
   # Partially parse flags, since module to import is specified by flag.
   unparsed = FLAGS(sys.argv, known_only=True)
-  move_test_classes_into_scope()
+  user_module = import_user_module()
   maybe_define_flags()
   # Parse remaining flags.
   FLAGS(unparsed)
-
   set_random_test_dir()
-  test.main()
+
+  move_test_classes_into_scope(user_module)
+  run_user_main(user_module)

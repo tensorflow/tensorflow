@@ -399,22 +399,16 @@ class TextVectorizationPreprocessingTest(
 
   def test_standardization_with_invalid_standardize_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize="unexpected_standardization",
-        split=None,
-        output_mode=None)
+    layer = get_layer_class()()
+    layer._standardize = "unsupported"
     with self.assertRaisesRegex(ValueError,
                                 ".*is not a supported standardization.*"):
       _ = layer(input_data)
 
   def test_splitting_with_invalid_split_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=None,
-        split="unexpected_split_arg",
-        output_mode=None)
+    layer = get_layer_class()()
+    layer._split = "unsuppported"
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
@@ -873,9 +867,47 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         split=None,
         output_mode=text_vectorization.BINARY)
     with self.assertRaisesRegex(ValueError,
-                                "df_data should only be set if.*"):
+                                ".*df_data should only be set if.*"):
       layer.set_vocabulary(vocab_data, df_data)
 
+  def test_non_string_dtype_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*dtype of string.*"):
+      _ = get_layer_class()(dtype=dtypes.int64)
+
+  def test_unknown_standardize_arg_fails(self):
+    with self.assertRaisesRegex(ValueError,
+                                ".*standardize arg.*unsupported_value.*"):
+      _ = get_layer_class()(standardize="unsupported_value")
+
+  def test_unknown_split_arg_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*split arg.*unsupported_value.*"):
+      _ = get_layer_class()(split="unsupported_value")
+
+  def test_unknown_output_mode_arg_fails(self):
+    with self.assertRaisesRegex(ValueError,
+                                ".*output_mode arg.*unsupported_value.*"):
+      _ = get_layer_class()(output_mode="unsupported_value")
+
+  def test_unknown_ngrams_arg_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*ngrams.*unsupported_value.*"):
+      _ = get_layer_class()(ngrams="unsupported_value")
+
+  def test_float_ngrams_arg_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*ngrams.*2.9.*"):
+      _ = get_layer_class()(ngrams=2.9)
+
+  def test_float_tuple_ngrams_arg_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*ngrams.*(1.3, 2.9).*"):
+      _ = get_layer_class()(ngrams=(1.3, 2.9))
+
+  def test_non_int_output_sequence_length_dtype_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*output_sequence_length.*2.0.*"):
+      _ = get_layer_class()(output_mode="int", output_sequence_length=2.0)
+
+  def test_non_none_output_sequence_length_fails_if_output_type_not_int(self):
+    with self.assertRaisesRegex(ValueError,
+                                ".*`output_sequence_length` must not be set.*"):
+      _ = get_layer_class()(output_mode="count", output_sequence_length=2)
 
 # Custom functions for the custom callable serialization test. Declared here
 # to avoid multiple registrations from run_all_keras_modes().

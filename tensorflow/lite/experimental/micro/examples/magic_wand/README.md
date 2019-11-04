@@ -13,41 +13,7 @@ then outputs the gesture to the serial port.
 -   [Getting started](#getting-started)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
-
-## Getting started
-
-### Build the code
-
-To compile and test this example on a desktop Linux or macOS machine, first
-clone the TensorFlow repository from GitHub to a convenient place:
-
-```bash
-git clone --depth 1 https://github.com/tensorflow/tensorflow.git
-```
-
-Next, put this folder under the
-tensorflow/tensorflow/lite/experimental/micro/examples/ folder, then `cd` into
-the source directory from a terminal and run the following command:
-
-```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_magic_wand_test
-```
-
-This will take a few minutes, and downloads frameworks the code uses like
-[CMSIS](https://developer.arm.com/embedded/cmsis) and
-[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
-finished, you should see a series of files get compiled, followed by some
-logging output from a test, which should conclude with `~~~ALL TESTS PASSED~~~`.
-
-If you see this, it means that a small program has been built and run that loads
-the trained TensorFlow model, runs some example inputs through it, and got the
-expected outputs.
-
-To understand how TensorFlow Lite does this, you can look at the source in
-[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc).
-It's a fairly small amount of code that creates an interpreter, gets a handle to
-a model that's been compiled into the program, and then invokes the interpreter
-with the model and sample inputs.
+-   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 
 ## Deploy to Arduino
 
@@ -58,15 +24,11 @@ The sample has been tested with the following devices:
 
 - [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 
-### Obtain and import the library
+### Install the Arduino_TensorFlowLite library
 
-To use this sample application with Arduino, we've created an Arduino library
-that includes it as an example that you can open in the Arduino Desktop IDE.
-
-Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
-
-Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
-Include Library -> Add .ZIP Library...`.
+This example application is included as part of the official TensorFlow Lite
+Arduino library. To install it, open the Arduino library manager in
+`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
 
 ### Install and patch the accelerometer driver
 
@@ -349,3 +311,36 @@ SLOPE:
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Run the tests on a development machine
+
+To compile and test this example on a desktop Linux or macOS machine, first
+clone the TensorFlow repository from GitHub to a convenient place:
+
+```bash
+git clone --depth 1 https://github.com/tensorflow/tensorflow.git
+```
+
+Next, put this folder under the
+tensorflow/tensorflow/lite/experimental/micro/examples/ folder, then `cd` into
+the source directory from a terminal and run the following command:
+
+```bash
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_magic_wand_test
+```
+
+This will take a few minutes, and downloads frameworks the code uses like
+[CMSIS](https://developer.arm.com/embedded/cmsis) and
+[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
+finished, you should see a series of files get compiled, followed by some
+logging output from a test, which should conclude with `~~~ALL TESTS PASSED~~~`.
+
+If you see this, it means that a small program has been built and run that loads
+the trained TensorFlow model, runs some example inputs through it, and got the
+expected outputs.
+
+To understand how TensorFlow Lite does this, you can look at the source in
+[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc).
+It's a fairly small amount of code that creates an interpreter, gets a handle to
+a model that's been compiled into the program, and then invokes the interpreter
+with the model and sample inputs.

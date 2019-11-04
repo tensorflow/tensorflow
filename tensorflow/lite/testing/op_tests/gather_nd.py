@@ -50,11 +50,11 @@ def make_gather_nd_tests(options):
 
   def build_graph(parameters):
     """Build the gather_nd op testing graph."""
-    params = tf.placeholder(
+    params = tf.compat.v1.placeholder(
         dtype=parameters["params_dtype"],
         name="params",
         shape=parameters["params_shape"])
-    indices = tf.placeholder(
+    indices = tf.compat.v1.placeholder(
         dtype=parameters["indices_dtype"],
         name="indices",
         shape=parameters["indices_shape"])

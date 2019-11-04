@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference | FileCheck %s -dump-input=fail -color
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail -color
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 
@@ -33,5 +33,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = "tf.Unknown"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     return %1 : tensor<*xf32>
   }
-}
 
+// Tests the case where an op's shape function returns non-fully-defined shapes.
+
+// CHECK-LABEL: func @op_non_fully_defined_shape_fn
+  func @op_non_fully_defined_shape_fn() -> tensor<?xi32> {
+    %0 = "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+    %1 = "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+    // CHECK: tf.BroadcastGradientArgs
+    // CHECK-SAME: (tensor<0xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+    %2:2 = "tf.BroadcastGradientArgs"(%0, %1) {T = "tfdtype$DT_INT32", name = "BroadcastGradientArgs"} : (tensor<0xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+    return %2#0 : tensor<?xi32>
+  }
+}

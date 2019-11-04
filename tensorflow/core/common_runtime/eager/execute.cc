@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -589,13 +590,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
                << "compile_with_xla=" << compile_with_xla
                << ". Full node_def=" << ndef.DebugString();
+      // TODO(b/134094971): Set get_op_id when
+      // EagerClusterFunctionLibraryRuntime is in use.
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
-          [ctx](const int64 step_id) {
-            return ctx->CreateRendezvous(step_id);
-          }));
+          [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+          /* get_op_id= */ nullptr));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
                << "compile_with_xla=" << compile_with_xla
@@ -633,9 +635,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new ExecuteNode(
-      ctx, op->Inputs(), op->op_id(), std::move(kernel), graph_collector,
-      output_dtypes, op->GetCancellationManager(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(
+      new ExecuteNode(ctx, op->Inputs(), op->remote_func_params(),
+                      std::move(kernel), graph_collector, output_dtypes,
+                      op->GetCancellationManager(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -949,13 +952,12 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 }
 
 // TODO(gjn): Consider moving into ExecuteNode class
-Status EagerKernelExecute(EagerContext* ctx,
-                          const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          const absl::optional<int64>& op_id,
-                          const core::RefCountPtr<KernelAndDevice>& kernel,
-                          GraphCollector* graph_collector,
-                          CancellationManager* cancellation_manager,
-                          absl::Span<TensorHandle*> retvals) {
+Status EagerKernelExecute(
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    GraphCollector* graph_collector, CancellationManager* cancellation_manager,
+    absl::Span<TensorHandle*> retvals) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
@@ -973,11 +975,11 @@ Status EagerKernelExecute(EagerContext* ctx,
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(
-        kernel->Run(*inputs, &outputs, cancellation_manager, op_id));
+    TF_RETURN_IF_ERROR(kernel->Run(*inputs, &outputs, cancellation_manager,
+                                   remote_func_params));
   } else {
-    TF_RETURN_IF_ERROR(
-        kernel->Run(container, *inputs, &outputs, cancellation_manager, op_id));
+    TF_RETURN_IF_ERROR(kernel->Run(container, *inputs, &outputs,
+                                   cancellation_manager, remote_func_params));
   }
   if (graph_collector != nullptr) {
     mutex_lock ml(*ctx->MetadataMu());

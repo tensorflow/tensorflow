@@ -2,8 +2,6 @@
 
 This page shows how to use the TensorFlow Lite Converter in the command line.
 
-[TOC]
-
 ## Command-line tools <a name="tools"></a>
 
 There are two approaches to running the converter in the command line.

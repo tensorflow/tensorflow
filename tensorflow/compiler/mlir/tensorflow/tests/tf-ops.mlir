@@ -51,21 +51,6 @@ func @testTFVariant(tensor<*x!tf.variant>) -> () {
   return
 }
 
-// Test of parsing tf_complex type
-// CHECK-LABEL: func @testTFComplex(%arg0: tensor<*x!tf.complex64>, %arg1: tensor<*x!tf.complex128>)
-func @testTFComplex(tensor<*x!tf.complex64>, tensor<*x!tf.complex128>) -> (!tf.complex64, !tf.complex128) {
-^bb0(%arg0: tensor<*x!tf.complex64>, %arg1: tensor<*x!tf.complex128>):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_COMPLEX64", name = "Const"} : () -> (!tf.complex64, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_COMPLEX64"} : () -> (!tf.complex64, !_tf.control)
-  // CHECK: %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_COMPLEX128", name = "Const"} : () -> (!tf.complex128, !_tf.control)
-  %1:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_COMPLEX128"} : () -> (!tf.complex128, !_tf.control)
-  // CHECK: %2:2 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex64>, !tf.complex64) -> (!tf.complex64, !_tf.control)
-  %2:2 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex64>, !tf.complex64) -> (!tf.complex64, !_tf.control)
-  // CHECK: %3:2 = "_tf.AssignAddVariableOp"(%arg1, %1#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex128>, !tf.complex128) -> (!tf.complex128, !_tf.control)
-  %3:2 = "_tf.AssignAddVariableOp"(%arg1, %1#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.complex128>, !tf.complex128) -> (!tf.complex128, !_tf.control)
-  return %2#0, %3#0 : !tf.complex64, !tf.complex128
-}
-
 //===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
@@ -168,6 +153,30 @@ func @testBiasAdd(%arg0: tensor<2x3x5x7xf32>, %arg1: tensor<5xf32>) -> tensor<2x
   // expected-error @+1 {{requires channel dimension and feature dimension to match; found 7 and 5, respectively}}
   %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NHWC"} : (tensor<2x3x5x7xf32>, tensor<5xf32>) -> tensor<2x3x5x7xf32>
   return %0 : tensor<2x3x5x7xf32>
+}
+
+// -----
+
+// Valid BiasAddGrad operation.
+func @testBiasAddGrad(%arg0: tensor<2x3x5x7xf32>) -> tensor<7xf32> {
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NHWC"} : (tensor<2x3x5x7xf32>) -> (tensor<7xf32>)
+  return %0 : tensor<7xf32>
+}
+
+// -----
+
+func @testBiasAddGrad(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires out_backprop operand to have rank at least two with `NHWC` data format}}
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NHWC"} : (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+
+// -----
+
+func @testBiasAddGrad(%arg0: tensor<2x3xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires out_backprop operand to have rank at least three with `NCHW` data format}}
+  %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<2x3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
 }
 
 // -----

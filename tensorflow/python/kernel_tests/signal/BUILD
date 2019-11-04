@@ -36,7 +36,6 @@ cuda_py_test(
 
 cuda_py_test(
     name = "fft_ops_test",
-    # TODO(rjryan): Parameterize the test to reduce the time it takes.
     size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
@@ -147,5 +146,9 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
+    ],
+    shard_count = 4,
+    tags = [
+        "no_windows_gpu",
     ],
 )
