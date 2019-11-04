@@ -87,7 +87,7 @@ pip2 install pandas==0.19.2
 pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
-pip2 install psutil
+pip2 install psutil==5.6.3
 pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
