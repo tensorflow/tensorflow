@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Target/TargetMachine.h"
+#include "third_party/llvm/llvm/include/llvm/Analysis/TargetTransformInfo.h"
+#include "third_party/llvm/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {

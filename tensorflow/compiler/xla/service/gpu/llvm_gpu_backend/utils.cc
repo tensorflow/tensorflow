@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IRReader/IRReader.h"
-#include "llvm/Support/SourceMgr.h"
+#include "third_party/llvm/llvm/include/llvm/IR/LLVMContext.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/IRReader/IRReader.h"
+#include "third_party/llvm/llvm/include/llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace {

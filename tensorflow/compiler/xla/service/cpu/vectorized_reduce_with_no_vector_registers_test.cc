@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/IR/Function.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/TargetRegistry.h"
-#include "llvm/Target/TargetMachine.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/LLVMContext.h"
+#include "third_party/llvm/llvm/include/llvm/Support/TargetRegistry.h"
+#include "third_party/llvm/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"

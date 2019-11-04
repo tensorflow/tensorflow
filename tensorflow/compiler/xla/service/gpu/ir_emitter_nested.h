@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
-#include "llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
 namespace xla {

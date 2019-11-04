@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/types/span.h"
-#include "llvm/Target/TargetMachine.h"
+#include "third_party/llvm/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/TargetSelect.h"
+#include "third_party/llvm/llvm/include/llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"

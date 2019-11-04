@@ -20,14 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/Triple.h"
-#include "llvm/ExecutionEngine/JITEventListener.h"
-#include "llvm/ExecutionEngine/Orc/Core.h"
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Target/TargetMachine.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/Triple.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/JITEventListener.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/Orc/Core.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/types.h"
 

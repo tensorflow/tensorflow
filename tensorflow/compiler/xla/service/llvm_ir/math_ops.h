@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_MATH_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_MATH_OPS_H_
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
 
 namespace xla {
 namespace llvm_ir {

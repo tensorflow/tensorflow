@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 
-#include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Transforms/Utils/Cloning.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Intrinsics.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Verifier.h"
+#include "third_party/llvm/llvm/include/llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
 #include "tensorflow/core/platform/logging.h"

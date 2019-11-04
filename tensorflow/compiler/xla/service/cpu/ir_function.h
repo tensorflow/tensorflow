@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 
 #include "absl/types/span.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"

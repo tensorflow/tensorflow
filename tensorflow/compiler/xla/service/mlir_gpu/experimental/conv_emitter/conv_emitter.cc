@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter.h"
 
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
+#include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir

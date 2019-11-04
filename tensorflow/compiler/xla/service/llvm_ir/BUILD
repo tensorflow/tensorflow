@@ -39,10 +39,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm//:core",
     ],
 )
 
@@ -75,13 +75,13 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service/cpu:cpu_options",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
+        "//third_party/llvm/llvm:support",
+        "//third_party/llvm/llvm:target_base",
+        "//third_party/llvm/llvm:transform_utils",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
-        "@llvm//:target",
-        "@llvm//:transform_utils",
     ],
 )
 
@@ -97,10 +97,10 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
     ],
 )
 
@@ -115,10 +115,10 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
     ],
 )
 
@@ -135,8 +135,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm//:core",
     ],
 )
 
@@ -157,11 +157,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
     ],
 )
 
@@ -198,10 +198,10 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
         "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
+        "//third_party/llvm/llvm:support",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
     ],
 )
 
@@ -216,8 +216,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
     ],
 )
 
@@ -228,8 +228,8 @@ cc_library(
     deps = [
         ":llvm_loop",
         ":llvm_util",
+        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/strings",
-        "@llvm//:core",
     ],
 )
 
@@ -249,7 +249,7 @@ cc_library(
     hdrs = ["math_ops.h"],
     deps = [
         ":llvm_util",
-        "@llvm//:core",
+        "//third_party/llvm/llvm:ir",
     ],
 )
 
@@ -258,6 +258,6 @@ cc_library(
     srcs = [],
     hdrs = ["ir_builder_mixin.h"],
     deps = [
-        "@llvm//:core",
+        "//third_party/llvm/llvm:ir",
     ],
 )

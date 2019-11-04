@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JITSymbol.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/IR/Mangler.h"
-#include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/ExecutionEngine.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/JITSymbol.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Mangler.h"
+#include "third_party/llvm/llvm/include/llvm/Support/CodeGen.h"
+#include "third_party/llvm/llvm/include/llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"

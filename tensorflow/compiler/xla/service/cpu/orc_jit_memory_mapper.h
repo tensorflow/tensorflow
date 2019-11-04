@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "third_party/llvm/llvm/include/llvm/ExecutionEngine/SectionMemoryManager.h"
 
 namespace xla {
 namespace cpu {

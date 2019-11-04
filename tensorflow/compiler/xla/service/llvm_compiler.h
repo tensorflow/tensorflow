@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_COMPILER_H_
 
-#include "llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 
 namespace xla {

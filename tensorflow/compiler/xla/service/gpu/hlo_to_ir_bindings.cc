@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
+#include "third_party/llvm/llvm/include/llvm/IR/BasicBlock.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"

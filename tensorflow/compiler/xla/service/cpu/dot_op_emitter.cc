@@ -19,10 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
+#include "third_party/llvm/llvm/include/llvm/IR/BasicBlock.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Instructions.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"

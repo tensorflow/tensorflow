@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
+#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"

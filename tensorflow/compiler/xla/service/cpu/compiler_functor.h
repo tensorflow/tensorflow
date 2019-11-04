@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Object/ObjectFile.h"
-#include "llvm/Target/TargetMachine.h"
+#include "third_party/llvm/llvm/include/llvm/IR/LegacyPassManager.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "third_party/llvm/llvm/include/llvm/Object/ObjectFile.h"
+#include "third_party/llvm/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/core/platform/logging.h"
 

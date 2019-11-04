@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 
 #include "absl/algorithm/container.h"
-#include "llvm/Support/raw_ostream.h"
+#include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 

@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "third_party/llvm/llvm/include/llvm/IR/BasicBlock.h"
+#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 

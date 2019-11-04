@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/types/span.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/ArrayRef.h"
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir

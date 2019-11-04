@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "llvm/Support/raw_ostream.h"
+#include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir

@@ -127,9 +127,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//third_party/llvm/llvm:support",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
-        "@llvm//:support",
     ],
 )
 
@@ -146,8 +146,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//third_party/llvm/llvm:support",
         "@com_google_absl//absl/memory",
-        "@llvm//:support",
     ],
 )
 
