@@ -115,12 +115,15 @@ class NormalizationTest(keras_parameterized.TestCase,
         "variance": np.array([2.]),
         "mean": np.array([3.])
     }
-    self.validate_accumulator_extract_and_restore(combiner, data, expected)
+    expected_accumulator = combiner._create_accumulator(expected["count"],
+                                                        expected["mean"],
+                                                        expected["variance"])
     self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected)
+                                                        expected_accumulator)
     self.validate_accumulator_uniqueness(combiner, data)
     self.validate_accumulator_extract(combiner, data, expected)
-
+    self.validate_accumulator_extract_and_restore(combiner, data,
+                                                  expected)
   @parameterized.named_parameters(
       {
           "data": np.array([[1], [2], [3], [4], [5]]),
