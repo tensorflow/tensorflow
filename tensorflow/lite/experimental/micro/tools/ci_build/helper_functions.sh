@@ -13,19 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-#
-# Tests the microcontroller code using native x86 execution.
 
-set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR=${SCRIPT_DIR}/../../../../../..
-cd ${ROOT_DIR}
+# Collection of helper functions that can be used in the different continuous
+# integration scripts.
 
-source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
+function die() {
+  echo "$@" 1>&2 ; exit 1;
+}
 
-readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
-
-# TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge third_party_downloads
-readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+# A small utility to run the command and only print logs if the command fails.
+# On success, all logs are hidden. This helps to keep the log output clean and
+# makes debugging easier.
+function readable_run {
+  # Disable debug mode to avoid printing of variables here.
+  set +x
+  result=$("$@" 2>&1) || die "$result"
+  echo "$@"
+  echo "Command completed successfully at $(date)"
+  set -x
+}

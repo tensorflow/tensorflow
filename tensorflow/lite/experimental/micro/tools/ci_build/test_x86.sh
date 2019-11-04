@@ -21,12 +21,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
-pwd
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
-  clean clean_downloads
+source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
 
-# Needed to solve CI build bug triggered by files added to source tree.
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads
+# TODO(b/143715361): downloading first to allow for parallel builds.
+readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile third_party_downloads
+readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile test

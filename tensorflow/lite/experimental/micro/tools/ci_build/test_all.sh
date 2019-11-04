@@ -24,11 +24,23 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
 pwd
 
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
+  clean clean_downloads
+
 # Add all the test scripts for the various supported platforms here. This
 # emables running all the tests together has part of the continuous integration
 # pipeline and reduces duplication associated with setting up the docker
 # environment.
+
+echo "Starting to run micro tests at `date`"
+
+echo "Running Arduino tests at `date`"
 tensorflow/lite/experimental/micro/tools/ci_build/test_arduino.sh
+
+echo "Running Sparkfun tests at `date`"
 tensorflow/lite/experimental/micro/tools/ci_build/test_sparkfun.sh
+
+echo "Running x86 tests at `date`"
 tensorflow/lite/experimental/micro/tools/ci_build/test_x86.sh
 
+echo "Finished all micro tests at `date`"
