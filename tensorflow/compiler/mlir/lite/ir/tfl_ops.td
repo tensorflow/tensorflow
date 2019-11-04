@@ -142,6 +142,12 @@ class TFL_OperandHasRank<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
+// Returns true if the n-th operand is ranked and has rank dim.
+class TFL_OperandHasKnownRank<int n, int dim> : And<[
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() == "
+    # dim>]>;
+
 // True if operand n is ranked and has a rank > dim.
 class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
@@ -167,6 +173,11 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       "$_op.getOperand(" # y #
       ")->getType().cast<ShapedType>().getShape()[0]">>;
 
+class TFL_Operand0DOr1ElementTensor<int x> :
+  PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
+    Or<[TFL_OperandHasKnownRank<x, 0>,
+        And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
@@ -179,7 +190,6 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
                 "getElementTypeOrSelf($_op.getResult(" # i # "))) == "
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
-
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
@@ -2407,7 +2417,10 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
   let hasOptions = 1;
 }
 
-def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_SplitOp : TFL_Op<"split", [
+    NoSideEffect,
+    TFL_Operand0DOr1ElementTensor<0>,
+    SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
   let description = [{
@@ -2417,7 +2430,7 @@ def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    0DTensorOf<[I32]>:$split_dim,
+    TensorOf<[I32]>:$split_dim,
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
     PositiveI32Attr:$num_splits
   );

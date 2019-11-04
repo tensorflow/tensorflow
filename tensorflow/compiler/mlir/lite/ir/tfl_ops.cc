@@ -1057,11 +1057,12 @@ static LogicalResult Verify(UnpackOp op) {
 //===----------------------------------------------------------------------===//
 
 // Extracts and returns the signed integer constant in a 0-rank integer tensor
-// if 'value' is a constant.
+// or 1-element 1-rank integer tensor if 'value' is a constant.
 static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
   ElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) return {};
-  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  if (attr.getNumElements() != 1) return {};
+  IntegerAttr int_attr = *attr.getValues<IntegerAttr>().begin();
   return int_attr.getValue().getSExtValue();
 }
 
