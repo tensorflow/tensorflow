@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -97,6 +98,74 @@ std::string ElementwiseOneInput::GetCoreCode(
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type) {
   ElementwiseOneInput operation(definition, op_type);
+  operation.SetLinkIndex(0);
+  return operation;
+}
+
+ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
+    : ElementwiseOperation(std::move(operation)),
+      link_index_(operation.link_index_),
+      op_type_(operation.op_type_) {}
+
+ElementwiseTwoInput& ElementwiseTwoInput::operator=(
+    ElementwiseTwoInput&& operation) {
+  if (this != &operation) {
+    link_index_ = operation.link_index_;
+    op_type_ = operation.op_type_;
+    ElementwiseOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+void ElementwiseTwoInput::SetLinkIndex(int index) { link_index_ = index; }
+
+std::string ElementwiseTwoInput::GetCoreCode(
+    const LinkingContext& context) const {
+  TensorCodeGenerator src_tensor(absl::StrCat("src_data_", link_index_),
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 definition_.src_tensors[1]);
+  std::string result;
+  switch (op_type_) {
+    case OperationType::DIV:
+      result = "$0 /= $1;\n";
+      break;
+    case OperationType::POW:
+      result = "$0 = pow($0, $1);\n";
+      break;
+    case OperationType::SQUARED_DIFF:
+      result = "$0 -= $1;\n";
+      result += "$0 *= $0;\n";
+      break;
+    case OperationType::SUB:
+      result = "$0 -= $1;\n";
+      break;
+    default:
+      return "Unknown operation type;\n";
+  }
+  return absl::Substitute(
+      result, context.var_name,
+      src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord));
+}
+
+std::string ElementwiseTwoInput::GetArgsDeclaration() const {
+  std::string args;
+  TensorCodeGenerator src_tensor(absl::StrCat("src_data_", link_index_),
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 definition_.src_tensors[1]);
+  absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
+  absl::StrAppend(&args, ",\n   int4 src_size_", link_index_);
+  return args;
+}
+
+Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHDB()));
+  return OkStatus();
+}
+
+ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
+                                              const OperationType& op_type) {
+  ElementwiseTwoInput operation(definition, op_type);
   operation.SetLinkIndex(0);
   return operation;
 }

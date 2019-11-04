@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 
 from tensorflow.python.autograph.pyct import origin_info
 
@@ -151,31 +150,14 @@ class ErrorMetadataBase(object):
 
   def get_message(self):
     """Returns the message for the underlying exception."""
-
-    all_paths = tuple(fi.filename for fi in self.translated_stack)
-
-    if len(all_paths) > 1:
-      common_path = os.path.dirname(os.path.commonprefix(all_paths))
-      if common_path == os.path.sep:
-        common_path = ''
-      if common_path:
-        path_idx = len(common_path) + 1
-      else:
-        path_idx = 0
-    else:
-      common_path = ''
-      path_idx = 0
-
     lines = []
 
     lines.append('in converted code:')
-    if common_path:
-      lines.append('    relative to {}:'.format(common_path))
-
     lines.append('')
+
     for frame_info in reversed(self.translated_stack):
       lines.append('    {}:{} {}{}'.format(
-          frame_info.filename[path_idx:],
+          frame_info.filename,
           frame_info.lineno,
           frame_info.function_name,
           '  *' if frame_info.converted else '',

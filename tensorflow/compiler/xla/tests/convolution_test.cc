@@ -1908,10 +1908,10 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45321);
+  input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
   Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
   Array4D<float> filter_data(7, 7, 1, 64);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45320);
+  filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = ConstantR4FromArray4D(&builder, filter_data);
 

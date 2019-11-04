@@ -180,6 +180,15 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       *gpu_op = absl::make_unique<ElementwiseOneInput>(std::move(operation));
       return OkStatus();
     }
+    case OperationType::DIV:
+    case OperationType::POW:
+    case OperationType::SQUARED_DIFF:
+    case OperationType::SUB: {
+      ElementwiseTwoInput operation =
+          CreateElementwiseTwoInput(op_def, op_type);
+      *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+      return OkStatus();
+    }
     default:
       return UnimplementedError(
           absl::StrCat("No selector for ", node.operation.type));

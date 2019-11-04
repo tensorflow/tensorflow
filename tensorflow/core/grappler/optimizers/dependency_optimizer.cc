@@ -471,7 +471,8 @@ Status DependencyOptimizer::OptimizeDependencies() {
 
 namespace {
 
-void LongestPathsLowerBounds(int source, std::pair<int, int> target_range,
+void LongestPathsLowerBounds(int source,
+                             const std::pair<int, int>& target_range,
                              const std::vector<std::vector<int>>& inputs,
                              std::vector<int>* longest_distance) {
   (*longest_distance)[source] = 0;
@@ -483,9 +484,10 @@ void LongestPathsLowerBounds(int source, std::pair<int, int> target_range,
     const auto& target_inputs = inputs[target];
     for (int input_idx = 0; input_idx < target_inputs.size(); ++input_idx) {
       const int input = target_inputs[input_idx];
-      // If the input node is before source in the topo order, no path
-      // source -> input -> target can exits and we can skip it.
-      if (input < target_range.first) break;
+      // If the input node is before target_range.first in the topo order,
+      // no path source -> input -> target can exist, unless input is the
+      // source itself, so we can skip it.
+      if (input != source && input < target_range.first) break;
       // Also only extend a path from the source itself or from nodes that
       // have a path from source, indicated by longest_distance[input] > 0.
       const int input_dist = (*longest_distance)[input];

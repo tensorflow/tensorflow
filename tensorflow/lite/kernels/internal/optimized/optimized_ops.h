@@ -1689,13 +1689,21 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
 #endif  // NEON
 
   for (; i < size; ++i) {
-    int32 result = params.combined_offset;
-    result += (static_cast<int32>(input1_data[i]) * params.multiplier1);
-    result += (static_cast<int32>(input2_data[i]) * params.multiplier2);
-    // We perform a simplified fixed point arithmetic here which requires
-    // the raw_output be obtained by shifting using params.left_shift instead of
-    // params.output_shift.
-    const int32 raw_output = result >> params.left_shift;
+    const int32 input1_val = params.input1_offset + input1_data[i];
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, params.input1_multiplier, params.input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, params.input2_multiplier, params.input2_shift);
+    const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+    const int32 raw_output =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            raw_sum, params.output_multiplier, params.output_shift) +
+        params.output_offset;
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));

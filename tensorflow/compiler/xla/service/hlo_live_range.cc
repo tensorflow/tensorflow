@@ -110,7 +110,6 @@ int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
       }
       if (instruction->opcode() == HloOpcode::kWhile) {
         time = FlattenSchedule(*instruction->while_condition(), time);
-        time++;
         time = FlattenSchedule(*instruction->while_body(), time);
       }
     }

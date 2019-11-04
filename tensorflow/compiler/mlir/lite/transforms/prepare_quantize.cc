@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <iterator>
 #include <string>
 
 #include "absl/memory/memory.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -125,18 +127,9 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
       builder.getI32IntegerAttr(quant_specs_.GetQuantizationTypeWidth());
   BoolAttr narrow_range = builder.getBoolAttr(false);
 
-  for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
-    Value* arg = func.getArgument(i);
-    if (!arg->hasOneUse() ||
-        !llvm::isa<TFL::InputOp>(*arg->getUsers().begin())) {
-      return true;
-    }
-
-    Operation* input = *arg->getUsers().begin();
-    auto input_op = llvm::cast<TFL::InputOp>(input);
-    Location loc = input_op.getLoc();
-    Type input_type = input_op.input()->getType();
-
+  auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
+                             Block::iterator insertion_point, Value* arg,
+                             int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
@@ -144,15 +137,31 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
             builder, input_type, builder.getF64FloatAttr(min_max.first),
             builder.getF64FloatAttr(min_max.second), num_bits, narrow_range,
             is_signed);
-        builder.setInsertionPoint(input->getBlock(),
-                                  ++Block::iterator(input_op));
-        auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(),
-                                                    input_op.output(), params);
+        builder.setInsertionPoint(block, insertion_point);
+        auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(), arg,
+                                                    params);
         auto dq_op =
             builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
-        input_op.output()->replaceAllUsesWith(dq_op.output());
-        q_op.setOperand(input_op.output());
+        arg->replaceAllUsesWith(dq_op.output());
+        q_op.setOperand(arg);
       }
+    }
+  };
+
+  for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
+    BlockArgument* arg = func.getArgument(i);
+    if (arg->hasOneUse() && llvm::isa<TFL::InputOp>(*arg->getUsers().begin())) {
+      // TODO(lyandy): Remove arg -> tfl.pseudo_input -> tfl.quantize once
+      // tfl.pseudo_input are not generated.
+      Operation* input = *arg->getUsers().begin();
+      auto input_op = llvm::cast<TFL::InputOp>(input);
+      add_quantize_op(input_op.getLoc(), input_op.input()->getType(),
+                      input->getBlock(), ++Block::iterator(input_op),
+                      input_op.output(), i);
+    } else {
+      auto* arg_block = arg->getOwner();
+      add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
+                      std::next(arg_block->begin(), i), arg, i);
     }
   }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
 #include <ostream>
+#include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -35,6 +36,9 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+
+using stream_executor::port::StatusOr;
 
 namespace tensorflow {
 
@@ -60,6 +64,22 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
     default:
       return DT_INVALID;
   }
+}
+
+StatusOr<std::pair<double, double>> InputStatsToMinMax(double mean, double std,
+                                                       DataType type) {
+  // Only qint8 and quint8 are considered here.
+  double qmin, qmax;
+  if (type == DT_QUINT8) {
+    qmin = 0.0;
+    qmax = 255.0;
+  } else if (type == DT_QINT8) {
+    qmin = -128.0;
+    qmax = 127.0;
+  } else {
+    return errors::InvalidArgument("Only int8 and uint8 are considered.");
+  }
+  return std::make_pair((qmin - mean) / std, (qmax - mean) / std);
 }
 
 // Give a warning for any unused flags that have been specified.
@@ -145,12 +165,14 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
     }
     node_shapes.push_back(std::vector<int>(flag.shape().dims().begin(),
                                            flag.shape().dims().end()));
-
-    const double mean_value = flag.mean_value();
-    const double std_value = flag.std_value();
-    const double qmin = 0.0, qmax = 255.0;
-    node_mins.push_back((qmin - mean_value) / std_value);
-    node_maxs.push_back((qmax - mean_value) / std_value);
+    // Currently, only UINT8 and INT8 require inputs stats
+    if (inference_type == DT_QINT8 || inference_type == DT_QUINT8) {
+      TF_ASSIGN_OR_RETURN(
+          auto min_max, InputStatsToMinMax(flag.mean_value(), flag.std_value(),
+                                           inference_type));
+      node_mins.push_back(min_max.first);
+      node_maxs.push_back(min_max.second);
+    }
   }
   TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
       node_names, node_dtypes, node_shapes, &specs.inputs));

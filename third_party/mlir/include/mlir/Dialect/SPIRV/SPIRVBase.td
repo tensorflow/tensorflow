@@ -758,9 +758,9 @@ def SPV_DecorationAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_D_1D          : I32EnumAttrCase<"1D", 0>;
-def SPV_D_2D          : I32EnumAttrCase<"2D", 1>;
-def SPV_D_3D          : I32EnumAttrCase<"3D", 2>;
+def SPV_D_1D          : I32EnumAttrCase<"Dim1D", 0>;
+def SPV_D_2D          : I32EnumAttrCase<"Dim2D", 1>;
+def SPV_D_3D          : I32EnumAttrCase<"Dim3D", 2>;
 def SPV_D_Cube        : I32EnumAttrCase<"Cube", 3>;
 def SPV_D_Rect        : I32EnumAttrCase<"Rect", 4>;
 def SPV_D_Buffer      : I32EnumAttrCase<"Buffer", 5>;

@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import itertools
 import math
+import platform
 
 from absl.testing import parameterized
 import numpy as np
@@ -40,7 +41,7 @@ from tensorflow.python.platform import test
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
 # TODO(b/143684500): Eigen to support complex sqrt
-if not test_util.IsBuiltWithNvcc():
+if not test_util.IsBuiltWithNvcc() and platform.system() != "Windows":
   _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [

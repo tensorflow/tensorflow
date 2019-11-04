@@ -57,6 +57,9 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
+  // If true, add pseudo input nodes (nodes with ".input" appended consuming a
+  // hoisted arg).
+  bool add_pseudo_input_nodes = true;
 };
 
 struct GraphExportConfig {

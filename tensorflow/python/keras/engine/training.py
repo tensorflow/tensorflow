@@ -241,10 +241,12 @@ class Model(network.Network):
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
-            `tf.losses.Loss` instance. See `tf.losses`. If the model has
-            multiple outputs, you can use a different loss on each output by
-            passing a dictionary or a list of losses. The loss value that will
-            be minimized by the model will then be the sum of all individual
+            `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
+            function is any callable with the signature
+            `scalar_loss = fn(y_true, y_pred)`. If the model has multiple
+            outputs, you can use a different loss on each output by passing a
+            dictionary or a list of losses. The loss value that will be
+            minimized by the model will then be the sum of all individual
             losses.
         metrics: List of metrics to be evaluated by the model during training
             and testing. Typically you will use `metrics=['accuracy']`.
