@@ -166,10 +166,6 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testTensorArrayWithCondResetByExternalCaptureBreaks(self):
-    if test.is_built_with_gpu_support():
-      # Python nesting error
-      # Possible commit fix: 2ad44d39d8f8c4df5f507b255c6da00bcfa96dfc
-      self.skipTest("Disabling due to python nesting errors with cuda and rocm")
 
     if control_flow_v2_toggles.control_flow_v2_enabled():
       self.skipTest("v1 only test")

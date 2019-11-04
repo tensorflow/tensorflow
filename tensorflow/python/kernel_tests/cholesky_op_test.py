@@ -106,8 +106,7 @@ class CholeskyOpTest(test.TestCase):
 
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
-    # rocBLAS on ROCm stack does not support complex<float> dgemv yet
-    with self.cached_session(use_gpu=True and not test.is_built_with_rocm()) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       chol = linalg_ops.cholesky(x)
       verification = math_ops.matmul(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, x, chol, verification)
@@ -178,17 +177,15 @@ class CholeskyOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
-    # TODO: Re-enable this test when ROCm support for CholeskyOp is added
-    if not test.is_built_with_rocm():
-      with self.session(use_gpu=True) as sess:
-        matrix1 = random_ops.random_normal([5, 5], seed=42)
-        matrix2 = random_ops.random_normal([5, 5], seed=42)
-        matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
-        matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
-        c1 = linalg_ops.cholesky(matrix1)
-        c2 = linalg_ops.cholesky(matrix2)
-        c1_val, c2_val = self.evaluate([c1, c2])
-        self.assertAllClose(c1_val, c2_val)
+    with self.session(use_gpu=True) as sess:
+      matrix1 = random_ops.random_normal([5, 5], seed=42)
+      matrix2 = random_ops.random_normal([5, 5], seed=42)
+      matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
+      matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
+      c1 = linalg_ops.cholesky(matrix1)
+      c2 = linalg_ops.cholesky(matrix2)
+      c1_val, c2_val = self.evaluate([c1, c2])
+      self.assertAllClose(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):
@@ -253,8 +250,7 @@ class CholeskyGradTest(test.TestCase):
                            dtypes=(dtypes_lib.float32, dtypes_lib.float64,
                                    dtypes_lib.complex64, dtypes_lib.complex128),
                            scalarTest=False):
-    # rocBLAS on ROCm stack does not support complex<float> GEMV yet
-    with self.session(use_gpu=True and not test.is_built_with_rocm()):
+    with self.session(use_gpu=True):
       for shape in shapes:
         for batch in False, True:
           for dtype in dtypes:

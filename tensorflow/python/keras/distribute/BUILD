@@ -172,7 +172,7 @@ py_library(
 
 distribute_py_test(
     name = "keras_dnn_correctness_test",
-    size = "large",
+    size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
     full_precision = True,
     main = "keras_dnn_correctness_test.py",
@@ -182,6 +182,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
+        "no_rocm",
         "notsan",
     ],
     deps = [
@@ -191,7 +192,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_embedding_model_correctness_test",
-    size = "large",
+    size = "medium",
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
@@ -208,14 +209,16 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_image_model_correctness_test",
-    size = "large",
+    size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
     shard_count = 8,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda",
         "no_windows_gpu",
+        "no_rocm",
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Tensorflow also fails.

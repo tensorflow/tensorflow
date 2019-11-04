@@ -71,8 +71,6 @@ py_test(
         "no_oss",
         "no_pip",
         "nopip",
-        "no_cuda",
-        "no_rocm",
     ],
     deps = [
         ":activity_test_lib",

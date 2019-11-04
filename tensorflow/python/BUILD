@@ -442,7 +442,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
-    alwayslink = 1,
 )
 
 tf_python_pybind_extension(
@@ -3495,7 +3494,6 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

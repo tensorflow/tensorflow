@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 package(
@@ -21,7 +21,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     additional_deps = [
@@ -31,10 +31,9 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "fft_ops_test",
     size = "medium",
     srcs = ["fft_ops_test.py"],
@@ -52,7 +51,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
     additional_deps = [
@@ -63,7 +62,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
@@ -75,10 +74,9 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
@@ -96,7 +94,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "shape_ops_test",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
@@ -113,7 +111,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "spectral_ops_test",
     size = "large",
     srcs = ["spectral_ops_test.py"],
@@ -134,7 +132,7 @@ cuda_py_test(
     tags = ["nomac"],
 )
 
-cuda_py_test(
+cuda_py_tests(
     name = "window_ops_test",
     srcs = ["window_ops_test.py"],
     additional_deps = [

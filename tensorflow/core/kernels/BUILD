@@ -38,7 +38,10 @@ load(
     "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -3439,11 +3442,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + if_cuda_is_configured([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cublas_lib",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
-    ]),
+    ],
 )
 
 tf_kernel_library(
@@ -4376,9 +4378,6 @@ tf_kernel_library(
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
-    ]) + if_rocm([
-        "//tensorflow/core/platform/default/build_config:rocblas_plugin",
-        "//tensorflow/core/platform/default/build_config:miopen_plugin",
     ]),
 )
 

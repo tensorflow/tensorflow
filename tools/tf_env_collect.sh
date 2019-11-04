@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.  # # Licensed under the Apache License, Version 2.0 (the "License");
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -27,7 +29,7 @@ die() {
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
-python_bin_path=$(which python3 || which python || die "Cannot find Python binary")
+python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
 {
 echo
