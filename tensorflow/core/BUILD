@@ -1972,62 +1972,6 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
-    name = "framework/cost_graph_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/cost_graph.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/tensor_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/tensor.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/kernel_def_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/kernel_def.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/node_def_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/node_def.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/function_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/function.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/graph_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/graph.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/step_stats_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/step_stats.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/types_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/types.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
     name = "protobuf/config_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/config.proto",
@@ -2062,12 +2006,40 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
-tf_pyclif_proto_library(
-    name = "framework/variable_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/variable.proto",
-    visibility = ["//visibility:public"],
-)
+# These targets will be moved to core/framework. The aliases are only temporary
+# since moving existing users will require several CLs over several projects.
+
+[
+    [
+        alias(
+            name = "framework_%s_pyclif%s" % (proto_name, target_suffix),
+            actual = ":framework/%s_pyclif%s" % (proto_name, target_suffix),
+            visibility = ["//visibility:public"],
+        )
+        for target_suffix in [
+            "",
+            "_pb2",
+        ]
+    ] + [
+        tf_pyclif_proto_library(
+            name = "framework/%s_pyclif" % proto_name,
+            proto_lib = ":protos_all_cc",
+            proto_srcfile = "framework/%s.proto" % proto_name,
+            visibility = ["//visibility:public"],
+        ),
+    ]
+    for proto_name in [
+        "cost_graph",
+        "tensor",
+        "kernel_def",
+        "node_def",
+        "function",
+        "graph",
+        "step_stats",
+        "types",
+        "variable",
+    ]
+]
 
 # -----------------------------------------------------------------------------
 # Internal targets
