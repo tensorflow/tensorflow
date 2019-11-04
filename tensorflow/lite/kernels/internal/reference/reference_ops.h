@@ -2187,6 +2187,48 @@ inline void GatherNd(const RuntimeShape& params_shape,
   }
 }
 
+template <typename IndicesT, typename UpdatesT>
+inline void ScatterNd(const RuntimeShape& indices_shape,
+                      const IndicesT* indices_data,
+                      const RuntimeShape& updates_shape,
+                      const UpdatesT* updates_data,
+                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ScatterNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int outer_dims = indices_shape.DimensionsCount() - 1;
+  const int indices_nd = indices_shape.Dims(outer_dims);
+  const int updates_dims = updates_shape.DimensionsCount();
+  for (int i = 0; i < outer_dims; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = outer_dims; i < updates_dims; ++i) {
+    slice_size *= updates_shape.Dims(i);
+  }
+
+  int output_flat_size = output_shape.FlatSize();
+  int remain_flat_size = output_flat_size;
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / output_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
+  for (int i = 0; i < n_slices; ++i) {
+    int to_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      IndicesT idx = indices_data[i * indices_nd + j];
+      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
+      to_pos += idx * dims_to_count[j];
+    }
+    for (int j = 0; j < slice_size; j++) {
+      output_data[to_pos + j] += updates_data[i * slice_size + j];
+    }
+  }
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
