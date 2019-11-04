@@ -3764,36 +3764,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "reduce_precision_insertion",
-    srcs = ["reduce_precision_insertion.cc"],
-    hdrs = ["reduce_precision_insertion.h"],
-    deps = [
-        ":hlo",
-        ":hlo_pass",
-        ":hlo_pass_pipeline",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "reduce_precision_insertion_test",
-    size = "small",
-    srcs = ["reduce_precision_insertion_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_matchers",
-        ":reduce_precision_insertion",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "hlo_runner",
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
