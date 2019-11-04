@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
@@ -151,10 +152,11 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape, const int8* input_data,
-                        const RuntimeShape& output_shape, int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
+inline void AveragePool16(const PoolParams& params,
+                          const RuntimeShape& input_shape,
+                          const int8* input_data,
+                          const RuntimeShape& output_shape, int8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("AveragePool/8bitWith16bitAccumulator");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
   // to minimize some recalculations, and to load into NEON vector registers, we
@@ -285,6 +287,17 @@ inline void AveragePool(const PoolParams& params,
         }
       }
     }
+  }
+}
+
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape, const int8* input_data,
+                        const RuntimeShape& output_shape, int8* output_data) {
+  if (params.filter_height * params.filter_width > 16 * 16) {
+    reference_integer_ops::AveragePool(params, input_shape, input_data,
+                                       output_shape, output_data);
+  } else {
+    AveragePool16(params, input_shape, input_data, output_shape, output_data);
   }
 }
 

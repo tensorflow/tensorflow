@@ -70,6 +70,12 @@ def if_not_v2(a):
         "//conditions:default": a,
     })
 
+def if_nvcc(a):
+    return select({
+        "@local_config_cuda//cuda:using_nvcc": a,
+        "//conditions:default": [],
+    })
+
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
 
@@ -288,7 +294,11 @@ def tf_copts(
         ]) +
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
+<<<<<<< HEAD
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
+=======
+        if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
+>>>>>>> upstream/master
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
@@ -2556,10 +2566,6 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
-
-# TODO(b/138724071): Remove when build is stable.
-def if_mlir_tflite(if_true, if_false = []):
-    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""

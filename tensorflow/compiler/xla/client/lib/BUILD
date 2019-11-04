@@ -145,6 +145,7 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":loops",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:xla_builder",

@@ -1,0 +1,12 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule foo
+
+// CHECK-LABEL: func @main(%arg0: tensor<16xf32>) -> tensor<16xf32> {
+ENTRY %foo (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK-NEXT: %0 = "xla_hlo.neg"(%arg0) {name = "negate.2"} : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT: return %0 : tensor<16xf32>
+  ROOT %negate.2 = f32[16] negate(f32[16] %arg0.1)
+}

@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
 import os
 import tempfile
 
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -33,47 +33,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
-
-
-# TODO(cais): Refactor into own module when necessary.
-class DebugEventsDir(object):
-
-  def __init__(self, dump_root):
-    if not os.path.isdir(dump_root):
-      raise ValueError("Specified dump_root is not a directory: %s" % dump_root)
-    metadata_paths = glob.glob(os.path.join(dump_root, "*.metadata"))
-    if not metadata_paths:
-      raise ValueError("Cannot find any metadata file in directory: %s" %
-                       dump_root)
-    elif len(metadata_paths) > 1:
-      raise ValueError(
-          "Unexpected: Found multiple (%d) metadata in directory: %s" %
-          (len(metadata_paths), dump_root))
-    self._metadata_path = metadata_paths[0]
-    self._prefix = metadata_paths[0][:-len(".metadata")]
-
-    self._graph_execution_traces_path = ("%s.graph_execution_traces" %
-                                         self._prefix)
-
-  def metadata_iterator(self):
-    for r in tf_record.tf_record_iterator(self._metadata_path):
-      yield debug_event_pb2.DebugEvent.FromString(r)
-
-  # TODO(cais): Add source_files_iterator()
-  # TODO(cais): Add stack_frames_iterator()
-  # TODO(cais): Add graphs_iterator()
-  # TODO(cais): Add execution_iterator()
-
-  def graph_execution_traces_iterator(self):
-    if not os.path.isfile(self._graph_execution_traces_path):
-      raise ValueError("DebugEvent data file does not exist: %s" %
-                       self._graph_execution_traces_path)
-    for r in tf_record.tf_record_iterator(self._graph_execution_traces_path):
-      yield debug_event_pb2.DebugEvent.FromString(r)
 
 
 class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
@@ -125,8 +87,8 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
-    debug_events_dir = DebugEventsDir(self.dump_root)
-    metadata_iter = debug_events_dir.metadata_iterator()
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    metadata_iter = reader.metadata_iterator()
     # Check that the .metadata DebugEvents data file has been created, even
     # before FlushExecutionFiles() is called.
     debug_event = next(metadata_iter)
@@ -135,7 +97,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         debug_event.debug_metadata.file_version.startswith("debug.Event:"))
 
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
+    graph_trace_iter = reader.graph_execution_traces_iterator()
     # Before FlushExecutionFiles() is called, the .graph_execution_traces file
     # ought to be empty.
     with self.assertRaises(StopIteration):
@@ -143,7 +105,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
 
     # Flush the circular buffer.
     self.writer.FlushExecutionFiles()
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
+    graph_trace_iter = reader.graph_execution_traces_iterator()
 
     # The circular buffer has a size of 4. So only the data from the
     # last two iterations should have been written to self.dump_root.
@@ -200,8 +162,8 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     self.evaluate(collatz(x))
 
     self.writer.FlushExecutionFiles()
-    debug_events_dir = DebugEventsDir(self.dump_root)
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    graph_trace_iter = reader.graph_execution_traces_iterator()
     try:
       x_values = []
       timestamp = 0
@@ -248,8 +210,8 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     another_writer.Close()
 
     for debug_root in (self.dump_root, another_dump_root):
-      debug_events_dir = DebugEventsDir(debug_root)
-      graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
+      reader = debug_events_reader.DebugEventsReader(debug_root)
+      graph_trace_iter = reader.graph_execution_traces_iterator()
 
       debug_event = next(graph_trace_iter)
       trace = debug_event.graph_execution_trace

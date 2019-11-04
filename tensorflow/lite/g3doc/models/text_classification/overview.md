@@ -44,6 +44,44 @@ Here are the steps to classify a paragraph with the model:
 *   This model was trained on movie reviews dataset so you may experience
     reduced accuracy when classifying text of other domains.
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Text Classification</a>
+    </td>
+    <td rowspan = 3>
+      0.6 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>0.05ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>0.05ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+    <td>0.025ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Example output
 
 | Text                                       | Negative (0) | Positive (1) |

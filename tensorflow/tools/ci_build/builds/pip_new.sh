@@ -603,9 +603,12 @@ fi
 if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   GPU_FLAG="--gpu"
   if ! [[ $PROJECT_NAME == *"gpu"* ]]; then
-    echo "WARNING: GPU is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
-    does not include 'gpu'. Appending '_gpu' to the project name."
-    PROJECT_NAME="${PROJECT_NAME}_gpu"
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: GPU is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'gpu'. Appending '_gpu' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_gpu"
+    fi
   fi
 fi
 
@@ -634,32 +637,25 @@ echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
 run_all_tests
 
 for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
-  if [[ "${TF_NEED_CUDA}" -eq "1" ]]; then
-    # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
-    WHL_PATH=${AUDITED_WHL_NAME}
-    cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
-    echo "Copied manylinux2010 wheel file at ${WHL_PATH}"
-  else
-    if [[ ${OS_TYPE} == "ubuntu" ]]; then
-      # Avoid Python3.6 abnormality by installing auditwheel here.
-      set +e
-      pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-      pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-      sudo pip3 install auditwheel==2.0.0 || \
-        sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-      set -e
-      auditwheel --version
+  if [[ ${OS_TYPE} == "ubuntu" ]]; then
+    # Avoid Python3.6 abnormality by installing auditwheel here.
+    set +e
+    pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+    pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    sudo pip3 install auditwheel==2.0.0 || \
+      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    set -e
+    auditwheel --version
 
-      # Repair the wheels for cpu manylinux2010
-      echo "auditwheel repairing ${WHL_PATH}"
-      auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+    # Repair the wheels for cpu manylinux2010
+    echo "auditwheel repairing ${WHL_PATH}"
+    auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
-      if [[ -f ${AUDITED_WHL_NAME} ]]; then
-        WHL_PATH=${AUDITED_WHL_NAME}
-        echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
-      else
-        die "WARNING: Cannot find repaired wheel."
-      fi
+    if [[ -f ${AUDITED_WHL_NAME} ]]; then
+      WHL_PATH=${AUDITED_WHL_NAME}
+      echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
+    else
+      die "WARNING: Cannot find repaired wheel."
     fi
   fi
 done

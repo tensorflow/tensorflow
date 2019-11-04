@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the definition file for the TensorFlow SavedModel dialect.
 
-#ifdef SAVED_MODEL_DIALECT
-#else
+#ifndef SAVED_MODEL_DIALECT
 #define SAVED_MODEL_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -81,6 +79,8 @@ def TfSavedModel_Dialect : Dialect {
     `tf_saved_model.bound_input = @some_symbol_name` references a
     `tf_saved_model.global_tensor` that is bound to that function argument
     and implicitly passed in when the function is invoked from a user-level API.
+    TODO(silvasean): Consider replacing tf_saved_model.bound_input arg attrs
+    with "get_global @some_global_tensor" in the function body.
   }];
 
   let cppNamespace = "tf_saved_model";

@@ -49,5 +49,4 @@ bazel test --test_output=errors --config=opt \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} \
-  -//tensorflow/lite/... \
-  -//tensorflow/contrib/tensorrt/...
+  -//tensorflow/lite/...

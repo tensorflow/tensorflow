@@ -295,6 +295,7 @@ def generated_test_models():
         "minimum",
         "mirror_pad",
         "mul",
+        "nearest_upsample",
         "neg",
         "not_equal",
         "one_hot",

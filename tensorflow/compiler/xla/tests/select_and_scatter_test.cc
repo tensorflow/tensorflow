@@ -186,6 +186,11 @@ INSTANTIATE_TEST_CASE_P(
                                   Padding::kValid,
                                   {2, 1, 1},
                                   {3, 1, 1}},
+        SelectAndScatterTestParam{{160, 160, 8, 256},
+                                  {5, 5, 8, 256},
+                                  Padding::kSame,
+                                  {32, 32, 1, 1},
+                                  {32, 32, 1, 1}},
         SelectAndScatterTestParam{
             {9, 16, 128}, {3, 16, 128}, Padding::kValid, {3, 1, 1}, {3, 1, 1}},
         SelectAndScatterTestParam{

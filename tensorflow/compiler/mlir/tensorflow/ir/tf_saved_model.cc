@@ -149,6 +149,18 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
+  SymbolTable symbol_table(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  for (auto symbol_use : *symbol_uses) {
+    auto func =
+        symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());
+    if (func && !GetExportedNames(func).empty()) {
+      return symbol_use.getUser()
+          ->emitError("exported function cannot be internally referenced")
+          .attachNote(func.getLoc())
+          .append("references this exported function");
+    }
+  }
   return success();
 }
 

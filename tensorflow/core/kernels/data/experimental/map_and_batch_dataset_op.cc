@@ -333,7 +333,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         LOCKS_EXCLUDED(*mu_) {
       // Get the next input element.
       std::vector<Tensor> input_element;
-      bool end_of_input;
+      bool end_of_input = false;
       Status status =
           input_impl_->GetNext(ctx.get(), &input_element, &end_of_input);
       bool return_early;

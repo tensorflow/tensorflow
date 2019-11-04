@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "if_mlir_tflite", "py_binary", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
 
 package(
     default_visibility = [
@@ -30,10 +30,6 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
-    defines = if_mlir_tflite(
-        if_false = [],
-        if_true = ["TFLITE_BUILD_WITH_MLIR_CONVERTER"],
-    ),
     visibility = [
         "//tensorflow/python:__subpackages__",
     ],
@@ -48,6 +44,7 @@ cc_library(
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.
@@ -55,10 +52,7 @@ cc_library(
             "//tensorflow/core:ops",
         ],
         "//conditions:default": [],
-    }) + if_mlir_tflite(
-        if_false = [],
-        if_true = ["//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer"],
-    ),
+    }),
     alwayslink = True,
 )
 

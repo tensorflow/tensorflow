@@ -123,6 +123,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status Preprocess(const HloInstruction* hlo) override;
   Status Postprocess(const HloInstruction* hlo) override;
 
+  // Decorates shape_size_ by returning 0 immediately if the shape does not have
+  // a layout.
+  int64 GetShapeSize(const Shape& shape) const;
+
   // Set the rates used to calculate the time taken by the computation. These
   // need to be set before visiting starts.
   void set_flops_per_second(float value) {
@@ -161,6 +165,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     return GetProperty(key, properties());
   }
 
+  // Returns the specified per-second rate used by cost analysis.
+  const float per_second_rate(const string& key) const {
+    return GetProperty(key, per_second_rates_);
+  }
+
  protected:
   typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
 
@@ -193,10 +202,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // the key maps to in the properties of the given hlo.
   static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
                                  const HloToProperties& hlo_to_properties);
-
-  // Decorates shape_size_ by returning 0 immediately if the shape does not have
-  // a layout.
-  int64 GetShapeSize(const Shape& shape) const;
 
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.

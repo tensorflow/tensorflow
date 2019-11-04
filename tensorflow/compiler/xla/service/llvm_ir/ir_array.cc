@@ -137,7 +137,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK_EQ(multidim_.size(), output_shape.rank());
-  std::vector<std::pair<int64, int64>> common_factors =
+  const auto common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(

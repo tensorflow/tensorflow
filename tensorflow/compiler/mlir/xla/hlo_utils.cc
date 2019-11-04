@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/literal.h"
 
 namespace xla {

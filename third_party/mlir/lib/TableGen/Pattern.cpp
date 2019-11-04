@@ -480,8 +480,14 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
 
     std::vector<std::string> entities;
     entities.reserve(dagInit->arg_size());
-    for (auto *argName : dagInit->getArgNames())
+    for (auto *argName : dagInit->getArgNames()) {
+      if (!argName) {
+        PrintFatalError(
+            def.getLoc(),
+            "operands to additional constraints can only be symbol references");
+      }
       entities.push_back(argName->getValue());
+    }
 
     ret.emplace_back(cast<llvm::DefInit>(dagInit->getOperator())->getDef(),
                      dagInit->getNameStr(), std::move(entities));

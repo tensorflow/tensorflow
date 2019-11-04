@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
+#include <memory>
+
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -86,10 +88,9 @@ Status RemoteMgr::DeleteTensorHandle(
   return Status::OK();
 }
 
-Status RemoteMgr::SerializeRemoteTensorHandle(TensorHandle* in,
-                                              RemoteTensorHandle* out,
-                                              Device* device,
-                                              const string& device_name) {
+Status RemoteMgr::SerializeRemoteTensorHandle(
+    TensorHandle* in, RemoteTensorHandle* out, Device* device,
+    const string& device_name, const bool serialize_resource_dtype_and_shape) {
   int64 op_id;
   int32 output_num;
   if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
@@ -109,6 +110,17 @@ Status RemoteMgr::SerializeRemoteTensorHandle(TensorHandle* in,
   out->set_op_device(in->op_device() ? in->op_device()->name() : "");
   out->set_device(device_name);
   out->set_dtype(in->dtype);
+  if (serialize_resource_dtype_and_shape) {
+    std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+    TF_RETURN_IF_ERROR(
+        in->GetResourceHandleDtypesAndShapes(&resource_dtypes_and_shapes));
+    for (const auto& dtype_and_shape : resource_dtypes_and_shapes) {
+      ResourceDtypeAndShape* dtype_and_shape_proto =
+          out->add_resource_dtypes_and_shapes();
+      dtype_and_shape_proto->set_dtype(dtype_and_shape.dtype);
+      dtype_and_shape.shape.AsProto(dtype_and_shape_proto->mutable_shape());
+    }
+  }
   return Status::OK();
 }
 
@@ -137,6 +149,13 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     remote_handle_data->ReleaseRemoteTensorHandle();
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
         std::move(remote_handle_data), in.dtype(), device, parent_, out));
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+    for (const auto& dtype_and_shape_proto : in.resource_dtypes_and_shapes()) {
+      dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{
+          dtype_and_shape_proto.dtype(),
+          TensorShape(dtype_and_shape_proto.shape())});
+    }
+    (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
   return Status::OK();

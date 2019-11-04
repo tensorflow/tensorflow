@@ -218,7 +218,7 @@ class Rendezvous {
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
           "participant for device ordinal %d, stream %p waiting for all "
-          "participants to be arrive at rendezvous %s",
+          "participants to arrive at rendezvous %s",
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 

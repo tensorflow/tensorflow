@@ -28,7 +28,12 @@ module attributes {tf_saved_model.semantics} {
     tensor<f32> {tf_saved_model.index_path = [0, "bar"]}
   ) attributes { tf_saved_model.exported_names = ["some_func"] }
   {
+    "some_dialect.some_call"() {callee = @f} : () -> ()
     return %arg0 : tensor<f32>
+  }
+
+  func @f() {
+    return
   }
 
 }

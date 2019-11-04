@@ -45,7 +45,8 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(
   return tensorflow::GraphdefToMlirTranslateFunction(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
+      /*add_pseudo_input_nodes=*/false, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -56,7 +57,8 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
+      /*add_pseudo_input_nodes=*/false, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
@@ -68,6 +70,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
+  confs.graph_as_function = graph_as_function;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {

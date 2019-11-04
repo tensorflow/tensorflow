@@ -577,11 +577,13 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     return absl::make_unique<PyLocalBuffer>(on_host_shape_, src_device_buffer,
                                             client_);
   }
-  DeviceState& src_device = client_->device_state(device_ordinal_);
+  int transfer_device_ordinal = client_->EnqueueD2DTransfersOnSrcStream()
+                                    ? device_ordinal_
+                                    : dst_device_ordinal;
+  DeviceState& transfer_device = client_->device_state(transfer_device_ordinal);
   const DeviceState& dst_device = client_->device_state(dst_device_ordinal);
 
-  se::Stream* src_device_to_device_stream =
-      src_device.GetDeviceToDeviceStream();
+  se::Stream* transfer_stream = transfer_device.GetDeviceToDeviceStream();
 
   TransferManager* transfer_manager =
       client_->client()->backend().transfer_manager();
@@ -591,12 +593,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
           on_host_shape_, client_->allocator(), dst_device_ordinal));
   if (!transfer_manager->CanShapedBufferBeAccessedNow(
           dst_device.compute_stream()->parent(), dst_buffer)) {
-    src_device_to_device_stream->ThenWaitFor(dst_device.compute_stream());
+    transfer_stream->ThenWaitFor(dst_device.compute_stream());
   }
   TF_ASSIGN_OR_RETURN(ShapedBuffer src_buffer, AsShapedBuffer());
 
-  WaitForBufferDefinitionEventsOnStream(*src_device_buffer,
-                                        src_device_to_device_stream);
+  WaitForBufferDefinitionEventsOnStream(*src_device_buffer, transfer_stream);
 
   // Copy the leaf buffers.
   for (const auto& leaf : src_buffer.buffers().leaves()) {
@@ -606,14 +607,13 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     TF_RET_CHECK(input_buffer.size() == output_buffer.size())
         << "input: " << input_buffer.size()
         << " output: " << output_buffer.size();
-    TF_RETURN_IF_ERROR(src_device.ThenMemcpyDeviceToDevice(
-        src_device_to_device_stream, dst_device.compute_stream(), input_buffer,
+    TF_RETURN_IF_ERROR(transfer_device.ThenMemcpyDeviceToDevice(
+        transfer_stream, dst_device.compute_stream(), input_buffer,
         output_buffer));
   }
 
   // We hold on to the `src_device_buffer` until the transfer is finished.
-  src_device.ThenRelease(src_device_to_device_stream,
-                         std::move(src_device_buffer));
+  transfer_device.ThenRelease(transfer_stream, std::move(src_device_buffer));
 
   // Write new tuple buffers. The destination buffers have different addresses,
   // so we must construct tuple buffers from scratch instead of copying them.
@@ -624,16 +624,14 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     // We need a single definition event, so make the device to device stream
     // wait for the stream that wrote the tuple index tables on the destination
     // device.
-    src_device_to_device_stream->ThenWaitFor(
-        dst_device.host_to_device_stream());
+    transfer_stream->ThenWaitFor(dst_device.host_to_device_stream());
   }
 
   auto definition_event = std::make_shared<BufferDefinitionEvent>();
-  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
-                      src_device.event_pool().ThenAllocateAndRecordEvent(
-                          src_device_to_device_stream));
-  definition_event->SetDefinitionEvent(std::move(event),
-                                       src_device_to_device_stream);
+  TF_ASSIGN_OR_RETURN(
+      EventPool::Handle event,
+      transfer_device.event_pool().ThenAllocateAndRecordEvent(transfer_stream));
+  definition_event->SetDefinitionEvent(std::move(event), transfer_stream);
 
   std::shared_ptr<SharedDeviceBuffer> dst_device_buffer =
       SharedDeviceBuffer::FromScopedShapedBuffer(std::move(dst_buffer),

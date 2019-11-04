@@ -682,7 +682,8 @@ global_generator = None
 def get_global_generator():
   global global_generator
   if global_generator is None:
-    global_generator = Generator.from_non_deterministic_state()
+    with ops.init_scope():
+      global_generator = Generator.from_non_deterministic_state()
   return global_generator
 
 

@@ -398,6 +398,18 @@ string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a bfloat.
+string RoundTripFpToString(tensorflow::bfloat16 value);
+
+// Returns a string which can losslessly round trip to a fp16.
+string RoundTripFpToString(Eigen::half value);
+
+// Returns a string which can losslessly round trip to a float.
+string RoundTripFpToString(float value);
+
+// Returns a string which can losslessly round trip to a double.
+string RoundTripFpToString(double value);
+
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
@@ -484,8 +496,8 @@ int64 Product(absl::Span<const int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b);
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);

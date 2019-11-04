@@ -409,7 +409,7 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
-/// Represents a thread used to run a Tensorflow function.
+/// Represents a thread used to run a TensorFlow function.
 class Thread {
  public:
   Thread() {}

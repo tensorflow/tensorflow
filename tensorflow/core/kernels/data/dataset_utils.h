@@ -119,12 +119,11 @@ Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
 
-// Creates a connection between "child" and "parent" cancellation managers so
-// that parent cancellations are propagated to the child, returning a function
-// that can be used to remove the connection.
-Status ConnectCancellationManagers(CancellationManager* parent,
-                                   CancellationManager* child,
-                                   std::function<void()>* deregister_fn);
+// Registers the given cancellation callback, returning a function that can be
+// used to deregister the callback.
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> register_fn,
+                                    std::function<void()>* deregister_fn);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.

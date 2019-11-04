@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -246,69 +247,13 @@ void ConvertOp::build(Builder* builder, OperationState& result, Value* operand,
   build(builder, result, result_ty, operand);
 }
 
-namespace {
-
-// Converts the values of an ElementsAttr into the corresponding type.
-ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
-  auto oldType = getElementTypeOrSelf(elements);
-  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
-
-  if (oldType.isa<FloatType>()) {
-    // mapValues always takes a function returning APInt, even when the output
-    // is actually float.
-    using func_type = APInt(const APFloat&);
-    if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-      // Float -> Float
-      return elements.mapValues(
-          newType, llvm::function_ref<func_type>([&newFloatType](
-                                                     const APFloat& floatVal) {
-            APFloat newDouble(FloatAttr::getValueAsDouble(floatVal));
-            bool losesInfo = false;
-            newDouble.convert(newFloatType.getFloatSemantics(),
-                              llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-            return newDouble.bitcastToAPInt();
-          }));
-    }
-    // Float -> Int
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&bitWidth](const APFloat& floatVal) {
-          return APInt(bitWidth, FloatAttr::getValueAsDouble(floatVal));
-        }));
-  }
-
-  // oldType is Integer
-  // mapValues always takes a function returning APInt, even when the output
-  // is actually float.
-  using func_type = APInt(const APInt&);
-  if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-    // Int -> Float
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
-          APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
-          bool losesInfo = false;
-          newDouble.convert(newFloatType.getFloatSemantics(),
-                            llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-          return newDouble.bitcastToAPInt();
-        }));
-  }
-  // newType is Integer
-  // Int -> Int
-  return elements.mapValues(
-      newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
-        return APInt(bitWidth, intVal.getSExtValue());
-      }));
-}
-
-}  // namespace
-
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (getOperand()->getType() == getResult()->getType()) return getOperand();
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return ConvertElements(elementsAttr, getElementTypeOrSelf(getResult()));
+    return xla::ConvertElementsAttr(elementsAttr,
+                                    getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -493,6 +438,51 @@ static LogicalResult Verify(ClampOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ComplexOp
+//===----------------------------------------------------------------------===//
+
+void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
+                      Value* rhs) {
+  auto type = lhs->getType();
+  auto element_ty = mlir::ComplexType::get(getElementTypeOrSelf(type));
+  Type result_ty;
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.isa<UnrankedTensorType>()) {
+    result_ty = UnrankedTensorType::get(element_ty);
+  } else {
+    result_ty = element_ty;
+  }
+
+  build(builder, state, result_ty, lhs, rhs);
+}
+
+namespace {
+Type CreateRealType(Type type) {
+  auto element_ty = getElementTypeOrSelf(type);
+  if (auto complex_ty = element_ty.dyn_cast<ComplexType>()) {
+    element_ty = complex_ty.getElementType();
+  }
+
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_ty);
+  }
+
+  return element_ty;
+}
+}  // namespace
+
+void ImagOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
+}
+
+void RealOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
 }
 
 //===----------------------------------------------------------------------===//
@@ -791,6 +781,7 @@ BINARY_BUILDER(MinOp);
 BINARY_BUILDER(AndOp);
 BINARY_BUILDER(OrOp);
 BINARY_BUILDER(RemOp);
+BINARY_BUILDER(PowOp);
 
 #undef BINARY_BUILDER
 

@@ -734,6 +734,7 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:test_util",

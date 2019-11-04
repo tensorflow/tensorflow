@@ -60,8 +60,8 @@ class DeviceState {
   // fashion amongst the available streams.
   se::Stream* GetDeviceToDeviceStream();
 
-  // Enqueues a copy of `src_buffer` to `dst_buffer` onto `src_stream`.
-  virtual Status ThenMemcpyDeviceToDevice(se::Stream* src_stream,
+  // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
+  virtual Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
                                           se::Stream* dst_stream,
                                           se::DeviceMemoryBase src_buffer,
                                           se::DeviceMemoryBase dst_buffer);

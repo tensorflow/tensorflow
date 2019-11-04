@@ -149,7 +149,7 @@ class Delegate {
                                                 &properties));
     cl::InferenceOptions options;
     options.allow_precision_loss = options_.is_precision_loss_allowed != 0;
-    options.priority = cl::InferencePriority::MAX_PRECISION;
+    options.priority = cl::InferencePriority::MIN_LATENCY;
     RETURN_IF_ERROR(cl_environment_->NewInferenceBuilder(
         options, std::move(*graph), builder));
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,

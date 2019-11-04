@@ -398,20 +398,21 @@ tf_native_cc_binary(
     ],
 )
 
-genrule(
+gentbl(
     name = "operator_converter_inc",
-    srcs = [
-        "ir/tfl_ops.td",
+    tbl_outs = [
+        (
+            "",  # This driver has no options.
+            "operator_converters.inc",
+        ),
+    ],
+    tblgen = ":operator-converter-gen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
-    outs = [
-        "operator_converters.inc",
-    ],
-    cmd = ("$(location :operator-converter-gen) " +
-           "-I external/local_config_mlir/include " +
-           "-I external/org_tensorflow " +
-           "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = [":operator-converter-gen"],
+    test = 1,
 )
 
 cc_library(

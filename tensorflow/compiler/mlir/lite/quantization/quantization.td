@@ -19,13 +19,11 @@ limitations under the License.
 #else
 #define TF_Quantization
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef DIALECT_QUANTOPS_QUANT_PREDICATES_
-#else
+#ifndef DIALECT_QUANTOPS_QUANT_PREDICATES_
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
 #endif // DIALECT_QUANTOPS_QUANT_PREDICATES_
 

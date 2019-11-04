@@ -1443,7 +1443,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ragged_to_dense_util",
     ],
 )
@@ -4320,7 +4320,6 @@ tf_kernel_library(
     srcs = [
         "conv_grad_filter_ops.cc",
         "conv_grad_input_ops.cc",
-        "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
     ] + select({
@@ -4346,6 +4345,7 @@ tf_kernel_library(
     }),
     prefix = "conv_ops",
     deps = [
+        ":conv_grad_shape_utils",
         ":bounds_check",
         ":conv_2d",
         ":conv_3d",
@@ -4380,6 +4380,24 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:rocblas_plugin",
         "//tensorflow/core/platform/default/build_config:miopen_plugin",
     ]),
+)
+
+cc_library(
+    name = "conv_grad_shape_utils",
+    srcs = [
+        "conv_grad_shape_utils.cc",
+    ],
+    hdrs = [
+        "conv_grad_shape_utils.h",
+    ],
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+    ],
 )
 
 tf_kernel_library(
@@ -6373,8 +6391,9 @@ filegroup(
         "conv_2d.h",
         "conv_grad_filter_ops.cc",
         "conv_grad_input_ops.cc",
-        "conv_grad_ops.cc",
         "conv_grad_ops.h",
+        "conv_grad_shape_utils.h",
+        "conv_grad_shape_utils.cc",
         "conv_ops.cc",
         "conv_ops_3d.cc",
         "conv_ops_fused_double.cc",

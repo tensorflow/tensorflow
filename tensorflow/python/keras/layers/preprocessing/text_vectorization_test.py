@@ -28,6 +28,7 @@ from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
 
 from tensorflow.python import keras
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
@@ -48,12 +49,8 @@ def get_layer_class():
     return text_vectorization_v1.TextVectorization
 
 
-@keras_parameterized.run_all_keras_modes
-class TextVectorizationLayerTest(keras_parameterized.TestCase,
-                                 preprocessing_test_utils.PreprocessingLayerTest
-                                ):
-
-  @parameterized.named_parameters(
+def _get_end_to_end_test_cases():
+  test_cases = (
       {
           "testcase_name":
               "test_simple_tokens_int_mode",
@@ -200,24 +197,64 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
               "split": text_vectorization.SPLIT_ON_WHITESPACE,
               "output_mode": text_vectorization.TFIDF
           },
-          "expected_output":
-              [[0., 0.847298, 0.847298, 0., 0.], [0., 0., 0., 1.098612, 0.],
-               [0., 0., 0., 0., 2.197225], [1.609438, 0.847298, 0., 0., 0.]],
+          "expected_output": [[0., 0.847298, 0.847298, 0., 0.],
+                              [0., 0., 0., 1.098612, 0.],
+                              [0., 0., 0., 0., 2.197225],
+                              [1.609438, 0.847298, 0., 0., 0.]],
       },
   )
+
+  crossed_test_cases = []
+  # Cross above test cases with use_dataset in (True, False)
+  for use_dataset in (True, False):
+    for case in test_cases:
+      case = case.copy()
+      if use_dataset:
+        case["testcase_name"] = case["testcase_name"] + "_with_dataset"
+      case["use_dataset"] = use_dataset
+      crossed_test_cases.append(case)
+
+  return crossed_test_cases
+
+
+@keras_parameterized.run_all_keras_modes
+class TextVectorizationLayerTest(keras_parameterized.TestCase,
+                                 preprocessing_test_utils.PreprocessingLayerTest
+                                ):
+
+  @parameterized.named_parameters(*_get_end_to_end_test_cases())
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
-                                       expected_output):
+                                       use_dataset, expected_output):
     cls = get_layer_class()
     if kwargs.get("output_mode") == text_vectorization.TFIDF:
       expected_output_dtype = dtypes.float32
     else:
       expected_output_dtype = dtypes.int64
+    input_shape = input_data.shape
+
+    if use_dataset:
+      # Keras APIs expect batched datasets.
+      # TODO(rachelim): `model.predict` predicts the result on each
+      # dataset batch separately, then tries to concatenate the results
+      # together. When the results have different shapes on the non-concat
+      # axis (which can happen in the output_mode = INT case for
+      # TextVectorization), the concatenation fails. In real use cases, this may
+      # not be an issue because users are likely to pipe the preprocessing layer
+      # into other keras layers instead of predicting it directly. A workaround
+      # for these unit tests is to have the dataset only contain one batch, so
+      # no concatenation needs to happen with the result. For consistency with
+      # numpy input, we should make `predict` join differently shaped results
+      # together sensibly, with 0 padding.
+      input_data = dataset_ops.Dataset.from_tensor_slices(input_data).batch(
+          input_shape[0])
+      vocab_data = dataset_ops.Dataset.from_tensor_slices(vocab_data).batch(
+          input_shape[0])
 
     with CustomObjectScope({"TextVectorization": cls}):
       output_data = testing_utils.layer_test(
           cls,
           kwargs=kwargs,
-          input_shape=(None),
+          input_shape=input_shape,
           input_data=input_data,
           input_dtype=dtypes.string,
           expected_output_dtype=expected_output_dtype,
@@ -1028,34 +1065,82 @@ class TextVectorizationCombinerTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
+  def compare_text_accumulators(self, a, b, msg=None):
+    if a is None or b is None:
+      self.assertAllEqual(a, b, msg=msg)
+
+    self.assertAllEqual(a.count_dict, b.count_dict, msg=msg)
+    self.assertAllEqual(a.metadata, b.metadata, msg=msg)
+
+    if a.per_doc_count_dict is not None:
+
+      def per_doc_counts(accumulator):
+        count_values = [
+            count_dict["count"]
+            for count_dict in accumulator.per_doc_count_dict.values()
+        ]
+        return dict(zip(accumulator.per_doc_count_dict.keys(), count_values))
+
+      self.assertAllEqual(per_doc_counts(a), per_doc_counts(b), msg=msg)
+
+  compare_accumulators = compare_text_accumulators
+
+  def update_accumulator(self, accumulator, data):
+    accumulator.count_dict.update(dict(zip(data["vocab"], data["counts"])))
+    accumulator.metadata[0] = data["num_documents"]
+
+    if "document_counts" in data:
+      create_dict = lambda x: {"count": x, "last_doc_id": -1}
+      idf_count_dicts = [
+          create_dict(count) for count in data["document_counts"]
+      ]
+      idf_dict = dict(zip(data["vocab"], idf_count_dicts))
+
+      accumulator.per_doc_count_dict.update(idf_dict)
+
+    return accumulator
+
   def test_combiner_api_compatibility_int_mode(self):
     data = np.array([["earth", "wind", "and", "fire"],
                      ["earth", "wind", "and", "michigan"]])
     combiner = text_vectorization._TextVectorizationCombiner(compute_idf=False)
-    expected = {
+    expected_accumulator_output = {
         "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "counts": np.array([2, 2, 2, 1, 1]),
+        "num_documents": np.array(2),
     }
+    expected_extract_output = {
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
+    }
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
     self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected)
+                                                        expected_accumulator)
     self.validate_accumulator_uniqueness(combiner, data)
+    self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
   def test_combiner_api_compatibility_tfidf_mode(self):
     data = np.array([["earth", "wind", "and", "fire"],
                      ["earth", "wind", "and", "michigan"]])
     combiner = text_vectorization._TextVectorizationCombiner(compute_idf=True)
     expected_extract_output = {
-        "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
         "idf": np.array([0.510826, 0.510826, 0.510826, 0.693147, 0.693147]),
         "oov_idf": np.array([1.098612])
     }
     expected_accumulator_output = {
-        "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
         "counts": np.array([2, 2, 2, 1, 1]),
         "document_counts": np.array([2, 2, 2, 1, 1]),
-        "num_documents": np.array(1),
+        "num_documents": np.array(2),
     }
-    self.validate_accumulator_serialize_and_deserialize(
-        combiner, data, expected_accumulator_output)
+
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
+    self.validate_accumulator_serialize_and_deserialize(combiner, data,
+                                                        expected_accumulator)
     self.validate_accumulator_uniqueness(combiner, data)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
@@ -1071,13 +1156,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               3,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.693147, 0.847298, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1091,13 +1176,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               10,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1111,13 +1196,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               None,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1133,7 +1218,7 @@ class TextVectorizationCombinerTest(
               "num_documents": np.array(5),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.980829, 1.252763, 1.252763]),
               "oov_idf": np.array([1.791759]),
           },
@@ -1157,7 +1242,7 @@ class TextVectorizationCombinerTest(
               "num_documents": np.array(5),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "earth", "fire"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.980829, 1.252763, 1.252763]),
               "oov_idf": np.array([1.791759]),
           },
@@ -1170,8 +1255,9 @@ class TextVectorizationCombinerTest(
                                 compute_idf=True):
     combiner = text_vectorization._TextVectorizationCombiner(
         vocab_size=vocab_size, compute_idf=compute_idf)
-    expected_accumulator = combiner._create_accumulator(
-        **expected_accumulator_output)
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
