@@ -93,6 +93,31 @@ class CpuUtils {
     }
     // Returning dummy clock when can't access to the counter
     return DUMMY_CYCLE_CLOCK;
+#elif defined(__powerpc64__)
+    do {							
+      unsigned long long int __t;
+      __asm__ __volatile__ (	
+        "mfspr %0,268                  \n"	
+        : "=r" (__t));
+      return __t;
+    } while (0);
+#elif defined(__powerpc__) || defined(__ppc__) 
+    unsigned long long int result=0;
+    unsigned long int upper, lower,tmp;
+    __asm__ volatile(
+                "0:                     \n"
+                "\tmftbu   %0           \n"
+                "\tmftb    %1           \n"
+                "\tmftbu   %2           \n"
+                "\tcmpw    %2,%0        \n"
+                "\tbne     0b           \n"
+                : "=r"(upper),"=r"(lower),"=r"(tmp)
+                );
+    result = upper;
+    result = result<<32;
+    result = result|lower;
+
+    return(result);
 #else
     // TODO(satok): Support generic way to emulate clock count.
     // TODO(satok): Support other architectures if wanted.

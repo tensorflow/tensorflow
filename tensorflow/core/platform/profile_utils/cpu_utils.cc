@@ -80,12 +80,19 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   }
   string line;
   while (std::getline(cpuinfo, line)) {
-    double bogomips;
-    const int retval_of_bogomips =
-        sscanf(line.c_str(), "bogomips : %lf", &bogomips);
-    if (retval_of_bogomips > 0) {
-      const double freq_ghz = bogomips / 1000.0 / 2.0;
-      if (retval_of_bogomips != 1 || freq_ghz < 0.01) {
+    double cpu_freq = 0.0;
+    int retval = 0;
+    double freq_factor = 2.0;
+#if (defined(__powerpc__) ||                                             \
+     defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+    retval = sscanf(line.c_str(), "clock              : %lfMHz", &cpu_freq);
+    freq_factor = 1.0;
+#else
+    retval = sscanf(line.c_str(), "bogomips : %lf", &cpu_freq);
+#endif
+    if (retval > 0) {
+      const double freq_ghz = cpu_freq / 1000.0 / freq_factor;
+      if (retval != 1 || freq_ghz < 0.01) {
         LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
         return INVALID_FREQUENCY;
       }
@@ -95,7 +102,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
       return freq_n;
     }
   }
-  LOG(WARNING) << "Failed to find bogomips in /proc/cpuinfo; cannot determine "
+  LOG(WARNING) << "Failed to find bogomips or clock in /proc/cpuinfo; cannot determine "
                   "CPU frequency";
   return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
