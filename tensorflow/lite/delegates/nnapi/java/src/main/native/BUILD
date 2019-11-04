@@ -18,6 +18,8 @@ cc_library(
         "notap",
     ],
     deps = [
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/java/jni",
     ],
