@@ -1294,7 +1294,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_oss",  # TODO(b/142818120): Re-enable.
-        "no_rocm",
     ],
 )
 
@@ -2756,7 +2755,6 @@ cuda_py_test(
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
     xla_enable_strict_auto_jit = True,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3854,7 +3852,6 @@ cuda_py_test(
     ],
     shard_count = 10,
     xla_enable_strict_auto_jit = True,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(

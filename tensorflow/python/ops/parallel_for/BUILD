@@ -121,7 +121,6 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     xla_enable_strict_auto_jit = True,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
