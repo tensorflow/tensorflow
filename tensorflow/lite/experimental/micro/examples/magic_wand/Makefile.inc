@@ -37,7 +37,7 @@ GESTURE_PREDICTOR_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/constants.h \
 tensorflow/lite/experimental/micro/examples/magic_wand/gesture_predictor.h \
 
-magic_wand_TEST_SRCS := \
+magic_wand_TEST_SRCS += \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_test.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.cc \
