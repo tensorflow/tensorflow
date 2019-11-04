@@ -42,13 +42,18 @@ namespace {
 // modifies the quantizable parameter based on the user's specified
 // operator_names.
 operator_property::OperatorProperty GetOperatorProperty(
-    const std::unordered_set<string>& operator_names, const BuiltinOperator& op,
-    const string& operator_name) {
+    const std::unordered_set<string>& operator_names, const ModelT* model,
+    int subgraph_index, int op_idx, const string& operator_name) {
   operator_property::OperatorProperty property =
-      operator_property::GetOperatorProperty(op);
+      operator_property::GetOperatorProperty(model, subgraph_index, op_idx);
+  const OperatorT* op =
+      model->subgraphs[subgraph_index]->operators[op_idx].get();
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
   // The algorithm adds Dequantize and Quantize, so we don't require them to be
   // in the operator_names.
-  if (op != BuiltinOperator_DEQUANTIZE && op != BuiltinOperator_QUANTIZE) {
+  if (op_code != BuiltinOperator_DEQUANTIZE &&
+      op_code != BuiltinOperator_QUANTIZE) {
     property.quantizable =
         property.quantizable &&
         (operator_names.find(operator_name) != operator_names.end());
@@ -290,10 +295,9 @@ TfLiteStatus ApplyConstraints(ModelT* model,
     // Iterate backward to avoid messing with index.
     for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
-      const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property = GetOperatorProperty(
-          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
+      operator_property::OperatorProperty property =
+          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
+                              subgraph->tensors[op->outputs[0]]->name);
       if (!property.quantizable) {
         continue;
       }
@@ -585,8 +589,9 @@ TfLiteStatus QuantizeWeightsInputOutput(
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property = GetOperatorProperty(
-          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
+      operator_property::OperatorProperty property =
+          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
+                              subgraph->tensors[op->outputs[0]]->name);
 
       if (!property.quantizable && !allow_float) {
         error_reporter->Report("Quantization not yet supported for op: %s",
@@ -623,8 +628,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property = GetOperatorProperty(
-          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
+      operator_property::OperatorProperty property =
+          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
+                              subgraph->tensors[op->outputs[0]]->name);
       if (!property.quantizable) {
         continue;
       }
@@ -697,10 +703,9 @@ TfLiteStatus FillQuantizationParams(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
-      const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property = GetOperatorProperty(
-          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
+      operator_property::OperatorProperty property =
+          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
+                              subgraph->tensors[op->outputs[0]]->name);
 
       // Populate max, min for each input tensor.
       for (const std::pair<int, operator_property::TensorProperty>& input :
@@ -785,10 +790,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
-      const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property = GetOperatorProperty(
-          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
+      operator_property::OperatorProperty property =
+          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
+                              subgraph->tensors[op->outputs[0]]->name);
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {

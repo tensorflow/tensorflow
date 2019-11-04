@@ -71,7 +71,8 @@ struct OperatorProperty {
   int version = 1;
 };
 
-OperatorProperty GetOperatorProperty(const BuiltinOperator& op);
+OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
+                                     int op_index);
 
 }  // namespace operator_property
 }  // namespace optimize
