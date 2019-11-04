@@ -1,5 +1,7 @@
 package(
     default_visibility = [
+        "//tensorflow/c/experimental/filesystem:__pkg__",
+        "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:env uses :path
@@ -8,7 +10,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
+# TODO(bmzhao): Remaining targets to add to this BUILD file are:
 # block, block_builder, buffered_inputstream, format, inputbuffer,
 # random_inputstream, record_reader, record_writer, snappy/snappy_inputbuffer
 # snappy/snappy_outputbuffer, table, table_builder, two_level_iterator,
