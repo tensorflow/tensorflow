@@ -13,8 +13,12 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
+        clean_dep("//tensorflow:android_arm64"): [
+            "-O3",
+        ],
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
+            "-O3",
         ],
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
@@ -26,9 +30,6 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        clean_dep("//tensorflow:optimized"): ["-O3"],
-        "//conditions:default": [],
     })
 
     return copts
