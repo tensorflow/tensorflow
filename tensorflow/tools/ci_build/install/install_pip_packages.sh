@@ -87,10 +87,7 @@ pip2 install pandas==0.19.2
 pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
-<<<<<<< HEAD
-=======
 # 5.6.4 fails to pip2 install. TODO(b/143872855): remove pinning once fixed.
->>>>>>> upstream/master
 pip2 install psutil==5.6.3
 pip3 install psutil==5.6.3
 pip2 install py-cpuinfo

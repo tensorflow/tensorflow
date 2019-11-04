@@ -294,12 +294,9 @@ def tf_copts(
         ]) +
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
-<<<<<<< HEAD
-        if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
-=======
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
->>>>>>> upstream/master
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
+        if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
         if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
