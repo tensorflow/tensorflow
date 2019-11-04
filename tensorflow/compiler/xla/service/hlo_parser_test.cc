@@ -614,6 +614,8 @@ ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
 
 )"
 },
+
+#ifndef TENSORFLOW_USE_ROCM
 // Triangular solve
 {
 "TriangularSolve",
@@ -627,6 +629,8 @@ ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] 
 
 )"
 },
+#endif //TENSORFLOW_USE_ROCM
+
 // Dynamic slice
 {
 "DynamicSlice",
