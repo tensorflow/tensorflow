@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 
-#include "third_party/llvm/llvm/include/llvm/IR/BasicBlock.h"
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/statusor.h"
 

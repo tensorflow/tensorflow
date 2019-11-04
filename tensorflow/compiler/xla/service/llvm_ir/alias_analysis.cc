@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 
 #include "absl/container/flat_hash_set.h"
-#include "third_party/llvm/llvm/include/llvm/IR/MDBuilder.h"
+#include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"

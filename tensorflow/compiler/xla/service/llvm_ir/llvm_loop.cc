@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Constants.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"

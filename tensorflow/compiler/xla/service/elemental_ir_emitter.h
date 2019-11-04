@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"

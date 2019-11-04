@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/dump.h"

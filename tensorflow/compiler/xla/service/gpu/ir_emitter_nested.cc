@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 
-#include "third_party/llvm/llvm/include/llvm/IR/BasicBlock.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Function.h"
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

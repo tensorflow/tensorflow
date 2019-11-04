@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 
 #include "absl/memory/memory.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {

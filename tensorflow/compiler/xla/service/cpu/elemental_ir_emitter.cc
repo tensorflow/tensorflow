@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/llvm/llvm/include/llvm/IR/Instructions.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"

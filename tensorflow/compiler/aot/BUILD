@@ -73,9 +73,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/llvm/llvm:support",  # fixdeps: keep
-        "//third_party/llvm/llvm:x86_target",  # fixdeps: keep
         "@com_google_absl//absl/strings",
+        "@llvm//:support",  # fixdeps: keep
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -102,12 +102,12 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/llvm/llvm:aarch64_target",  # fixdeps: keep
-        "//third_party/llvm/llvm:arm_target",  # fixdeps: keep
-        "//third_party/llvm/llvm:powerpc_target",  # fixdeps: keep
-        "//third_party/llvm/llvm:target_base",
-        "//third_party/llvm/llvm:x86_target",  # fixdeps: keep
         "@com_google_absl//absl/strings",
+        "@llvm//:aarch64_code_gen",  # fixdeps: keep
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:powerpc_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -201,12 +201,12 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "//third_party/llvm/llvm:ir",
-        "//third_party/llvm/llvm:support",
-        "//third_party/llvm/llvm:target_base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm//:core",
+        "@llvm//:support",
+        "@llvm//:target",
     ],
 )
 

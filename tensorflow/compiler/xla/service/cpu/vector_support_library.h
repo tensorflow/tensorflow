@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

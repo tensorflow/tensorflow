@@ -19,7 +19,7 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "third_party/llvm/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"

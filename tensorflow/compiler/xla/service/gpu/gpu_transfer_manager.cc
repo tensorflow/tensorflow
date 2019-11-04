@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "third_party/llvm/llvm/include/llvm/IR/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"

@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/core/lib/core/status.h"

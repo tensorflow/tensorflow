@@ -1076,7 +1076,7 @@ cc_library(
     deps = [
         ":compiler",
         "//tensorflow/core:lib_internal",
-        "//third_party/llvm/llvm:ir",
+        "@llvm//:core",
     ],
 )
 
@@ -3517,11 +3517,11 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/llvm/llvm:ir",
-        "//third_party/llvm/llvm:transform_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm//:core",
+        "@llvm//:transform_utils",
     ],
 )
 

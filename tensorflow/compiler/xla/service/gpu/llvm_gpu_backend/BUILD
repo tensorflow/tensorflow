@@ -35,23 +35,23 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:traceme",
-        "//third_party/llvm/llvm:analysis",
-        "//third_party/llvm/llvm:bit_reader",
-        "//third_party/llvm/llvm:bit_writer",
-        "//third_party/llvm/llvm:codegen",
-        "//third_party/llvm/llvm:ipo_transforms",
-        "//third_party/llvm/llvm:ir",
-        "//third_party/llvm/llvm:ir_reader",
-        "//third_party/llvm/llvm:linker",
-        "//third_party/llvm/llvm:nvptx_target",  # buildcleaner: keep
-        "//third_party/llvm/llvm:objcarc_transforms",  # buildcleaner: keep
-        "//third_party/llvm/llvm:scalar_transforms",
-        "//third_party/llvm/llvm:support",
-        "//third_party/llvm/llvm:target_base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm//:amdgpu_code_gen",
+        "@llvm//:analysis",
+        "@llvm//:bit_reader",
+        "@llvm//:bit_writer",
+        "@llvm//:code_gen",
+        "@llvm//:core",
+        "@llvm//:ipo",
+        "@llvm//:ir_reader",
+        "@llvm//:linker",
+        "@llvm//:nvptx_code_gen",  # buildcleaner: keep
+        "@llvm//:objc_arc",  # buildcleaner: keep
+        "@llvm//:scalar",
+        "@llvm//:support",
+        "@llvm//:target",
     ],
 )
 
@@ -68,7 +68,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//third_party/llvm/llvm:ir",
-        "//third_party/llvm/llvm:support",
+        "@llvm//:core",
+        "@llvm//:support",
     ],
 )

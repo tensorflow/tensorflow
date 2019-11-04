@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/path.h"
 
-#include "third_party/llvm/llvm/include/llvm/IR/LLVMContext.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
 

@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/types/span.h"
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

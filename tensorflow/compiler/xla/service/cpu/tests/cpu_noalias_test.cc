@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"

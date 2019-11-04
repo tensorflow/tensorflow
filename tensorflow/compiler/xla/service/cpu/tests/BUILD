@@ -94,8 +94,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/llvm/llvm:ir",
         "@com_google_absl//absl/memory",
+        "@llvm//:core",
     ],
 )
 
@@ -109,10 +109,10 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/llvm/llvm:arm_target",  # fixdeps: keep
-        "//third_party/llvm/llvm:target_base",
-        "//third_party/llvm/llvm:x86_target",  # fixdeps: keep
         "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -141,10 +141,10 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/llvm/llvm:arm_target",  # fixdeps: keep
-        "//third_party/llvm/llvm:target_base",
-        "//third_party/llvm/llvm:x86_target",  # fixdeps: keep
         "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 

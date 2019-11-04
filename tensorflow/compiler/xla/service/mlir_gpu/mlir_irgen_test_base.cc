@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/hlo_parser.h"

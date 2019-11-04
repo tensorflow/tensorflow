@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Module.h"
-#include "third_party/llvm/llvm/include/llvm/Support/FileSystem.h"
-#include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/io/path.h"

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
 #include "absl/strings/string_view.h"
-#include "third_party/llvm/llvm/include/llvm/IR/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

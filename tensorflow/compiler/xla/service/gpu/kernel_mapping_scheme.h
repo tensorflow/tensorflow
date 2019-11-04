@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "third_party/llvm/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
