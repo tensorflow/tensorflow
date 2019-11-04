@@ -286,3 +286,99 @@ func @nvvm_invalid_shfl_pred_3(%arg0 : !llvm.i32, %arg1 : !llvm.i32, %arg2 : !ll
   // expected-error@+1 {{expected return type !llvm<"{ ?, i1 }">}}
   %0 = nvvm.shfl.sync.bfly %arg0, %arg3, %arg1, %arg2 {return_value_and_is_valid} : !llvm<"{ i32, i32 }">
 }
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_0
+func @nvvm_invalid_mma_0(%a0 : !llvm.half, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{expected operands to be 4 <halfx2>s followed by either 4 <halfx2>s or 8 floats}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="row", blayout="row"} : (!llvm.half, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> !llvm<"{ float, float, float, float, float, float, float, float }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, float }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_1
+func @nvvm_invalid_mma_1(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{expected result type to be a struct of either 4 <halfx2>s or 8 floats}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="row", blayout="row"} : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> !llvm<"{ float, float, float, float, float, float, float, half }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, half }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_2
+func @nvvm_invalid_mma_2(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{alayout and blayout attributes must be set to either "row" or "col"}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> !llvm<"{ float, float, float, float, float, float, float, float }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, float }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_3
+func @nvvm_invalid_mma_3(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm<"<2 x half>">, %c1 : !llvm<"<2 x half>">,
+                         %c2 : !llvm<"<2 x half>">, %c3 : !llvm<"<2 x half>">) {
+  // expected-error@+1 {{unimplemented mma.sync variant}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3 {alayout="row", blayout="row"} : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">) -> !llvm<"{ float, float, float, float, float, float, float, float }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, float }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_4
+func @nvvm_invalid_mma_4(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{unimplemented mma.sync variant}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="row", blayout="row"} : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> !llvm<"{<2 x half>, <2 x half>, <2 x half>, <2 x half>}">
+  llvm.return %0 : !llvm<"{<2 x half>, <2 x half>, <2 x half>, <2 x half>}">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_5
+func @nvvm_invalid_mma_5(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{unimplemented mma.sync variant}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="col", blayout="row"} : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> !llvm<"{ float, float, float, float, float, float, float, float }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, float }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_6
+func @nvvm_invalid_mma_6(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{expected the type to be the full list of input and output}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="col", blayout="row"} : !llvm<"{ float, float, float, float, float, float, float, float }">
+  llvm.return %0 : !llvm<"{ float, float, float, float, float, float, float, float }">
+}
+
+// -----
+
+// CHECK-LABEL: @nvvm_invalid_mma_7
+func @nvvm_invalid_mma_7(%a0 : !llvm<"<2 x half>">, %a1 : !llvm<"<2 x half>">,
+                         %b0 : !llvm<"<2 x half>">, %b1 : !llvm<"<2 x half>">,
+                         %c0 : !llvm.float, %c1 : !llvm.float, %c2 : !llvm.float, %c3 : !llvm.float,
+                         %c4 : !llvm.float, %c5 : !llvm.float, %c6 : !llvm.float, %c7 : !llvm.float) {
+  // expected-error@+1 {{expected single result}}
+  %0 = nvvm.mma.sync %a0, %a1, %b0, %b1, %c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7 {alayout="col", blayout="row"} : (!llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm<"<2 x half>">, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float, !llvm.float) -> (!llvm<"{ float, float, float, float, float, float, float, float }">, !llvm.i32)
+  llvm.return %0 : (!llvm<"{ float, float, float, float, float, float, float, float }">, !llvm.i32)
+}
