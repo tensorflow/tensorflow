@@ -1064,6 +1064,11 @@ Status ImporterBase::ConvertFunctionArgAndRets(
       // Collect mapping of OutputTensor to associated block arg.
       arg_nodes_to_values.try_emplace({arg_node.node, arg_node.index}, arg_def);
       island->getResult(0)->replaceAllUsesWith(arg_def);
+      // Erase control outputs from feed.
+      auto control_uses = island->getResult(1)->getUses();
+      for (auto& control_use : llvm::make_early_inc_range(control_uses))
+        control_use.getOwner()->eraseOperand(control_use.getOperandNumber());
+
       island->dropAllReferences();
       island->erase();
       continue;
