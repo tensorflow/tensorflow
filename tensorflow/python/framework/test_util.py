@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from collections import OrderedDict
 import contextlib
 import functools
@@ -102,6 +103,8 @@ try:
 except:
   pass
 
+def _get_object_count_by_type():
+  return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
@@ -568,7 +571,7 @@ def enable_output_all_intermediates(fn):
   return wrapper
 
 
-def assert_no_new_pyobjects_executing_eagerly(f):
+def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
   """Decorator for asserting that no new Python objects persist after a test.
 
   Runs the test multiple times executing eagerly, first as a warmup and then to
@@ -577,60 +580,78 @@ def assert_no_new_pyobjects_executing_eagerly(f):
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
+
+  Args:
+    func: The function to test.
+    warmup_iters: The numer of warmup iterations, excluded from measuring.
+
+  Returns:
+    The wrapped function performing the test.
   """
 
-  def decorator(self, *args, **kwargs):
-    """Warms up, gets an object count, runs the test, checks for new objects."""
-    with context.eager_mode():
-      gc.disable()
-      # Run the test 2 times as warmup, in an attempt to fill up caches, which
-      # should not grow as the test is run repeatedly below.
-      #
-      # TODO(b/117156879): Running warmup twice is black magic; we have seen
-      # tests that fail with 1 warmup run, and pass with 2, on various versions
-      # of python2.7.x.
-      for _ in range(2):
-        f(self, *args, **kwargs)
-      gc.collect()
-      previous_count = len(gc.get_objects())
-      if ops.has_default_graph():
-        collection_sizes_before = {
-            collection: len(ops.get_collection(collection))
-            for collection in ops.get_default_graph().collections
-        }
-      for _ in range(3):
-        f(self, *args, **kwargs)
-      # Note that gc.get_objects misses anything that isn't subject to garbage
-      # collection (C types). Collections are a common source of leaks, so we
-      # test for collection sizes explicitly.
-      if ops.has_default_graph():
-        for collection_key in ops.get_default_graph().collections:
-          collection = ops.get_collection(collection_key)
-          size_before = collection_sizes_before.get(collection_key, 0)
-          if len(collection) > size_before:
-            raise AssertionError(
-                ("Collection %s increased in size from "
-                 "%d to %d (current items %s).") %
-                (collection_key, size_before, len(collection), collection))
-          # Make sure our collection checks don't show up as leaked memory by
-          # removing references to temporary variables.
-          del collection
-          del collection_key
-          del size_before
-        del collection_sizes_before
-      gc.collect()
-      # There should be no new Python objects hanging around.
-      new_count = len(gc.get_objects())
-      # In some cases (specifacally on MacOS), new_count is somehow
-      # smaller than previous_count.
-      # Using plain assert because not all classes using this decorator
-      # have assertLessEqual
-      assert new_count <= previous_count, (
-          "new_count(%d) is not less than or equal to previous_count(%d)" %
-          (new_count, previous_count))
-      gc.enable()
+  def wrap_f(f):
+    def decorator(self, *args, **kwargs):
+      """Warms up, gets object counts, runs the test, checks for new objects."""
+      with context.eager_mode():
+        gc.disable()
+        # Run the test 2 times as warmup, in an attempt to fill up caches, which
+        # should not grow as the test is run repeatedly below.
+        #
+        # TODO(b/117156879): Running warmup twice is black magic; we have seen
+        # tests that fail with 1 warmup run, and pass with 2, on various
+        # versions of python2.7.x.
+        for _ in range(warmup_iters):
+          f(self, *args, **kwargs)
 
-  return decorator
+        # Some objects are newly created by _get_object_count_by_type().  So
+        # create and save as a dummy variable to include it as a baseline.
+        obj_count_by_type = _get_object_count_by_type()
+        gc.collect()
+        obj_count_by_type = _get_object_count_by_type()
+
+        if ops.has_default_graph():
+          collection_sizes_before = {
+              collection: len(ops.get_collection(collection))
+              for collection in ops.get_default_graph().collections
+          }
+        for _ in range(3):
+          f(self, *args, **kwargs)
+        # Note that gc.get_objects misses anything that isn't subject to garbage
+        # collection (C types). Collections are a common source of leaks, so we
+        # test for collection sizes explicitly.
+        if ops.has_default_graph():
+          for collection_key in ops.get_default_graph().collections:
+            collection = ops.get_collection(collection_key)
+            size_before = collection_sizes_before.get(collection_key, 0)
+            if len(collection) > size_before:
+              raise AssertionError(
+                  ("Collection %s increased in size from "
+                   "%d to %d (current items %s).") %
+                  (collection_key, size_before, len(collection), collection))
+            # Make sure our collection checks don't show up as leaked memory by
+            # removing references to temporary variables.
+            del collection
+            del collection_key
+            del size_before
+          del collection_sizes_before
+        gc.collect()
+
+        # There should be no new Python objects hanging around.
+        obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
+        # In some cases (specifacally on MacOS), new_count is somehow
+        # smaller than previous_count.
+        # Using plain assert because not all classes using this decorator
+        # have assertLessEqual
+        assert not obj_count_by_type, (
+            "The following objects were newly created: %s" %
+            str(obj_count_by_type))
+        gc.enable()
+    return decorator
+
+  if func is None:
+    return wrap_f
+  else:
+    return wrap_f(func)
 
 
 def assert_no_new_tensors(f):
