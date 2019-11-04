@@ -513,6 +513,9 @@ class Context(object):
     self.zeros_cache().flush()
     pywrap_tensorflow.TFE_ClearScalarCache()
 
+  def get_server_def(self):
+    return self._server_def
+
   def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
 
@@ -1564,6 +1567,18 @@ def _create_context():
       _set_context_locked(ctx)
 
 
+def _reset_context():
+  """Clears and re-initializes the singleton context.
+
+  Should only be used for testing.
+  """
+  global _context
+  with _context_lock:
+    if _context is not None:
+      _context = None
+  _create_context()
+
+
 def context():
   """Returns a singleton context object."""
   if _context is None:
@@ -1967,6 +1982,10 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def get_server_def():
+  return context().get_server_def()
 
 
 def set_server_def(server_def):

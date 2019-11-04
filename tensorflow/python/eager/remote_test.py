@@ -46,6 +46,14 @@ class SingleWorkerTest(test.TestCase):
     workers, _ = test_util.create_local_cluster(1, 0)
     remote.connect_to_remote_host(workers[0].target)
 
+  def tearDown(self):
+    super(SingleWorkerTest, self).tearDown()
+
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
+
   def testMultiDeviceFunctionBasic(self):
 
     @def_function.function
@@ -149,6 +157,14 @@ class MultiWorkersTest(test.TestCase):
     workers, _ = test_util.create_local_cluster(3, 0)
     remote.connect_to_remote_host(
         [workers[0].target, workers[1].target, workers[2].target])
+
+  def tearDown(self):
+    super(MultiWorkersTest, self).tearDown()
+
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   def testMultiDeviceFunctionOnLocalDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
@@ -268,6 +284,8 @@ class MultiJobsTest(test.TestCase):
 
     # Clear the current device scope to avoid polluting other test cases.
     ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   def testSimpleParameterServer(self):
     remote.connect_to_cluster(self._cluster)
