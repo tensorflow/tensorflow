@@ -23,18 +23,6 @@ func @RemoveUnused(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2xf32>,t
 // CHECK-NEXT: return %[[split]]#0, %[[split]]#1
 }
 
-// CHECK-LABEL: NotRemoveIfNoInputs
-func @NotRemoveIfNoInputs(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2x!quant.uniform<u8:f32, 1.0>>) {
-  %0 = "tfl.quantize"(%arg0) {qtype = tensor<4x!quant.uniform<u8:f32, 1.0>>} : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 1.0>>
-  %1:2 = "tfl.split"(%arg1, %0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4x!quant.uniform<u8:f32, 1.0>>)
-  -> (tensor<2x!quant.uniform<u8:f32, 1.0>>, tensor<2x!quant.uniform<u8:f32, 1.0>>)
-  return %1#0 : tensor<2x!quant.uniform<u8:f32, 1.0>>
-
-// CHECK-NEXT: %[[in1:.*]] = "tfl.quantize"(%arg0)
-// CHECK-NEXT: %[[split:.*]]:2 = "tfl.split"(%arg1, %[[in1]])
-// CHECK-NEXT: return %[[split]]#0
-}
-
 func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
   %cst = constant dense<[1, 1001]> : tensor<2xi32>
   %0 = "tfl.pseudo_input"(%arg0) : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
