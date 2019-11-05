@@ -209,7 +209,7 @@ ParseResult AffineApplyOp::parse(OpAsmParser &parser, OperationState &result) {
   unsigned numDims;
   if (parser.parseAttribute(mapAttr, "map", result.attributes) ||
       parseDimAndSymbolList(parser, result.operands, numDims) ||
-      parser.parseOptionalAttributeDict(result.attributes))
+      parser.parseOptionalAttrDict(result.attributes))
     return failure();
   auto map = mapAttr.getValue();
 
@@ -1261,7 +1261,7 @@ ParseResult parseAffineForOp(OpAsmParser &parser, OperationState &result) {
   AffineForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Set the operands list as resizable so that we can freely modify the bounds.
@@ -1654,7 +1654,7 @@ ParseResult parseAffineIfOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();
@@ -1788,7 +1788,7 @@ ParseResult AffineLoadOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOperand(memrefInfo) ||
       parser.parseAffineMapOfSSAIds(mapOperands, mapAttr, getMapAttrName(),
                                     result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
       parser.resolveOperands(mapOperands, indexTy, result.operands) ||
@@ -1881,7 +1881,7 @@ ParseResult AffineStoreOp::parse(OpAsmParser &parser, OperationState &result) {
                  parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
                                                getMapAttrName(),
                                                result.attributes) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(storeValueInfo, type.getElementType(),
                                        result.operands) ||

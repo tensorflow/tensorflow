@@ -138,7 +138,7 @@ static void Print(ConstOp op, OpAsmPrinter* printer) {
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
-  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+  if (parser->parseOptionalAttrDict(result->attributes)) return failure();
 
   // If colon is not present after attribute dictionary, it should be short form
   // and attribute 'value' is outside the dictionary.

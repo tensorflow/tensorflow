@@ -3868,7 +3868,7 @@ public:
 
   /// Parse a named dictionary into 'result' if it is present.
   ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
       return success();
     return parser.parseAttributeDict(result);

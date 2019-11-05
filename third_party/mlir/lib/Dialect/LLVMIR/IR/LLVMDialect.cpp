@@ -71,7 +71,7 @@ static ParseResult parseCmpOp(OpAsmParser &parser, OperationState &result) {
   if (parser.getCurrentLocation(&predicateLoc) ||
       parser.parseAttribute(predicate, "predicate", attrs) ||
       parser.parseOperand(lhs) || parser.parseComma() ||
-      parser.parseOperand(rhs) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseOperand(rhs) || parser.parseOptionalAttrDict(attrs) ||
       parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(type) ||
       parser.resolveOperand(lhs, type, result.operands) ||
@@ -147,7 +147,7 @@ static ParseResult parseAllocaOp(OpAsmParser &parser, OperationState &result) {
   Type type, elemType;
   llvm::SMLoc trailingTypeLoc;
   if (parser.parseOperand(arraySize) || parser.parseKeyword("x") ||
-      parser.parseType(elemType) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseType(elemType) || parser.parseOptionalAttrDict(attrs) ||
       parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(type))
     return failure();
@@ -193,7 +193,7 @@ static ParseResult parseGEPOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc trailingTypeLoc;
   if (parser.parseOperand(base) ||
       parser.parseOperandList(indices, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColon() ||
       parser.getCurrentLocation(&trailingTypeLoc) || parser.parseType(type))
     return failure();
 
@@ -247,7 +247,7 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   Type type;
   llvm::SMLoc trailingTypeLoc;
 
-  if (parser.parseOperand(addr) || parser.parseOptionalAttributeDict(attrs) ||
+  if (parser.parseOperand(addr) || parser.parseOptionalAttrDict(attrs) ||
       parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(type) ||
       parser.resolveOperand(addr, type, result.operands))
@@ -278,7 +278,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc trailingTypeLoc;
 
   if (parser.parseOperand(value) || parser.parseComma() ||
-      parser.parseOperand(addr) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseOperand(addr) || parser.parseOptionalAttrDict(attrs) ||
       parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(type))
     return failure();
@@ -348,7 +348,7 @@ static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
       return failure();
 
   if (parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColon() ||
       parser.getCurrentLocation(&trailingTypeLoc) || parser.parseType(type))
     return failure();
 
@@ -444,7 +444,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   Type type, i32Type = LLVMType::getInt32Ty(llvmDialect);
   if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
       parser.parseComma() || parser.parseOperand(position) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(vector, type, result.operands) ||
       parser.resolveOperand(position, i32Type, result.operands))
@@ -534,7 +534,7 @@ static ParseResult parseExtractValueOp(OpAsmParser &parser,
   if (parser.parseOperand(container) ||
       parser.getCurrentLocation(&attributeLoc) ||
       parser.parseAttribute(positionAttr, "position", attrs) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColon() ||
       parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(containerType) ||
       parser.resolveOperand(container, containerType, result.operands))
@@ -574,7 +574,7 @@ static ParseResult parseInsertElementOp(OpAsmParser &parser,
   if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
       parser.parseComma() || parser.parseOperand(value) ||
       parser.parseComma() || parser.parseOperand(position) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(vectorType))
     return failure();
 
@@ -621,8 +621,8 @@ static ParseResult parseInsertValueOp(OpAsmParser &parser,
       parser.parseOperand(container) ||
       parser.getCurrentLocation(&attributeLoc) ||
       parser.parseAttribute(positionAttr, "position", result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
+      parser.getCurrentLocation(&trailingTypeLoc) ||
       parser.parseType(containerType))
     return failure();
 
@@ -659,7 +659,7 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseOperand(condition) || parser.parseComma() ||
       parser.parseOperand(trueValue) || parser.parseComma() ||
       parser.parseOperand(falseValue) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(conditionType) || parser.parseComma() ||
       parser.parseType(argType))
     return failure();
@@ -689,7 +689,7 @@ static ParseResult parseBrOp(OpAsmParser &parser, OperationState &result) {
   Block *dest;
   SmallVector<Value *, 4> operands;
   if (parser.parseSuccessorAndUseList(dest, operands) ||
-      parser.parseOptionalAttributeDict(result.attributes))
+      parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   result.addSuccessor(dest, operands);
@@ -727,7 +727,7 @@ static ParseResult parseCondBrOp(OpAsmParser &parser, OperationState &result) {
       parser.parseSuccessorAndUseList(trueDest, trueOperands) ||
       parser.parseComma() ||
       parser.parseSuccessorAndUseList(falseDest, falseOperands) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.resolveOperand(condition, i1Type, result.operands))
     return failure();
 
@@ -758,7 +758,7 @@ static ParseResult parseReturnOp(OpAsmParser &parser, OperationState &result) {
   Type type;
 
   if (parser.parseOperandList(operands) ||
-      parser.parseOptionalAttributeDict(result.attributes))
+      parser.parseOptionalAttrDict(result.attributes))
     return failure();
   if (operands.empty())
     return success();
@@ -783,7 +783,7 @@ static void printUndefOp(OpAsmPrinter &p, UndefOp &op) {
 static ParseResult parseUndefOp(OpAsmParser &parser, OperationState &result) {
   Type type;
 
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -812,7 +812,7 @@ static ParseResult parseAddressOfOp(OpAsmParser &parser,
   Attribute symRef;
   Type type;
   if (parser.parseAttribute(symRef, "global_name", result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) || parser.addTypeToList(type, result.types))
     return failure();
 
@@ -852,8 +852,7 @@ static ParseResult parseConstantOp(OpAsmParser &parser,
 
   if (parser.parseLParen() ||
       parser.parseAttribute(valueAttr, "value", result.attributes) ||
-      parser.parseRParen() ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseRParen() || parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -920,7 +919,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
   }
 
   SmallVector<Type, 1> types;
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseOptionalColonTypeList(types))
     return failure();
 
@@ -998,9 +997,8 @@ static ParseResult parseShuffleVectorOp(OpAsmParser &parser,
   if (parser.getCurrentLocation(&loc) || parser.parseOperand(v1) ||
       parser.parseComma() || parser.parseOperand(v2) ||
       parser.parseAttribute(maskAttr, "mask", attrs) ||
-      parser.parseOptionalAttributeDict(attrs) ||
-      parser.parseColonType(typeV1) || parser.parseComma() ||
-      parser.parseType(typeV2) ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColonType(typeV1) ||
+      parser.parseComma() || parser.parseType(typeV2) ||
       parser.resolveOperand(v1, typeV1, result.operands) ||
       parser.resolveOperand(v2, typeV2, result.operands))
     return failure();
@@ -1169,7 +1167,7 @@ static void printNullOp(OpAsmPrinter &p, LLVM::NullOp op) {
 // <operation> = `llvm.mlir.null` : type
 static ParseResult parseNullOp(OpAsmParser &parser, OperationState &result) {
   Type type;
-  return failure(parser.parseOptionalAttributeDict(result.attributes) ||
+  return failure(parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.addTypeToList(type, result.types));
 }
