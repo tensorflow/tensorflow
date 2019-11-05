@@ -72,14 +72,25 @@ class Env {
   /// for the file system related (non-virtual) functions that follow.
   /// Returned FileSystem object is still owned by the Env object and will
   // (might) be destroyed when the environment is destroyed.
-  virtual Status GetFileSystemForFile(const string& fname, FileSystem** result);
+  virtual Status GetFileSystemForFile(const std::string& fname,
+                                      FileSystem** result);
 
   /// \brief Returns the file system schemes registered for this Env.
-  virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
+  virtual Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes);
 
   /// \brief Register a file system for a scheme.
-  virtual Status RegisterFileSystem(const string& scheme,
+  virtual Status RegisterFileSystem(const std::string& scheme,
                                     FileSystemRegistry::Factory factory);
+
+  /// \brief Register a modular file system for a scheme.
+  ///
+  /// Same as `RegisterFileSystem` but for filesystems provided by plugins.
+  ///
+  /// TODO(mihaimaruseac): After all filesystems are converted, make this be the
+  /// canonical registration function.
+  virtual Status RegisterFileSystem(const std::string& scheme,
+                                    std::unique_ptr<FileSystem> filesystem);
 
   /// \brief Flush filesystem caches for all registered filesystems.
   Status FlushFileSystemCaches();
@@ -476,6 +487,9 @@ Status ReadTextOrBinaryProto(Env* env, const string& fname,
 
 // START_SKIP_DOXYGEN
 
+// The following approach to register filesystems is deprecated and will be
+// replaced with modular filesystem plugins registration.
+// TODO(mihaimaruseac): After all filesystems are converted, remove this.
 namespace register_file_system {
 
 template <typename Factory>
