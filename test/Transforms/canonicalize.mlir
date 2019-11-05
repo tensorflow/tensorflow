@@ -406,16 +406,46 @@ func @const_fold_propagate() -> memref<?x?xf32> {
   return %Av : memref<?x?xf32>
 }
 
+// CHECK-LABEL: func @br_folding
+func @br_folding() -> i32 {
+  // CHECK-NEXT: %[[CST:.*]] = constant 0 : i32
+  // CHECK-NEXT: return %[[CST]] : i32
+  %c0_i32 = constant 0 : i32
+  br ^bb1(%c0_i32 : i32)
+^bb1(%x : i32):
+  return %x : i32
+}
+
 // CHECK-LABEL: func @cond_br_folding
-func @cond_br_folding(%a : i32) {
+func @cond_br_folding(%cond : i1, %a : i32) {
   %false_cond = constant 0 : i1
   %true_cond = constant 1 : i1
+  cond_br %cond, ^bb1, ^bb2(%a : i32)
 
-  // CHECK-NEXT: br ^bb1(%arg0 : i32)
-  cond_br %true_cond, ^bb1(%a : i32), ^bb2
+^bb1:
+  // CHECK: ^bb1:
+  // CHECK-NEXT: br ^bb3
+  cond_br %true_cond, ^bb3, ^bb2(%a : i32)
+
+^bb2(%x : i32):
+  // CHECK: ^bb2
+  // CHECK: br ^bb3
+  cond_br %false_cond, ^bb2(%x : i32), ^bb3
+
+^bb3:
+  return
+}
+
+// CHECK-LABEL: func @cond_br_and_br_folding
+func @cond_br_and_br_folding(%a : i32) {
+  // Test the compound folding of conditional and unconditional branches.
+  // CHECK-NEXT: return
+
+  %false_cond = constant 0 : i1
+  %true_cond = constant 1 : i1
+  cond_br %true_cond, ^bb2, ^bb1(%a : i32)
 
 ^bb1(%x : i32):
-  // CHECK: br ^bb2
   cond_br %false_cond, ^bb1(%x : i32), ^bb2
 
 ^bb2:

@@ -232,6 +232,8 @@ def BranchOp : Std_Op<"br", [Terminator]> {
     /// Erase the operand at 'index' from the operand list.
     void eraseOperand(unsigned index);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def CallOp : Std_Op<"call", [CallOpInterface]> {
