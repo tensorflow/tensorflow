@@ -558,9 +558,24 @@ class ROIAlignOpGrad : public tensorflow::OpKernel {
   int pooled_width_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("ROIAlign").Device(tensorflow::DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("ROIAlign")
+                            .Device(tensorflow::DEVICE_GPU)
+                            .HostMemory("sampling_ratio")
+                            .HostMemory("spatial_scale")
+                            .HostMemory("min_level")
+                            .HostMemory("max_level")
+                            .HostMemory("canonical_scale")
+                            .HostMemory("canonical_level"),
                         tensorflow::ROIAlignOp);
-REGISTER_KERNEL_BUILDER(Name("ROIAlignGrad").Device(tensorflow::DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("ROIAlignGrad")
+                            .Device(tensorflow::DEVICE_GPU)
+                            .HostMemory("sampling_ratio")
+                            .HostMemory("spatial_scale")
+                            .HostMemory("min_level")
+                            .HostMemory("max_level")
+                            .HostMemory("canonical_scale")
+                            .HostMemory("canonical_level"),
+
                         tensorflow::ROIAlignOpGrad);
 }  // namespace tensorflow
 #endif
