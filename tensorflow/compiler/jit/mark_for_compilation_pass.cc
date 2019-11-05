@@ -1109,9 +1109,9 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  std::unordered_set<string> whitelist;
+  absl::flat_hash_set<string> whitelist;
   auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
-  std::unordered_set<string> all_ops(vall_ops.begin(), vall_ops.end());
+  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
 
   for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
     bool fusible = s == "FUSIBLE";
@@ -1222,7 +1222,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     if (!added && s.size() > 0) {
-      if (all_ops.count(string(s)) == 0) {
+      if (!all_ops.contains(string(s))) {
         return errors::InvalidArgument(
             "The operation '", s,
             "' passed to --tf_xla_supported_nodes is not supported by XLA.");
@@ -1275,7 +1275,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (whitelist.size() > 0 && whitelist.count(node->def().op()) != 1) {
+    if (whitelist.size() > 0 && !whitelist.contains(node->def().op())) {
       VLOG(1) << "Rejecting " << node->name()
               << " as is was not listed in --tf_xla_supported_nodes.";
       continue;
