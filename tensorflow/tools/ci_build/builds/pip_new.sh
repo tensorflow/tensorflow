@@ -55,6 +55,12 @@
 #                          e.g. TF_PROJECT_NAME="tf_nightly_gpu"
 #   TF_PIP_TEST_ROOT:    Root directory for building and testing pip pkgs.
 #                          e.g. TF_PIP_TEST_ROOT="pip_test"
+#   TF_BUILD_BOTH_GPU_PACKAGES:    (1 | 0)
+#                                  1 will build both tensorflow (w/ gpu support)
+#                                  and tensorflow-gpu pip package. Will
+#                                  automatically handle adding/removing of _gpu
+#                                  suffix depending on what project name was
+#                                  passed.
 #
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
@@ -234,10 +240,12 @@ fi
 DEFAULT_PIP_TESTS="" # Do not run any tests by default
 DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
+DEFAULT_BUILD_BOTH_GPU_PACKAGES=0
 # Take in optional global variables
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
+BUILD_BOTH_GPU_PACKAGES=${TF_BUILD_BOTH_GPU_PACKAGES:-$DEFAULT_BUILD_BOTH_GPU_PACKAGES}
 
 # Local variables
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
@@ -636,7 +644,27 @@ echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
 # Run tests (if any is specified).
 run_all_tests
 
-for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
+# Build the other GPU package.
+if [ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]; then
+   echo "====================================="\
+   "Building the other GPU pip package."
+  # Check container type
+  if ! [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+    die "Error: CONTAINER_TYPE needs to be `GPU` to build GPU packages. Got "\
+        "\"${CONTAINER_TYPE}\" instead."
+  fi
+  if [[ "$PROJECT_NAME" == *_gpu ]]; then
+    NEW_PROJECT_NAME=${PROJECT_NAME%"_gpu"}
+  else
+    NEW_PROJECT_NAME="${PROJECT_NAME}_gpu"
+  fi
+  echo "The given gpu \$PROJECT_NAME is ${PROJECT_NAME}. The additional GPU "\
+  "pip package will have project name ${NEW_PROJECT_NAME}."
+
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
+fi
+
+for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
   if [[ ${OS_TYPE} == "ubuntu" ]]; then
     # Avoid Python3.6 abnormality by installing auditwheel here.
     set +e
