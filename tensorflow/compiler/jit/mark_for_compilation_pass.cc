@@ -1076,42 +1076,9 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-Status MarkForCompilationPassImpl::FindCompilationCandidates() {
-  OptimizerOptions opts;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
-                                        TF_GRAPH_DEF_VERSION, flib_def_, opts));
-  FunctionLibraryRuntime* lib_runtime =
-      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
-  std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-      *graph_, /*compile_time_const_arg_indices=*/nullptr,
-      &compile_time_const_nodes, lib_runtime));
-
-  // Iterate over nodes in sorted order so that compiler fuel is deterministic.
-  // We can't simply pass op_nodes().begin() and op_nodes().end() to the
-  // std::vector constructor because they're not proper iterators, with
-  // iterator_traits defined and so on.
-  std::vector<Node*> sorted_nodes;
-  for (Node* node : graph_->op_nodes()) {
-    sorted_nodes.push_back(node);
-  }
-  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
-
-  if (*debug_options_.fuel >= std::numeric_limits<int64>::max() / 2) {
-    // The assumption is that if fuel started out as INT64_MAX, it will forever
-    // stay greater than INT64_MAX / 2.
-    VLOG(2) << "Starting fuel: infinity";
-  } else {
-    VLOG(2) << "Starting fuel: " << *debug_options_.fuel;
-  }
-
-  VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
-
+std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  absl::flat_hash_set<string> whitelist;
-  auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
-  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
+  auto whitelist = absl::WrapUnique(new absl::flat_hash_set<string>());
 
   for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
     bool fusible = s == "FUSIBLE";
@@ -1119,7 +1086,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     if (s == "PW" || fusible) {
       added = true;
       // Unary
-      whitelist.insert(
+      whitelist->insert(
           {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
            "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
            "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
@@ -1147,27 +1114,27 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
     if (s == "RED" || fusible) {
       added = true;
-      whitelist.insert({"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"});
+      whitelist->insert({"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"});
     }
     if (s == "PWRED" || fusible) {
       added = true;
-      whitelist.insert({"ArgMax", "ArgMin", "DiagPart", "Softmax",
+      whitelist->insert({"ArgMax", "ArgMin", "DiagPart", "Softmax",
                         "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"});
     }
     if (s == "REDUCEWINDOW" || fusible) {
       added = true;
-      whitelist.insert({"MaxPoolV2", "MaxPool3D", "AvgPool", "AvgPool3D",
+      whitelist->insert({"MaxPoolV2", "MaxPool3D", "AvgPool", "AvgPool3D",
                         "MaxPoolGrad", "MaxPool3DGrad", "AvgPoolGrad",
                         "AvgPool3DGrad", "MaxPoolGradGrad", "MaxPoolGradGradV2",
                         "MaxPool3DGradGrad"});
     }
     if (s == "REDUCEWINDOPW" || fusible) {
       added = true;
-      whitelist.insert({"LRN", "LRNGrad"});
+      whitelist->insert({"LRN", "LRNGrad"});
     }
     if (s == "BN" || fusible) {
       added = true;
-      whitelist.insert({"FusedBatchNorm", "FusedBatchNormV2",
+      whitelist->insert({"FusedBatchNorm", "FusedBatchNormV2",
                         "FusedBatchNormV3", "_FusedBatchNormEx",
                         "FusedBatchNormGrad", "FusedBatchNormGradV2",
                         "FusedBatchNormGradV3"});
@@ -1176,7 +1143,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       // Fill => Broadcast
       // BroadcastTo => Broadcast + maybe Reshape
       added = true;
-      whitelist.insert({"BroadcastTo",
+      whitelist->insert({"BroadcastTo",
                         "ExpandDims",
                         "Fill",
                         "Max",
@@ -1222,20 +1189,60 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     if (!added && s.size() > 0) {
-      if (!all_ops.contains(string(s))) {
-        return errors::InvalidArgument(
-            "The operation '", s,
-            "' passed to --tf_xla_supported_nodes is not supported by XLA.");
-      }
-      whitelist.insert(string(s));
+      whitelist->insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && whitelist.size() > 0) {
-    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
+  if (VLOG_IS_ON(2) && whitelist->size() > 0) {
+    std::vector<string> vwhitelist(whitelist->begin(), whitelist->end());
     std::sort(vwhitelist.begin(), vwhitelist.end());
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
             << absl::StrJoin(vwhitelist, " ");
+  }
+  return whitelist;
+}
+
+Status MarkForCompilationPassImpl::FindCompilationCandidates() {
+  OptimizerOptions opts;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+    new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
+				      TF_GRAPH_DEF_VERSION, flib_def_, opts));
+  FunctionLibraryRuntime* lib_runtime =
+    pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+    *graph_, /*compile_time_const_arg_indices=*/nullptr,
+    &compile_time_const_nodes, lib_runtime));
+  // Iterate over nodes in sorted order so that compiler fuel is deterministic.
+  // We can't simply pass op_nodes().begin() and op_nodes().end() to the
+  // std::vector constructor because they're not proper iterators, with
+  // iterator_traits defined and so on.
+  std::vector<Node*> sorted_nodes;
+  for (Node* node : graph_->op_nodes()) {
+    sorted_nodes.push_back(node);
+  }
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
+
+  if (*debug_options_.fuel >= std::numeric_limits<int64>::max() / 2) {
+    // The assumption is that if fuel started out as INT64_MAX, it will forever
+    // stay greater than INT64_MAX / 2.
+    VLOG(2) << "Starting fuel: infinity";
+  } else {
+    VLOG(2) << "Starting fuel: " << *debug_options_.fuel;
+  }
+
+  VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
+
+  auto whitelist = GetWhitelist();
+
+  auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
+  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
+  for (auto s = whitelist->begin(); s != whitelist->end(); ++s) {
+    if (!all_ops.contains(string(*s))) {
+      return errors::InvalidArgument(
+          "The operation '", *s,
+          "' passed to --tf_xla_supported_nodes is not supported by XLA.");
+    }
   }
 
   for (Node* node : sorted_nodes) {
@@ -1275,7 +1282,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (whitelist.size() > 0 && !whitelist.contains(node->def().op())) {
+    if (whitelist->size() > 0 && !whitelist->contains(node->def().op())) {
       VLOG(1) << "Rejecting " << node->name()
               << " as is was not listed in --tf_xla_supported_nodes.";
       continue;
