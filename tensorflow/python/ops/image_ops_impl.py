@@ -54,7 +54,7 @@ ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
-
+ops.NotDifferentiable('GenerateBoundingBoxProposals')
 
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
