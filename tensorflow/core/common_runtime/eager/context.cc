@@ -364,6 +364,9 @@ EagerContext::~EagerContext() {
 #endif  // !IS_MOBILE_PLATFORM
 
   rendezvous_->Unref();
+  if (resource_deallocator_ != nullptr) {
+    resource_deallocator_();
+  }
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {
@@ -983,7 +986,8 @@ Status EagerContext::InitializeRemoteWorker(
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
-        remote_mgr) {
+        remote_mgr,
+    std::function<void()> resource_deallocator) {
   if (context_id == kInvalidContextId) {
     return errors::InvalidArgument(
         "Failed to initialize remote for worker context due to invalid ",
@@ -1024,6 +1028,8 @@ Status EagerContext::InitializeRemoteWorker(
       entry.second->ClearError();
     }
   }
+
+  resource_deallocator_ = std::move(resource_deallocator);
 
   return Status::OK();
 }

@@ -322,7 +322,8 @@ class EagerContext : public core::RefCounted {
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
-          remote_mgr);
+          remote_mgr,
+      std::function<void()> resource_deallocator);
 
   // Similar with InitializeRemoteWorker but will reuse existing context and
   // increment context_view_id.
@@ -556,6 +557,10 @@ class EagerContext : public core::RefCounted {
   bool lazily_copy_function_remote_inputs_;
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
+
+  // Function that will be invoked in destructor to deallocate resources related
+  // to this context.
+  std::function<void()> resource_deallocator_ = nullptr;
 };
 
 }  // namespace tensorflow

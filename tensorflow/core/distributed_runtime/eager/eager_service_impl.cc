@@ -92,6 +92,24 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  {
+    mutex_lock l(contexts_mu_);
+    auto context_it = contexts_.find(request->context_id());
+    if (context_it != contexts_.end()) {
+      if (request->context_view_id() <
+          context_it->second->Context()->GetContextViewId()) {
+        return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                       "Context id: <", request->context_id(),
+                                       "> already exists.");
+      } else {
+        // For existing context with a stale context_view_id, close the old one
+        // and recreate with new view id. This is likely due to the worker
+        // disconnected and then reconnected after one or more cluster updates.
+        context_it->second->Unref();
+        contexts_.erase(context_it);
+      }
+    }
+  }
   // make sure env_ , env_->rendezvous_mgr available
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
     return tensorflow::errors::Internal(
@@ -110,6 +128,15 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
+  int64 context_id = request->context_id();
+  std::function<void()> session_destroyer = [this, context_id, session_name]() {
+    env_->rendezvous_mgr->Cleanup(context_id);
+    auto s = env_->session_mgr->DeleteSession(session_name);
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to destroy worker session '" << session_name
+                   << "' due to " << s.error_message();
+    }
+  };
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
@@ -158,7 +185,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   Status s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
       remote_workers, request->context_id(), request->context_view_id(),
-      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr));
+      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
+      std::move(session_destroyer));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();
@@ -175,18 +203,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     mutex_lock l(contexts_mu_);
     auto context_it = contexts_.find(request->context_id());
     if (context_it != contexts_.end()) {
-      if (request->context_view_id() <
-          context_it->second->Context()->GetContextViewId()) {
-        return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                       "Context id: <", request->context_id(),
-                                       "> already exists.");
-      } else {
-        // For existing context with a stale context_view_id, close the old one
-        // and recreate with new view id. This is likely due to the worker
-        // disconnected and then reconnected after one or more cluster updates.
-        context_it->second->Unref();
-        contexts_.erase(context_it);
-      }
+      return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                     "Context id: <", request->context_id(),
+                                     "> already exists.");
     }
     contexts_.emplace(request->context_id(),
                       new ServerContext(ctx, request->keep_alive_secs(), env_));
