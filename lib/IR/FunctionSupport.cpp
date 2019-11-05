@@ -64,7 +64,7 @@ parseArgumentList(OpAsmParser &parser, bool allowVariadic,
 
     // Parse any argument attributes.
     SmallVector<NamedAttribute, 2> attrs;
-    if (parser.parseOptionalAttributeDict(attrs))
+    if (parser.parseOptionalAttrDict(attrs))
       return failure();
     argAttrs.push_back(attrs);
     return success();
@@ -121,7 +121,7 @@ static ParseResult parseFunctionResultList(
     resultTypes.emplace_back();
     resultAttrs.emplace_back();
     if (parser.parseType(resultTypes.back()) ||
-        parser.parseOptionalAttributeDict(resultAttrs.back())) {
+        parser.parseOptionalAttrDict(resultAttrs.back())) {
       return failure();
     }
   } while (succeeded(parser.parseOptionalComma()));
@@ -184,7 +184,7 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
 
   // If function attributes are present, parse them.
   if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttributeDict(result.attributes))
+    if (parser.parseOptionalAttrDict(result.attributes))
       return failure();
 
   // Add the attributes to the function arguments.

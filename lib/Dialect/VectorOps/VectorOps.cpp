@@ -64,7 +64,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   Attribute attr;
   if (parser.parseOperand(vector) || parser.getCurrentLocation(&attributeLoc) ||
       parser.parseAttribute(attr, "position", attrs) ||
-      parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseOptionalAttrDict(attrs) ||
       parser.getCurrentLocation(&typeLoc) || parser.parseColonType(type))
     return failure();
 
@@ -257,7 +257,7 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseTrailingOperandList(paddingInfo,
                                       OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -420,7 +420,7 @@ ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
   if (parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -517,7 +517,7 @@ ParseResult VectorTypeCastOp::parse(OpAsmParser &parser,
   OpAsmParser::OperandType operand;
   Type srcType, dstType;
   return failure(parser.parseOperand(operand) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(srcType) || parser.parseComma() ||
                  parser.parseType(dstType) ||
                  parser.addTypeToList(dstType, result.types) ||

@@ -49,7 +49,7 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // If module attributes are present, parse them.
   if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttributeDict(result.attributes))
+    if (parser.parseOptionalAttrDict(result.attributes))
       return failure();
 
   // Parse the module body.

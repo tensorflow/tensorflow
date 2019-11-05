@@ -340,7 +340,7 @@ public:
 
   /// Parse a named dictionary into 'result' if it is present.
   virtual ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) = 0;
 
   //===--------------------------------------------------------------------===//
   // Identifier Parsing

@@ -55,7 +55,7 @@ static void printNVVMIntrinsicOp(OpAsmPrinter &p, Operation *op) {
 static ParseResult parseNVVMSpecialRegisterOp(OpAsmParser &parser,
                                               OperationState &result) {
   Type type;
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -77,7 +77,7 @@ static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type resultType;
   if (parser.parseOperandList(ops) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(resultType) ||
       parser.addTypeToList(resultType, result.types))
     return failure();
@@ -106,7 +106,7 @@ static ParseResult parseNVVMVoteBallotOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type type;
   return failure(parser.parseOperandList(ops) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.addTypeToList(type, result.types) ||
                  parser.resolveOperands(ops, {int32Ty, int1Ty},
@@ -120,9 +120,8 @@ static ParseResult parseNVVMMmaOp(OpAsmParser &parser, OperationState &result) {
   Type type;
   llvm::SMLoc typeLoc;
   if (parser.parseOperandList(ops) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColon() || parser.getCurrentLocation(&typeLoc) ||
-      parser.parseType(type)) {
+      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
+      parser.getCurrentLocation(&typeLoc) || parser.parseType(type)) {
     return failure();
   }
 

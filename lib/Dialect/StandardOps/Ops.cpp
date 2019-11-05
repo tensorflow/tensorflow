@@ -339,7 +339,7 @@ static ParseResult parseAllocOp(OpAsmParser &parser, OperationState &result) {
   // memref type.
   unsigned numDimOperands;
   if (parseDimAndSymbolList(parser, result.operands, numDimOperands) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -533,7 +533,7 @@ static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
   auto calleeLoc = parser.getNameLoc();
   if (parser.parseAttribute(calleeAttr, "callee", result.attributes) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(calleeType) ||
       parser.addTypesToList(calleeType.getResults(), result.types) ||
       parser.resolveOperands(operands, calleeType.getInputs(), calleeLoc,
@@ -623,7 +623,7 @@ static ParseResult parseCallIndirectOp(OpAsmParser &parser,
   return failure(
       parser.parseOperand(callee) || parser.getCurrentLocation(&operandsLoc) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(calleeType) ||
       parser.resolveOperand(callee, calleeType, result.operands) ||
       parser.resolveOperands(operands, calleeType.getInputs(), operandsLoc,
@@ -752,7 +752,7 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseAttribute(predicateNameAttr, CmpIOp::getPredicateAttrName(),
                             attrs) ||
       parser.parseComma() || parser.parseOperandList(ops, 2) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColonType(type) ||
       parser.resolveOperands(ops, type, result.operands))
     return failure();
 
@@ -928,7 +928,7 @@ static ParseResult parseCmpFOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseAttribute(predicateNameAttr, CmpFOp::getPredicateAttrName(),
                             attrs) ||
       parser.parseComma() || parser.parseOperandList(ops, 2) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColonType(type) ||
       parser.resolveOperands(ops, type, result.operands))
     return failure();
 
@@ -1158,7 +1158,7 @@ static void print(OpAsmPrinter &p, ConstantOp &op) {
 static ParseResult parseConstantOp(OpAsmParser &parser,
                                    OperationState &result) {
   Attribute valueAttr;
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseAttribute(valueAttr, "value", result.attributes))
     return failure();
 
@@ -1372,7 +1372,7 @@ static ParseResult parseDimOp(OpAsmParser &parser, OperationState &result) {
   return failure(
       parser.parseOperand(operandInfo) || parser.parseComma() ||
       parser.parseAttribute(indexAttr, indexType, "index", result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(operandInfo, type, result.operands) ||
       parser.addTypeToList(indexType, result.types));
@@ -1700,7 +1700,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   return failure(
       parser.parseOperand(aggregateInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(aggregateInfo, type, result.operands) ||
       parser.resolveOperands(indexInfo, indexTy, result.operands) ||
@@ -1781,7 +1781,7 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   return failure(
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
       parser.resolveOperands(indexInfo, indexTy, result.operands) ||
@@ -2003,7 +2003,7 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<NamedAttribute, 4> attrs;
   Type type;
   if (parser.parseOperandList(ops, 3) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -2088,7 +2088,7 @@ static ParseResult parseSplatOp(OpAsmParser &parser, OperationState &result) {
   ShapedType shapedType;
 
   return failure(parser.parseOperand(splatValueInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(shapedType) ||
                  parser.resolveOperand(splatValueInfo,
                                        shapedType.getElementType(),
@@ -2146,7 +2146,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
       parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(memrefType) ||
       parser.resolveOperand(storeValueInfo, memrefType.getElementType(),
                             result.operands) ||
@@ -2287,7 +2287,7 @@ static ParseResult parseTensorLoadOp(OpAsmParser &parser,
   OpAsmParser::OperandType op;
   Type type;
   return failure(parser.parseOperand(op) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(op, type, result.operands) ||
                  parser.addTypeToList(
@@ -2312,7 +2312,7 @@ static ParseResult parseTensorStoreOp(OpAsmParser &parser,
   llvm::SMLoc loc = parser.getCurrentLocation();
   return failure(
       parser.parseOperandList(ops, /*requiredOperandCount=*/2) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperands(
           ops, {getTensorTypeFromMemRefType(parser.getBuilder(), type), type},
