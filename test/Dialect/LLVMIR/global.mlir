@@ -15,6 +15,15 @@ llvm.mlir.global @string_notype("1234567")
 // CHECK: llvm.mlir.global @global_undef()
 llvm.mlir.global @global_undef() : !llvm.i64
 
+// CHECK: llvm.mlir.global @global_mega_initializer() : !llvm.i64 {
+// CHECK-NEXT:  %[[c:[0-9]+]] = llvm.mlir.constant(42 : i64) : !llvm.i64
+// CHECK-NEXT:  llvm.return %[[c]] : !llvm.i64
+// CHECK-NEXT: }
+llvm.mlir.global @global_mega_initializer() : !llvm.i64 {
+  %c = llvm.mlir.constant(42 : i64) : !llvm.i64
+  llvm.return %c : !llvm.i64
+}
+
 // CHECK-LABEL: references
 func @references() {
   // CHECK: llvm.mlir.addressof @global : !llvm<"i64*">
@@ -105,4 +114,28 @@ llvm.mlir.global @foo(0: i32) : !llvm.i32
 func @bar() {
   // expected-error @+1 {{the type must be a pointer to the type of the referred global}}
   llvm.mlir.addressof @foo : !llvm<"i64*">
+}
+
+// -----
+
+// expected-error @+2 {{'llvm.mlir.global' op expects regions to end with 'llvm.return', found 'llvm.mlir.constant'}}
+// expected-note @+1 {{in custom textual format, the absence of terminator implies 'llvm.return'}}
+llvm.mlir.global @g() : !llvm.i64 {
+  %c = llvm.mlir.constant(42 : i64) : !llvm.i64
+}
+
+// -----
+
+// expected-error @+1 {{'llvm.mlir.global' op initializer region type '!llvm.i64' does not match global type '!llvm.i32'}}
+llvm.mlir.global @g() : !llvm.i32 {
+  %c = llvm.mlir.constant(42 : i64) : !llvm.i64
+  llvm.return %c : !llvm.i64
+}
+
+// -----
+
+// expected-error @+1 {{'llvm.mlir.global' op cannot have both initializer value and region}}
+llvm.mlir.global @g(43 : i64) : !llvm.i64 {
+  %c = llvm.mlir.constant(42 : i64) : !llvm.i64
+  llvm.return %c : !llvm.i64
 }

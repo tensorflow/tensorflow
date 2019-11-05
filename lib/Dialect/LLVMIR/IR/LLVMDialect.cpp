@@ -875,6 +875,7 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
   if (value)
     result.addAttribute("value", value);
   result.attributes.append(attrs.begin(), attrs.end());
+  result.addRegion();
 }
 
 static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
@@ -894,10 +895,14 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
     return;
   p << " : ";
   p.printType(op.type());
+
+  Region &initializer = op.getInitializerRegion();
+  if (!initializer.empty())
+    p.printRegion(initializer, /*printEntryBlockArgs=*/false);
 }
 
 // <operation> ::= `llvm.mlir.global` `constant`? `@` identifier
-//                 `(` attribute? `)` attribute-list? (`:` type)?
+//                 `(` attribute? `)` attribute-list? (`:` type)? region?
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].
@@ -926,6 +931,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
   if (types.size() > 1)
     return parser.emitError(parser.getNameLoc(), "expected zero or one type");
 
+  Region &initRegion = *result.addRegion();
   if (types.empty()) {
     if (auto strAttr = value.dyn_cast_or_null<StringAttr>()) {
       MLIRContext *context = parser.getBuilder().getContext();
@@ -937,6 +943,9 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
       return parser.emitError(parser.getNameLoc(),
                               "type can only be omitted for string globals");
     }
+  } else if (parser.parseOptionalRegion(initRegion, /*arguments=*/{},
+                                        /*argTypes=*/{})) {
+    return failure();
   }
 
   result.addAttribute("type", TypeAttr::get(types[0]));
@@ -958,6 +967,19 @@ static LogicalResult verify(GlobalOp op) {
       return op.emitOpError(
           "requires an i8 array type of the length equal to that of the string "
           "attribute");
+  }
+
+  if (Block *b = op.getInitializerBlock()) {
+    ReturnOp ret = cast<ReturnOp>(b->getTerminator());
+    if (ret.operand_type_begin() == ret.operand_type_end())
+      return op.emitOpError("initializer region cannot return void");
+    if (*ret.operand_type_begin() != op.getType())
+      return op.emitOpError("initializer region type ")
+             << *ret.operand_type_begin() << " does not match global type "
+             << op.getType();
+
+    if (op.getValueOrNull())
+      return op.emitOpError("cannot have both initializer value and region");
   }
   return success();
 }

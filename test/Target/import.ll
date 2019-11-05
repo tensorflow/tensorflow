@@ -13,6 +13,15 @@
 ; CHECK: llvm.mlir.global @g5() : !llvm<"<8 x i32>">
 @g5 = external global <8 x i32>
 
+@g4 = external global i32, align 8
+; CHECK: llvm.mlir.global constant @int_gep() : !llvm<"i32*"> {
+; CHECK-DAG:   %[[addr:[0-9]+]] = llvm.mlir.addressof @g4 : !llvm<"i32*">
+; CHECK-DAG:   %[[c2:[0-9]+]] = llvm.mlir.constant(2 : i32) : !llvm.i32
+; CHECK-NEXT:  %[[gepinit:[0-9]+]] = llvm.getelementptr %[[addr]][%[[c2]]] : (!llvm<"i32*">, !llvm.i32) -> !llvm<"i32*">
+; CHECK-NEXT:  llvm.return %[[gepinit]] : !llvm<"i32*">
+; CHECK-NEXT: }
+@int_gep = internal constant i32* getelementptr (i32, i32* @g4, i32 2)
+
 ; CHECK: llvm.func @fe(!llvm.i32) -> !llvm.float
 declare float @fe(i32)
 

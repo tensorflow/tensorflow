@@ -332,13 +332,40 @@ Examples:
 
 Since MLIR allows for arbitrary operations to be present at the top level,
 global variables are defined using the `llvm.mlir.global` operation. Both global
-constants and variables can be defined, and the value must be initialized in
-both cases. The initialization and type syntax is similar to
-`llvm.mlir.constant` and may use two types: one for MLIR attribute and another
-for the LLVM value. These types must be compatible. `llvm.mlir.global` must
-appear at top-level of the enclosing module. It uses an @-identifier for its
-value, which will be uniqued by the module with respect to other @-identifiers
-in it.
+constants and variables can be defined, and the value may also be initialized in
+both cases.
+
+There are two forms of initialization syntax. Simple constants that can be
+represented as MLIR attributes can be given in-line:
+
+```mlir {.mlir}
+llvm.mlir.global @variable(32.0 : f32) : !llvm.float
+```
+
+This initialization and type syntax is similar to `llvm.mlir.constant` and may
+use two types: one for MLIR attribute and another for the LLVM value. These
+types must be compatible.
+
+More complex constants that cannot be represented as MLIR attributes can be
+given in an initializer region:
+
+```mlir {.mlir}
+// This global is initialized with the equivalent of:
+//   i32* getelementptr (i32* @g2, i32 2)
+llvm.mlir.global constant @int_gep() : !llvm<"i32*"> {
+  %0 = llvm.mlir.addressof @g2 : !llvm<"i32*">
+  %1 = llvm.mlir.constant(2 : i32) : !llvm.i32
+  %2 = llvm.getelementptr %0[%1] : (!llvm<"i32*">, !llvm.i32) -> !llvm<"i32*">
+  // The initializer region must end with `llvm.return`.
+  llvm.return %2 : !llvm<"i32*">
+}
+```
+
+Only one of the initializer attribute or initializer region may be provided.
+
+`llvm.mlir.global` must appear at top-level of the enclosing module. It uses an
+@-identifier for its value, which will be uniqued by the module with respect to
+other @-identifiers in it.
 
 Examples:
 
@@ -355,6 +382,14 @@ llvm.mlir.global @string("abc") : !llvm<"[3 x i8]">
 
 // For strings globals, the trailing type may be omitted.
 llvm.mlir.global constant @no_trailing_type("foo bar")
+
+// A complex initializer is constructed with an initializer region.
+llvm.mlir.global constant @int_gep() : !llvm<"i32*"> {
+  %0 = llvm.mlir.addressof @g2 : !llvm<"i32*">
+  %1 = llvm.mlir.constant(2 : i32) : !llvm.i32
+  %2 = llvm.getelementptr %0[%1] : (!llvm<"i32*">, !llvm.i32) -> !llvm<"i32*">
+  llvm.return %2 : !llvm<"i32*">
+}
 ```
 
 #### `llvm.mlir.null`

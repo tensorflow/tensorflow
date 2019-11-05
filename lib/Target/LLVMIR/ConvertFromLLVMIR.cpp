@@ -212,8 +212,6 @@ Attribute Importer::getConstantAsAttr(llvm::Constant *value) {
   if (auto *c = dyn_cast<llvm::ConstantDataArray>(value))
     if (c->isString())
       return b.getStringAttr(c->getAsString());
-  emitError(unknownLoc) << "unhandled constant type for attribute: "
-                        << diag(*value);
   return Attribute();
 }
 
@@ -226,17 +224,25 @@ GlobalOp Importer::processGlobal(llvm::GlobalVariable *GV) {
   Attribute valueAttr;
   if (GV->hasInitializer())
     valueAttr = getConstantAsAttr(GV->getInitializer());
-  return globals[GV] = b.create<GlobalOp>(
-             UnknownLoc::get(context), processType(GV->getValueType()),
-             GV->isConstant(), GV->getName(), valueAttr);
+  GlobalOp op = b.create<GlobalOp>(UnknownLoc::get(context),
+                                   processType(GV->getValueType()),
+                                   GV->isConstant(), GV->getName(), valueAttr);
+  if (GV->hasInitializer() && !valueAttr) {
+    Region &r = op.getInitializerRegion();
+    currentEntryBlock = b.createBlock(&r);
+    b.setInsertionPoint(currentEntryBlock, currentEntryBlock->begin());
+    Value *v = processConstant(GV->getInitializer());
+    b.create<ReturnOp>(op.getLoc(), ArrayRef<Value *>({v}));
+  }
+  return globals[GV] = op;
 }
 
 Value *Importer::processConstant(llvm::Constant *c) {
-  if (isa<llvm::ConstantInt>(c) || isa<llvm::ConstantDataArray>(c)) {
+  if (Attribute attr = getConstantAsAttr(c)) {
     // These constants can be represented as attributes.
     OpBuilder b(currentEntryBlock, currentEntryBlock->begin());
-    return instMap[c] = b.create<ConstantOp>(
-               unknownLoc, processType(c->getType()), getConstantAsAttr(c));
+    return instMap[c] = b.create<ConstantOp>(unknownLoc,
+                                             processType(c->getType()), attr);
   }
   if (auto *cn = dyn_cast<llvm::ConstantPointerNull>(c)) {
     OpBuilder b(currentEntryBlock, currentEntryBlock->begin());
