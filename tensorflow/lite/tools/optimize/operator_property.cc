@@ -165,6 +165,15 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
+    case BuiltinOperator_LSTM: {
+      // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
+      // TODO(jianlijianli): extend this to other variants of LSTM.
+      // LSTM need 5 intermediate tensors. This agrees with the fully quantized
+      // kernels in lstm_eval.cc
+      property.intermediates = {{0, {}}, {1, {}}, {2, {}}, {3, {}}, {4, {}}};
+      property.version = 2;
+      break;
+    }
     case BuiltinOperator_L2_NORMALIZATION: {
       property.inputs = {{0, {}}};
       // L2 Norm requires output with 1/128 as scale and 0 as zero point.
