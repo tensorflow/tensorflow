@@ -737,6 +737,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_conv_rewriter",
         ":ir_emission_utils",
