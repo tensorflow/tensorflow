@@ -268,18 +268,24 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
   }
 
   // called by while loop code in graph_jni.cc to construct conditional/body subgraphs
-  private static long[] buildSubgraph(WhileSubgraphBuilder subgraphBuilder, long subgraphHandle,
-      long[] inputHandles, int[] inputIndices, long[] outputHandles, int[] outputIndices) {
+  private static long[] buildSubgraph(
+      WhileSubgraphBuilder subgraphBuilder,
+      long subgraphHandle,
+      long[] inputHandles,
+      int[] inputIndices,
+      long[] outputHandles,
+      int[] outputIndices) {
     Graph subgraph = new Graph(subgraphHandle);
 
     int ninputs = inputHandles.length;
     int noutputs = outputHandles.length;
-    Output<?>[] inputs = new Output<?>[ ninputs ];
-    Output<?>[] outputs = new Output<?>[ noutputs ];
+    Output<?>[] inputs = new Output<?>[ninputs];
+    Output<?>[] outputs = new Output<?>[noutputs];
     long[] outputHandlesAndIndices = new long[noutputs * 2];
 
     synchronized (subgraph.nativeHandleLock) {
       try (Reference ref = subgraph.ref()) {
+
         for (int i = 0; i < ninputs; i++) {
           Operation op = new GraphOperation(subgraph, inputHandles[i]);
           inputs[i] = op.output(inputIndices[i]);
@@ -310,15 +316,19 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
    * @param name name for the loop
    * @return list of loop outputs, of the same length as {@code inputs}
    */
-  public Output<?>[] whileLoop(Output<?>[] inputs, WhileSubgraphBuilder cgBuilder,
-      WhileSubgraphBuilder bgBuilder, String name) {
+  public Output<?>[] whileLoop(
+      Output<?>[] inputs,
+      WhileSubgraphBuilder cgBuilder,
+      WhileSubgraphBuilder bgBuilder,
+      String name) {
     int ninputs = inputs.length;
     long[] inputHandles = new long[ninputs];
     int[] inputIndices = new int[ninputs];
-    Output<?>[] outputs = new Output<?>[ ninputs ];
+    Output<?>[] outputs = new Output<?>[ninputs];
 
     synchronized (nativeHandleLock) {
       try (Reference ref = ref()) {
+
         for (int i = 0; i < ninputs; i++) {
           inputHandles[i] = inputs[i].getUnsafeNativeHandle();
           inputIndices[i] = inputs[i].index();
@@ -457,8 +467,13 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
       long[] gradInputHandles,
       int[] gradInputIndices);
 
-  private static native long[] whileLoop(long handle, long[] inputHandles, int[] inputIndices,
-      String name, WhileSubgraphBuilder condGraphBuilder, WhileSubgraphBuilder bodyGraphBuilder);
+  private static native long[] whileLoop(
+      long handle,
+      long[] inputHandles,
+      int[] inputIndices,
+      String name,
+      WhileSubgraphBuilder condGraphBuilder,
+      WhileSubgraphBuilder bodyGraphBuilder);
 
   static {
     TensorFlow.init();

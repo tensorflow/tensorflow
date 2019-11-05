@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/experimental/micro/test_helpers.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
@@ -39,7 +41,7 @@ TF_LITE_MICRO_TEST(TestAligned) {
 
   result = allocator.AllocateFromTail(16, 4);
   TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-  TF_LITE_MICRO_EXPECT_EQ(0, reinterpret_cast<size_t>(result) & 3);
+  TF_LITE_MICRO_EXPECT_EQ(0, reinterpret_cast<std::uintptr_t>(result) & 3);
 }
 
 TF_LITE_MICRO_TEST(TestMultipleTooLarge) {

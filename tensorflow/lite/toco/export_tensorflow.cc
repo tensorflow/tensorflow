@@ -18,10 +18,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
 #include "google/protobuf/map.h"
 #include "google/protobuf/text_format.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"

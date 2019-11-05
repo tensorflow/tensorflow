@@ -37,7 +37,7 @@ def make_rfft2d_tests(options):
   }]
 
   def build_graph(parameters):
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])

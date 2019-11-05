@@ -61,7 +61,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
-    alwayslink = 1,
 )
 
 cc_binary(

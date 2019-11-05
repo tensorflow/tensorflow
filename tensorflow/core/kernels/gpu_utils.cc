@@ -57,6 +57,9 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    tensorflow::AutotuneResult* autotune_result) {
+  if (RedzoneCheckDisabled()) {
+    return;
+  }
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {

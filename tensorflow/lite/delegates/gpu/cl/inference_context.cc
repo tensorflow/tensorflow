@@ -339,7 +339,7 @@ Status InferenceContext::ConvertOperations(
       }
       cl_node.outputs.resize(gpu_op.output_ids.size());
       for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
-        int id = gpu_op.input_ids[j];
+        int id = gpu_op.output_ids[j];
         if (id >= 0) {
           cl_node.outputs[j] = outputs[id]->id;
         } else {

@@ -111,14 +111,6 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "rocprim_headers",
-    srcs = glob([
-        "rocm/include/hipcub/**",
-        "rocm/include/rocprim/**",
-    ]),
-)
-
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],

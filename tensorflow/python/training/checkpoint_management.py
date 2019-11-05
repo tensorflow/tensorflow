@@ -76,7 +76,7 @@ def generate_checkpoint_state_proto(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
   Returns:
     CheckpointState proto with model_checkpoint_path and
     all_model_checkpoint_paths updated to either absolute paths or
@@ -152,7 +152,7 @@ def update_checkpoint_state(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
   Raises:
     RuntimeError: If any of the model checkpoint paths conflict with the file
       containing CheckpointSate.
@@ -196,7 +196,7 @@ def update_checkpoint_state_internal(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
 
   Raises:
     RuntimeError: If any of the model checkpoint paths conflict with the file
@@ -501,7 +501,7 @@ class CheckpointManager(object):
   ```python
   import tensorflow as tf
   checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-  manager = tf.contrib.checkpoint.CheckpointManager(
+  manager = tf.train.CheckpointManager(
       checkpoint, directory="/tmp/model", max_to_keep=5)
   status = checkpoint.restore(manager.latest_checkpoint)
   while True:

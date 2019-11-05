@@ -192,9 +192,9 @@ manual_symbol_renames = {
     "tf.contrib.util.constant_value":
         "tf.get_static_value",
     "tf.contrib.saved_model.load_keras_model":
-        "tf.keras.experimental.load_from_saved_model",
+        "tf.compat.v1.keras.experimental.load_from_saved_model",
     "tf.contrib.saved_model.save_keras_model":
-        "tf.keras.experimental.export_saved_model",
+        "tf.compat.v1.keras.experimental.export_saved_model",
     "tf.contrib.rnn.RNNCell":
         "tf.compat.v1.nn.rnn_cell.RNNCell",
     "tf.contrib.rnn.LSTMStateTuple":

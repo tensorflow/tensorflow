@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -52,6 +51,73 @@ class PresetAssignments {
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, int64>> sizes_;
+};
+
+// Abstract base class that memory space assignment uses to pick prefetch
+// intervals.
+class PrefetchIntervalPicker {
+ public:
+  PrefetchIntervalPicker() = default;
+  virtual ~PrefetchIntervalPicker() = default;
+
+  // Sets the instruction schedule.
+  virtual void SetInstructionSchedule(
+      const absl::flat_hash_map<const HloInstruction*, int64>&
+          instruction_schedule) {
+    instruction_schedule_ = &instruction_schedule;
+  }
+
+  // Returns true if the buffer can be allocated in alternate memory space
+  // without any copies (prefetches).
+  virtual bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
+                                                  int64 start_time,
+                                                  int64 end_time) const = 0;
+
+  // Begins the iterator for the first start time of the prefetch.
+  virtual void Begin(const HloUse& use, int64 start_time, int64 end_time) = 0;
+
+  // Advances the start time of the prefetch and returns that value.
+  virtual int64 Next() = 0;
+
+  // Returns true if the available prefetch intervals have been exhausted.
+  virtual bool Done() const = 0;
+
+ protected:
+  const absl::flat_hash_map<const HloInstruction*, int64>*
+      instruction_schedule_ = nullptr;
+};
+
+// Prefetch interval picker that uses instruction count to overlap asynchronous
+// copies with independent computation. The min and max overlap counts describe
+// the number of independent HLOs overlapped while a value is being prefetched
+// into the alternate memory (between CopyStart and CopyDone HLO instructions).
+// max_overlap_count attempts to prevent bringing tensors into the alternate
+// memory too eagerly and hence occupying the space for other tensors which
+// might use it.  min_overlap_count attempts to prevent cases where tensors are
+// prefetched into the alternate memory without sufficient time for the copy to
+// take place.  In those cases, it's just better to keep the tensor in the
+// default memory instead of hurting the critical path with this copy that
+// likely won't finish in time.
+class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
+ public:
+  InstructionCountPrefetchIntervalPicker(int64 min_overlap_count,
+                                         int64 max_overlap_count)
+      : min_overlap_count_(min_overlap_count),
+        max_overlap_count_(max_overlap_count) {}
+
+  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
+                                          int64 end_time) const override;
+
+  void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
+
+  int64 Next() override;
+  bool Done() const override;
+
+ private:
+  int64 min_overlap_count_;
+  int64 max_overlap_count_;
+  int64 end_time_;
+  int64 current_prefetch_time_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -230,19 +296,16 @@ class MemorySpaceAssignment {
   // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
   // architecture-specific integer value that describes the alternate memory.
   // max_size_in_bytes is the maximum size of the alternate memory.
-  // min/max_prefetch_interval define min/max number of independent instructions
-  // that can be overlapped while prefetching to decide how early can prefetch
-  // begin. alternate_memory_space_alignment_in_bytes is the alignment required
+  // prefetch_interval_picker determines how early and how late can prefetches
+  // occur. alternate_memory_space_alignment_in_bytes is the alignment required
   // in the alternate memory space, size_fn is the size function for buffer
   // values, and is_allowed_in_alternate_mem can be used to prevent certain
   // HloValues (e.g., based on the opcode) to be placed on the alternate memory.
   // max_outstanding_async_copies specifies the upper bound for number of
   // outstanding asynchronous copies, -1 for unlimited.
-  // TODO(berkin): Use the cost model instead of using number of instructions to
-  // decide how early to prefetch.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-      int64 min_prefetch_interval, int64 max_prefetch_interval,
+      PrefetchIntervalPicker* prefetch_interval_picker,
       int64 alternate_memory_space_alignment_in_bytes,
       BufferValue::SizeFunction size_fn,
       std::function<bool(const HloValue&)> is_allowed_in_alternate_mem,
@@ -319,17 +382,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationMap* allocation_map,
-      int64 max_size_in_bytes, int64 min_prefetch_interval,
-      int64 max_prefetch_interval, const HloAliasAnalysis& alias_analysis,
+      int64 max_size_in_bytes, PrefetchIntervalPicker* prefetch_interval_picker,
+      const HloAliasAnalysis& alias_analysis,
       const HloLiveRange& hlo_live_range, int64 alignment,
-      GlobalDecreasingSizeBestFitHeap::Type type,
       IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem,
       int64 max_outstanding_async_copies)
-      : GlobalDecreasingSizeBestFitHeap(alignment, type),
+      : GlobalDecreasingSizeBestFitHeap(alignment),
         allocation_map_(allocation_map),
         max_size_in_bytes_(max_size_in_bytes),
-        min_prefetch_interval_(min_prefetch_interval),
-        max_prefetch_interval_(max_prefetch_interval),
+        prefetch_interval_picker_(prefetch_interval_picker),
         alias_analysis_(alias_analysis),
         hlo_live_range_(hlo_live_range),
         is_allowed_in_alternate_mem_(is_allowed_in_alternate_mem),
@@ -390,20 +451,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   MemorySpaceAssignment::AllocationMap* allocation_map_;
   int64 max_size_in_bytes_;
-  // The min and max prefetch intervals decribe the number of independent HLOs
-  // overlapped while a value is being prefetched into the alternate memory
-  // (between CopyStart and CopyDone HLO instructions). max_prefetch_interval
-  // attempts to prevent bringing tensors into the alternate memory too eagerly
-  // and hence occupying the space for other tensors which might use it.
-  // min_prefetch_interval attempts to prevent cases where tensors are
-  // prefetched into the alternate memory without sufficient time for the copy
-  // to take place. In those cases, it's just better to keep the tensor in the
-  // default memory instead of hurting the critical path with this copy that
-  // likely won't finish in time.
-  // TODO(berkin): Explore heuristics that take into account the cost of copying
-  // tensors between alternate and default memories.
-  int64 min_prefetch_interval_;
-  int64 max_prefetch_interval_;
+  PrefetchIntervalPicker* prefetch_interval_picker_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
   IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_;

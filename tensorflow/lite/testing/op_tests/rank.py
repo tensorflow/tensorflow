@@ -34,7 +34,8 @@ def make_rank_tests(options):
 
   def build_graph(parameters):
     """Build the rank op testing graph."""
-    input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
+    input_value = tf.compat.v1.placeholder(
+        dtype=parameters["input_dtype"], name="input")
     out = tf.rank(input_value)
     return [input_value], [out]
 

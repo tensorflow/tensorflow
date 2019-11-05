@@ -167,7 +167,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
-        ":mlir_passthrough_op",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -214,8 +213,10 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
+        "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
+        "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
         "transforms/bridge.h",
@@ -226,11 +227,13 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
+        ":tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
@@ -505,7 +508,6 @@ tf_cc_test(
     name = "convert_tensor_test",
     size = "small",
     srcs = ["utils/convert_tensor_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":convert_tensor",
         "//tensorflow/compiler/xla:test",
@@ -693,7 +695,6 @@ cc_library(
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",
@@ -787,7 +788,6 @@ tf_cc_test(
     name = "compile_mlir_util_test",
     size = "small",
     srcs = ["utils/compile_mlir_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":compile_mlir_util",
         "//tensorflow/compiler/tf2xla:common",
@@ -850,6 +850,7 @@ cc_library(
     deps = [
         ":lower_tf_inc_gen",
         ":tensorflow",
+        "//tensorflow/core:framework",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

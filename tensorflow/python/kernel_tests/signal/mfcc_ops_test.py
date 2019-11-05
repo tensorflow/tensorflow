@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -46,9 +45,8 @@ class MFCCTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(dtypes.float32, dtypes.float64)
   def test_basic(self, dtype):
     """A basic test that the op runs on random input."""
-    with compat.forward_compatibility_horizon(2019, 10, 13):
-      signal = random_ops.random_normal((2, 3, 5), dtype=dtype)
-      self.evaluate(mfcc_ops.mfccs_from_log_mel_spectrograms(signal))
+    signal = random_ops.random_normal((2, 3, 5), dtype=dtype)
+    self.evaluate(mfcc_ops.mfccs_from_log_mel_spectrograms(signal))
 
   def test_unknown_shape(self):
     """A test that the op runs when shape and rank are unknown."""

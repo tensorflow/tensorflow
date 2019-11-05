@@ -23,6 +23,7 @@ import os
 import six
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -46,8 +47,6 @@ from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
-if not test.is_built_with_rocm():
-  from tensorflow.python.distribute import mirrored_strategy
 
 class NonLayerTrackable(tracking.AutoTrackable):
 
@@ -279,8 +278,6 @@ class CheckpointingTests(test.TestCase):
                        root.optimizer_step.numpy())
 
   def testEagerDistributionStrategy(self):
-    if test.is_built_with_rocm():
-      self.skipTest('ROCm does not yet support mirrored_strategy')
     num_training_steps = 10
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

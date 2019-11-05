@@ -24,6 +24,7 @@ def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
+def ConvertAttrToI64 : NativeCodeCall<"ConvertAttrToI64($0)">;
 
 class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
@@ -225,6 +226,14 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
+// Fft op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
+          (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
+           (ConvertAttrToI64 $fft_length))>;
+
+//===----------------------------------------------------------------------===//
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -330,6 +339,7 @@ def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
                    [TF_CeilOp, HLO_CeilOp],
+                   [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],

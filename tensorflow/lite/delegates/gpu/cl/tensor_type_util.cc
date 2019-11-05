@@ -21,6 +21,7 @@ namespace cl {
 
 ObjectType ToObjectType(TensorStorageType type) {
   switch (type) {
+    case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::BUFFER:
       return ObjectType::OPENCL_BUFFER;
     case TensorStorageType::SINGLE_TEXTURE_2D:
@@ -35,6 +36,8 @@ ObjectType ToObjectType(TensorStorageType type) {
 DataLayout ToDataLayout(TensorStorageType type) {
   switch (type) {
     case TensorStorageType::BUFFER:
+      return DataLayout::DHWC4;
+    case TensorStorageType::IMAGE_BUFFER:
       return DataLayout::DHWC4;
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return DataLayout::BHWC;

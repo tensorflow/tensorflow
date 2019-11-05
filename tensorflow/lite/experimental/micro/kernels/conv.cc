@@ -216,7 +216,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int output_height = output->dims->data[1];
 
   OpData data;
-  if (input->type != kTfLiteFloat32) {
+
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -225,6 +227,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Conv is quantized along dimension 0:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(

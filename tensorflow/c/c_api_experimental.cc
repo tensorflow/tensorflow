@@ -772,22 +772,28 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
     }                                                   \
   } while (0);
 
-  std::unique_ptr<tensorflow::ServerInterface> server;
-  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
-
+  // New server created for new server_def. Unused if updating server_def.
   tensorflow::GrpcServer* grpc_server =
-      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+      dynamic_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
   if (grpc_server == nullptr) {
-    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
-        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+    std::unique_ptr<tensorflow::ServerInterface> new_server;
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
+    if (grpc_server == nullptr) {
+      LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+          "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+    }
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+        std::move(new_server), grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr));
+  } else {
+    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr));
   }
-
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
-
-  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
-      std::move(server), grpc_server->worker_env()->device_mgr,
-      grpc_server->worker_env()->collective_executor_mgr));
-
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
 }

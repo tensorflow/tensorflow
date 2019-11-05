@@ -54,6 +54,7 @@ from tensorflow.lite.testing.op_tests.constant import make_constant_tests
 from tensorflow.lite.testing.op_tests.control_dep import make_control_dep_tests
 from tensorflow.lite.testing.op_tests.conv import make_conv_tests
 from tensorflow.lite.testing.op_tests.conv2d_transpose import make_conv2d_transpose_tests
+from tensorflow.lite.testing.op_tests.conv_activation import make_conv_relu_tests, make_conv_relu1_tests, make_conv_relu6_tests
 # Note: This is a regression test for a bug (b/112303004) that Toco incorrectly
 # transforms Conv into DepthwiseConv when two Conv ops share the same constant
 # weight tensor.
@@ -137,6 +138,7 @@ from tensorflow.lite.testing.op_tests.squeeze import make_squeeze_tests
 from tensorflow.lite.testing.op_tests.squeeze_transpose import make_squeeze_transpose_tests
 from tensorflow.lite.testing.op_tests.strided_slice import make_strided_slice_tests, make_strided_slice_1d_exhaustive_tests
 from tensorflow.lite.testing.op_tests.strided_slice_np_style import make_strided_slice_np_style_tests
+from tensorflow.lite.testing.op_tests.tanh import make_tanh_tests
 from tensorflow.lite.testing.op_tests.tile import make_tile_tests
 from tensorflow.lite.testing.op_tests.topk import make_topk_tests
 from tensorflow.lite.testing.op_tests.transpose import make_transpose_tests

@@ -13,8 +13,9 @@ load(
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+    "get_compat_files",
+    "get_nested_compat_files",
 )
-load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
     "TENSORFLOW_API_INIT_FILES",  # @unused
@@ -51,14 +52,20 @@ exports_files([
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # Config setting used when building for products

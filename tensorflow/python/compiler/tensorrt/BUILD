@@ -97,7 +97,6 @@ cuda_py_test(
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
-        "no_rocm",
         "nomac",
     ],
 )
@@ -135,7 +134,6 @@ cuda_py_tests(
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
-        "no_rocm",
         "nomac",
     ],
 )
@@ -181,7 +179,6 @@ cuda_py_test(
         "no_rocm",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
-        "no_rocm",
         "nomac",
     ],
 )

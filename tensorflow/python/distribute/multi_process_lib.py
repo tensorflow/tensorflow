@@ -41,3 +41,9 @@ def get_user_data():
 def context_manager():
   """No-op in OSS. This exists to maintain testing compatibility."""
   yield
+
+
+def using_context_manager():
+  """Whether the context manager is being used."""
+  raise unittest.SkipTest(
+      'TODO(b/141874796): Implement OSS version of `multi_process_lib`')

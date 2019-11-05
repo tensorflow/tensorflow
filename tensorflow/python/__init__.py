@@ -54,6 +54,10 @@ from tensorflow.python import _pywrap_util_port
 from tensorflow.python import _pywrap_stat_summarizer
 from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python import _pywrap_kernel_registry
+from tensorflow.python import _pywrap_quantize_training
+from tensorflow.python import _pywrap_scoped_annotation
+from tensorflow.python import _pywrap_transform_graph
+from tensorflow.python import _pywrap_traceme
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -120,6 +124,7 @@ from tensorflow.python.ops import gen_sendrecv_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
+from tensorflow.python.training import quantize_training as _quantize_training
 
 # Sub-package for performing i/o directly instead of via ops in a graph.
 from tensorflow.python.lib.io import python_io

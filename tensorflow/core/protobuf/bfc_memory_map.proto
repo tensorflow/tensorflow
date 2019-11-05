@@ -2,6 +2,15 @@ syntax = "proto3";
 
 package tensorflow;
 
+// Some of the data from AllocatorStats
+message MemAllocatorStats {
+  int64 num_allocs = 1;
+  int64 bytes_in_use = 2;
+  int64 peak_bytes_in_use = 3;
+  int64 largest_alloc_size = 4;
+  float fragmentation_metric = 5;
+};
+
 message MemChunk {
   uint64 address = 1;
   int64 size = 2;
@@ -22,8 +31,15 @@ message BinSummary {
   int64 total_chunks_in_bin = 5;
 }
 
+message SnapShot {
+  uint64 action_count = 1;
+  int64 size = 2;
+}
+
 message MemoryDump {
   string allocator_name = 1;
   repeated BinSummary bin_summary = 2;
   repeated MemChunk chunk = 3;
+  repeated SnapShot snap_shot = 4;
+  MemAllocatorStats stats = 5;
 };

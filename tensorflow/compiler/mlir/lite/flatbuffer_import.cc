@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -197,7 +199,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
                                         Value* res) {
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
   // min/max stats is just for comments, so ignore it.
-  if (IsQuantized(tensor)) return nullptr;
+  if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
 
   auto mins = tensor.quantization->min;
   auto maxs = tensor.quantization->max;
@@ -223,6 +225,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     axis_stats = mlir::DenseFPElementsAttr::get(
         mlir::RankedTensorType::get(axis_stats_shape, b.getF32Type()),
         min_maxs);
+    // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
   return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
@@ -398,12 +401,13 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
              elem_type.isa<QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
-  } else if (elem_type.isa<mlir::TF::TensorFlowType>()) {
-    auto& dialect = elem_type.getDialect();
+  } else if (elem_type.isa<mlir::ComplexType>() ||
+             elem_type.isa<mlir::TF::TensorFlowType>()) {
+    auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-    value = mlir::OpaqueElementsAttr::get(&dialect, shaped_type, mangled);
+    value = mlir::OpaqueElementsAttr::get(dialect, shaped_type, mangled);
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }

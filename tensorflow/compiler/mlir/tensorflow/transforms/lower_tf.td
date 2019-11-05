@@ -16,6 +16,10 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+//===----------------------------------------------------------------------===//
+// Pad op patterns.
+//===----------------------------------------------------------------------===//
+
 def ZeroDenseElementsAttr : NativeCodeCall<
   "DenseElementsAttr::get("
     "RankedTensorType::get({}, getElementTypeOrSelf($0->getType())) , {"
@@ -24,3 +28,18 @@ def ZeroDenseElementsAttr : NativeCodeCall<
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (ZeroDenseElementsAttr $input)))>;
+
+//===----------------------------------------------------------------------===//
+// BiasAddGrad op patterns.
+//===----------------------------------------------------------------------===//
+
+def GetBiasAddGradReductionIndices : NativeCodeCall<
+  "GetBiasAddGradReductionIndices("
+  "$0->getType().cast<RankedTensorType>().getRank(), $1, &$_builder)">;
+
+def LowerBiasAddGradOp :
+  Pat<(TF_BiasAddGradOp AnyRankedTensor:$out_backprop, $data_format),
+      (TF_SumOp $out_backprop,
+                (TF_ConstOp (GetBiasAddGradReductionIndices $out_backprop,
+                                                            $data_format)),
+                /*keep_dims=*/ConstBoolAttrFalse)>;

@@ -67,6 +67,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
@@ -353,6 +354,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -573,7 +575,7 @@ py_library(
 
 tf_py_test(
     name = "integration_test",
-    size = "large",
+    size = "medium",
     srcs = ["integration_test.py"],
     additional_deps = [
         ":keras",
@@ -583,7 +585,10 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan"
+    ],
 )
 
 tf_py_test(

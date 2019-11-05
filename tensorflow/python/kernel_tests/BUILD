@@ -135,8 +135,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -178,7 +176,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["no_windows_gpu", "no_rocm_v2"],
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -1808,7 +1806,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "notsan",  # TODO(b/132205147): Re-enable this.
-        "no_cuda", # fails on CUDA, but not on ROCm, do not upstream tag
     ],
 )
 
@@ -2754,7 +2751,6 @@ cuda_py_test(
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3396,10 +3392,6 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 20,
-    xla_enable_strict_auto_jit = True,
-    tags = [
-        "no_cuda",
-    ],
 )
 
 cuda_py_test(
@@ -3432,6 +3424,7 @@ tf_py_test(
     tags = [
         "no_rocm",  # flaky test
         "no_windows",
+        "nomsan",  # TODO(b/143081496)
     ],
     # b/127344411: xla_enable_strict_auto_jit = True,
 )
@@ -3450,7 +3443,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
-    flaky = 1,  # test fails on rocm (on rare occasions)
     tags = [
         "no_windows",
     ],
@@ -3471,10 +3463,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    xla_enable_strict_auto_jit = True,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
 )
 
 cuda_py_test(
@@ -3851,7 +3839,6 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
