@@ -43,12 +43,12 @@ public:
   /// parent container. The region must have a valid parent container.
   Location getLoc();
 
-  using RegionType = llvm::iplist<Block>;
-  RegionType &getBlocks() { return blocks; }
+  using BlockListType = llvm::iplist<Block>;
+  BlockListType &getBlocks() { return blocks; }
 
   // Iteration over the block in the function.
-  using iterator = RegionType::iterator;
-  using reverse_iterator = RegionType::reverse_iterator;
+  using iterator = BlockListType::iterator;
+  using reverse_iterator = BlockListType::reverse_iterator;
 
   iterator begin() { return blocks.begin(); }
   iterator end() { return blocks.end(); }
@@ -63,7 +63,7 @@ public:
   Block &front() { return blocks.front(); }
 
   /// getSublistAccess() - Returns pointer to member of region.
-  static RegionType Region::*getSublistAccess(Block *) {
+  static BlockListType Region::*getSublistAccess(Block *) {
     return &Region::blocks;
   }
 
@@ -154,7 +154,7 @@ public:
   void viewGraph();
 
 private:
-  RegionType blocks;
+  BlockListType blocks;
 
   /// This is the object we are part of.
   Operation *container;
