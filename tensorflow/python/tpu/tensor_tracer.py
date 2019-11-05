@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import operator
+
 import os
 import os.path
 import sys
@@ -1289,13 +1291,14 @@ class TensorTracer(object):
             content.
       Returns:
         A tf.Operation that needs to be executed for the host call dependencies.
+      Raises:
+        RuntimeError: if there is no aggregate function defined for a signature.
       """
 
       # TODO(deveci): Parametrize max_queue, so that flushing op can be called
       # less frequently.
       # Setting max_queue to 100 appears to be safe even when the number of
-      # iterations are much lower, as the destructor of the writer will flushes
-      # it.
+      # iterations are much lower, as the destructor of the writer flushes it.
       summary_write_ops = []
       with summary.create_file_writer_v2(
           self._parameters.trace_dir,
@@ -1305,6 +1308,41 @@ class TensorTracer(object):
             plugin_data=summary_pb2.SummaryMetadata.PluginData(
                 plugin_name=_TT_TENSORBOARD_PLUGIN_NAME))
         for key, value in kwargs.items():
+          # Check whether we need to compute aggregated statistics that merge
+          # all cores statistics.
+          if not self._parameters.collect_summary_per_core:
+            # Merge only statistics tensor, if it is any other tensor we simply,
+            # concatenate them.
+            if key == _TT_SUMMARY_TAG:
+              agg_fn_map = self._parameters.get_signature_to_agg_fn_map()
+              signature_idx_map = self._signature_types()
+              aggregation_result = []
+              for signature, idx in sorted(signature_idx_map.items(),
+                                           key=operator.itemgetter(1)):
+                if signature not in agg_fn_map:
+                  raise RuntimeError('No aggregation function is defined for '
+                                     'signature %s.' % signature)
+
+                # The dimensions of the statistics tensor is
+                # num_cores x num_traced_tensors x num_signatures
+                # value[:,:,idx] will return the portion of the tensor relasted
+                # to signature.
+                signature_tensor = value[:, :, idx]
+                # Merge it along the first (core) axis.
+                agg_fn = agg_fn_map[signature]
+                agg_tensor = agg_fn(signature_tensor, axis=0)
+                aggregation_result.append(agg_tensor)
+              # Merge results corresponding to different signatures
+
+              merged_signatures = array_ops.stack(aggregation_result)
+              # merged_signatures has dimensions
+              # num_signatures x num_traced_tensors, transpose it so that it
+              # will match with the original structure
+              # num_traced_tensors x num_signatures.
+              transposed_signatures = array_ops.transpose(merged_signatures)
+              # Expand 1 more dimension so that it will match with the expected
+              # structure num_cores x num_traced_tensors x num_signatures.
+              value = array_ops.expand_dims(transposed_signatures, axis=0)
           summary_write_ops.append(summary.write(
               _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
               step=step[0]))
