@@ -473,6 +473,28 @@ void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// Simplify a branch to a block that has a single predecessor. This effectively
+/// merges the two blocks.
+struct SimplifyBrToBlockWithSinglePred : public OpRewritePattern<BranchOp> {
+  using OpRewritePattern<BranchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(BranchOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Check that the successor block has a single predecessor.
+    Block *succ = op.getDest();
+    Block *opParent = op.getOperation()->getBlock();
+    if (succ == opParent || !has_single_element(succ->getPredecessors()))
+      return matchFailure();
+
+    // Merge the successor into the current block and erase the branch.
+    rewriter.mergeBlocks(succ, opParent, llvm::to_vector<1>(op.getOperands()));
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace.
+
 static ParseResult parseBranchOp(OpAsmParser &parser, OperationState &result) {
   Block *dest;
   SmallVector<Value *, 4> destOperands;
@@ -493,6 +515,11 @@ void BranchOp::setDest(Block *block) { return setSuccessor(block, 0); }
 
 void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
+}
+
+void BranchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<SimplifyBrToBlockWithSinglePred>(context);
 }
 
 //===----------------------------------------------------------------------===//
