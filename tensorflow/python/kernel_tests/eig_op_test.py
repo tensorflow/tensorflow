@@ -239,7 +239,7 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
       if compute_v_:
         funcs = [lambda x: Compute(x)[0], lambda x: Compute(x)[1]]
       else:
-        funcs = [linalg_ops.self_adjoint_eigvals]
+        funcs = [linalg_ops.eigvals]
 
       for f in funcs:
         theoretical, numerical = gradient_checker_v2.compute_gradient(

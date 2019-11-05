@@ -657,7 +657,8 @@ def _EigGrad(op, grad_e, grad_v):
   with ops.control_dependencies([grad_e, grad_v]):
     if compute_v:
       v = op.outputs[1]
-      w = _linalg.adjoint(linalg_ops.matrix_inverse(v))
+      vt = _linalg.adjoint(v)
+      w = linalg_ops.matrix_inverse(vt)
       # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).
       # Notice that because of the term involving f, the gradient becomes
       # infinite (or NaN in practice) when eigenvalues are not unique.
@@ -668,24 +669,20 @@ def _EigGrad(op, grad_e, grad_v):
           _SafeReciprocal(
               array_ops.expand_dims(e, -2) - array_ops.expand_dims(e, -1)),
           array_ops.zeros_like(e))
-
-      vgv = math_ops.matmul(v, grad_v, adjoint_a=True)
+      vgv = math_ops.matmul(vt, grad_v)
       mid = array_ops.matrix_diag(grad_e)
-      diag_grad_part = array_ops.matrix_set_diag(
-          array_ops.zeros_like(vgv),
-          array_ops.matrix_diag_part(
-              math_ops.cast(math_ops.real(vgv), vgv.dtype)))
-      mid += f * (vgv - math_ops.matmul(math_ops.matmul(v, v, adjoint_a=True),
-                                        diag_grad_part))
-      grad_a = math_ops.matmul(w, math_ops.matmul(mid, v, adjoint_b=True))
+      diag_grad_part = array_ops.matrix_diag(array_ops.matrix_diag_part(
+          math_ops.cast(math_ops.real(vgv), vgv.dtype)))
+      mid += f * (vgv - math_ops.matmul(math_ops.matmul(vt, v), diag_grad_part))
+      grad_a = math_ops.matmul(w, math_ops.matmul(mid, vt))
     else:
-      _, v = linalg_ops.self_adjoint_eig(op.inputs[0])
-      w = _linalg.adjoint(linalg_ops.matrix_inverse(v))
+      _, v = linalg_ops.eig(op.inputs[0])
+      vt = _linalg.adjoint(v)
+      w = linalg_ops.matrix_inverse(vt)
       grad_a = math_ops.matmul(w,
                                math_ops.matmul(
                                    array_ops.matrix_diag(grad_e),
-                                   v,
-                                   adjoint_b=True))
+                                   vt))
     return math_ops.cast(grad_a, op.inputs[0].dtype)
 
 @ops.RegisterGradient("SelfAdjointEigV2")
