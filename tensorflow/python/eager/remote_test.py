@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.server_lib import ClusterSpec
 
 
 class SingleWorkerTest(test.TestCase):
@@ -45,6 +46,14 @@ class SingleWorkerTest(test.TestCase):
 
     workers, _ = test_util.create_local_cluster(1, 0)
     remote.connect_to_remote_host(workers[0].target)
+
+  def tearDown(self):
+    super(SingleWorkerTest, self).tearDown()
+
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   def testMultiDeviceFunctionBasic(self):
 
@@ -149,6 +158,14 @@ class MultiWorkersTest(test.TestCase):
     workers, _ = test_util.create_local_cluster(3, 0)
     remote.connect_to_remote_host(
         [workers[0].target, workers[1].target, workers[2].target])
+
+  def tearDown(self):
+    super(MultiWorkersTest, self).tearDown()
+
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   def testMultiDeviceFunctionOnLocalDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
@@ -268,6 +285,8 @@ class MultiJobsTest(test.TestCase):
 
     # Clear the current device scope to avoid polluting other test cases.
     ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   def testSimpleParameterServer(self):
     remote.connect_to_cluster(self._cluster)
@@ -318,6 +337,10 @@ class MultiJobsTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       remote.connect_to_cluster(self._cluster_resolver)
+
+  def testConnectToClusterWithLocalMaster(self):
+    local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
+    remote.connect_to_cluster(local_resolver)
 
 
 def _strip_prefix(s, prefix):

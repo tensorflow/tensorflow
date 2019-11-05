@@ -917,6 +917,10 @@ Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
             hlo->slice_strides(dimension) != 1 ||
             hlo->slice_limits(dimension) !=
                 operand->shape().dimensions(dimension)) {
+          // Slicing a single element out eliminates the dynamic dimension.
+          if (hlo->shape().dimensions(dimension) == 1) {
+            return Status::OK();
+          }
           return Unimplemented(
               "Dynamic dimension propagation on Slice where it doesn't slice "
               "out an entire dimension is not supported %s",

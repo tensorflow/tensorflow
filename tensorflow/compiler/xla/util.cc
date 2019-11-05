@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <cmath>
 #include <limits>
 #include <numeric>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -301,6 +303,56 @@ string SanitizeFileName(string file_name) {
     }
   }
   return file_name;
+}
+
+// Utility function to split a double-precision float (F64) into a pair of F32s.
+// For a p-bit number, and a splitting point (p/2) <= s <= (p - 1), the
+// algorithm produces a (p - s)-bit value 'hi' and a non-overlapping (s - 1)-bit
+// value 'lo'. See Theorem 4 in [1] (attributed to Dekker) or [2] for the
+// original theorem by Dekker.
+//
+// For double-precision F64s, which contain a 53 bit mantissa (52 of them
+// explicit), we can represent the most significant 49 digits as the unevaluated
+// sum of two single-precision floats 'hi' and 'lo'. The 'hi' float stores the
+// most significant 24 bits and the sign bit of 'lo' together with its mantissa
+// store the remaining 25 bits. The exponent of the resulting representation is
+// still restricted to 8 bits of F32.
+//
+// References:
+// [1] A. Thall, Extended-Precision Floating-Point Numbers for GPU Computation,
+//     SIGGRAPH Research Posters, 2006.
+//     (http://andrewthall.org/papers/df64_qf128.pdf)
+// [2] T. J. Dekker, A floating point technique for extending the available
+//     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
+std::pair<float, float> SplitF64ToF32(double x) {
+  // Early return if x is equal to infinity or -infinity.
+  if (std::isinf(x)) {
+    return std::make_pair(static_cast<float>(x), 0.0f);
+  }
+
+  // Following [1], the splitter is chosen as 2^{s} + 1, so that the most
+  // significant (p - s) bits comprise the mantissa of 'hi'.
+  static_assert(std::numeric_limits<double>::radix == 2,
+                "Double is not Binary FP");
+  constexpr double kSplitter = (1 << (std::numeric_limits<double>::digits -
+                                      std::numeric_limits<float>::digits)) +
+                               1;
+
+  // Only values within the range of F32 are supported, unless it is infinity.
+  // Small values with large negative exponents would be rounded to zero.
+  CHECK(std::isfinite(static_cast<float>(x))) << x;
+
+  // The value of '(shifted - x)' should algebraically be exactly 2^{29} * x
+  // but it can a bit smaller, because of rounding to 53 bits in computation of
+  // (2^29 + 1) * x'. This overestimates the value of 'hi' by a multiple of
+  // 2^{-29} (assuming exponent was 0), and makes 'lo' negative. An extra bit is
+  // squeezed into the 'sign' bit of 'lo' to represent 25 bits of significand.
+  const double shifted = kSplitter * x;
+  // TODO(anudhyan): Write a test to ensure that compiler is not optimizing away
+  // the following computation to 'hi = x;'.
+  const float hi = shifted - (shifted - x);
+  const float lo = x - hi;
+  return std::make_pair(hi, lo);
 }
 
 }  // namespace xla

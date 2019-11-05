@@ -376,6 +376,32 @@ static PyObject* TFE_ClearScalarCache();
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsEagerTensorSlow(elem)) {
+        // Use equivalent of object.__getattribute__ to get the underlying
+        // tf wrapped EagerTensor (if there is one).
+        tensorflow::Safe_PyObjectPtr tf_should_use_attr(
+#if PY_MAJOR_VERSION < 3
+            PyString_InternFromString("_tf_should_use_wrapped_value")
+#else
+            PyUnicode_InternFromString("_tf_should_use_wrapped_value")
+#endif
+        );
+        tensorflow::Safe_PyObjectPtr value_attr(
+            PyObject_GenericGetAttr(elem, tf_should_use_attr.get()));
+        if (value_attr) {
+          // This is an EagerTensor wrapped inside a TFShouldUse wrapped object.
+          (*$1)[i] = EagerTensor_Handle(value_attr.get());
+        } else {
+          // This is a subclass of EagerTensor that we don't support.
+          PyErr_Clear();
+          SWIG_exception_fail(
+              SWIG_TypeError,
+              tensorflow::strings::StrCat(
+                  "Saw an object that is an instance of a strict subclass of "
+                  "EagerTensor, which is not supported.  Item ",
+                  i, " is type: ", elem->ob_type->tp_name)
+                  .c_str());
+        }
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
@@ -395,7 +421,7 @@ static PyObject* TFE_ClearScalarCache();
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(name_attr.get())
+                name_attr ? TFE_GetPythonString(name_attr.get()) : "<unknown>"
             ).c_str());
       } else {
         SWIG_exception_fail(
@@ -403,7 +429,7 @@ static PyObject* TFE_ClearScalarCache();
             tensorflow::strings::StrCat(
                 "provided list of inputs contains objects other "
                 "than 'EagerTensor'. Item ",
-                i, " is ", elem->ob_type->tp_name).c_str());
+                i, " is type: ", elem->ob_type->tp_name).c_str());
       }
     }
   }

@@ -36,7 +36,7 @@ cc_library(
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",

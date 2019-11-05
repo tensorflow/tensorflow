@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
@@ -160,11 +161,6 @@ ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
 // Use initial buffer size in flatbuffer builder to be same as the initial size
 // used by the TOCO export. (It does not explain rationale for this choice.)
 constexpr size_t kInitialBufferSize = 10240;
-
-// This can be included from c_api_internal.h but that is currently internal
-// visibility so repeating for now.
-// TODO(jpienaar): Remove duplication.
-constexpr int kOptionalTensor = -1;
 
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
 // Since tflite doesn't support unsigned for other types, returns error if
@@ -507,6 +503,24 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
               status.ToString()));
     return llvm::None;
   }
+
+  // TensorFlow and TensorFlow Lite use different string encoding formats.
+  // Convert to TensorFlow Lite format is it's a constant string tensor.
+  if (tensor.dtype() == tensorflow::DT_STRING) {
+    ::tflite::DynamicBuffer dynamic_buffer;
+    auto flat = tensor.flat<::tensorflow::tstring>();
+    for (int i = 0; i < flat.size(); ++i) {
+      const auto& str = flat(i);
+      dynamic_buffer.AddString(str.c_str(), str.length());
+    }
+    char* tensor_buffer;
+    int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
+    auto buffer_data =
+        builder_.CreateVector(reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
+    free(tensor_buffer);
+    return tflite::CreateBuffer(builder_, buffer_data);
+  }
+
   absl::string_view tensor_data = tensor.tensor_data();
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(tensor_data.data()), tensor_data.size());

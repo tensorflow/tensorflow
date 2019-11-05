@@ -965,8 +965,8 @@ class Network(base_layer.Layer):
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
         save_format: Either 'tf' or 'h5', indicating whether to save the model
-            to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-            will switch to 'tf' in TensorFlow 2.0.
+            to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and
+            'h5' in TF 1.X.
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.

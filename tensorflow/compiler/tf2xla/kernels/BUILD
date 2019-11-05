@@ -31,6 +31,7 @@ tf_kernel_library(
         "cwise_ops.h",
         "data_format_ops.cc",
         "depthtospace_op.cc",
+        "determinant_ops.cc",
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
@@ -159,6 +160,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:logdet",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -184,7 +186,7 @@ tf_kernel_library(
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:random_ops_op_lib",
         "//tensorflow/core:resource_variable_ops_op_lib",
         "//tensorflow/core:sendrecv_ops_op_lib",
@@ -235,7 +237,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     alwayslink = 1,
 )
@@ -301,7 +303,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -320,7 +322,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -338,7 +340,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 

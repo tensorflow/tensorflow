@@ -41,7 +41,7 @@ tf_cc_test(
     deps = [
         ":bitcast_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

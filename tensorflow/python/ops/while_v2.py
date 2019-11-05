@@ -52,12 +52,6 @@ from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
 
-# TODO(b/79881896): Handle external control dependencies. tf.while_loop allows
-# control dependencies on external nodes with at least 1 output.
-# Another idea is to create const nodes outside the loop and add control edges
-# to them and then pass those in as data inputs. This should probably be
-# handled in the CapturingGraph itself.
-
 
 def while_loop(cond,
                body,

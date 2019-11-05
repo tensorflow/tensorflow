@@ -114,11 +114,6 @@ class AnonymousResourceOp : public OpKernel {
   bool create_deleter_ = true;
 };
 
-// Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def);
-
 // Registers the given cancellation callback, returning a function that can be
 // used to deregister the callback.
 Status RegisterCancellationCallback(CancellationManager* cancellation_manager,

@@ -15,7 +15,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -54,7 +54,7 @@ cc_library(
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
@@ -72,7 +72,7 @@ cc_library(
     deps = [
         ":input_yielder",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler:utils",

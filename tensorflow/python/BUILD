@@ -315,7 +315,7 @@ cc_library(
     hdrs = ["grappler/cost_analyzer.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
@@ -332,7 +332,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/costs:graph_properties",
     ],
@@ -375,7 +375,7 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -418,7 +418,7 @@ cc_library(
     features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -441,7 +441,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     alwayslink = 1,
 )
@@ -482,7 +482,7 @@ tf_python_pybind_extension(
         ":pybind11_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -502,7 +502,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:core_cpu_headers_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -515,7 +515,7 @@ tf_python_pybind_extension(
     module_name = "_pywrap_stat_summarizer",
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
         "@pybind11",
@@ -544,7 +544,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -561,7 +561,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -605,7 +605,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -648,7 +648,7 @@ tf_python_pybind_extension(
     module_name = "_pywrap_py_exception_registry",
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -695,7 +695,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:script_ops_op_lib",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python/eager:pywrap_tfe_lib",
@@ -908,7 +908,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -924,7 +924,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     alwayslink = 1,
 )
@@ -1246,7 +1246,7 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@pybind11",
     ],
 )
@@ -2000,7 +2000,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     alwayslink = 1,
 )
@@ -3523,24 +3523,26 @@ py_library(
         ":loss_scale",
         ":unconnected_gradients",
         ":util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
-    python_version = "PY3",
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":constant_op",
+        ":framework_test_combinations_lib",
         ":loss_scale",
         ":loss_scaling_gradient_tape",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager:def_function",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -5190,7 +5192,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "//tensorflow/core:core_cpu_headers_lib",
         "//tensorflow/core:framework_internal_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -5219,7 +5221,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:replay_log_proto_cc",
     ],
 )
@@ -5246,7 +5248,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -5674,7 +5676,7 @@ tf_cuda_library(
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     alwayslink = 1,
 )

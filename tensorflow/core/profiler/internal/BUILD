@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -21,9 +20,9 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -36,7 +35,7 @@ cc_library(
         ":tfprof_node_show",
         ":tfprof_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -48,9 +47,9 @@ cc_library(
     deps = [
         ":tfprof_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -69,9 +68,9 @@ cc_library(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -89,9 +88,9 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -111,9 +110,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -130,9 +129,9 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -146,8 +145,8 @@ cc_library(
         ":tfprof_node",
         ":tfprof_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -165,9 +164,9 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -187,9 +186,9 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -213,9 +212,9 @@ tf_cc_test(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -236,9 +235,9 @@ tf_cc_test(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -250,7 +249,7 @@ cc_library(
     copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:tfprof_options",
     ],
@@ -271,8 +270,8 @@ cc_library(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
     ],
@@ -298,9 +297,9 @@ tf_cc_test(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -313,7 +312,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
     ],
 )
 
@@ -333,9 +332,9 @@ tf_cc_test(
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
     ],
 )
@@ -360,12 +359,12 @@ cc_library(
     name = "tfprof_tf_lib",
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:regexp_internal",
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "traceme_recorder",
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
@@ -384,7 +383,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "traceme_recorder_test",
     srcs = ["traceme_recorder_test.cc"],
     deps = [
@@ -405,7 +404,7 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -431,7 +430,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -452,7 +451,7 @@ filegroup(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "python_traceme",
     hdrs = ["python_traceme.h"],
     visibility = ["//tensorflow/python:__pkg__"],
@@ -474,7 +473,7 @@ filegroup(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "python_scoped_annotation",
     hdrs = ["python_scoped_annotation.h"],
     visibility = ["//tensorflow/python:__pkg__"],

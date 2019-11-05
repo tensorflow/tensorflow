@@ -23,6 +23,7 @@ cc_library(
     srcs = ["filesystem_interface.cc"],
     hdrs = ["filesystem_interface.h"],
     deps = [
+        ":modular_filesystem",
         "//tensorflow/c:tf_file_statistics",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_internal",
@@ -33,4 +34,15 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
     ],
     alwayslink = 1,
+)
+
+# Core TensorFlow depends on this, will be included in main library
+cc_library(
+    name = "modular_filesystem",
+    srcs = ["modular_filesystem.cc"],
+    hdrs = ["modular_filesystem.h"],
+    deps = [
+        ":filesystem_interface",
+        "//tensorflow/core/platform:env",
+    ],
 )

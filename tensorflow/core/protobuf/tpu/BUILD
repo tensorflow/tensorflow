@@ -81,10 +81,10 @@ xla_proto_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":dynamic_padding_proto_cc",
+        ":dynamic_padding_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 

@@ -112,6 +112,14 @@ bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
   return absl::ConsumeSuffix(s, expected);
 }
 
+StringPiece StripPrefix(StringPiece s, StringPiece expected) {
+  return absl::StripPrefix(s, expected);
+}
+
+StringPiece StripSuffix(StringPiece s, StringPiece expected) {
+  return absl::StripSuffix(s, expected);
+}
+
 // Return lower-cased version of s.
 string Lowercase(StringPiece s) { return absl::AsciiStrToLower(s); }
 

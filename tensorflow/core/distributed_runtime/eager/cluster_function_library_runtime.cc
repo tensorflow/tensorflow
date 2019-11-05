@@ -160,6 +160,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
   // multi-device function's in order to get the global unqiue op_id generated
   // by the master context.
   remote_op->set_id(opts.op_id.value());
+  remote_op->set_is_function(true);
   remote_op->set_is_component_function(true);
   remote_op->set_func_step_id(opts.step_id);
   remote_op->set_name(op->Name());

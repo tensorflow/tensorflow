@@ -4,7 +4,7 @@
 #
 # Public targets:
 #
-# ":protos_all_cc" - exports all core TensorFlow protos
+# ":protos_all" - exports all core TensorFlow protos
 #     ":protos_all_py" - py_proto_library version (Google-internal)
 # ":lib" - exports the public non-test headers for:
 #     //third_party/tensorflow/core/platform:: Platform-specific code and external dependencies
@@ -258,7 +258,7 @@ tf_generate_proto_text_sources(
 tf_jspb_proto_library(
     name = "protos_all_jspb_proto",
     visibility = ["//visibility:public"],
-    deps = [":protos_all_cc"],
+    deps = [":protos_all"],
 )
 
 proto_library(
@@ -573,7 +573,7 @@ cc_library(
     deps = [
         ":core_stringpiece",
         ":lib_proto_parsing",
-        ":protos_all_cc",
+        ":protos_all",
     ],
     alwayslink = 1,
 )
@@ -615,7 +615,7 @@ cc_library(
         ":functional_ops_op_lib",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
         "@com_google_googletest//:gtest",
@@ -839,7 +839,7 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -851,7 +851,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/strings",
     ],
@@ -863,7 +863,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -959,7 +959,7 @@ tf_gen_op_libs(
     ],
     deps = [
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -980,7 +980,7 @@ tf_gen_op_libs(
     ],
     deps = [
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -988,7 +988,7 @@ tf_gen_op_libs(
     op_lib_names = [
         "mkl_array_ops",
     ],
-    deps = [":protos_all_cc"],
+    deps = [":protos_all"],
 )
 
 tf_gen_op_libs(
@@ -1027,8 +1027,8 @@ tf_gen_op_libs(
     deps = [
         ":lib",
         ":lib_proto_parsing",
-        ":protos_all_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        ":protos_all",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
     ],
@@ -1108,7 +1108,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -1122,7 +1122,7 @@ tf_cc_test(
         ":test",
         ":testlib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1248,7 +1248,7 @@ cc_library(
         ":framework",
         ":lib",
         ":math_ops_op_lib",
-        ":protos_all_cc",
+        ":protos_all",
     ],
     alwayslink = 1,
 )
@@ -1482,7 +1482,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
@@ -1925,7 +1925,7 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":stream_executor",
     ],
 )
@@ -1959,115 +1959,87 @@ cc_library(
 
 tf_pyclif_proto_library(
     name = "example/example_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "example/example.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "example/feature_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "example/feature.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
-    name = "framework/cost_graph_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/cost_graph.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/tensor_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/tensor.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/kernel_def_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/kernel_def.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/node_def_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/node_def.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/function_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/function.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/graph_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/graph.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/step_stats_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/step_stats.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "framework/types_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/types.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
     name = "protobuf/config_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "protobuf/config.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "protobuf/device_properties_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "protobuf/device_properties.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "protobuf/graph_debug_info_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "protobuf/graph_debug_info.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "protobuf/meta_graph_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "protobuf/meta_graph.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "protobuf/saved_model_pyclif",
-    proto_lib = ":protos_all_cc",
+    proto_lib = ":protos_all",
     proto_srcfile = "protobuf/saved_model.proto",
     visibility = ["//visibility:public"],
 )
 
-tf_pyclif_proto_library(
-    name = "framework/variable_pyclif",
-    proto_lib = ":protos_all_cc",
-    proto_srcfile = "framework/variable.proto",
-    visibility = ["//visibility:public"],
-)
+# These targets will be moved to core/framework. The aliases are only temporary
+# since moving existing users will require several CLs over several projects.
+
+[
+    [
+        alias(
+            name = "framework_%s_pyclif%s" % (proto_name, target_suffix),
+            actual = ":framework/%s_pyclif%s" % (proto_name, target_suffix),
+            visibility = ["//visibility:public"],
+        )
+        for target_suffix in [
+            "",
+            "_pb2",
+        ]
+    ] + [
+        tf_pyclif_proto_library(
+            name = "framework/%s_pyclif" % proto_name,
+            proto_lib = ":protos_all",
+            proto_srcfile = "framework/%s.proto" % proto_name,
+            visibility = ["//visibility:public"],
+        ),
+    ]
+    for proto_name in [
+        "cost_graph",
+        "tensor",
+        "kernel_def",
+        "node_def",
+        "function",
+        "graph",
+        "step_stats",
+        "types",
+        "variable",
+    ]
+]
 
 # -----------------------------------------------------------------------------
 # Internal targets
@@ -2772,7 +2744,7 @@ tf_cuda_library(
         ":feature_util",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":stats_calculator_portable",
         ":version_lib",
         ":util_port",
@@ -2857,7 +2829,7 @@ tf_cuda_library(
     deps = [":framework_lite"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
 cc_library(
     name = "protos_cc",
     visibility = ["//visibility:public"],
@@ -2914,7 +2886,7 @@ tf_cuda_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -2973,7 +2945,7 @@ tf_cuda_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "@com_google_absl//absl/container:flat_hash_set",
         "//third_party/eigen3",
     ] + if_static([
@@ -3120,7 +3092,7 @@ tf_cuda_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -3164,7 +3136,7 @@ tf_cuda_library(
         ":framework",
         ":graph",
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
@@ -3198,7 +3170,7 @@ cc_library(
         ":allocator",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":shared_counter",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -3244,7 +3216,7 @@ tf_cuda_library(
         ":lib",
         ":lib_experimental",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/profiler/lib:profiler_lib",
@@ -3268,7 +3240,7 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
     ],
     alwayslink = 1,
 )
@@ -3358,7 +3330,7 @@ tf_cuda_library(
         ":graph",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":stream_executor",
         "//third_party/eigen3",
     ],
@@ -3375,7 +3347,7 @@ tf_cuda_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
@@ -3396,7 +3368,7 @@ tf_cuda_library(
         ":gpu_mem_allocator",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -3524,7 +3496,7 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
     ],
 )
 
@@ -3588,7 +3560,7 @@ tf_cc_tests(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "//tensorflow/core/platform:scanner",
@@ -3612,7 +3584,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
@@ -3627,7 +3599,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "//third_party/eigen3",
@@ -3653,7 +3625,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "//third_party/eigen3",
@@ -3692,7 +3664,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "//third_party/eigen3",
@@ -3714,7 +3686,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "//third_party/eigen3",
@@ -3748,7 +3720,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
     ],
@@ -3811,7 +3783,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
@@ -3836,7 +3808,7 @@ tf_cc_test(
     srcs = ["framework/op_gen_lib_test.cc"],
     deps = [
         ":op_gen_lib",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
     ],
@@ -3856,7 +3828,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -3970,7 +3942,7 @@ tf_cc_tests(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -4013,7 +3985,7 @@ tf_cc_tests(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -4058,7 +4030,7 @@ tf_cc_tests(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         "@com_google_googletest//:gtest_main",
     ],
@@ -4084,7 +4056,7 @@ tf_cc_tests_gpu(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -4113,7 +4085,7 @@ tf_cc_tests_gpu(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -4142,7 +4114,7 @@ tf_cc_tests_gpu(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":protos_test_cc",
         ":test",
         ":test_main",
@@ -4191,7 +4163,7 @@ tf_cc_test_mkl(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4259,7 +4231,7 @@ tf_cc_tests_gpu(
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4278,7 +4250,7 @@ tf_cc_test_gpu(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4308,7 +4280,7 @@ tf_cuda_cc_test(
         ":gpu_id",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4359,7 +4331,7 @@ tf_cc_test_gpu(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4385,7 +4357,7 @@ tf_cc_test_gpu(
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4415,7 +4387,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4450,7 +4422,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4476,7 +4448,7 @@ tf_cuda_cc_test(
         ":framework",
         ":framework_internal",
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4579,7 +4551,7 @@ tf_cuda_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4621,7 +4593,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4664,7 +4636,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4697,7 +4669,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4722,7 +4694,7 @@ tf_cc_test(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4753,7 +4725,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4790,7 +4762,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4838,7 +4810,7 @@ tf_cc_test_gpu(
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4863,7 +4835,7 @@ tf_cc_test_gpu(
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4887,7 +4859,7 @@ tf_cc_test_gpu(
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4913,7 +4885,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4939,7 +4911,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4968,7 +4940,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -4995,7 +4967,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -5040,7 +5012,7 @@ tf_cc_tests(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -5064,7 +5036,7 @@ tf_cc_test(
         ":lib",
         ":lib_internal",
         ":ops",
-        ":protos_all_cc",
+        ":protos_all",
         ":test",
         ":test_main",
         ":testlib",
@@ -5297,7 +5269,7 @@ transitive_hdrs(
         ":core_cpu",
         ":framework",
         ":lib",
-        ":protos_all_cc",
+        ":protos_all",
         ":stream_executor",
         "//tensorflow/core/platform:platform_strings",
     ],
@@ -5321,7 +5293,7 @@ tf_portable_proto_library(
     link_full_protobuf = False,
     prefix_dir = "emscripten_proto_no_rtti",
     proto_deps = [
-        ":protos_all_cc",
+        ":protos_all",
         "@com_google_protobuf//:protobuf",
     ],
     visibility = ["//visibility:public"],

@@ -435,7 +435,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
   Region *body = result.addRegion();
   return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
-                 parser.parseOptionalAttributeDict(result.attributes));
+                 parser.parseOptionalAttrDict(result.attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {

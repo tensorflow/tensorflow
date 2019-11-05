@@ -117,9 +117,8 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
-  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
-  EXPECT_EQ("c128[] (3.1400001049041748, 2.7799999713897705)",
-            c128_lit.ToString());
+  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14, 2.78});
+  EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());

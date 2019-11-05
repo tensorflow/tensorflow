@@ -14,12 +14,36 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 namespace optimize {
 namespace operator_property {
-OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
+
+namespace {
+
+// The op as well as it variants.
+// TODO(jianlijianli): extend it to support ops that has multiple variants.
+struct OpVariant {
+  BuiltinOperator op_code;
+};
+
+const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
+                                   int op_index) {
+  OpVariant op_signature;
+  OperatorT* op =
+      model->subgraphs.at(subgraph_index)->operators[op_index].get();
+  op_signature.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  return op_signature;
+}
+}  // namespace
+
+OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
+                                     int op_index) {
+  OpVariant op_signature = GetOperatorVariant(model, subgraph_index, op_index);
+  BuiltinOperator op_code = op_signature.op_code;
   OperatorProperty property;
-  switch (op) {
+  switch (op_code) {
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};

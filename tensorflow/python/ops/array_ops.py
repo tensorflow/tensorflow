@@ -4420,14 +4420,11 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
-    if compat.forward_compatible(2019, 4, 29):
-      try:
-        # TODO(apassos) find a less bad way of detecting resource variables
-        # without introducing a circular dependency.
-        return params.gather_nd(indices, name=name)
-      except AttributeError:
-        return gen_array_ops.gather_nd(params, indices, name=name)
-    else:
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.gather_nd(indices, name=name)
+    except AttributeError:
       return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(params, indices, batch_dims=batch_dims, name=name)
@@ -4689,29 +4686,17 @@ def quantize_and_dequantize(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
-    return gen_array_ops.quantize_and_dequantize_v2(
-        input,
-        input_min=input_min,
-        input_max=input_max,
-        signed_input=signed_input,
-        num_bits=num_bits,
-        range_given=range_given,
-        round_mode=round_mode,
-        narrow_range=narrow_range,
-        axis=axis,
-        name=name)
-  else:
-    return gen_array_ops.quantize_and_dequantize_v2(
-        input,
-        input_min=input_min,
-        input_max=input_max,
-        signed_input=signed_input,
-        num_bits=num_bits,
-        range_given=range_given,
-        round_mode=round_mode,
-        narrow_range=narrow_range,
-        name=name)
+  return gen_array_ops.quantize_and_dequantize_v2(
+      input,
+      input_min=input_min,
+      input_max=input_max,
+      signed_input=signed_input,
+      num_bits=num_bits,
+      range_given=range_given,
+      round_mode=round_mode,
+      narrow_range=narrow_range,
+      axis=axis,
+      name=name)
 
 
 @tf_export("searchsorted")

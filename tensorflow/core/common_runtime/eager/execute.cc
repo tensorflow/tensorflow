@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -413,6 +414,14 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return Status::OK();
   }
 
+  if (op->remote_func_params().has_value() &&
+      op->remote_func_params().value().step_id.has_value()) {
+    // If the op is a component of a multi-device function, don't compile it
+    // with XLA.
+    *compile_with_xla = false;
+    return Status::OK();
+  }
+
   // Does node have an explicit request to compile or not?
   Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
   if (status.ok()) {
@@ -616,7 +625,21 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
 
-    ctx->AddKernelToCache(cache_key, kernel.get());
+    if (op->is_function()) {
+      ctx->AddKernelToCache(cache_key, kernel.get());
+    } else {
+      // Exclude tf.data op kernels from being cached. The reason for this is
+      // that tf.data op kernels that accept a user-defined function will have a
+      // unique cache key every time they are executed (because the user-defined
+      // function is traced every time). Caching such kernels provides no
+      // benefit and in some cases results in linear memory growth of use
+      // programs that build input pipeline graphs in a loop.
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+      if (!data::DatasetOpKernel::IsDatasetOp(op_def)) {
+        ctx->AddKernelToCache(cache_key, kernel.get());
+      }
+    }
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
   const size_t num_outputs = static_cast<int>(output_dtypes.size());
@@ -670,6 +693,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 
   op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
   remote_op->set_device(op->Device()->name());
+  remote_op->set_is_function(op->is_function());
 }
 
 Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,

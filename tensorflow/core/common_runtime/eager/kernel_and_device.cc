@@ -335,11 +335,17 @@ Status KernelAndDeviceFunc::Run(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   std::unique_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (remote_func_params.has_value()) {
-    // If the function is a remote component of a cross-process function, re-use
-    // the same op id and step id as its parent's.
-    opts = absl::make_unique<FunctionLibraryRuntime::Options>(
-        remote_func_params.value().step_id);
-    opts->op_id = remote_func_params.value().op_id;
+    const EagerRemoteFunctionParams& params = remote_func_params.value();
+    if (params.step_id.has_value()) {
+      // If the function is a remote component of a cross-process function,
+      // re-use the step id as its parent function's.
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>(
+          params.step_id.value());
+    } else {
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    }
+    // Reuse the op id if it exists.
+    opts->op_id = params.op_id;
   } else {
     opts = absl::make_unique<FunctionLibraryRuntime::Options>();
     if (get_op_id_ && is_cross_process_) {

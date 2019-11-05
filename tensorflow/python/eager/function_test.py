@@ -133,11 +133,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     super(FunctionTest, self).setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   def testBasic(self):
@@ -158,7 +158,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     def g(x):
       old_values = list(values)
-      func_graph.add_exit_callback_to_default_func_graph(append_1)
+      ops.add_exit_callback_to_default_func_graph(append_1)
       self.assertEqual(old_values, values)
       return x + 1
 
@@ -166,7 +166,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     def f(x):
       old_values = list(values)
-      func_graph.add_exit_callback_to_default_func_graph(append_2)
+      ops.add_exit_callback_to_default_func_graph(append_2)
       self.assertEqual(old_values, values)
       return tf_g(x)
 
@@ -179,7 +179,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testCannotAddExitCallbackWhenNotInFunctionScope(self):
     with self.assertRaisesRegexp(RuntimeError, 'when not building a function.'):
-      func_graph.add_exit_callback_to_default_func_graph(lambda: None)
+      ops.add_exit_callback_to_default_func_graph(lambda: None)
 
   def testVariable(self):
     v1 = variables.Variable(1.0)

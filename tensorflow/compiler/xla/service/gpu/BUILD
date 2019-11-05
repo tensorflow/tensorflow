@@ -1452,7 +1452,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
     ],
 )
@@ -1603,7 +1603,7 @@ xla_proto_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:autotuning_proto",
     ],
 )
 

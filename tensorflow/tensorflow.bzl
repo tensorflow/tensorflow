@@ -805,7 +805,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
             clean_dep("//tensorflow/core:ops"),
-            clean_dep("//tensorflow/core:protos_all_cc"),
+            clean_dep("//tensorflow/core:protos_all"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
         ]),
@@ -822,7 +822,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
             clean_dep("//tensorflow/core:ops"),
-            clean_dep("//tensorflow/core:protos_all_cc"),
+            clean_dep("//tensorflow/core:protos_all"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
         ]),
@@ -2558,10 +2558,6 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
-
-# TODO(b/138724071): Remove when build is stable.
-def if_mlir_tflite(if_true, if_false = []):
-    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""

@@ -440,13 +440,23 @@ class IteratorContext {
 // Aggregates runtime support needed for dataset and iterator serialization.
 class SerializationContext {
  public:
+  // Enum describing what to do during serialization when external state is
+  // encountered.
+  enum class ExternalStatePolicy : int64 {
+    // Proceed with serialization, but log a warning about what state will be
+    // lost.
+    kWarn = 0,
+    // Proceed with serialization without logging any warning.
+    kIgnore = 1,
+    // Fail the serialization with an error.
+    kFail = 2,
+  };
+
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
-    // Indicates whether serialization should check if the dataset depends on
-    // external state. If the check is enabled and external state is
-    // encountered, then the serialization will fail.
-    bool check_external_state = true;
+    // Indicates what to do if the dataset depends on external state.
+    ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
 
     // Indicates whether an attempt to serialize a dataset that does not
     // implement serialization should result in an error. If set to `false`, the
@@ -467,7 +477,9 @@ class SerializationContext {
     return params_.input_list;
   }
 
-  bool check_external_state() const { return params_.check_external_state; }
+  ExternalStatePolicy external_state_policy() const {
+    return params_.external_state_policy;
+  }
 
   bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
 

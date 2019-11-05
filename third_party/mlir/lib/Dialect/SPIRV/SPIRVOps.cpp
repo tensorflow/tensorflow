@@ -298,7 +298,7 @@ static ParseResult parseVariableDecorations(OpAsmParser &parser,
   }
 
   // Parse other attributes
-  if (parser.parseOptionalAttributeDict(state.attributes))
+  if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
 
   return success();
@@ -383,7 +383,7 @@ static inline bool isMergeBlock(Block &block) {
 
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
-  if (parser.parseOptionalAttributeDict(state.attributes))
+  if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
   return success();
 }
@@ -1363,8 +1363,8 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &state) {
   if (parseEnumAttribute(storageClass, parser) ||
       parser.parseOperand(ptrInfo) ||
       parseMemoryAccessAttributes(parser, state) ||
-      parser.parseOptionalAttributeDict(state.attributes) ||
-      parser.parseColon() || parser.parseType(elementType)) {
+      parser.parseOptionalAttrDict(state.attributes) || parser.parseColon() ||
+      parser.parseType(elementType)) {
     return failure();
   }
 
@@ -1629,7 +1629,7 @@ static ParseResult parseModuleOp(OpAsmParser &parser, OperationState &state) {
     return failure();
 
   if (succeeded(parser.parseOptionalKeyword("attributes"))) {
-    if (parser.parseOptionalAttributeDict(state.attributes))
+    if (parser.parseOptionalAttrDict(state.attributes))
       return failure();
   }
 

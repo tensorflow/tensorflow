@@ -32,7 +32,7 @@ cc_library(
     hdrs = glob(["**/*.h"]),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -24,7 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -42,7 +42,7 @@ cc_library(
     deps = [
         ":graph_analyzer_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
         "@com_google_absl//absl/strings",

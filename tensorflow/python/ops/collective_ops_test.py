@@ -350,9 +350,9 @@ class CollectiveOpTest(test.TestCase):
   def testCollectiveGroupSizeMismatch(self):
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
     context.ensure_initialized()
 

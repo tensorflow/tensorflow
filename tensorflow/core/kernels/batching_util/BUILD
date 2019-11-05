@@ -13,7 +13,7 @@ cc_library(
     hdrs = ["periodic_function.h"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -93,7 +93,7 @@ tf_cc_test(
         ":fake_clock_env",
         ":shared_batch_scheduler",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

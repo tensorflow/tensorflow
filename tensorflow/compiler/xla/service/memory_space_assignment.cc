@@ -862,6 +862,13 @@ MemorySpaceAssignment::Run(
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
+  // If the use is a tuple, look inside the tuple to find the actual use.
+  for (int64 index : use.operand_index) {
+    if (operand->opcode() != HloOpcode::kTuple) {
+      break;
+    }
+    operand = operand->mutable_operand(index);
+  }
   // When the operand of a use is a bitcast, we place the bitcast in a separate
   // data structure.
   if (operand->opcode() == HloOpcode::kBitcast) {

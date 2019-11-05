@@ -53,7 +53,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
             "//tensorflow/core/profiler/lib:traceme",
         ],
     }) + select({
@@ -140,7 +140,7 @@ tf_cuda_library(
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
     ],
 )
@@ -164,7 +164,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
@@ -190,7 +190,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
@@ -228,7 +228,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -275,7 +275,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",

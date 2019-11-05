@@ -390,6 +390,13 @@ void InferenceContext::Merge() {
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
+    const auto& original_dst_def =
+        node.operations[0]->GetDefinition().dst_tensors[0];
+    const auto& link_dst_def =
+        linkable_node.operations[0]->GetDefinition().dst_tensors[0];
+    if (original_dst_def != link_dst_def) {
+      continue;
+    }
     MergeCLNodes(&linkable_node, &node);
     nodes_.erase(nodes_.begin() + next_nodes[0]);
     i -= 1;

@@ -16,7 +16,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:utils",
@@ -32,7 +32,7 @@ tf_cc_test(
     deps = [
         ":scc",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -49,7 +49,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:op_types",
@@ -64,7 +64,7 @@ tf_cc_test(
     deps = [
         ":topological_sort",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -81,7 +81,7 @@ cc_library(
         ":graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -96,7 +96,7 @@ tf_cc_test(
         ":graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -109,7 +109,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:graph_topology_view",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -121,7 +121,7 @@ tf_cc_test(
     deps = [
         ":traversal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -145,7 +145,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
@@ -183,7 +183,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -205,7 +205,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -219,7 +219,7 @@ cc_library(
     hdrs = ["colocation.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:utils",
     ],
 )
@@ -231,7 +231,7 @@ tf_cc_test(
     deps = [
         ":colocation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -246,7 +246,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ] + tf_protos_grappler(),
 )
 
@@ -257,7 +257,7 @@ tf_cc_test(
         ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -269,7 +269,7 @@ cc_library(
     hdrs = ["tpu.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ] + tf_protos_grappler(),
 )
 
@@ -278,7 +278,7 @@ tf_cc_test(
     srcs = ["tpu_test.cc"],
     deps = [
         ":tpu",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -292,7 +292,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
     ],
@@ -319,7 +319,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
@@ -353,7 +353,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -371,7 +371,7 @@ tf_cc_test(
         ":grappler_test",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -388,7 +388,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/grappler:utils",
     ],
 )
@@ -400,7 +400,7 @@ tf_cc_test(
         ":transitive_fanin",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

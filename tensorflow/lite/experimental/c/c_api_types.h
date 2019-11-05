@@ -449,6 +449,46 @@ typedef struct TfLiteContext {
   TfLiteStatus (*AddTensors)(struct TfLiteContext*, int tensors_to_add,
                              int* first_new_tensor_index);
 
+  // Allocate memory for op data. This method should only be used in `Init`
+  // method and the allocated memory will be available until `Free` method is
+  // called.
+  // On TFL, it allocates memory from heap using malloc, but for micro, this
+  // will be allocating from the allocator.
+  // WARNING: This is an experimental interface that is subject to change.
+  void* (*AllocateOpData)(struct TfLiteContext* ctx, size_t size);
+
+  // Deallocate memory holding op data. This method should only be used inside
+  // `Free` method. Caller needs to make sure that that `buffer` is allocated by
+  // `AllocateOpData` method.
+  // On TFL, it will free the buffer, and for micro, this method is a no-op.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*DeallocateOpData)(struct TfLiteContext* ctx, void* buffer);
+
+  // Allocate a temporary tensor to the node. This method also makes a copy of
+  // the shape array internally so the shape array could be deallocated right
+  // afterwards. WARNING: This is an experimental interface that is subject to
+  // change.
+  TfLiteStatus (*AllocateTemporaryTensor)(struct TfLiteContext* ctx,
+                                          TfLiteNode* node, int dims,
+                                          int* shape, TfLiteType data_type,
+                                          TfLiteAllocationType allocation_type,
+                                          int* new_tensor_index);
+
+  // Deallocate all temporary tensors associated to the node (including
+  // kTfLiteArenaRwPersistent persistent tensors). It also deallocates
+  // all the shape tensors.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*DeallocateAllTemporaryTensors)(struct TfLiteContext* ctx,
+                                        TfLiteNode* node);
+
+  // Resize the memory pointer of the `tensor`. This method behaves the same as
+  // `ResizeTensor`, except that it makes a copy of the shape array internally
+  // so the shape array could be deallocated right afterwards.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*ResizeTensorExplicit)(struct TfLiteContext* ctx,
+                                       TfLiteTensor* tensor, int dims,
+                                       const int* shape);
+
   // Get a Tensor node by node_index.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*GetNodeAndRegistration)(

@@ -72,7 +72,7 @@ static ParseResult parseBufferAllocOp(OpAsmParser &parser,
   BufferType bufferType;
   auto indexTy = parser.getBuilder().getIndexType();
   if (parser.parseOperandList(sizeInfo) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(bufferType))
     return failure();
   if (sizeInfo.empty())
@@ -118,7 +118,7 @@ static ParseResult parseBufferDeallocOp(OpAsmParser &parser,
   OpAsmParser::OperandType bufferInfo;
   BufferType bufferType;
   if (parser.parseOperand(bufferInfo) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(bufferType))
     return failure();
   return parser.resolveOperands(bufferInfo, bufferType, result.operands);
@@ -140,7 +140,7 @@ static ParseResult parseBufferSizeOp(OpAsmParser &parser,
   Type type;
   return failure(
       parser.parseOperand(op) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(op, type, result.operands) ||
       parser.addTypeToList(parser.getBuilder().getIndexType(), result.types));
@@ -189,7 +189,7 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
   if (!dictAttr.get("fun") &&
       parser.parseOptionalRegion(region, regionOperandsInfo, regionTypes))
     return failure();
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(operandTypes))
     return failure();
   return parser.resolveOperands(operandsInfo, operandTypes,
@@ -304,7 +304,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
   return failure(parser.parseOperand(rangeInfo[0]) || parser.parseColon() ||
                  parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
                  parser.parseOperand(rangeInfo[2]) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(rangeInfo, indexTy, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -353,7 +353,7 @@ static ParseResult parseSliceOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type, 8> types;
   if (parser.parseOperand(baseInfo) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -443,7 +443,7 @@ static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   // to something resembling
   //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
   if (parser.parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(memRefType))
     return failure();
 
@@ -504,7 +504,7 @@ static ParseResult parseTransposeOp(OpAsmParser &parser,
                  parser.parseAttribute(permutation,
                                        TransposeOp::getPermutationAttrName(),
                                        result.attributes) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(view, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -543,8 +543,8 @@ static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
   Type bType, vType;
   if (parser.parseOperand(bufferInfo) ||
       parser.parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColon() || parser.parseType(bType) || parser.parseArrow() ||
+      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
+      parser.parseType(bType) || parser.parseArrow() ||
       parser.parseType(vType)) {
     return failure();
   }
@@ -586,7 +586,7 @@ static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type, 2> types;
   llvm::SMLoc loc = parser.getCurrentLocation();
   return failure(parser.parseOperandList(opInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  (!opInfo.empty() && parser.parseColonTypeList(types)) ||
                  parser.resolveOperands(opInfo, types, loc, result.operands));
 }
@@ -654,7 +654,7 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,
   SmallVector<Type, 3> types;
   return failure(
       parser.parseOperandList(ops, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types) ||
       parser.resolveOperands(ops, types, parser.getNameLoc(), result.operands));
 }
