@@ -297,28 +297,6 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
 
 }  // anonymous namespace
 
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def) {
-  if (serialization_ctx.check_external_state()) {
-    TF_RETURN_IF_ERROR(dataset->CheckExternalState());
-  }
-  GraphDefBuilder b;
-  DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* output_node = nullptr;
-  TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which node
-  // represents `dataset`.
-  ops::UnaryOp("_Retval", output_node,
-               b.opts()
-                   .WithName("dataset")
-                   .WithAttr("T", DT_VARIANT)
-                   .WithAttr("index", 0));
-  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
-  return Status::OK();
-}
-
 Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
                                     std::function<void()> register_fn,
                                     std::function<void()>* deregister_fn) {
