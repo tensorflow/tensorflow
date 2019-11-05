@@ -696,7 +696,8 @@ def tf_pyclif_proto_library(
         proto_srcfile = "",
         visibility = None,
         **kwargs):
-    pass
+    native.filegroup(name = name)
+    native.filegroup(name = name + "_pb2")
 
 def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
