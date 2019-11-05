@@ -2857,218 +2857,144 @@ def get(identifier):
     raise ValueError('Could not interpret '
                      'metric function identifier: %s' % identifier)
 
-
 class FBetaScore(Metric):
-    """Computes F-Beta Score.
+    """Computes F-Beta score.
 
-    This is the weighted harmonic mean of precision and recall.
-    Output range is [0, 1].
+    It is the weighted harmonic mean of precision
+    and recall. Output range is [0, 1]. Works for
+    both multi-class and multi-label classification.
 
-    F-Beta = (1 + beta^2) * ((precision * recall) /
-        ((beta^2 * precision) + recall))
-
-    `beta` parameter determines the weight given to the
-    precision and recall.
-
-    `beta < 1` gives more weight to the precision.
-    `beta > 1` gives more weight to the recall.
-    `beta == 1` gives equal weight to precision and recall.
+    F-Beta = (1 + beta^2) * (prec * recall) / ((beta^2 * prec) + recall)
 
     Args:
-       `num_classes`: Number of unique classes in the dataset.
-       `average`: Type of averaging to be performed on data.
-        Acceptable values are `None`, `micro`, `macro` and `weighted`.
-       `beta`: float. Determines the weight of precision and recall
-        in harmonic mean. Acceptable values are either a number
-        of float data type greater than 0.0 or a scale tensor of
-        dtype tf.float32.
+        num_classes: Number of unique classes in the dataset.
+        average: Type of averaging to be performed on data.
+            Acceptable values are `None`, `micro`, `macro` and
+            `weighted`. Default value is None.
+        beta: Determines the weight of precision and recall
+            in harmonic mean. Determines the weight given to the
+            precision and recall. Default value is 1.
+        threshold: Elements of `y_pred` greater than threshold are
+            converted to be 1, and the rest 0. If threshold is
+            None, the argmax is converted to 1, and the rest 0.
 
     Returns:
-       F Beta Score: float
+        F-Beta Score: float
 
     Raises:
-       ValueError: If the `average` has values other than
-       [None, micro, macro, weighted].
+        ValueError: If the `average` has values other than
+        [None, micro, macro, weighted].
 
-       ValueError: If the `beta` value is less than or equal
-       to 0.
+        ValueError: If the `beta` value is less than or equal
+        to 0.
 
     `average` parameter behavior:
+        None: Scores for each class are returned
 
-    1. If `None` is specified as an input, scores for each
-       class are returned.
+        micro: True positivies, false positives and
+            false negatives are computed globally.
 
-    2. If `micro` is specified, metrics like true positivies,
-       false positives and false negatives are computed
-       globally.
+        macro: True positivies, false positives and
+            false negatives are computed for each class
+            and their unweighted mean is returned.
 
-    3. If `macro` is specified, metrics like true positivies,
-       false positives and false negatives are computed for
-       each class and their unweighted mean is returned.
-       Imbalance in dataset is not taken into account for
-       calculating the score
-
-    4. If `weighted` is specified, metrics are computed for
-       each class and returns the mean weighted by the
-       number of true instances in each class taking data
-       imbalance into account.
-
-    Usage:
-
-    ```python
-    actuals = tf.constant([[1, 1, 0],[1, 0, 0]], dtype=tf.int32)
-    predis = tf.constant([[1, 0, 0],[1, 0, 1]], dtype=tf.int32)
-    # F-Beta Micro
-    fb_score = tf.keras.metrics.FBetaScore(num_classes=3,
-        beta=0.4, average='micro')
-    fb_score.update_state(actuals, preds)
-    print('F1-Beta Score is: ',
-        fb_score.result().numpy()) # 0.6666666
-    # F-Beta Macro
-    fb_score = tf.keras.metrics.FBetaScore(num_classes=3,
-        beta=0.4, average='macro')
-    fb_score.update_state(actuals, preds)
-    print('F1-Beta Score is: ',
-        fb_score.result().numpy()) # 0.33333334
-    # F-Beta Weighted
-    fb_score = tf.keras.metrics.FBetaScore(num_classes=3,
-        beta=0.4, average='weighted')
-    fb_score.update_state(actuals, preds)
-    print('F1-Beta Score is: ',
-        fb_score.result().numpy()) # 0.6666667
-    # F-Beta score for each class (average=None).
-    fb_score = tf.keras.metrics.FBetaScore(num_classes=3,
-        beta=0.4, average=None)
-    fb_score.update_state(actuals, preds)
-    print('F1-Beta Score is: ',
-        fb_score.result().numpy()) # [1. 0. 0.]
-    ```
-
-    Usage with tf.keras API:
-
-    ```python
-    model = tf.keras.Model(inputs, outputs)
-    model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.FBetaScore(
-                   num_classes=3, beta=0.4, average='weighted')])
-    ```
+        weighted: Metrics are computed for each class
+            and returns the mean weighted by the
+            number of true instances in each class.
     """
 
     def __init__(self,
                  num_classes,
                  average=None,
                  beta=1.0,
+                 threshold=None,
                  name='fbeta_score',
-                 dtype=dtypes.float32):
+                 dtype=tf.float32):
         super(FBetaScore, self).__init__(name=name)
-        self.num_classes = num_classes
-        # type check
-        if not isinstance(beta, float) and beta.dtype != dtypes.float32:
-            raise TypeError('The value of beta should be float')
-        # value check
-        if beta <= 0.0:
-            raise ValueError('beta value should be greater than zero')
-        else:
-            self.beta = beta
+
         if average not in (None, 'micro', 'macro', 'weighted'):
-            raise ValueError('Unknown average type. Acceptable values '
-                             'are: [None, micro, macro, weighted]')
-        else:
-            self.average = average
-            if self.average == 'micro':
-                self.axis = None
-            else:
-                self.axis = 0
-        if self.average == 'micro':
-            self.true_positives = self.add_weight(
-                'true_positives',
-                shape=[],
-                initializer='zeros',
-                dtype=self.dtype)
-            self.false_positives = self.add_weight(
-                'false_positives',
-                shape=[],
-                initializer='zeros',
-                dtype=self.dtype)
-            self.false_negatives = self.add_weight(
-                'false_negatives',
-                shape=[],
-                initializer='zeros',
-                dtype=self.dtype)
-        else:
-            self.true_positives = self.add_weight(
-                'true_positives',
-                shape=[self.num_classes],
-                initializer='zeros',
-                dtype=self.dtype)
-            self.false_positives = self.add_weight(
-                'false_positives',
-                shape=[self.num_classes],
-                initializer='zeros',
-                dtype=self.dtype)
-            self.false_negatives = self.add_weight(
-                'false_negatives',
-                shape=[self.num_classes],
-                initializer='zeros',
-                dtype=self.dtype)
-            self.weights_intermediate = self.add_weight(
-                'weights',
-                shape=[self.num_classes],
+            raise ValueError("Unknown average type. Acceptable values "
+                             "are: [None, micro, macro, weighted]")
+
+        if not isinstance(beta, float):
+            raise TypeError("The value of beta should be a python float")
+
+        if beta <= 0.0:
+            raise ValueError("beta value should be greater than zero")
+
+        if threshold is not None:
+            if not isinstance(threshold, float):
+                raise TypeError(
+                    "The value of threshold should be a python float")
+            if threshold > 1.0 or threshold <= 0.0:
+                raise ValueError("threshold should be between 0 and 1")
+
+        self.num_classes = num_classes
+        self.average = average
+        self.beta = beta
+        self.threshold = threshold
+        self.axis = None
+        self.init_shape = []
+
+        if self.average != 'micro':
+            self.axis = 0
+            self.init_shape = [self.num_classes]
+
+        def _zero_wt_init(name):
+            return self.add_weight(
+                name,
+                shape=self.init_shape,
                 initializer='zeros',
                 dtype=self.dtype)
 
-    # TO DO SSaishruthi: Add sample weight option
+        self.true_positives = _zero_wt_init('true_positives')
+        self.false_positives = _zero_wt_init('false_positives')
+        self.false_negatives = _zero_wt_init('false_negatives')
+        self.weights_intermediate = _zero_wt_init('weights_intermediate')
+
+    # TODO: Add sample_weight support, currently it is
+    # ignored during calculations.
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = math_ops.cast(y_true, dtypes.int32)
-        y_pred = math_ops.cast(y_pred, dtypes.int32)
+        if self.threshold is None:
+            threshold = tf.reduce_max(y_pred, axis=-1, keepdims=True)
+            # make sure [0, 0, 0] doesn't become [1, 1, 1]
+            # Use abs(x) > eps, instead of x != 0 to check for zero
+            y_pred = tf.logical_and(y_pred >= threshold,
+                                    tf.abs(y_pred) > 1e-12)
+        else:
+            y_pred = y_pred > self.threshold
 
-        # true positive
-        self.true_positives.assign_add(
-            math_ops.cast(
-                math_ops.count_nonzero(y_pred * y_true, axis=self.axis),
-                self.dtype))
-        # false positive
-        self.false_positives.assign_add(
-            math_ops.cast(
-                math_ops.count_nonzero(y_pred * (y_true - 1), axis=self.axis),
-                self.dtype))
-        # false negative
-        self.false_negatives.assign_add(
-            math_ops.cast(
-                math_ops.count_nonzero((y_pred - 1) * y_true, axis=self.axis),
-                self.dtype))
-        if self.average == 'weighted':
-            # variable to hold intermediate weights
-            self.weights_intermediate.assign_add(
-                math_ops.cast(math_ops.reduce_sum(y_true, axis=self.axis),
-                              self.dtype))
+        y_true = tf.cast(y_true, tf.int32)
+        y_pred = tf.cast(y_pred, tf.int32)
+
+        def _count_non_zero(val):
+            non_zeros = tf.math.count_nonzero(val, axis=self.axis)
+            return tf.cast(non_zeros, self.dtype)
+
+        self.true_positives.assign_add(_count_non_zero(y_pred * y_true))
+        self.false_positives.assign_add(_count_non_zero(y_pred * (y_true - 1)))
+        self.false_negatives.assign_add(_count_non_zero((y_pred - 1) * y_true))
+        self.weights_intermediate.assign_add(_count_non_zero(y_true))
 
     def result(self):
-        p_sum = math_ops.cast(self.true_positives + self.false_positives,
-                              self.dtype)
-        # calculate precision
-        precision = math_ops.divide_no_nan(self.true_positives, p_sum)
+        precision = tf.math.divide_no_nan(
+            self.true_positives, self.true_positives + self.false_positives)
+        recall = tf.math.divide_no_nan(
+            self.true_positives, self.true_positives + self.false_negatives)
 
-        r_sum = math_ops.cast(self.true_positives + self.false_negatives,
-                              self.dtype)
-        # calculate recall
-        recall = math_ops.divide_no_nan(self.true_positives, r_sum)
-        # intermediate calculations
         mul_value = precision * recall
-        add_value = (math_ops.square(self.beta) * precision) + recall
-        f1_int = (1 + math_ops.square(self.beta)) * (math_ops.divide_no_nan(
-            mul_value, add_value))
-        # f1 score
-        if self.average is not None:
-            f1_score = math_ops.reduce_mean(f1_int)
-        else:
-            f1_score = f1_int
-        # condition for weighted f1 score
+        add_value = (tf.math.square(self.beta) * precision) + recall
+        mean = (tf.math.divide_no_nan(mul_value, add_value))
+        f1_score = mean * (1 + tf.math.square(self.beta))
+
         if self.average == 'weighted':
-            f1_int_weights = math_ops.divide_no_nan(
+            weights = tf.math.divide_no_nan(
                 self.weights_intermediate,
-                math_ops.reduce_sum(self.weights_intermediate))
-            # weighted f1 score calculation
-            f1_score = math_ops.reduce_sum(f1_int * f1_int_weights)
+                tf.reduce_sum(self.weights_intermediate))
+            f1_score = tf.reduce_sum(f1_score * weights)
+
+        elif self.average is not None:  # [micro, macro]
+            f1_score = tf.reduce_mean(f1_score)
 
         return f1_score
 
@@ -3080,117 +3006,69 @@ class FBetaScore(Metric):
             "average": self.average,
             "beta": self.beta,
         }
+
+        if self.threshold is not None:
+            config["threshold"] = self.threshold
+
         base_config = super(FBetaScore, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
     def reset_states(self):
-        # reset state of the variables to zero
-        if self.average == 'micro':
-            self.true_positives.assign(0)
-            self.false_positives.assign(0)
-            self.false_negatives.assign(0)
-        else:
-            self.true_positives.assign(np.zeros(self.num_classes), np.float32)
-            self.false_positives.assign(np.zeros(self.num_classes), np.float32)
-            self.false_negatives.assign(np.zeros(self.num_classes), np.float32)
-            self.weights_intermediate.assign(
-                np.zeros(self.num_classes), np.float32)
+        self.true_positives.assign(tf.zeros(self.init_shape, self.dtype))
+        self.false_positives.assign(tf.zeros(self.init_shape, self.dtype))
+        self.false_negatives.assign(tf.zeros(self.init_shape, self.dtype))
+        self.weights_intermediate.assign(tf.zeros(self.init_shape, self.dtype))
 
 
 class F1Score(FBetaScore):
-    """Computes F1 micro, macro or weighted based on the user's choice.
+    """Computes F-1 Score.
 
-    F1 score is the weighted average of precision and
-    recall. Output range is [0, 1]. This works for both
-    multi-class and multi-label classification.
+    It is the harmonic mean of precision and recall.
+    Output range is [0, 1]. Works for both multi-class
+    and multi-label classification.
 
-    F-1 = (2) * ((precision * recall) / (precision + recall))
+    F-1 = 2 * (precision * recall) / (precision + recall)
 
     Args:
-       `num_classes`: Number of unique classes in the dataset.
-       `average`: Type of averaging to be performed on data.
-        Acceptable values are `None`, `micro`, `macro` and `weighted`.
-        Default value is None.
-       `beta`: float
-        Determines the weight of precision and recall in harmonic
-        mean. It's value is 1.0 for F1 score.
+        num_classes: Number of unique classes in the dataset.
+        average: Type of averaging to be performed on data.
+            Acceptable values are `None`, `micro`, `macro`
+            and `weighted`. Default value is None.
+        threshold: Elements of `y_pred` above threshold are
+            considered to be 1, and the rest 0. If threshold is
+            None, the argmax is converted to 1, and the rest 0.
 
     Returns:
-       F1 Score: float
+        F-1 Score: float
 
     Raises:
-       ValueError: If the `average` has values other than
-       [None, micro, macro, weighted].
-
-       ValueError: If the `beta` value is less than or equal
-       to 0.
+        ValueError: If the `average` has values other than
+        [None, micro, macro, weighted].
 
     `average` parameter behavior:
+        None: Scores for each class are returned
 
-    1. If `None` is specified as an input, scores for each
-       class are returned.
+        micro: True positivies, false positives and
+            false negatives are computed globally.
 
-    2. If `micro` is specified, metrics like true positivies,
-       false positives and false negatives are computed
-       globally.
+        macro: True positivies, false positives and
+            false negatives are computed for each class
+            and their unweighted mean is returned.
 
-    3. If `macro` is specified, metrics like true positivies,
-       false positives and false negatives are computed for
-       each class and their unweighted mean is returned.
-       Imbalance in dataset is not taken into account for
-       calculating the score
-
-    4. If `weighted` is specified, metrics are computed for
-       each class and returns the mean weighted by the
-       number of true instances in each class taking data
-       imbalance into account.
-
-    Usage:
-    ```python
-    actuals = tf.constant([[1, 1, 0],[1, 0, 0]],
-        dtype=tf.int32)
-    preds = tf.constant([[1, 0, 0],[1, 0, 1]],
-        dtype=tf.int32)
-    # F1 Micro
-    output = tf.keras.metrics.F1Score(num_classes=3,
-        average='micro')
-    output.update_state(actuals, preds)
-    print('F1 Micro score is: ',
-        output.result().numpy()) # 0.6666667
-    # F1 Macro
-    output = tf.keras.metrics.F1Score(num_classes=3,
-        average='macro')
-    output.update_state(actuals, preds)
-    print('F1 Macro score is: ',
-        output.result().numpy()) # 0.33333334
-    # F1 weighted
-    output = tf.keras.metrics.F1Score(num_classes=3,
-        average='weighted')
-    output.update_state(actuals, preds)
-    print('F1 Weighted score is: ',
-        output.result().numpy()) # 0.6666667
-    # F1 score for each class (average=None).
-    output = tf.keras.metrics.F1Score(num_classes=3)
-    output.update_state(actuals, preds)
-    print('F1 score is: ',
-            output.result().numpy()) # [1. 0. 0.]
-    ```
-
-    Usage with tf.keras API:
-
-    ```python
-    model = tf.keras.Model(inputs, outputs)
-    model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.F1Score(
-                   num_classes=3, average='weighted')])
-    ```
+        weighted: Metrics are computed for each class
+            and returns the mean weighted by the
+            number of true instances in each class.
     """
 
-    def __init__(self, num_classes, average, name='f1_score',
-                 dtype=dtypes.float32):
+    def __init__(self,
+                 num_classes,
+                 average=None,
+                 threshold=None,
+                 name='f1_score',
+                 dtype=tf.float32):
         super(F1Score, self).__init__(
-            num_classes, average, 1.0, name=name, dtype=dtype)
+            num_classes, average, 1.0, threshold, name=name, dtype=dtype)
 
-    # TO DO SSaishruthi: Add sample weight option
     def get_config(self):
         base_config = super(F1Score, self).get_config()
         del base_config["beta"]
