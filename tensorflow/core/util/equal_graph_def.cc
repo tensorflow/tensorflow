@@ -145,7 +145,7 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
 
   int first_control_input = actual.input_size();
   for (int i = 0; i < actual.input_size(); ++i) {
-    if (str_util::StartsWith(actual.input(i), "^")) {
+    if (absl::StartsWith(actual.input(i), "^")) {
       first_control_input = i;
       break;
     }
@@ -241,7 +241,7 @@ uint64 NodeDefHash(const NodeDef& ndef, const EqualGraphDefOptions& options) {
   // Normal inputs. Order important.
   int first_control_input = ndef.input_size();
   for (int i = 0; i < ndef.input_size(); ++i) {
-    if (str_util::StartsWith(ndef.input(i), "^")) {
+    if (absl::StartsWith(ndef.input(i), "^")) {
       first_control_input = i;
       break;
     }

@@ -24,6 +24,7 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -265,9 +266,11 @@ class BatchMatMulBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  for dtype_ in [
-      np.float16, np.float32, np.float64, np.complex64, np.complex128, np.int32
-  ]:
+  dtypes_to_test = [np.float16, np.float32, np.float64, np.int32]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
+  for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:
         name = "%s_%s_%s" % (dtype_.__name__, adjoint_a_, adjoint_b_)
@@ -276,14 +279,19 @@ if __name__ == "__main__":
           setattr(
               BatchMatmulOpTest,
               "testBatchMatmulOp_" + name + "_{}".format(use_static_shape_),
-              _GetBatchMatmulOpTest(dtype_, adjoint_a_, adjoint_b_,
-                                    use_static_shape_))
+              test_util.xla_allow_fallback(
+                  "TODO(b/134526360): XLA:CPU hasn't implemented int32 dot.")(
+                      _GetBatchMatmulOpTest(dtype_, adjoint_a_, adjoint_b_,
+                                            use_static_shape_)))
           # Broadcasting is supported only in v2.
           setattr(
               BatchMatmulOpTest, "testBatchMatmulBroadcasting_" + name +
               ("_%s" % use_static_shape_),
-              _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_, adjoint_b_,
-                                                use_static_shape_))
+              test_util.xla_allow_fallback(
+                  "TODO(b/134526360): XLA:CPU hasn't implemented int32 dot.")(
+                      _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_,
+                                                        adjoint_b_,
+                                                        use_static_shape_)))
         if dtype_ == np.int32:
           continue
         setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,

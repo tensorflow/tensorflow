@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -55,14 +55,10 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -86,16 +82,6 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
-  // This is for sharing the code between ExecuteOnStream and
-  // ExecuteAsyncOnStream.
-  //
-  // Notice that it's tricky to use correctly, as the profile object (when it
-  // exists) must out-live the task.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
-
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
   //
@@ -129,9 +115,9 @@ class CpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<se::OwningDeviceMemory> buffers);
 
-  // Returns the points-to set of the root instruction of the entry
-  // computation. Uses points-to analysis from buffer assignment.
-  const PointsToSet& GetRootPointsToSet() const;
+  // Returns the instruction value set of the root instruction of the entry
+  // computation. Uses dataflow analysis from buffer assignment.
+  const InstructionValueSet& GetRootValueSet() const;
 
   // The JIT containing compiled modules.
   const std::unique_ptr<SimpleOrcJIT> jit_;

@@ -25,7 +25,7 @@ import sys
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow as print_mdl
+from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

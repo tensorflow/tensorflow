@@ -47,6 +47,8 @@ const char* kModelWithFCOp = "fc.bin";
 
 const char* kModelMixed = "mixed.bin";
 
+const char* kModelSplit = "split.bin";
+
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];
   vsnprintf(buf, sizeof(buf), format, args);

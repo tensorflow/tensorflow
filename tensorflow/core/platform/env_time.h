@@ -33,7 +33,7 @@ class EnvTime {
   static constexpr uint64 kSecondsToMicros = 1000ULL * 1000ULL;
   static constexpr uint64 kSecondsToNanos = 1000ULL * 1000ULL * 1000ULL;
 
-  EnvTime();
+  EnvTime() = default;
   virtual ~EnvTime() = default;
 
   /// \brief Returns a default impl suitable for the current operating

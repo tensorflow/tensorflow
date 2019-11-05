@@ -26,7 +26,6 @@ namespace data {
 namespace {
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<DeviceContext*, 4> DeviceContextVec;
 typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
 class SingleThreadedExecutorImpl : public Executor {
@@ -71,10 +70,12 @@ class SingleThreadedExecutorImpl : public Executor {
       }
 
       if (n->IsControlFlow()) {
-        return errors::Unimplemented(
-            "Single-threaded executor does not support control flow.  But saw "
-            "control flow node ",
-            n->name());
+        return errors::FailedPrecondition(
+            "Single-threaded executor does not support low level control flow, "
+            " but saw control flow node ",
+            n->name(),
+            ".  Perhaps your graph contains old-style control flow primitives? "
+            "Try using tf.compat.v1.enable_control_flow_v2().");
       }
       if (n->IsSend() || n->IsHostSend() || n->IsRecv() || n->IsHostRecv()) {
         return errors::Unimplemented(
@@ -196,7 +197,6 @@ class SingleThreadedExecutorImpl : public Executor {
     // TODO(mrry): Can we avoid copying into these vectors? Consider modifying
     // OpKernelContext to take the TensorValueVec as a pointer into `inputs`.
     TensorValueVec node_inputs;
-    DeviceContextVec input_device_contexts;
     AllocatorAttributeVec input_alloc_attrs;
 
     // Prepare the parameters that will be the same for all kernels.
@@ -207,6 +207,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.log_memory = false;              // TODO(mrry): Too severe?
     params.record_tensor_accesses = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
+    params.create_rendezvous = &(params_.rendezvous_factory);
     params.session_state = args.session_state;
     params.tensor_store = args.tensor_store;
     params.cancellation_manager = args.cancellation_manager;
@@ -219,7 +220,6 @@ class SingleThreadedExecutorImpl : public Executor {
     params.step_container = args.step_container;
     params.slice_reader_cache = nullptr;  // TODO(mrry): Too severe?
     params.inputs = &node_inputs;
-    params.input_device_contexts = &input_device_contexts;
     params.input_alloc_attrs = &input_alloc_attrs;
 
     Args::Runner runner_copy = args.runner;
@@ -254,8 +254,6 @@ class SingleThreadedExecutorImpl : public Executor {
         input_alloc_attrs[j] = input_alloc_attrs_[input_start_index + j];
       }
       params.op_kernel = kernel_state.kernel;
-      input_device_contexts.clear();
-      input_device_contexts.resize(num_inputs);
       params.output_attr_array = kernel_state.output_alloc_attrs.data();
       OpKernelContext ctx(&params, num_outputs);
 
@@ -358,12 +356,10 @@ class SingleThreadedExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       Executor* ret;
-      TF_RETURN_IF_ERROR(
-          NewSingleThreadedExecutor(params, std::move(graph), &ret));
+      TF_RETURN_IF_ERROR(NewSingleThreadedExecutor(params, graph, &ret));
       out_executor->reset(ret);
       return Status::OK();
     }
@@ -374,11 +370,9 @@ static SingleThreadedExecutorRegistrar registrar;
 }  // namespace
 
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
-                                 std::unique_ptr<const Graph> graph,
-                                 Executor** executor) {
-  std::unique_ptr<SingleThreadedExecutorImpl> impl =
-      absl::make_unique<SingleThreadedExecutorImpl>(params);
-  TF_RETURN_IF_ERROR(impl->Initialize(*graph));
+                                 const Graph& graph, Executor** executor) {
+  auto impl = absl::make_unique<SingleThreadedExecutorImpl>(params);
+  TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();
   return Status::OK();
 }

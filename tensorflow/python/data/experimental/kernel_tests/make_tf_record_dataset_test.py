@@ -102,15 +102,17 @@ class MakeTFRecordDatasetTest(
 
   def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
                     seed=None):
-    dataset = readers.make_tf_record_dataset(
-        file_pattern=self.test_filenames,
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        num_parallel_reads=num_parallel_reads,
-        shuffle=True,
-        shuffle_seed=seed)
 
-    next_element = self.getNext(dataset)
+    def dataset_fn():
+      return readers.make_tf_record_dataset(
+          file_pattern=self.test_filenames,
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          num_parallel_reads=num_parallel_reads,
+          shuffle=True,
+          shuffle_seed=seed)
+
+    next_element = self.getNext(dataset_fn())
     first_batches = []
     try:
       while True:
@@ -118,7 +120,7 @@ class MakeTFRecordDatasetTest(
     except errors.OutOfRangeError:
       pass
 
-    next_element = self.getNext(dataset)
+    next_element = self.getNext(dataset_fn())
     second_batches = []
     try:
       while True:

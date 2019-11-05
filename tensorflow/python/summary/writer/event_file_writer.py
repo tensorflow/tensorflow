@@ -25,7 +25,7 @@ import time
 import six
 
 from tensorflow.core.util import event_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
 
@@ -66,7 +66,7 @@ class EventFileWriter(object):
     if not gfile.IsDirectory(self._logdir):
       gfile.MakeDirs(self._logdir)
     self._event_queue = six.moves.queue.Queue(max_queue)
-    self._ev_writer = pywrap_tensorflow.EventsWriter(
+    self._ev_writer = _pywrap_events_writer.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
     self._flush_secs = flush_secs
     self._sentinel_event = self._get_sentinel_event()

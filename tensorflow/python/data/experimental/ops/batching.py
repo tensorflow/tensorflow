@@ -20,14 +20,70 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export("data.experimental.dense_to_ragged_batch")
+def dense_to_ragged_batch(batch_size,
+                          drop_remainder=False,
+                          row_splits_dtype=dtypes.int64):
+  """A transformation that batches ragged elements into `tf.RaggedTensor`s.
+
+  This transformation combines multiple consecutive elements of the input
+  dataset into a single element.
+
+  Like `tf.data.Dataset.batch`, the components of the resulting element will
+  have an additional outer dimension, which will be `batch_size` (or
+  `N % batch_size` for the last element if `batch_size` does not divide the
+  number of input elements `N` evenly and `drop_remainder` is `False`). If
+  your program depends on the batches having the same outer dimension, you
+  should set the `drop_remainder` argument to `True` to prevent the smaller
+  batch from being produced.
+
+  Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
+  different shapes, and each batch will be encoded as a `tf.RaggedTensor`.
+  Example:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices(np.arange(6))
+  >>> dataset = dataset.map(lambda x: tf.range(x))
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.dense_to_ragged_batch(batch_size=2))
+  >>> for batch in dataset:
+  ...   print(batch)
+  <tf.RaggedTensor [[], [0]]>
+  <tf.RaggedTensor [[0, 1], [0, 1, 2]]>
+  <tf.RaggedTensor [[0, 1, 2, 3], [0, 1, 2, 3, 4]]>
+
+  Args:
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in the case it has fewer than
+      `batch_size` elements; the default behavior is not to drop the smaller
+      batch.
+    row_splits_dtype: The dtype that should be used for the `row_splits` of any
+      new ragged tensors.  Existing `tf.RaggedTensor` elements do not have their
+      row_splits dtype changed.
+
+  Returns:
+    Dataset: A `Dataset`.
+  """
+
+  def _apply_fn(dataset):
+    ragged_dataset = _DenseToRaggedDataset(dataset, row_splits_dtype)
+    return dataset_ops.BatchDataset(
+        ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
+
+  return _apply_fn
 
 
 @tf_export("data.experimental.dense_to_sparse_batch")
@@ -199,6 +255,7 @@ def map_and_batch(map_func,
   return _apply_fn
 
 
+@deprecation.deprecated(None, "Use `tf.data.Dataset.unbatch()`.")
 @tf_export("data.experimental.unbatch")
 def unbatch():
   """Splits elements of a dataset into multiple elements on the batch dimension.
@@ -213,7 +270,7 @@ def unbatch():
   # of a dataset.
   a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
 
-  a.apply(tf.data.experimental.unbatch()) == {
+  a.unbatch() == {
       'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
   ```
 
@@ -223,34 +280,7 @@ def unbatch():
   """
 
   def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-
-    # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
-    # are normalized to the rank-1 dense representation, so that the
-    # sparse-oblivious unbatching logic will slice them
-    # appropriately. This leads to a somewhat inefficient re-encoding step
-    # for all SparseTensor components.
-    # TODO(mrry): Consider optimizing this in future if it turns out to be
-    # a bottleneck.
-    def normalize(arg, *rest):
-      # pylint: disable=protected-access
-      if rest:
-        return dataset._element_structure._to_batched_tensor_list((arg,) + rest)
-      else:
-        return dataset._element_structure._to_batched_tensor_list(arg)
-
-    normalized_dataset = dataset.map(normalize)
-
-    # NOTE(mrry): Our `map()` has lost information about the sparseness
-    # of any SparseTensor components, so re-apply the structure of the
-    # original dataset.
-    restructured_dataset = _RestructuredDataset(
-        normalized_dataset,
-        dataset_ops.get_legacy_output_types(dataset),
-        dataset_ops.get_legacy_output_shapes(dataset),
-        dataset_ops.get_legacy_output_classes(dataset),
-        allow_unsafe_cast=True)
-    return _UnbatchDataset(restructured_dataset)
+    return dataset.unbatch()
 
   return _apply_fn
 
@@ -268,21 +298,21 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape
-    self._structure = structure.SparseTensorStructure(
-        dataset_ops.get_legacy_output_types(input_dataset),
-        tensor_shape.vector(None).concatenate(self._row_shape))
+    self._element_spec = sparse_tensor.SparseTensorSpec(
+        tensor_shape.TensorShape([None]).concatenate(self._row_shape),
+        dataset_ops.get_legacy_output_types(input_dataset))
 
-    variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
+    variant_tensor = ged_ops.dense_to_sparse_batch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_DenseToSparseBatchDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 class _MapAndBatchDataset(dataset_ops.UnaryDataset):
@@ -306,14 +336,21 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
     constant_drop_remainder = tensor_util.constant_value(self._drop_remainder_t)
+    # pylint: disable=protected-access
     if constant_drop_remainder:
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
-      self._structure = self._map_func.output_structure._batch(  # pylint: disable=protected-access
-          tensor_util.constant_value(self._batch_size_t))
+      # pylint: disable=g-long-lambda
+      self._element_spec = nest.map_structure(
+          lambda component_spec: component_spec._batch(
+              tensor_util.constant_value(self._batch_size_t)),
+          self._map_func.output_structure)
     else:
-      self._structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
-    variant_tensor = ged_ops.experimental_map_and_batch_dataset(
+      self._element_spec = nest.map_structure(
+          lambda component_spec: component_spec._batch(None),
+          self._map_func.output_structure)
+    # pylint: enable=protected-access
+    variant_tensor = ged_ops.map_and_batch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
@@ -321,129 +358,70 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
         preserve_cardinality=True,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_MapAndBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._map_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
-class _RestructuredDataset(dataset_ops.UnaryDataset):
-  """An internal helper for changing the structure and shape of a dataset."""
+class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that encodes dense inputs as ragged (w/ ragged_rank=0).
 
-  def __init__(self,
-               dataset,
-               output_types,
-               output_shapes=None,
-               output_classes=None,
-               allow_unsafe_cast=False):
-    """Creates a new dataset with the given output types and shapes.
+  In particular:
 
-    The given `dataset` must have a structure that is convertible:
-    * `dataset.output_types` must be the same as `output_types` module nesting.
-    * Each shape in `dataset.output_shapes` must be compatible with each shape
-      in `output_shapes` (if given).
+  * Any tf.Tensor elements with rank>0 are encoded as ragged tensors with
+    ragged_rank=0.  This allows tensors with varying shape to be batched
+    together.
+  * Any other elements are left as-is.
+  """
 
-    Note: This helper permits "unsafe casts" for shapes, equivalent to using
-    `tf.Tensor.set_shape()` where domain-specific knowledge is available.
+  def __init__(self, input_dataset, row_splits_dtype):
+    """Constructs a new _DenseToRaggedDataset.
 
     Args:
-      dataset: A `Dataset` object.
-      output_types: A nested structure of `tf.DType` objects.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
-        If omitted, the shapes will be inherited from `dataset`.
-      output_classes: (Optional.) A nested structure of class types. If omitted,
-        the class types will be inherited from `dataset`.
-      allow_unsafe_cast: (Optional.) If `True`, the caller may switch the
-        reported output types and shapes of the restructured dataset, e.g. to
-        switch a sparse tensor represented as `tf.variant` to its user-visible
-        type and shape.
-
-    Raises:
-      ValueError: If either `output_types` or `output_shapes` is not compatible
-        with the structure of `dataset`.
+      input_dataset: The dataset whose tf.Tensor elements should be made ragged.
+      row_splits_dtype: The dtype that should be used for the `row_splits` of
+        any new ragged tensors.  Existing `tf.RaggedTensor` elements do *not*
+        have their row_splits dtype changed.
     """
-    self._input_dataset = dataset
 
-    input_types = dataset_ops.get_legacy_output_types(dataset)
-    if not allow_unsafe_cast:
-      # Validate that the types are compatible.
-      output_types = nest.map_structure(dtypes.as_dtype, output_types)
-      flat_original_types = nest.flatten(input_types)
-      flat_new_types = nest.flatten(output_types)
-      if flat_original_types != flat_new_types:
-        raise ValueError(
-            "Dataset with output types %r cannot be restructured to have "
-            "output types %r" %
-            (dataset_ops.get_legacy_output_types(dataset), output_types))
+    # Replace each TensorSpec in the input dataset's structure with a
+    # corresponding RaggedTensorSpec.
+    def to_ragged_spec(spec):
+      if isinstance(spec, tensor_spec.TensorSpec) and spec.shape.ndims != 0:
+        return ragged_tensor.RaggedTensorSpec(
+            shape=spec.shape,
+            dtype=spec.dtype,
+            ragged_rank=0,
+            row_splits_dtype=row_splits_dtype)
+      else:
+        return spec
 
-    input_shapes = dataset_ops.get_legacy_output_shapes(dataset)
-    if output_shapes is None:
-      # Inherit shapes from the original `dataset`.
-      output_shapes = nest.pack_sequence_as(
-          output_types, nest.flatten(input_shapes))
-    else:
-      if not allow_unsafe_cast:
-        # Validate that the shapes are compatible.
-        nest.assert_same_structure(output_types, output_shapes)
-        flat_original_shapes = nest.flatten(input_shapes)
-        flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
+    self._structure = nest.map_structure(to_ragged_spec,
+                                         input_dataset.element_spec)
 
-        for original_shape, new_shape in zip(flat_original_shapes,
-                                             flat_new_shapes):
-          if not original_shape.is_compatible_with(new_shape):
-            raise ValueError(
-                "Dataset with output shapes %r cannot be restructured to have "
-                "incompatible output shapes %r" % (input_shapes,
-                                                   output_shapes))
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
+    # Replace each tf.Tensor value in the input dataset with a variant-encoded
+    # RaggedTensor.  Since we're updating the corresponding structure to be
+    # a RaggedTensorSpec, this variant-encoded tensor will be decoded with
+    # RaggedTensorSpec._from_tensor_list.
+    def to_ragged_variant(value):
+      if isinstance(value, ops.Tensor) and value.shape.ndims != 0:
+        spec = to_ragged_spec(tensor_spec.TensorSpec.from_tensor(value))
+        return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
+      else:
+        return value
 
-    input_classes = dataset_ops.get_legacy_output_classes(dataset)
-    if output_classes is None:
-      # Inherit class types from the original `dataset`.
-      output_classes = nest.pack_sequence_as(
-          output_types, nest.flatten(input_classes))
+    self._mapped_dataset = input_dataset.map(
+        lambda value: nest.map_structure(to_ragged_variant, value))
 
-    self._structure = structure.convert_legacy_structure(
-        output_types, output_shapes, output_classes)
-    variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
-    super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
+    variant = self._mapped_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_DenseToRaggedDataset, self).__init__(input_dataset, variant)
 
   @property
-  def _element_structure(self):
-    return self._structure
-
-
-class _UnbatchDataset(dataset_ops.UnaryDataset):
-  """A dataset that splits the elements of its input into multiple elements."""
-
-  def __init__(self, input_dataset):
-    """See `unbatch()` for more details."""
-    input_shapes = dataset_ops.get_legacy_output_shapes(input_dataset)
-    flat_shapes = nest.flatten(input_shapes)
-    if any(s.ndims == 0 for s in flat_shapes):
-      raise ValueError("Cannot unbatch an input with scalar components.")
-    known_batch_dim = tensor_shape.Dimension(None)
-    for s in flat_shapes:
-      try:
-        known_batch_dim = known_batch_dim.merge_with(s[0])
-      except ValueError:
-        raise ValueError("Cannot unbatch an input whose components have "
-                         "different batch sizes.")
-    self._input_dataset = input_dataset
-
-    self._structure = dataset_ops.get_structure(input_dataset)._unbatch()  # pylint: disable=protected-access
-
-    variant_tensor = ged_ops.experimental_unbatch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
-    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def _element_structure(self):
+  def element_spec(self):
     return self._structure

@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
+
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
+#include "absl/flags/flag.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -26,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
-// (Omitted internal-only flag)
+ABSL_FLAG(bool, grpc_deepcopy_tensor_response, false, "Disables mem sharing");
 
 namespace tensorflow {
 namespace grpc {
@@ -183,7 +185,9 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
     // We enable this behavior if the tensor is large.
     bool share_tensor_slice_memory = (tdata.size() > kLargeTensorBytes);
 
-    // (Omitted internal-only conditional)
+    if (absl::GetFlag(FLAGS_grpc_deepcopy_tensor_response)) {
+      share_tensor_slice_memory = false;
+    }
 
     size_t encoder_size = expected_size - tdata.size();
 

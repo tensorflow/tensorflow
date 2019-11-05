@@ -29,14 +29,14 @@ from tensorflow.python.platform import googletest
 class NullaryOpsTest(xla_test.XLATestCase):
 
   def _testNullary(self, op, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = op()
       result = session.run(output)
       self.assertAllClose(result, expected, rtol=1e-3)
 
   def testNoOp(self):
-    with self.cached_session():
+    with self.session():
       with self.test_scope():
         output = control_flow_ops.no_op()
       # This should not crash.

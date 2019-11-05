@@ -171,8 +171,9 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = absl::make_unique<StreamExecutor>(
-      this, absl::make_unique<GpuExecutor>(config.plugin_config));
-  auto init_status = executor->Init(config.ordinal, config.device_options);
+      this, absl::make_unique<GpuExecutor>(config.plugin_config),
+      config.ordinal);
+  auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return port::Status(
         port::error::INTERNAL,

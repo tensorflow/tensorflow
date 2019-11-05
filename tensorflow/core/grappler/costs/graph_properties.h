@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -89,11 +91,27 @@ class GraphProperties {
   // output values when possible and does other aggressive strategies.
   // Similar to assuming_valid_feeds, this may cause incorrectness in graph
   // analyses, but is useful for simulation or scheduling.
+  // If include_input_tensor_values is true, the values of constant tensors
+  // will included in the input properties.
+  // If include_output_tensor_values is true, the values of constant tensors
+  // will be included in the output properties.
   Status InferStatically(bool assume_valid_feeds,
-                         bool aggressive_shape_inference);
+                         bool aggressive_shape_inference,
+                         bool include_input_tensor_values,
+                         bool include_output_tensor_values);
+  Status InferStatically(bool assume_valid_feeds,
+                         bool aggressive_shape_inference,
+                         bool include_tensor_values) {
+    return InferStatically(
+        assume_valid_feeds,
+        /*aggressive_shape_inference=*/aggressive_shape_inference,
+        /*include_input_tensor_values=*/include_tensor_values,
+        /*include_output_tensor_values=*/include_tensor_values);
+  }
   Status InferStatically(bool assume_valid_feeds) {
     return InferStatically(assume_valid_feeds,
-                           /*aggressive_shape_inference=*/false);
+                           /*aggressive_shape_inference=*/false,
+                           /*include_tensor_values=*/true);
   }
   // Infer the shape by running the graph on the specified cluster and recording
   // the shapes of the processed tensors.
@@ -117,6 +135,7 @@ class GraphProperties {
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
+
   // Invalidate input/output properties for nodes modified during graph
   // optimization pass, to prevent potential optimizations, based on incorrect
   // shape information.
@@ -124,7 +143,12 @@ class GraphProperties {
   void ClearOutputProperties(const string& node_name);
   // Returns true if we have *any* properties.
   bool has_properties() const {
-    return input_properties_.size() > 0 || output_properties_.size() > 0;
+    return !input_properties_.empty() || !output_properties_.empty();
+  }
+
+  bool CheckShapeIncompatible(const string& node_name) const {
+    return incompatible_shape_nodes_.find(node_name) !=
+           incompatible_shape_nodes_.end();
   }
 
  private:
@@ -176,6 +200,10 @@ class GraphProperties {
   std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
       output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
+
+  // Nodes with output shape incompatible between shape inference and
+  // annotation.
+  std::unordered_set<string> incompatible_shape_nodes_;
 };
 
 }  // end namespace grappler

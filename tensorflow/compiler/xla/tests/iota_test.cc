@@ -34,7 +34,7 @@ class IotaR1Test
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
-TEST_P(IotaR1Test, DoIt) {
+XLA_TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
@@ -63,11 +63,16 @@ class IotaR2Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR2Test, DoIt) {
+XLA_TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
   const int64 iota_dim = std::get<2>(spec);
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (element_type == BF16) {
+    return;
+  }
+#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
@@ -90,11 +95,16 @@ class IotaR3Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR3Test, DoIt) {
+XLA_TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
   const int64 iota_dim = std::get<2>(spec);
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (element_type == BF16) {
+    return;
+  }
+#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
@@ -112,27 +122,6 @@ INSTANTIATE_TEST_CASE_P(IotaR3TestInstantiation, IotaR3Test,
                                                             /*end=*/1001,
                                                             /*step=*/10),
                                            ::testing::Values(0, 1, 2)));
-
-class IotaR3PredTest : public ClientLibraryTestBase,
-                       public ::testing::WithParamInterface<int> {};
-
-TEST_P(IotaR3PredTest, DoIt) {
-  const auto element_type = PRED;
-  const int64 num_elements = 2;
-  const int64 iota_dim = GetParam();
-  XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  std::vector<int64> dimensions = {42, 19};
-  dimensions.insert(dimensions.begin() + iota_dim, num_elements);
-  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
-  if (primitive_util::IsFloatingPointType(element_type)) {
-    ComputeAndCompare(&builder, {}, ErrorSpec{0.0001});
-  } else {
-    ComputeAndCompare(&builder, {});
-  }
-}
-
-INSTANTIATE_TEST_CASE_P(IotaR3PredTestInstantiation, IotaR3PredTest,
-                        ::testing::Values(0, 1, 2));
 
 }  // namespace
 }  // namespace xla

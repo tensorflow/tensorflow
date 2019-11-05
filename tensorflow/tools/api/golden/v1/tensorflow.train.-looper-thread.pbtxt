@@ -35,10 +35,6 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "join"
-    argspec: "args=[\'self\', \'timeout\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "loop"
     argspec: "args=[\'coord\', \'timer_interval_secs\', \'target\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }

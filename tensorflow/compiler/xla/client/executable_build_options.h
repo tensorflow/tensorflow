@@ -72,6 +72,13 @@ class ExecutableBuildOptions {
   int num_replicas() const { return num_replicas_; }
   ExecutableBuildOptions& set_num_replicas(int num_replicas);
 
+  // Whether input and output buffers are aliased if the associated parameter is
+  // passed-through XLA modules without being changed.
+  bool alias_passthrough_params() const { return alias_passthrough_params_; }
+  void set_alias_passthrough_params(bool alias_passthrough_params) {
+    alias_passthrough_params_ = alias_passthrough_params;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -79,6 +86,7 @@ class ExecutableBuildOptions {
   absl::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
+  bool alias_passthrough_params_ = false;
 };
 
 }  // namespace xla

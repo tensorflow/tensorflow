@@ -37,7 +37,7 @@ HloRunner::CreateModuleFromString(const absl::string_view hlo_string,
                                   const DebugOptions& debug_options) {
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseHloString(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
 namespace {
@@ -81,7 +81,7 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
                                                   filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseHloString(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
 HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
@@ -207,14 +207,14 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
+  service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options,
-                                         /*profile=*/profile, arguments));
+      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }
@@ -243,12 +243,12 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
+  service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options,
-                                         /*profile=*/profile, arguments));
+      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }
@@ -294,6 +294,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       options.num_replicas * options.arguments.size() + 1);
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
   int64 index = 0;
+  RunId run_id;
   for (int64 i = 0; i < options.num_replicas; ++i) {
     int64 device = (*device_assignment)(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -301,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     streams.push_back(absl::make_unique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), device_assignment));
+        device, streams.back().get(), device_assignment, run_id));
 
     // Copy arguments to device.
     for (const Literal* argument : options.arguments) {
@@ -443,7 +444,8 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
 }
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
-    int64 device, se::Stream* stream, DeviceAssignment* device_assignment) {
+    int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+    RunId run_id) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);
   run_options.set_stream(stream);
@@ -453,6 +455,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
+  run_options.set_run_id(run_id);
   return ServiceExecutableRunOptions(run_options, backend().StreamBorrower());
 }
 

@@ -73,6 +73,9 @@ extern const char* kModelWithFCOp;
 // reshape->custom->custom->squeeze.
 extern const char* kModelMixed;
 
+// Test model with split op.
+extern const char* kModelSplit;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

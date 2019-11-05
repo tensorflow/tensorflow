@@ -118,6 +118,7 @@ void TRTInt8Calibrator::waitAndSetDone() {
   if (!done_) {
     done_ = true;
     cond_.notify_all();
+    dev_buffers_.clear();
   }
 }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/collective.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -49,7 +50,7 @@ std::vector<RegistrationInfo>* MutableCollectiveRegistry() {
 
 string CollGroupRuntimeDetails::ToString() const {
   return strings::StrCat("CollGroupRuntimeDetails {communicator_key=",
-                         str_util::CEscape(communicator_key), "}");
+                         absl::CEscape(communicator_key), "}");
 }
 
 string CollGroupParams::ToString() const {
@@ -89,9 +90,10 @@ CollInstanceParams& CollInstanceParams::operator=(
 }
 
 string CollInstanceParams::ToString() const {
-  string v = strings::StrCat("CollInstanceParams { instance_key=", instance_key,
-                             " type=", type, " data_type=", data_type,
-                             " shape=", shape.DebugString(), " devices {");
+  string v =
+      strings::StrCat("CollInstanceParams { instance_key=", instance_key,
+                      " type=", type, " data_type=", DataTypeString(data_type),
+                      " shape=", shape.DebugString(), " devices {");
   for (const auto& d : device_names) {
     strings::StrAppend(&v, d, ",");
   }

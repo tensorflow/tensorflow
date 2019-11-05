@@ -256,7 +256,6 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
-
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
 TEST(ConstFloatMeanOpTest, KeepDims4DMean) {
@@ -395,6 +394,31 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, NonSpecialAxisSameScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {105.0, 71.0, 233.0, 92.0, 227.0, 11.0, 14.0, 43.0};
+  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, 0.0, 255.0},
+                     {TensorType_INT8, {1, 2, 4}, 0.0, 255.0}, {1}, {1}, false);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(data, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, NonSpecialAxisNonSameScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8};
+  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, -1.0, 1.0},
+                     {TensorType_INT8, {1, 2}, -5.0, 5.0}, {2}, {1, 3}, false);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear({0.25, 0.65}, kQuantizedTolerance)));
 }
 
 TEST(ConstInt8MeanOpTest, QuantizedSameScale) {
@@ -640,6 +664,21 @@ TEST(DynamicUint8SumOpTest, KeepDims) {
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({6.47059, 10.698}, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8SumOpTest, Rescale) {
+  const std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.3};
+  SumOpConstModel m({TensorType_INT8, {1, 3, 2}, -1.0, 1.0},
+                    {TensorType_INT8, {2}, -5.0, 5.0}, {1}, {1}, false);
+  // Expect the sum to be 0.4 + 0.3 + 0.5 = 1.2 and 0.2 + 0.4 + 0.3 = 0.9.
+  const std::vector<float> expected_sum = {1.2, 0.9};
+  const float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(expected_sum, kQuantizedTolerance)));
 }
 
 // Tests for reduce_prod
@@ -1208,9 +1247,3 @@ TEST(DynamicAnyOpTest, Scalar) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

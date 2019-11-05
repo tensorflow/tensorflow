@@ -43,12 +43,25 @@ port::StatusOr<void*> GetCusolverDsoHandle();
 port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+port::StatusOr<void*> GetNvInferDsoHandle();
+port::StatusOr<void*> GetNvInferPluginDsoHandle();
 
 port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetRocfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
+
+// The following method tries to dlopen all necessary GPU libraries for the GPU
+// platform TF is built with (CUDA or ROCm) only when these libraries should be
+// dynamically loaded. Error status is returned when any of the libraries cannot
+// be dlopened.
+port::Status MaybeTryDlopenGPULibraries();
+
+// The following method tries to dlopen all necessary TensorRT libraries when
+// these libraries should be dynamically loaded. Error status is returned when
+// any of the libraries cannot be dlopened.
+port::Status TryDlopenTensorRTLibraries();
 }  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs

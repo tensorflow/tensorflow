@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-@testable import TensorFlowLite
 import XCTest
+
+@testable import TensorFlowLite
 
 class TensorTests: XCTestCase {
 
-  // MARK: - Tensor
-
-  func testTensor_Init() {
+  func testInit() {
     let name = "InputTensor"
-    let dataType: TensorDataType = .uInt8
-    let shape = TensorShape(Constant.dimensions)
+    let dataType: Tensor.DataType = .uInt8
+    let shape = Tensor.Shape(Constant.dimensions)
     guard let data = name.data(using: .utf8) else { XCTFail("Data should not be nil."); return }
     let quantizationParameters = QuantizationParameters(scale: 0.5, zeroPoint: 1)
     let inputTensor = Tensor(
@@ -39,24 +38,66 @@ class TensorTests: XCTestCase {
     XCTAssertEqual(inputTensor.quantizationParameters, quantizationParameters)
   }
 
-  // MARK: - TensorShape
+  func testEquatable() {
+    let name = "Tensor"
+    let dataType: Tensor.DataType = .uInt8
+    let shape = Tensor.Shape(Constant.dimensions)
+    guard let data = name.data(using: .utf8) else { XCTFail("Data should not be nil."); return }
+    let quantizationParameters = QuantizationParameters(scale: 0.5, zeroPoint: 1)
+    let tensor1 = Tensor(
+      name: name,
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    var tensor2 = Tensor(
+      name: name,
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    XCTAssertEqual(tensor1, tensor2)
 
-  func testTensorShape_InitWithArray() {
-    let shape = TensorShape(Constant.dimensions)
+    tensor2 = Tensor(
+      name: "Tensor2",
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    XCTAssertNotEqual(tensor1, tensor2)
+  }
+}
+
+class TensorShapeTests: XCTestCase {
+
+  func testInitWithArray() {
+    let shape = Tensor.Shape(Constant.dimensions)
     XCTAssertEqual(shape.rank, Constant.dimensions.count)
     XCTAssertEqual(shape.dimensions, Constant.dimensions)
   }
 
-  func testTensorShape_InitWithElements() {
-    let shape = TensorShape(2, 2, 3)
+  func testInitWithElements() {
+    let shape = Tensor.Shape(2, 2, 3)
     XCTAssertEqual(shape.rank, Constant.dimensions.count)
     XCTAssertEqual(shape.dimensions, Constant.dimensions)
   }
 
-  func testTensorShape_InitWithArrayLiteral() {
-    let shape: TensorShape = [2, 2, 3]
+  func testInitWithArrayLiteral() {
+    let shape: Tensor.Shape = [2, 2, 3]
     XCTAssertEqual(shape.rank, Constant.dimensions.count)
     XCTAssertEqual(shape.dimensions, Constant.dimensions)
+  }
+
+  func testEquatable() {
+    let shape1 = Tensor.Shape(2, 2, 3)
+    var shape2: Tensor.Shape = [2, 2, 3]
+    XCTAssertEqual(shape1, shape2)
+
+    shape2 = [2, 2, 4]
+    XCTAssertNotEqual(shape1, shape2)
   }
 }
 
@@ -65,19 +106,4 @@ class TensorTests: XCTestCase {
 private enum Constant {
   /// Array of 2 arrays of 2 arrays of 3 numbers: [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]].
   static let dimensions = [2, 2, 3]
-}
-
-// MARK: - Extensions
-
-extension TensorShape: Equatable {
-  public static func == (lhs: TensorShape, rhs: TensorShape) -> Bool {
-    return lhs.rank == rhs.rank && lhs.dimensions == rhs.dimensions
-  }
-}
-
-extension Tensor: Equatable {
-  public static func == (lhs: Tensor, rhs: Tensor) -> Bool {
-    return lhs.name == rhs.name && lhs.dataType == rhs.dataType && lhs.shape == rhs.shape &&
-           lhs.data == rhs.data && lhs.quantizationParameters == rhs.quantizationParameters
-  }
 }

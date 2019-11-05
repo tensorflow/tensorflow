@@ -529,6 +529,7 @@ class InspectUtilsTest(test.TestCase):
 
   def test_isbuiltin(self):
     self.assertTrue(inspect_utils.isbuiltin(enumerate))
+    self.assertTrue(inspect_utils.isbuiltin(eval))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
@@ -551,38 +552,6 @@ class InspectUtilsTest(test.TestCase):
         inspect_utils.getfutureimports(
             basic_definitions.SimpleClass.method_with_print),
         ('absolute_import', 'division', 'print_function', 'with_statement'))
-
-  def test_super_wrapper_for_dynamic_attrs(self):
-
-    a = object()
-    b = object()
-
-    class Base(object):
-
-      def __init__(self):
-        self.a = a
-
-    class Subclass(Base):
-
-      def __init__(self):
-        super(Subclass, self).__init__()
-        self.b = b
-
-    base = Base()
-    sub = Subclass()
-
-    sub_super = super(Subclass, sub)
-    sub_super_wrapped = inspect_utils.SuperWrapperForDynamicAttrs(sub_super)
-
-    self.assertIs(base.a, a)
-    self.assertIs(sub.a, a)
-
-    self.assertFalse(hasattr(sub_super, 'a'))
-    self.assertIs(sub_super_wrapped.a, a)
-
-    # TODO(mdan): Is this side effect harmful? Can it be avoided?
-    # Note that `b` was set in `Subclass.__init__`.
-    self.assertIs(sub_super_wrapped.b, b)
 
 
 if __name__ == '__main__':

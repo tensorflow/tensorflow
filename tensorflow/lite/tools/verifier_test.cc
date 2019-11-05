@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/tools/verifier.h"
+
 #include <string>
 #include <vector>
 
@@ -21,17 +23,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/tools/verifier.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
-
-using flatbuffers::FlatBufferBuilder;
-using flatbuffers::Offset;
 
 class MockErrorReporter : public ErrorReporter {
  public:
@@ -110,7 +110,7 @@ class TfLiteFlatbufferModelBuilder {
   void FinishModel(const std::vector<int32_t>& inputs,
                    const std::vector<int32_t>& outputs,
                    BuilderMode mode = kBuilderModeDefault) {
-    auto subgraph = std::vector<Offset<SubGraph>>({CreateSubGraph(
+    auto subgraph = std::vector<flatbuffers::Offset<SubGraph>>({CreateSubGraph(
         builder_, CreateVector(tensors_, mode), CreateVector(inputs, mode),
         CreateVector(outputs, mode), CreateVector(operators_, mode),
         builder_.CreateString("test_subgraph"))});
@@ -138,18 +138,18 @@ class TfLiteFlatbufferModelBuilder {
     return builder_.CreateVector(v);
   }
 
-  FlatBufferBuilder builder_;
+  flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
   TfLiteRegistration fake_op_;
   MockErrorReporter mock_reporter_;
-  std::vector<Offset<Operator>> operators_;
-  std::vector<Offset<OperatorCode>> operator_codes_;
-  std::vector<Offset<Tensor>> tensors_;
-  std::vector<Offset<Buffer>> buffers_;
+  std::vector<flatbuffers::Offset<Operator>> operators_;
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
+  std::vector<flatbuffers::Offset<Tensor>> tensors_;
+  std::vector<flatbuffers::Offset<Buffer>> buffers_;
 };
 
 TEST(VerifyModel, TestEmptyModel) {
-  FlatBufferBuilder builder;
+  flatbuffers::FlatBufferBuilder builder;
   auto model = CreateModel(builder, /*version=*/TFLITE_SCHEMA_VERSION,
                            /*operator_codes=*/0, /*subgraphs=*/0,
                            /*description=*/0, /*buffers=*/0);
@@ -235,7 +235,7 @@ TEST(VerifyModel, TestCorruptedData) {
 }
 
 TEST(VerifyModel, TestUnsupportedVersion) {
-  FlatBufferBuilder builder;
+  flatbuffers::FlatBufferBuilder builder;
   auto model = CreateModel(builder, /*version=*/1, /*operator_codes=*/0,
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
@@ -247,7 +247,7 @@ TEST(VerifyModel, TestUnsupportedVersion) {
 }
 
 TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
-  FlatBufferBuilder builder;
+  flatbuffers::FlatBufferBuilder builder;
   auto model = CreateModel(builder, /*version=*/TFLITE_SCHEMA_VERSION,
                            /*operator_codes=*/0,
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
@@ -294,16 +294,16 @@ TEST(VerifyModel, TestIntTensorShapeOverflow) {
 }
 
 TEST(VerifyModel, TensorBufferIsNotValid) {
-  FlatBufferBuilder builder;
+  flatbuffers::FlatBufferBuilder builder;
   std::vector<int> shape = {2, 3};
-  auto tensors = builder.CreateVector(std::vector<Offset<Tensor>>{
+  auto tensors = builder.CreateVector(std::vector<flatbuffers::Offset<Tensor>>{
       CreateTensorDirect(builder, &shape, TensorType_INT32, /*buffer=*/2,
                          "input", /*quantization=*/0)});
-  auto subgraph = std::vector<Offset<SubGraph>>(
+  auto subgraph = std::vector<flatbuffers::Offset<SubGraph>>(
       {CreateSubGraph(builder, tensors, /*inputs=*/0, /*outputs=*/0,
                       /*operators=*/0, builder.CreateString("Main"))});
 
-  auto buffers = builder.CreateVector(std::vector<Offset<Buffer>>{
+  auto buffers = builder.CreateVector(std::vector<flatbuffers::Offset<Buffer>>{
       CreateBuffer(builder, builder.CreateVector(
                                 std::vector<uint8_t>{1, 2, 3, 4, 5, 6})),
   });
@@ -514,6 +514,42 @@ TEST(VerifyModel, OpWithOptionalTensor) {
   builder.FinishModel({0, 1}, {2});
   ASSERT_TRUE(builder.Verify());
   EXPECT_EQ("", builder.GetErrorString());
+}
+
+TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
+  TfLiteFlatbufferModelBuilder builder;
+  for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
+       ++tensor_type) {
+    if (tensor_type == TensorType_STRING) continue;
+    builder.AddTensor({2, 3}, static_cast<TensorType>(tensor_type),
+                      {1, 2, 3, 4}, "input");
+    builder.FinishModel({}, {});
+    ASSERT_FALSE(builder.Verify());
+    EXPECT_THAT(
+        builder.GetErrorString(),
+        ::testing::ContainsRegex("Tensor input requires .* bytes, but is "
+                                 "allocated with 4 bytes buffer"));
+  }
+}
+
+TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
+  TfLiteFlatbufferModelBuilder builder;
+  for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
+       ++tensor_type) {
+    if (tensor_type == TensorType_STRING) continue;
+    TfLiteType lite_type = kTfLiteNoType;
+    ASSERT_EQ(ConvertTensorType(static_cast<TensorType>(tensor_type),
+                                &lite_type, /*error_reporter=*/nullptr),
+              kTfLiteOk);
+    size_t size_bytes = 0;
+    ASSERT_EQ(GetSizeOfType(/*context=*/nullptr, lite_type, &size_bytes),
+              kTfLiteOk);
+    std::vector<uint8_t> buffer(size_bytes);
+    builder.AddTensor({1}, static_cast<TensorType>(tensor_type), buffer,
+                      "input");
+    builder.FinishModel({}, {});
+    ASSERT_TRUE(builder.Verify());
+  }
 }
 
 // TODO(yichengfan): make up malicious files to test with.

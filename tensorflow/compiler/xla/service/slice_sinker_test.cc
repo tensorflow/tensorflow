@@ -494,5 +494,24 @@ TEST_F(SliceSinkerTest, Cascade) {
   EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1));
 }
 
+TEST_F(SliceSinkerTest, SameOpcodeDifferentResultElementTypes) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,9] parameter(0)
+      s00 = f32[2,9] slice(f32[8,9] p0), slice={[0:2], [0:9]}
+      s01 = f32[6,9] slice(f32[8,9] p0), slice={[2:8], [0:9]}
+      convert0 = s32[2,9] convert(f32[2,9] s00)
+      convert1 = s64[6,9] convert(f32[6,9] s01)
+      ROOT tuple = (s32[2,9], s64[6,9]) tuple(convert0, convert1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  SliceSinker slice_sinker;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&slice_sinker, module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla

@@ -20,10 +20,14 @@ from __future__ import print_function
 
 import collections
 
+from google.protobuf import text_format
 from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
 
@@ -168,6 +172,112 @@ class NestedStructureTest(test.TestCase):
     expected_tensor_spec.name = "hello"
     expected_tensor_spec.dtype = dtypes.int64.as_datatype_enum
     self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeTensorSpecWithNoName(self):
+    structure = [tensor_spec.TensorSpec([1, 2, 3], dtypes.int64)]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    expected = struct_pb2.StructuredValue()
+    expected_list = expected.list_value
+    expected_tensor_spec = expected_list.values.add().tensor_spec_value
+    expected_tensor_spec.shape.dim.add().size = 1
+    expected_tensor_spec.shape.dim.add().size = 2
+    expected_tensor_spec.shape.dim.add().size = 3
+    expected_tensor_spec.name = ""
+    expected_tensor_spec.dtype = dtypes.int64.as_datatype_enum
+    self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeRaggedTensorSpec(self):
+    structure = [ragged_tensor.RaggedTensorSpec(
+        [1, 2, 3], dtypes.int64, 2, dtypes.int32)]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    expected_pbtxt = r"""
+      list_value {
+        values {
+          type_spec_value {
+            type_spec_class: RAGGED_TENSOR_SPEC
+            type_spec_class_name: 'RaggedTensorSpec'
+            type_state {
+              tuple_value {
+                # spec._shape
+                values {
+                  tensor_shape_value {
+                    dim { size: 1 }
+                    dim { size: 2 }
+                    dim { size: 3 }
+                  }
+                }
+                # spec._dtype
+                values { tensor_dtype_value: DT_INT64 }
+                # spec._ragged_rank
+                values { int64_value: 2 }
+                # spec._row_splits_dtype
+                values { tensor_dtype_value: DT_INT32 }
+              }
+            }
+          }
+        }
+      }
+    """
+    expected = struct_pb2.StructuredValue()
+    text_format.Parse(expected_pbtxt, expected)
+    self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeSparseTensorSpec(self):
+    structure = [sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32)]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    expected_pbtxt = r"""
+      list_value {
+        values {
+          type_spec_value {
+            type_spec_class: SPARSE_TENSOR_SPEC
+            type_spec_class_name: 'SparseTensorSpec'
+            type_state {
+              tuple_value {
+                # spec._shape
+                values {
+                  tensor_shape_value {
+                    dim { size: 10 }
+                    dim { size: 20 }
+                  }
+                }
+                # spec._dtype
+                values { tensor_dtype_value: DT_FLOAT }
+              }
+            }
+          }
+        }
+      }
+    """
+    expected = struct_pb2.StructuredValue()
+    text_format.Parse(expected_pbtxt, expected)
+    self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testDecodeUnknownTensorSpec(self):
+    encoded = struct_pb2.StructuredValue()
+    encoded.type_spec_value.type_spec_class = 0
+    encoded.type_spec_value.type_spec_class_name = "FutureTensorSpec"
+    with self.assertRaisesRegexp(
+        ValueError, "The type 'FutureTensorSpec' is not supported"):
+      self._coder.decode_proto(encoded)
+
+  def testEncodeDataSetSpec(self):
+    structure = [dataset_ops.DatasetSpec(
+        {"rt": ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32),
+         "st": sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32),
+         "t": tensor_spec.TensorSpec([10, 8], dtypes.string)})]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
     decoded = self._coder.decode_proto(encoded)
     self.assertEqual(structure, decoded)
 

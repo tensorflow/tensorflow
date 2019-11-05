@@ -32,7 +32,7 @@ class CancellableCall {
       : cancel_mgr_(cancel_mgr),
         remote_worker_(remote_worker),
         wc_(wc),
-        wi_(wc_->CreateWorker(remote_worker_)) {}
+        wi_(wc_->GetOrCreateWorker(remote_worker_)) {}
 
   virtual ~CancellableCall() { wc_->ReleaseWorker(remote_worker_, wi_); }
 

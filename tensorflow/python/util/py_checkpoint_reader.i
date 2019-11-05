@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
-#include "tensorflow/python/lib/core/py_func.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 %}
 
@@ -110,12 +109,12 @@ static PyObject* CheckpointReader_GetTensor(
   reader->GetTensor(name, &tensor, status);
   if (TF_GetCode(status) == TF_OK) {
     tensorflow::Status s =
-        tensorflow::ConvertTensorToNdarray(*tensor.get(), &py_obj);
+        tensorflow::TensorToNdarray(*tensor.get(), &py_obj);
     if (!s.ok()) {
       Set_TF_Status_from_Status(status, s);
     }
   }
-  return py_obj;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj));
 }
 %}
 

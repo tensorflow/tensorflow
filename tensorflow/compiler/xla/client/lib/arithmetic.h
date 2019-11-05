@@ -24,6 +24,13 @@ limitations under the License.
 
 namespace xla {
 
+using XlaOpGenerator = std::function<XlaOp(XlaOp, XlaOp)>;
+
+// Creates a scalar computation based on a lambda and returns it.
+XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
+                                       XlaBuilder* builder,
+                                       XlaOpGenerator generator);
+
 // Creates a scalar add computation and returns it.
 XlaComputation CreateScalarAddComputation(PrimitiveType type,
                                           XlaBuilder* builder);
@@ -51,6 +58,18 @@ XlaComputation CreateScalarAndComputation(PrimitiveType type,
 // Creates a scalar logical OR computation and returns it.
 XlaComputation CreateScalarOrComputation(PrimitiveType type,
                                          XlaBuilder* builder);
+
+// This is to be used for general purpose "identity" like reductions with zero
+// for any type (ie. boolean operations for PRED and Add for real numbers).
+// As an example, this operation can be used for a situation of:
+// x_type = type(x)
+// op = CreateScalarIdentityWithZeroComputation(x_type)
+// ASSERT_TRUE(op(x, 0) == x)
+//
+// This functionality is used for operations that are similar to a slice,
+// gather, or broadcast, but are created through a reduction.
+XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
+                                                       XlaBuilder* builder);
 
 // Returns whether any predicate in "predicates" is set.
 //

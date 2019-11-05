@@ -19,31 +19,28 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.converters import asserts
-from tensorflow.python.autograph.converters import side_effect_guards
+from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
 class AssertsTest(converter_testing.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_basic(self):
 
     def test_fn(a):
-      assert a, 'test message'
-      return tf.no_op()  # pylint:disable=undefined-variable
+      assert a, 'testmsg'
+      return a
 
-    with self.converted(test_fn, (asserts, side_effect_guards), {},
-                        gen_control_flow_ops.no_op) as result:
-      with self.cached_session() as sess:
+    with ops.Graph().as_default():
+      with self.converted(test_fn, (function_scopes, asserts), {}) as result:
         op = result.test_fn(constant_op.constant(False))
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     'test message'):
-          self.evaluate(op)
+
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, 'testmsg'):
+        self.evaluate(op)
 
 
 if __name__ == '__main__':

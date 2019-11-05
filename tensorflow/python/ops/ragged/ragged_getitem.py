@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -70,30 +71,28 @@ def ragged_tensor_getitem(self, key):
 
   Examples:
 
-    ```python
-    >>> # A 2-D ragged tensor with 1 ragged dimension.
-    >>> rt = ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
-    >>> rt[0].eval().tolist()       # First row (1-D `Tensor`)
-    ['a', 'b', 'c']
-    >>> rt[:3].eval().tolist()      # First three rows (2-D RaggedTensor)
-    [['a', 'b', 'c'], ['d', 'e'], '[f'], [g']]
-    >>> rt[3, 0].eval().tolist()    # 1st element of 4th row (scalar)
-    'g'
+  >>> # A 2-D ragged tensor with 1 ragged dimension.
+  >>> rt = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
+  >>> rt[0].numpy()                 # First row (1-D `Tensor`)
+  array([b'a', b'b', b'c'], dtype=object)
+  >>> rt[:3].to_list()              # First three rows (2-D RaggedTensor)
+  [[b'a', b'b', b'c'], [b'd', b'e'], [b'f']]
+  >>> rt[3, 0].numpy()              # 1st element of 4th row (scalar)
+  b'g'
 
-    >>> # A 3-D ragged tensor with 2 ragged dimensions.
-    >>> rt = ragged.constant([[[1, 2, 3], [4]],
-    ...                    [[5], [], [6]],
-    ...                    [[7]],
-    ...                    [[8, 9], [10]]])
-    >>> rt[1].eval().tolist()       # Second row (2-D RaggedTensor)
-    [[5], [], [6]]
-    >>> rt[3, 0].eval().tolist()    # First element of fourth row (1-D Tensor)
-    [8, 9]
-    >>> rt[:, 1:3].eval().tolist()  # Items 1-3 of each row (3-D RaggedTensor)
-    [[[4]], [[], [6]], [], [[10]]]
-    >>> rt[:, -1:].eval().tolist()  # Last item of each row (3-D RaggedTensor)
-    [[[4]], [[6]], [[7]], [[10]]]
-    ```
+  >>> # A 3-D ragged tensor with 2 ragged dimensions.
+  >>> rt = tf.ragged.constant([[[1, 2, 3], [4]],
+  ...                          [[5], [], [6]],
+  ...                          [[7]],
+  ...                          [[8, 9], [10]]])
+  >>> rt[1].to_list()               # Second row (2-D RaggedTensor)
+  [[5], [], [6]]
+  >>> rt[3, 0].numpy()              # First element of fourth row (1-D Tensor)
+  array([8, 9], dtype=int32)
+  >>> rt[:, 1:3].to_list()          # Items 1-3 of each row (3-D RaggedTensor)
+  [[[4]], [[], [6]], [], [[10]]]
+  >>> rt[:, -1:].to_list()          # Last item of each row (3-D RaggedTensor)
+  [[[4]], [[6]], [[7]], [[10]]]
   """
   scope_tensors = [self] + list(_tensors_in_key_list(key))
   if isinstance(key, (list, tuple)):
@@ -262,17 +261,35 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
       return rt_input.with_values(
           _ragged_getitem_inner_dimensions(rt_input.values, key_list[1:]))
     else:
+      if not (isinstance(column_key.start, (ops.Tensor, int, type(None))) and
+              isinstance(column_key.stop, (ops.Tensor, int, type(None)))):
+        raise TypeError("slice offsets must be integers or None")
+
       # Nontrivial slice: use ragged_gather to extract the indicated slice as
       # a new RaggedTensor (inner_rt), and then recursively process its values.
-      # The splits can be taken from inner_rt.row_splits().
-      inner_rt_starts = rt_input.row_splits[:-1]
-      inner_rt_limits = rt_input.row_splits[1:]
-      if column_key.start is not None and column_key.start != 0:
-        inner_rt_starts = _add_offset_to_ranges(
-            column_key.start, rt_input.row_splits[:-1], rt_input.row_splits[1:])
-      if column_key.stop is not None and column_key.stop != 0:
-        inner_rt_limits = _add_offset_to_ranges(
-            column_key.stop, rt_input.row_splits[:-1], rt_input.row_splits[1:])
+      starts = rt_input.row_splits[:-1]
+      limits = rt_input.row_splits[1:]
+      step = 1 if column_key.step is None else column_key.step
+      lower_bound = _if_ge_zero(step, lambda: starts, lambda: starts - 1)
+      upper_bound = _if_ge_zero(step, lambda: limits, lambda: limits - 1)
+      # inner_rt_starts[i] = index to start gathering for row i.
+      if column_key.start is None:
+        inner_rt_starts = _if_ge_zero(step, lambda: starts, lambda: limits - 1)
+      else:
+        start_offset = math_ops.cast(column_key.start, starts.dtype)
+        inner_rt_starts = _if_ge_zero(
+            column_key.start,
+            lambda: math_ops.minimum(starts + start_offset, upper_bound),
+            lambda: math_ops.maximum(limits + start_offset, lower_bound))
+      # inner_rt_limits[i] = index to stop gathering for row i.
+      if column_key.stop is None:
+        inner_rt_limits = _if_ge_zero(step, lambda: limits, lambda: starts - 1)
+      else:
+        stop_offset = math_ops.cast(column_key.stop, starts.dtype)
+        inner_rt_limits = _if_ge_zero(
+            column_key.stop,
+            lambda: math_ops.minimum(starts + stop_offset, upper_bound),
+            lambda: math_ops.maximum(limits + stop_offset, lower_bound))
       inner_rt = _build_ragged_tensor_from_value_ranges(
           inner_rt_starts, inner_rt_limits, column_key.step, rt_input.values)
       return inner_rt.with_values(
@@ -380,35 +397,16 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
   return value_indices.with_values(gathered_values)
 
 
-def _add_offset_to_ranges(offset, starts, limits):
-  """Adds an indexing offset to each of the specified ranges.
-
-  If offset>=0, then return output[i]=min(starts[i]+offset, limits[i])
-  If offset<0, then return output[i]=max(limits[i]+offset, starts[i])
-
-  Args:
-    offset: The offset to add.  None, or an int, or a scalar Tensor.
-    starts: 1-D integer tensor containing start indices.
-    limits: 1-D integer tensor containing limit indices.
-
-  Returns:
-    A 1-D integer tensor.
-  """
-
-  def map_positive_offset(offset):
-    return math_ops.minimum(starts + offset, limits)
-
-  def map_negative_offset(offset):
-    return math_ops.maximum(limits + offset, starts)
-
-  if isinstance(offset, ops.Tensor):
-    offset = math_ops.cast(offset, starts.dtype)
-    return control_flow_ops.cond(offset >= 0,
-                                 lambda: map_positive_offset(offset),
-                                 lambda: map_negative_offset(offset))
-  elif isinstance(offset, int):
-    return (map_positive_offset(offset)
-            if offset > 0 else map_negative_offset(offset))
-
+def _if_ge_zero(value, true_fn, false_fn):
+  """Returns `true_fn() if value >= 0 else false_fn()`."""
+  # If `value` is statically known, then don't use a control flow op.
+  if isinstance(value, ops.Tensor):
+    const_value = tensor_util.constant_value(value)
+    if const_value is None:
+      return control_flow_ops.cond(value >= 0, true_fn, false_fn)
+    else:
+      value = const_value
+  if value >= 0:
+    return true_fn()
   else:
-    raise TypeError("slice offsets must be integers or None")
+    return false_fn()

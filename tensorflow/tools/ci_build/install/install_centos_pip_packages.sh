@@ -69,7 +69,6 @@ pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
 pip2 install psutil
-pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
@@ -100,8 +99,8 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
-pip2 install keras_applications==1.0.6 --no-deps
-pip3 install keras_applications==1.0.6 --no-deps
+pip2 install keras_applications==1.0.8 --no-deps
+pip3 install keras_applications==1.0.8 --no-deps
 pip2 install keras_preprocessing==1.0.5 --no-deps
 pip3 install keras_preprocessing==1.0.5 --no-deps
 pip2 install --upgrade h5py==2.8.0

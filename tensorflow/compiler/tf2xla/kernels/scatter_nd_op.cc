@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -108,22 +110,105 @@ class ScatterNdOp : public XlaOpKernel {
                                  buffer_shape.dim_sizes());
     auto indices = context->Input(0);
     auto updates = context->Input(1);
+    auto combine =
+        context->input_xla_type(1) == xla::PRED ? CombineBool : CombineNum;
     auto result =
         XlaScatter(buffer, updates, indices,
-                   /*indices_are_vectors=*/true, /*combiner=*/Combine, builder);
+                   /*indices_are_vectors=*/true, /*combiner=*/combine, builder);
     OP_REQUIRES_OK(context, result.status());
     context->SetOutput(0, result.ValueOrDie());
   }
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
-                            xla::XlaBuilder* builder) {
+  static xla::XlaOp CombineNum(const xla::XlaOp x, const xla::XlaOp y,
+                               xla::XlaBuilder* builder) {
+    (void)builder;
     return xla::Add(x, y);
+  }
+  static xla::XlaOp CombineBool(const xla::XlaOp x, const xla::XlaOp y,
+                                xla::XlaBuilder* builder) {
+    (void)builder;
+    return xla::Or(x, y);
   }
 };
 
 REGISTER_XLA_OP(Name("ScatterNd").CompileTimeConstantInput("shape"),
                 ScatterNdOp);
+
+void CompileTensorScatter(
+    XlaOpKernelContext* context,
+    const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
+        combiner) {
+  TensorShape buffer_shape = context->InputShape(0);
+  TensorShape indices_shape = context->InputShape(1);
+  TensorShape updates_shape = context->InputShape(2);
+
+  OP_REQUIRES(
+      context, TensorShapeUtils::IsVectorOrHigher(buffer_shape),
+      errors::InvalidArgument("Output must be at least 1-D, ",
+                              "got shape: ", buffer_shape.DebugString()));
+
+  OP_REQUIRES(
+      context,
+      buffer_shape.num_elements() > 0 || (indices_shape.num_elements() == 0 &&
+                                          updates_shape.num_elements() == 0),
+      errors::InvalidArgument(
+          "Indices and updates specified for empty output. indices shape: ",
+          indices_shape.DebugString()));
+
+  OP_REQUIRES_OK(
+      context, ValidateUpdateShape(buffer_shape, indices_shape, updates_shape));
+
+  xla::XlaBuilder* builder = context->builder();
+  auto buffer = context->Input(0);
+  auto indices = context->Input(1);
+  auto updates = context->Input(2);
+  auto result = XlaScatter(buffer, updates, indices,
+                           /*indices_are_vectors=*/true, combiner, builder);
+  OP_REQUIRES_OK(context, result.status());
+  context->SetOutput(0, result.ValueOrDie());
+}
+
+class TensorScatterAddOp : public XlaOpKernel {
+ public:
+  explicit TensorScatterAddOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* context) override {
+    CompileTensorScatter(context,
+                         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
+                           return xla::Add(x, y);
+                         });
+  }
+};
+
+class TensorScatterSubOp : public XlaOpKernel {
+ public:
+  explicit TensorScatterSubOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* context) override {
+    CompileTensorScatter(context,
+                         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
+                           return xla::Sub(x, y);
+                         });
+  }
+};
+
+class TensorScatterUpdateOp : public XlaOpKernel {
+ public:
+  explicit TensorScatterUpdateOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* context) override {
+    CompileTensorScatter(
+        context, [](xla::XlaOp, xla::XlaOp y, xla::XlaBuilder*) { return y; });
+  }
+};
+
+REGISTER_XLA_OP(Name("TensorScatterAdd"), TensorScatterAddOp);
+REGISTER_XLA_OP(Name("TensorScatterSub"), TensorScatterSubOp);
+REGISTER_XLA_OP(Name("TensorScatterUpdate"), TensorScatterUpdateOp);
 
 }  // namespace
 }  // namespace tensorflow

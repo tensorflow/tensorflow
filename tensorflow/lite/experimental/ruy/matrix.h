@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 
 #include <cstddef>
-#include <cstdint>
+#include <cstdint>  // IWYU pragma: keep
 #include <type_traits>
 
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
@@ -106,10 +106,11 @@ class ConstCheckingPtr final {
 // signed or unsigned.
 template <typename Scalar>
 struct Matrix final {
-  void operator=(const Matrix& other) {
+  Matrix& operator=(const Matrix& other) {
     data = other.data;
     layout = other.layout;
     zero_point = other.zero_point;
+    return *this;
   }
 
   // The underlying buffer wrapped by this matrix.
@@ -147,6 +148,29 @@ StreamType& operator<<(StreamType& stream, const Matrix<Scalar>& mat) {
   }
   return stream;
 }
+
+// Compile-time version of KernelLayout, used to declare kernel layouts in a
+// way that can be consumed by compile-time logic.
+// See how partial specializations of Kernel use it to declare their layouts.
+// The only reason why this is currently part of the public API is to
+// allow testing various layouts for the Path::kStandardCpp kernel, as a
+// testing-only feature. See Spec::StandardCppKernelLhsLayout.
+template <Order tOrder, int tRows, int tCols>
+struct FixedKernelLayout {
+  static constexpr Order kOrder = tOrder;
+  static constexpr int kRows = tRows;
+  static constexpr int kCols = tCols;
+};
+
+#if (__cplusplus < 201703L)
+// A static constexpr data member is automatically inline and should not require
+// redeclaration without an initializer. This is actually deprecated from C++17
+// onwards. Clang with -O0 without this can fail to link.
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kCols;
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kRows;
+#endif
 
 }  // namespace ruy
 

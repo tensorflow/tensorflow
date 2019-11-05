@@ -37,6 +37,30 @@ namespace tensorflow {
 
 namespace {
 
+// Verify that input resources are grouped in the end.
+Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
+                                      const NameAttrList& body_name_attr) {
+  const FunctionBody* body;
+  TF_RETURN_IF_ERROR(ctx->compiler()->FindFunctionBody(body_name_attr, &body));
+  bool has_seen_resource = false;
+  for (int i = 0; i < body->arg_types.size(); i++) {
+    DataType arg_type = body->arg_types[i];
+    if (has_seen_resource) {
+      if (arg_type != DT_RESOURCE) {
+        return errors::InvalidArgument(
+            "Expect input resources are grouped in the end of while body ",
+            body_name_attr.name(), ", but the ", i, "-th argument ",
+            body->arg_nodes[i]->name(), " is not a resource.");
+      }
+    } else {
+      if (arg_type == DT_RESOURCE) {
+        has_seen_resource = true;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
 Status MakeXlaCompilerArgumentsFromInputs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
@@ -57,29 +81,17 @@ Status MakeXlaCompilerArgumentsFromInputs(
     if (type == DT_RESOURCE) {
       XlaResource* resource;
       TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
-
-      arg.initialized = resource->initialized();
-      arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = resource->kind();
+      XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       if (arg.resource_kind == XlaResource::kTensorArray) {
         *has_tensor_arrays = true;
       }
-
-      arg.type = resource->type();
-      arg.shape = resource->shape();
       if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
-      arg.max_array_size = resource->max_array_size();
-      for (const auto& gradient : resource->tensor_array_gradients()) {
-        arg.tensor_array_gradients.insert(gradient.first);
-      }
-      arg.name = resource->name();
       VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.ShapeHumanString()
               << " initialized: " << arg.initialized;
-
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = type;
@@ -269,6 +281,10 @@ XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 
 void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "WhileOp::Compile";
+
+  // Input resources need to be grouped in the end of the body function
+  // according to the convention of the XLA bridge.
+  OP_REQUIRES_OK(ctx, VerifyResourceArgsGroupedAtEnd(ctx, body_name_attr_));
 
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;

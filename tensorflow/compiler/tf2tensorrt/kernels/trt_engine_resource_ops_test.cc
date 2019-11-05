@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/env.h"
@@ -44,9 +43,15 @@ namespace tensorrt {
 class TRTEngineResourceOpsTest : public OpsTestBase {
  protected:
   void Reset() {
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    for (auto& temp : managed_outputs_) {
+      delete temp;
+    }
+    tensors_.clear();
+    managed_outputs_.clear();
     inputs_.clear();
-    gtl::STLDeleteElements(&tensors_);
-    gtl::STLDeleteElements(&managed_outputs_);
   }
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {
@@ -91,14 +96,12 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   ResourceMgr* rm = device->resource_manager();
   SetDevice(DEVICE_GPU, std::move(device));
 
-  // Create the resource.
-  const string container = "mycontainer";
+  // Create the resource handle.
+  const string container(kTfTrtContainerName);
   const string resource_name = "myresource";
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTEngineCache")
-                   .Attr("container", container)
+  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTResourceHandle")
                    .Attr("resource_name", resource_name)
-                   .Attr("max_cached_engines_count", 1)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   TF_ASSERT_OK(RunOpKernel());
@@ -106,7 +109,28 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
       context_->mutable_output(0)->scalar<ResourceHandle>()();
 
   TRTEngineCacheResource* resource = nullptr;
+  EXPECT_TRUE(
+      errors::IsNotFound(rm->Lookup(container, resource_name, &resource)));
+
+  // Create the resouce using an empty file with InitializeTRTResource.
+  Reset();
+  Env* env = Env::Default();
+  const string filename = io::JoinPath(testing::TmpDir(), "trt_engine_file");
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_ASSERT_OK(env->NewWritableFile(filename, &file));
+  }
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Input(FakeInput(DT_STRING))
+                   .Attr("max_cached_engines_count", 1)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
+  AddInputFromArray<string>(TensorShape({}), {filename});
+  TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
+  EXPECT_EQ(0, resource->cache_.size());
 
   // Create a serialized TRT engine file.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
@@ -117,19 +141,16 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
       absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
   resource->Unref();
 
-  // Serialize the engine using DumpTRTEngineCache op.
+  // Serialize the engine using SerializeTRTResource op.
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "DumpTRTEngineCache")
-                   .Attr("delete_cache_after_dump", true)
-                   .Input(FakeInput(DT_STRING))
+  TF_ASSERT_OK(NodeDefBuilder("op", "SerializeTRTResource")
+                   .Attr("delete_resource", true)
                    .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<string>(TensorShape({}), {container});
-  AddInputFromArray<string>(TensorShape({}), {resource_name});
-  const string filename = io::JoinPath(testing::TmpDir(), "trt_engine_file");
-  AddInputFromArray<string>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {resource_name});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
   TF_ASSERT_OK(RunOpKernel());
 
   // Make sure the cache is deleted.
@@ -143,7 +164,6 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   EXPECT_TRUE(errors::IsNotFound(RunOpKernel()));
 
   // Verify the serialized engine file.
-  Env* env = Env::Default();
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
   auto reader = absl::make_unique<io::RecordReader>(file.get());
@@ -160,27 +180,14 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 
   // Recreate the cache resource.
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTEngineCache")
-                   .Attr("container", container)
-                   .Attr("resource_name", resource_name)
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Input(FakeInput(DT_STRING))
                    .Attr("max_cached_engines_count", 1)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  TF_ASSERT_OK(RunOpKernel());
-  handle = context_->mutable_output(0)->scalar<ResourceHandle>()();
-  EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
-  EXPECT_EQ(0, resource->cache_.size());
-  resource->Unref();
-
-  // Deserialize the engine using PopulateTRTEngineCache op.
-  Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "PopulateTRTEngineCache")
-                   .Input(FakeInput(DT_RESOURCE))
-                   .Input(FakeInput(DT_STRING))
-                   .Finalize(node_def()));
-  TF_ASSERT_OK(InitOp());
   AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
-  AddInputFromArray<string>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(1, resource->cache_.size());

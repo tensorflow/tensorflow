@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorFullMatrix"]
@@ -134,7 +135,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[matrix]):
-      self._matrix = ops.convert_to_tensor(matrix, name="matrix")
+      self._matrix = linear_operator_util.convert_nonref_to_tensor(
+          matrix, name="matrix")
       self._check_matrix(self._matrix)
 
       super(LinearOperatorFullMatrix, self).__init__(
@@ -164,13 +166,13 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
           "Argument matrix must have dtype in %s.  Found: %s"
           % (allowed_dtypes, dtype))
 
-    if matrix.get_shape().ndims is not None and matrix.get_shape().ndims < 2:
+    if matrix.shape.ndims is not None and matrix.shape.ndims < 2:
       raise ValueError(
           "Argument matrix must have at least 2 dimensions.  Found: %s"
           % matrix)
 
   def _shape(self):
-    return self._matrix.get_shape()
+    return self._matrix.shape
 
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)

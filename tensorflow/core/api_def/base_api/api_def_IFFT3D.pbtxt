@@ -3,13 +3,13 @@ op {
   in_arg {
     name: "input"
     description: <<END
-A complex64 tensor.
+A complex tensor.
 END
   }
   out_arg {
     name: "output"
     description: <<END
-A complex64 tensor of the same shape as `input`. The inner-most 3
+A complex tensor of the same shape as `input`. The inner-most 3
   dimensions of `input` are replaced with their inverse 3D Fourier transform.
 
 @compatibility(numpy)

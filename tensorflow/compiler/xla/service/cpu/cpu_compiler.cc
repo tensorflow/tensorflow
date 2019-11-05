@@ -50,22 +50,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
-#include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
@@ -95,12 +93,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -157,21 +157,6 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-  LLVMInitializeX86Target();
-  LLVMInitializeX86TargetInfo();
-  LLVMInitializeX86TargetMC();
-  LLVMInitializeX86AsmPrinter();
-  LLVMInitializeX86Disassembler();
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmPrinter();
-  LLVMInitializeARMDisassembler();
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmPrinter();
-  LLVMInitializeAArch64Disassembler();
 }
 
 namespace {
@@ -255,16 +240,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
+  // Expand random number generation.
+  pipeline.AddPass<RngExpander>();
+
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
   pipeline.AddPass<ZeroSizedHloElimination>();
 
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
-
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
@@ -297,6 +281,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                           /*allow_mixed_precision=*/false);
 
+    pass.AddPass<TreeReductionRewriter>();
+    pass.AddPass<ScatterExpander>();
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -316,7 +302,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
-    pass.AddPass<SliceSinker>();
+
+    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+    // pass.AddPass<SliceSinker>();
+
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -334,17 +323,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
+  // Layout assignment uses alias analysis, which requires the call graph to be
+  // flattened.
+  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
 
-  pipeline.AddPass<ScatterExpander>();
-
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
   return pipeline.Run(module).status();
 }
 
@@ -399,8 +386,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // before (and sometime after) copy insertion, to avoid dead code from
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<CpuCopyInsertion>();
+  pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }
@@ -552,7 +538,7 @@ namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
-// Dumps disassembled machine code if dumping is enabled for the module.
+// Dumps machine code if dumping is enabled for the module.
 struct OrcJITPostCompilationHook {
   // Gets an std::function that implements this hook.
   static std::function<void(const llvm::object::ObjectFile& obj_file)> Create(
@@ -568,29 +554,19 @@ struct OrcJITPostCompilationHook {
   // Constructor can't be private because we want to call it from
   // std::make_shared, but users should call Create() instead.
   explicit OrcJITPostCompilationHook(const HloModule* module)
-      : module(module),
-        target_machine(SimpleOrcJIT::InferTargetMachineForJIT(
-            CompilerTargetOptions(module->config()),
-            CodeGenOptLevel(module->config()))),
-        disassembler(*target_machine) {}
+      : module(module) {}
 
  private:
   void operator()(const llvm::object::ObjectFile& obj_file) {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    StatusOr<DisassemblerResult> disasm_or =
-        disassembler.DisassembleObjectFile(obj_file);
-    string text = disasm_or.ok() ? std::move(disasm_or).ValueOrDie().text
-                                 : absl::StrCat("Error disassembling: ",
-                                                disasm_or.status().ToString());
-    DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+    DumpToFileInDir(*module, /*file_suffix=*/"o",
+                    absl::string_view(obj_file.getData().data(),
+                                      obj_file.getData().size()));
   }
 
   const HloModule* module;
-  // disassembler keeps references to data inside of target_machine.
-  std::unique_ptr<llvm::TargetMachine> target_machine;
-  Disassembler disassembler;
 };
 
 }  // namespace
@@ -601,6 +577,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -650,7 +627,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
@@ -923,13 +901,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      StatusOr<DisassemblerResult> disasm_or =
-          Disassembler(*target_machine).DisassembleObjectFile(obj_file);
-      string text = disasm_or.ok()
-                        ? std::move(disasm_or).ValueOrDie().text
-                        : absl::StrCat("Error disassembling: ",
-                                       disasm_or.status().ToString());
-      DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+      DumpToFileInDir(*module, /*file_suffix=*/"o",
+                      absl::string_view(obj_file.getData().data(),
+                                        obj_file.getData().size()));
     };
 
     CompilerFunctor compiler_functor(

@@ -26,6 +26,7 @@ import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as elc
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,22 +38,29 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu.ops import tpu_ops
+from tensorflow.python.util.tf_export import tf_export
 
 TRAINING = elc.TPUEmbeddingConfiguration.TRAINING
 INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
 
 
+# TODO(shizhiw): a more future-proof way is to have optimization_parameter such
+#  as AdagradParameters etc instead of learning_rate.
 class TableConfig(
-    collections.namedtuple(
-        'TableConfig',
-        ['vocabulary_size', 'dimension', 'initializer', 'combiner'])):
+    collections.namedtuple('TableConfig', [
+        'vocabulary_size', 'dimension', 'initializer', 'combiner',
+        'hot_id_replication', 'learning_rate', 'learning_rate_key'
+    ])):
   """Embedding table configuration."""
 
   def __new__(cls,
               vocabulary_size,
               dimension,
               initializer=None,
-              combiner='mean'):
+              combiner='mean',
+              hot_id_replication=False,
+              learning_rate=None,
+              learning_rate_key=None):
     """Embedding table configuration.
 
     Args:
@@ -68,6 +76,20 @@ class TableConfig(
         accuracy, in particular with bag-of-words columns. For more information,
         see `tf.nn.embedding_lookup_sparse`. None is only valid for dense rather
         than sparse tensors.
+      hot_id_replication: If true, enables hot id replication, which can make
+        embedding lookups faster if there are some hot rows in the table.
+      learning_rate: float, static learning rate for this table. If
+        learning_rate and learning_rate_key are both `None`, global
+        static learning rate as specified in `optimization_parameters` in
+        `TPUEmbedding` constructor will be used. `learning_rate_key` must be
+        `None` if `learning_rate` is not `None.
+      learning_rate_key: string, use dynamic learning rate of
+        `learning_rates[learning_rate_key]` for this table, where
+        `learning_rates` is the second argument of
+        `generate_send_gradients_op()`. If learning_rate and learning_rate_key
+        are both `None`, global static learning rate as specified in
+        `optimization_parameters` in `TPUEmbedding` constructor will be used.
+        `learning_rate` must be `None` if `learning_rate_key` is not `None.
 
     Returns:
       `TableConfig`.
@@ -77,6 +99,8 @@ class TableConfig(
       ValueError: if `dimension` is not positive integer.
       ValueError: if `initializer` is specified and is not callable.
       ValueError: if `combiner` is not supported.
+      ValueError: if `learning_rate` and `learning_rate_key` are both not
+        `None`.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
       raise ValueError('Invalid vocabulary_size {}.'.format(vocabulary_size))
@@ -93,19 +117,26 @@ class TableConfig(
     if combiner not in ('mean', 'sum', 'sqrtn', None):
       raise ValueError('Invalid combiner {}'.format(combiner))
 
-    return super(TableConfig, cls).__new__(cls, vocabulary_size, dimension,
-                                           initializer, combiner)
+    if learning_rate is not None and learning_rate_key is not None:
+      raise ValueError('At most one of learning_rate and learning_rate_key '
+                       'can be None; got {} and {}'
+                       .format(learning_rate, learning_rate_key))
+
+    return super(TableConfig, cls).__new__(
+        cls, vocabulary_size, dimension, initializer, combiner,
+        hot_id_replication, learning_rate, learning_rate_key)
 
 
 class FeatureConfig(
     collections.namedtuple(
         'FeatureConfig',
-        ['table_id', 'max_sequence_length'])):
+        ['table_id', 'max_sequence_length', 'weight_key'])):
   """Feature configuration."""
 
   def __new__(cls,
               table_id,
-              max_sequence_length=0):
+              max_sequence_length=0,
+              weight_key=None):
     """Feature configuration.
 
     Args:
@@ -114,6 +145,8 @@ class FeatureConfig(
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
+      weight_key: If using weights for the combiner, this key specifies which
+        input feature contains the weights.
 
     Returns:
       `FeatureConfig`.
@@ -125,7 +158,8 @@ class FeatureConfig(
       raise ValueError('Invalid max_sequence_length {}.'.format(
           max_sequence_length))
 
-    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length)
+    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
+                                             weight_key)
 
 
 class EnqueueData(
@@ -150,11 +184,10 @@ class EnqueueData(
         If it is None, we assume each embedding_indices belongs to a different
         sample. Both int32 and int64 are allowed and will be converted to int32
         internally.
-      aggregation_weights: A rank 1 Tensors containing per training example
-        aggregation weights. It corresponds to sp_weights.values in
-        embedding_lookup_sparse(). If it is None, we assume all weights are 1.
-        Both float32 and float64 are allowed and will be converted to float32
-        internally.
+      aggregation_weights: A rank 1 Tensors containing aggregation weights.
+        It corresponds to sp_weights.values in embedding_lookup_sparse(). If it
+        is None, we assume all weights are 1. Both float32 and float64 are
+        allowed and will be converted to float32 internally.
 
     Returns:
       An EnqueueData tuple.
@@ -225,8 +258,25 @@ class _OptimizationParameters(object):
     self.clip_weight_max = clip_weight_max
 
 
+@tf_export(v1=['tpu.experimental.AdagradParameters'])
 class AdagradParameters(_OptimizationParameters):
-  """Optimization parameters for Adagrad."""
+  """Optimization parameters for Adagrad with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdagradParameters(0.1),
+          ...))
+  ```
+
+  """
 
   def __init__(self,
                learning_rate,
@@ -254,8 +304,25 @@ class AdagradParameters(_OptimizationParameters):
     self.initial_accumulator = initial_accumulator
 
 
+@tf_export(v1=['tpu.experimental.AdamParameters'])
 class AdamParameters(_OptimizationParameters):
-  """Optimization parameters for Adam."""
+  """Optimization parameters for Adam with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdamParameters(0.1),
+          ...))
+  ```
+
+  """
 
   def __init__(self,
                learning_rate,
@@ -307,8 +374,25 @@ class AdamParameters(_OptimizationParameters):
     self.sum_inside_sqrt = sum_inside_sqrt
 
 
+@tf_export(v1=['tpu.experimental.StochasticGradientDescentParameters'])
 class StochasticGradientDescentParameters(_OptimizationParameters):
-  """Optimization parameters for stochastic gradient descent."""
+  """Optimization parameters for stochastic gradient descent for TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=(
+              tf.tpu.experimental.StochasticGradientDescentParameters(0.1))))
+  ```
+
+  """
 
   def __init__(self, learning_rate, clip_weight_min=None,
                clip_weight_max=None):
@@ -392,7 +476,7 @@ class TPUEmbedding(object):
     ```
   """
 
-  # TODO(shizhiw): Consider addign a field to FeatureConfig that indicates that
+  # TODO(shizhiw): Consider adding a field to FeatureConfig that indicates that
   # the feature should not be used to update embedding table (cr/204852758,
   # cr/204940540). Also, this can support different combiners for different
   # features within the same table.
@@ -601,6 +685,10 @@ class TPUEmbedding(object):
 
   def _create_config_proto(self):
     """Create `TPUEmbeddingConfiguration`."""
+    self._learning_rate_keys = list(
+        set(c.learning_rate_key
+            for c in self._table_to_config_dict.values()
+            if c.learning_rate_key is not None))
     config_proto = elc.TPUEmbeddingConfiguration()
     for table in self._table_to_config_dict:
       table_descriptor = config_proto.table_descriptor.add()
@@ -615,18 +703,28 @@ class TPUEmbedding(object):
 
       table_descriptor.num_features = self._table_to_num_features_dict[table]
 
-      table_descriptor.optimization_parameters.learning_rate.constant = (
-          self._optimization_parameters.learning_rate)
-      table_descriptor.optimization_parameters.gradient_accumulation_status = (
+      parameters = table_descriptor.optimization_parameters
+      if table_config.learning_rate:
+        parameters.learning_rate.constant = (table_config.learning_rate)
+      elif table_config.learning_rate_key:
+        parameters.learning_rate.dynamic.tag = (
+            self._learning_rate_keys.index(table_config.learning_rate_key))
+      else:
+        parameters.learning_rate.constant = (
+            self._optimization_parameters.learning_rate)
+      parameters.gradient_accumulation_status = (
           optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
           if self._optimization_parameters.use_gradient_accumulation else
           optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
       if self._optimization_parameters.clip_weight_min is not None:
-        table_descriptor.optimization_parameters.clipping_limits.lower.value = (
+        parameters.clipping_limits.lower.value = (
             self._optimization_parameters.clip_weight_min)
       if self._optimization_parameters.clip_weight_max is not None:
-        table_descriptor.optimization_parameters.clipping_limits.upper.value = (
+        parameters.clipping_limits.upper.value = (
             self._optimization_parameters.clip_weight_max)
+      if table_config.hot_id_replication:
+        parameters.hot_id_replication_configuration.status = (
+            optimization_parameters_pb2.HotIdReplicationConfiguration.ENABLED)
       self._optimizer_handler.set_optimization_parameters(table_descriptor)
 
     config_proto.mode = self._mode
@@ -660,7 +758,7 @@ class TPUEmbedding(object):
         A dictionary mapping from string of table name to AdagradSlotVariable,
          AdamSlotVariables etc with slot variables,
         A function which returns a list of ops to load embedding and slot
-         variables from TPU to CPU.
+         variables from CPU to TPU.
         A function which returns a list of ops to retrieve embedding and slot
          variables from TPU to CPU.
     """
@@ -668,7 +766,8 @@ class TPUEmbedding(object):
     slot_variables_by_table = {}
     load_op_fns = []
     retrieve_op_fns = []
-    for table in self._table_to_config_dict:
+
+    for i, table in enumerate(self._table_to_config_dict):
       if embedding_variable_name_by_table:
         embedding_variable_name = embedding_variable_name_by_table[table]
       else:
@@ -679,8 +778,15 @@ class TPUEmbedding(object):
         slot_variable_names = (
             self._optimizer_handler.get_default_slot_variable_names(table))
 
-      device_fn = _create_device_fn(self._hosts)
-      with ops.device(device_fn):
+      # TODO(b/139144091): Multi-host support for mid-level API in
+      #  eager context (TF 2.0)
+      # Workaround below allows single-host use case in TF 2.0
+      if context.executing_eagerly():
+        device = ''
+      else:
+        device = _create_device_fn(self._hosts)
+
+      with ops.device(device):
         table_variables = _create_partitioned_variables(
             name=embedding_variable_name,
             num_hosts=self._num_hosts,
@@ -690,11 +796,13 @@ class TPUEmbedding(object):
             collections=[ops.GraphKeys.GLOBAL_VARIABLES])
         embedding_variables_by_table[table] = table_variables
 
+        # Only loads embedding config to load/retrieve nodes for the first table
+        # on the first host, other nodes would use config from the first node.
+        config = None if i else self.config_proto.SerializeToString()
         slot_variables_for_table, load_ops_fn, retrieve_ops_fn = (
             self._optimizer_handler.create_variables_and_ops(
                 table, slot_variable_names, self._num_hosts,
-                self._table_to_config_dict[table], table_variables)
-        )
+                self._table_to_config_dict[table], table_variables, config))
         slot_variables_by_table[table] = slot_variables_for_table
         load_op_fns.append(load_ops_fn)
         retrieve_op_fns.append(retrieve_ops_fn)
@@ -782,29 +890,29 @@ class TPUEmbedding(object):
                                i, feature, combiner))
 
         if (enqueue_data.sample_indices is not None and
-            enqueue_data.sample_indices.op.device !=
-            enqueue_data.embedding_indices.op.device):
+            enqueue_data.sample_indices.device !=
+            enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of sample_indices does not agree with '
               'that of emebdding_indices for feature {}.'.format(feature))
         if (enqueue_data.aggregation_weights is not None and
-            enqueue_data.aggregation_weights.op.device !=
-            enqueue_data.embedding_indices.op.device):
+            enqueue_data.aggregation_weights.device !=
+            enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of aggregation_weights does not agree with '
               'that of emebdding_indices for feature {}.'.format(feature))
         # Check all features are on the same device.
         if device is None:
-          device = enqueue_data.embedding_indices.op.device
+          device = enqueue_data.embedding_indices.device
           device_feature = feature
         else:
-          if device != enqueue_data.embedding_indices.op.device:
+          if device != enqueue_data.embedding_indices.device:
             raise ValueError('Devices are different between features in '
                              '`enqueue_datas_list[{}]`; '
                              'devices: {}, {}; features: {}, {}.'.format(
                                  i, device,
-                                 enqueue_data.embedding_indices.op.device,
-                                 feature, device_feature))
+                                 enqueue_data.embedding_indices.device, feature,
+                                 device_feature))
 
       if i % self._num_cores_per_host:
         if device != contiguous_device:
@@ -905,12 +1013,16 @@ class TPUEmbedding(object):
 
     return activations
 
-  def generate_send_gradients_op(self, feature_to_gradient_dict):
+  def generate_send_gradients_op(self,
+                                 feature_to_gradient_dict,
+                                 learning_rates=None):
     """Send gradient to TPU embedding.
 
     Args:
       feature_to_gradient_dict: dict mapping feature names to gradient wrt
         activations.
+      learning_rates: dict mapping from learning rate key to dynamic learning
+        rate. Defaults to `None`.
 
     Returns:
       SendTPUEmbeddingGradients Op.
@@ -922,6 +1034,10 @@ class TPUEmbedding(object):
       raise RuntimeError('Only in training mode gradients need to '
                          'be sent to TPU embedding; got mode {}.'
                          .format(self._mode))
+
+    if learning_rates is None:
+      learning_rates = dict()
+
     gradients = []
     for table in self._table_to_features_dict:
       features = self._table_to_features_dict[table]
@@ -936,8 +1052,13 @@ class TPUEmbedding(object):
           array_ops.concat(table_gradients, axis=1),
           [-1, array_ops.shape(table_gradients[0])[-1]])
       gradients.append(interleaved_table_grads)
+
     return tpu_ops.send_tpu_embedding_gradients(
-        inputs=gradients, config=self.config_proto.SerializeToString())
+        inputs=gradients,
+        learning_rates=[
+            learning_rates[tag] for tag in self._learning_rate_keys
+        ],
+        config=self.config_proto.SerializeToString())
 
 
 def _validate_table_to_config_dict(table_to_config_dict):
@@ -996,7 +1117,7 @@ class _OptimizerHandler(object):
     raise NotImplementedError()
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     raise NotImplementedError()
 
 
@@ -1014,7 +1135,7 @@ class _AdagradHandler(_OptimizerHandler):
     return AdagradSlotVariableName('{}/{}'.format(table, 'Adagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     accumulator_initializer = init_ops.constant_initializer(
         self._optimization_parameters.initial_accumulator)
     accumulator_variables = _create_partitioned_variables(
@@ -1032,9 +1153,10 @@ class _AdagradHandler(_OptimizerHandler):
       Returns:
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
+      config = config_proto
       load_op_list = []
-      for host_id, table_variable, accumulator_variable in (zip(
-          range(num_hosts), table_variables, accumulator_variables)):
+      for host_id, table_variable, accumulator_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables):
         with ops.colocate_with(table_variable):
           load_parameters_op = (
               tpu_ops.load_tpu_embedding_adagrad_parameters(
@@ -1042,7 +1164,9 @@ class _AdagradHandler(_OptimizerHandler):
                   accumulators=accumulator_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1052,6 +1176,7 @@ class _AdagradHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
+      config = config_proto
       retrieve_op_list = []
       for host_id, table_variable, accumulator_variable in (zip(
           range(num_hosts), table_variables, accumulator_variables)):
@@ -1060,10 +1185,12 @@ class _AdagradHandler(_OptimizerHandler):
               tpu_ops.retrieve_tpu_embedding_adagrad_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table),
               state_ops.assign(accumulator_variable, retrieved_accumulator))
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 
@@ -1095,7 +1222,7 @@ class _AdamHandler(_OptimizerHandler):
                                  '{}/{}/v'.format(table, 'Adam'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     m_initializer = init_ops.zeros_initializer()
     m_variables = _create_partitioned_variables(
         name=slot_variable_names.m,
@@ -1121,6 +1248,7 @@ class _AdamHandler(_OptimizerHandler):
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
       load_op_list = []
+      config = config_proto
       for host_id, table_variable, m_variable, v_variable in (zip(
           range(num_hosts), table_variables,
           m_variables, v_variables)):
@@ -1132,7 +1260,11 @@ class _AdamHandler(_OptimizerHandler):
                   velocities=v_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
+        # Set config to None to enforce that config is only loaded to the first
+        # table.
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1142,8 +1274,8 @@ class _AdamHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
-
       retrieve_op_list = []
+      config = config_proto
       for host_id, table_variable, m_variable, v_variable in (zip(
           range(num_hosts), table_variables,
           m_variables, v_variables)):
@@ -1152,12 +1284,13 @@ class _AdamHandler(_OptimizerHandler):
               tpu_ops.retrieve_tpu_embedding_adam_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table),
               state_ops.assign(m_variable, retrieved_m),
               state_ops.assign(v_variable, retrieved_v))
-
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 
@@ -1175,7 +1308,7 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
     return None
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     del table_config
 
     def load_ops_fn():
@@ -1185,17 +1318,18 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
       load_op_list = []
+      config = config_proto
       for host_id, table_variable in (zip(
           range(num_hosts), table_variables)):
         with ops.colocate_with(table_variable):
           load_parameters_op = (
-              tpu_ops
-              .load_tpu_embedding_stochastic_gradient_descent_parameters(
+              tpu_ops.load_tpu_embedding_stochastic_gradient_descent_parameters(
                   parameters=table_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
-
+                  shard_id=host_id,
+                  config=config))
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1205,8 +1339,8 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
-
       retrieve_op_list = []
+      config = config_proto
       for host_id, table_variable in (zip(
           range(num_hosts), table_variables)):
         with ops.colocate_with(table_variable):
@@ -1215,10 +1349,11 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
               .retrieve_tpu_embedding_stochastic_gradient_descent_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table))
-
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 

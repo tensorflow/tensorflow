@@ -6,7 +6,7 @@
     <groupId>org.tensorflow</groupId>
     <artifactId>spark-tensorflow-connector_2.11</artifactId>
     <packaging>jar</packaging>
-    <version>1.13.0-rc2</version>
+    <version>1.15.0</version>
     <name>spark-tensorflow-connector</name>
     <url>https://www.tensorflow.org</url>
     <description>TensorFlow TFRecord connector for Apache Spark DataFrames</description>
@@ -138,6 +138,12 @@
                                         <pattern>com.google.protobuf</pattern>
                                         <shadedPattern>
                                             org.tensorflow.spark.shaded.com.google.protobuf
+                                        </shadedPattern>
+                                    </relocation>
+                                    <relocation>
+                                        <pattern>org.tensorflow.hadoop</pattern>
+                                        <shadedPattern>
+                                            org.tensorflow.spark.shaded.org.tensorflow.hadoop
                                         </shadedPattern>
                                     </relocation>
                                 </relocations>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -53,12 +53,13 @@ template <typename T>
 __global__ void __launch_bounds__(1024)
     TruncatedNormalKernel(random::PhiloxRandom gen, T* data, int64 num_batches,
                           int64 samples_per_batch, int64 num_elements,
-                          const T* means, bool single_mean, const T* stddevs,
-                          bool single_stddev, const T* minvals,
-                          bool single_minval, const T* maxvals,
-                          bool single_maxval, int64 kMaxIterations) {
+                          const T* __restrict__ means, bool single_mean,
+                          const T* __restrict__ stddevs, bool single_stddev,
+                          const T* __restrict__ minvals, bool single_minval,
+                          const T* __restrict__ maxvals, bool single_maxval,
+                          int64 kMaxIterations) {
   const int32 max_samples_per_item = 2 * kMaxIterations;
-  // Initial offset as given by CUDA_1D_KERNEL_LOOP.
+  // Initial offset as given by GPU_1D_KERNEL_LOOP.
   const int32 initial_offset = blockIdx.x * blockDim.x + threadIdx.x;
   gen.Skip(max_samples_per_item * initial_offset);
   typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
@@ -84,7 +85,7 @@ __global__ void __launch_bounds__(1024)
   const int32 samples_between_processed_elements =
       max_samples_per_item * (gridDim.x * blockDim.x);
 
-  CUDA_1D_KERNEL_LOOP(offset, num_elements) {
+  GPU_1D_KERNEL_LOOP(offset, num_elements) {
     // Track how many more samples we need to skip before we process the next
     // element.
     int32 remaining_samples = samples_between_processed_elements;
@@ -242,7 +243,7 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::Flat output) {
     const auto config = GetGpuLaunchConfig(num_elements, d);
 
-    TF_CHECK_OK(CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,
         0, d.stream(), gen, output.data(), num_batches, samples_per_batch,
         num_elements, means.data(), means.dimension(0) == 1, stddevs.data(),
@@ -259,4 +260,4 @@ template struct TruncatedNormalFunctor<GPUDevice, double>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

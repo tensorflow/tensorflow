@@ -33,3 +33,6 @@ make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   TARGET=${1} \
   TAGS="${2}" \
   generate_projects
+
+# Needed to solve CI build bug triggered by files added to source tree.
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

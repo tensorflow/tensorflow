@@ -1,14 +1,17 @@
 # Description: Operations defined for Cluster Resolvers
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "cluster_resolver_lib",
@@ -64,7 +67,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 py_library(
@@ -146,6 +149,24 @@ tf_py_test(
     ],
     grpc_enabled = True,
     main = "tpu_cluster_resolver_test.py",
+    python_version = "PY3",
+)
+
+tf_py_test(
+    name = "tpu_cluster_resolver_py2_test",
+    size = "small",
+    srcs = ["tpu_cluster_resolver_test.py"],
+    additional_deps = [
+        ":tpu_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training_server_lib",
+    ],
+    grpc_enabled = True,
+    main = "tpu_cluster_resolver_test.py",
+    python_version = "PY2",
 )
 
 tf_py_test(

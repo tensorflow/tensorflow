@@ -33,14 +33,16 @@ choice. It also discusses some [known limitations](#known-limitations), the
 ## Converting the model
 
 To convert a TensorFlow model to a TensorFlow Lite model with TensorFlow ops,
-use the `target_ops` argument in the
-[TensorFlow Lite converter](../convert/). The
-following values are valid options for `target_ops`:
+use the `target_spec.supported_ops` argument in the
+[TensorFlow Lite converter](../convert/). The following values are valid options
+for `target_spec.supported_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
 *   `SELECT_TF_OPS` - Converts models using TensorFlow ops. The exact subset of
     supported ops can be found in the whitelist at
-    `lite/toco/tflite/whitelisted_flex_ops.cc`.
+    `lite/delegates/flex/whitelisted_flex_ops.cc`.
+
+Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
 The recommended approach is to convert the model with `TFLITE_BUILTINS`, then
 with both `TFLITE_BUILTINS,SELECT_TF_OPS`, and finally with only
@@ -50,22 +52,22 @@ creates models with TensorFlow Lite ops where possible. Using only
 partially supported by TensorFlow Lite, and one would like to avoid those
 limitations.
 
-The following example shows how to use `target_ops` in the
+The following example shows how to use this feature in the
 [`TFLiteConverter`](./convert/python_api.md) Python API.
 
 ```
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.target_ops = [tf.lite.OpsSet.TFLITE_BUILTINS,
-                        tf.lite.OpsSet.SELECT_TF_OPS]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS,
+                                       tf.lite.OpsSet.SELECT_TF_OPS]
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-The following example shows how to use `target_ops` in the
-[`tflite_convert`](../convert/cmdline_examples.md)
-command line tool.
+The following example shows how to use this feature in the
+[`tflite_convert`](../convert/cmdline_examples.md) command line tool using the
+command line flag `target_ops`.
 
 ```
 tflite_convert \
@@ -77,10 +79,10 @@ tflite_convert \
 ```
 
 When building and running `tflite_convert` directly with `bazel`, please pass
-`--define=with_select_tf_ops=true` as an additional argument.
+`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
 
 ```
-bazel run --define=with_select_tf_ops=true tflite_convert -- \
+bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
   --input_arrays=input \
@@ -177,11 +179,8 @@ TensorFlow ops library can be included and enabled as follows:
 
 *   Enable monolithic builds if necessary by adding the `--config=monolithic`
     build flag.
-*   Do one of the following:
-    *   Include the `--define=with_select_tf_ops=true` build flag in the `bazel
-        build` invocation when building TensorFlow Lite.
-    *   Add the TensorFlow ops delegate library dependency to the build
-        dependencies: `tensorflow/lite/delegates/flex:delegate`.
+*   Add the TensorFlow ops delegate library dependency to the build
+    dependencies: `tensorflow/lite/delegates/flex:delegate`.
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
 creating the interpreter at runtime as long as the delegate is linked into the

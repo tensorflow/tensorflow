@@ -41,7 +41,7 @@ class DecodeRawOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const auto& input = context->input(0);
     int64 str_size = -1;
-    auto flat_in = input.flat<string>();
+    auto flat_in = input.flat<tstring>();
     for (int64 i = 0; i < flat_in.size(); ++i) {
       const string& in_str = flat_in(i);
       if (str_size == -1) {

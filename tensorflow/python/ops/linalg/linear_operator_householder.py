@@ -25,6 +25,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorHouseholder",]
@@ -123,7 +124,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[reflection_axis]):
-      self._reflection_axis = ops.convert_to_tensor(
+      self._reflection_axis = linear_operator_util.convert_nonref_to_tensor(
           reflection_axis, name="reflection_axis")
       self._check_reflection_axis(self._reflection_axis)
 
@@ -154,15 +155,15 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
-    if (reflection_axis.get_shape().ndims is not None and
-        reflection_axis.get_shape().ndims < 1):
+    if (reflection_axis.shape.ndims is not None and
+        reflection_axis.shape.ndims < 1):
       raise ValueError(
           "Argument reflection_axis must have at least 1 dimension.  "
           "Found: %s" % reflection_axis)
 
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
-    d_shape = self._reflection_axis.get_shape()
+    d_shape = self._reflection_axis.shape
     return d_shape.concatenate(d_shape[-1:])
 
   def _shape_tensor(self):
@@ -194,9 +195,10 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
     # Note that because this is a reflection, it lies in O(n) (for real vector
     # spaces) or U(n) (for complex vector spaces), and thus is its own adjoint.
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
     x = linalg.adjoint(x) if adjoint_arg else x
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
     x_dot_normalized_v = math_ops.matmul(mat, x, adjoint_a=True)
 
@@ -204,9 +206,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _trace(self):
     # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    shape = self.shape_tensor()
     return math_ops.cast(
-        self.domain_dimension_tensor() - 2, self.dtype) * array_ops.ones(
-            shape=self.batch_shape_tensor(), dtype=self.dtype)
+        self._domain_dimension_tensor(shape=shape) - 2,
+        self.dtype) * array_ops.ones(
+            shape=self._batch_shape_tensor(shape=shape), dtype=self.dtype)
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
@@ -222,17 +226,30 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
+
+  def _eigvals(self):
+    # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    result_shape = array_ops.shape(self.reflection_axis)
+    n = result_shape[-1]
+    ones_shape = array_ops.concat([result_shape[:-1], [n - 1]], axis=-1)
+    neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
+    eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
+    eigvals = array_ops.concat(
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+    return eigvals
 
   @property
   def reflection_axis(self):

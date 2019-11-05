@@ -342,6 +342,15 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.values.get_shape().as_list(), [None])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [3])
 
+  def testConcatShape(self):
+    # Test case for GitHub 21964.
+    x = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2])
+    y = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2])
+    z = sparse_ops.sparse_concat(-1, [x, y])
+    self.assertEqual(z.get_shape().as_list(), [2, 4])
+
 
 if __name__ == "__main__":
   test.main()

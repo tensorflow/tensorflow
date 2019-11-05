@@ -33,7 +33,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   const auto& status = RetryingUtils::CallWithRetries(
       f, sleep, RetryConfig(500000 /* init_delay_time_us */));
   EXPECT_EQ(errors::Code::ABORTED, status.code());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "All 10 retry attempts failed. The last failure: Unavailable: Failed."))
       << status;

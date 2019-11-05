@@ -38,7 +38,7 @@ TEST(MakePadding, Smoke) {
   attr.axis = Axis::HEIGHT;
   concat_node->operation.attributes = attr;
 
-  Value<TensorRefFloat32>* output;
+  Value<TensorRef<BHWC>>* output;
   ASSERT_TRUE(AddOutput(&graph, concat_node, &output).ok());
   output->tensor.shape = BHWC(1, 7, 3, 5);
 
@@ -50,7 +50,7 @@ TEST(MakePadding, Smoke) {
       std::vector<float>(const_attr.tensor.shape.DimensionsProduct(), 0);
   const_node->operation.attributes = const_attr;
 
-  Value<TensorRefFloat32>* const_link;
+  Value<TensorRef<BHWC>>* const_link;
   ASSERT_TRUE(
       ConnectTwoNodes(&graph, const_node, concat_node, &const_link).ok());
   const_link->tensor.shape = const_attr.tensor.shape;
@@ -66,8 +66,8 @@ TEST(MakePadding, Smoke) {
   auto pad_node = graph.nodes()[0];
   ASSERT_EQ(ToString(OperationType::PAD), pad_node->operation.type);
   auto pad_attr = absl::any_cast<PadAttributes>(pad_node->operation.attributes);
-  EXPECT_EQ(HWC(0, 0, 0), pad_attr.prepended);
-  EXPECT_EQ(HWC(5, 0, 0), pad_attr.appended);
+  EXPECT_EQ(BHWC(0, 0, 0, 0), pad_attr.prepended);
+  EXPECT_EQ(BHWC(0, 5, 0, 0), pad_attr.appended);
 }
 
 }  // namespace

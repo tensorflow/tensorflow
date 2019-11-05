@@ -86,7 +86,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
   VLOG(2) << "Sorted task names: "
-          << str_util::Join(col_params->instance.task_names, ", ");
+          << absl::StrJoin(col_params->instance.task_names, ", ");
   std::vector<int> dev_per_task;
   const string* prior_task_name = &col_params->instance.task_names[0];
   int dev_count = 1;

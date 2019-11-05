@@ -504,8 +504,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
     if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() ==
-                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      TF_RET_CHECK(sharding.value().type() == xla::OpSharding::MAXIMAL);
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {
         core = core_annotation;
@@ -764,9 +763,9 @@ Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
-    } else if (n->type_string() == "While") {
+    } else if (n->IsWhileNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));
     }
   }
@@ -797,7 +796,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     // Find the forward While op.
     std::vector<const Edge*> fwd_while_edges;
     for (const Edge* e : n->out_edges()) {
-      if (!e->IsControlEdge() && e->dst()->type_string() == "While") {
+      if (!e->IsControlEdge() && e->dst()->IsWhileNode()) {
         fwd_while_edges.push_back(e);
       }
     }
@@ -811,8 +810,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     int fwd_while_dst_input = fwd_while_edges[0]->dst_input();
     std::vector<const Edge*> bwd_while_edges;
     for (const Edge* e : fwd_while->out_edges()) {
-      if (e->src_output() == fwd_while_dst_input &&
-          e->dst()->type_string() == "While") {
+      if (e->src_output() == fwd_while_dst_input && e->dst()->IsWhileNode()) {
         bwd_while_edges.push_back(e);
       }
     }

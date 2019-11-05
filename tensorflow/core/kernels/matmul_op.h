@@ -58,7 +58,7 @@ struct MatMulFunctor {
 
 }  // end namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Encapsulate all the shape information that is used in matmul operations.
 class MatmulParameters {
  public:
@@ -117,7 +117,7 @@ class MatmulParameters {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

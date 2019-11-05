@@ -29,6 +29,7 @@ cc_toolchain_suite(
         "x64_windows|msvc-cl": ":cc-compiler-windows",
         "x64_windows": ":cc-compiler-windows",
         "arm": ":cc-compiler-local",
+        "aarch64": ":cc-compiler-local",
         "k8": ":cc-compiler-local",
         "piii": ":cc-compiler-local",
         "ppc": ":cc-compiler-local",
@@ -63,6 +64,8 @@ cc_toolchain_config(
     host_compiler_warnings = [%{host_compiler_warnings}],
     host_unfiltered_compile_flags = [%{unfiltered_compile_flags}],
     linker_bin_path = "%{linker_bin_path}",
+    builtin_sysroot = "%{builtin_sysroot}",
+    cuda_path = "%{cuda_toolkit_path}",
 )
 
 cc_toolchain(

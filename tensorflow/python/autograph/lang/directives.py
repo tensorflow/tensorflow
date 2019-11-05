@@ -26,6 +26,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 UNSPECIFIED = object()
 
@@ -46,6 +47,8 @@ def set_element_type(entity, dtype, shape=UNSPECIFIED):
   del shape
 
 
+# TODO(b/140125096): Implement.
+@do_not_generate_docs
 @tf_export('autograph.experimental.set_loop_options')
 def set_loop_options(
     parallel_iterations=UNSPECIFIED,

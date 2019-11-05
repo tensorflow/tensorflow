@@ -48,10 +48,11 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T bilinear_interpolate(
-    const T* bottom_data, const int height, const int width, T y, T x,
-    const int index, /* index for debug only*/ const T* lower_bound = nullptr,
-    const T* upper_bound = nullptr, int chann = -1) {
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+bilinear_interpolate(const T* bottom_data, const int height, const int width,
+                     const int stride, T y, T x, const int index,
+                     /* index for debug only*/ const T* lower_bound = nullptr,
+                     const T* upper_bound = nullptr, int chann = -1) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
     // empty
@@ -83,10 +84,10 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T bilinear_interpolate(
   T lx = x - x_low;
   T hy = 1. - ly, hx = 1. - lx;
   // do bilinear interpolation
-  T v1 = bottom_data[y_low * width + x_low];
-  T v2 = bottom_data[y_low * width + x_high];
-  T v3 = bottom_data[y_high * width + x_low];
-  T v4 = bottom_data[y_high * width + x_high];
+  T v1 = bottom_data[y_low * stride + x_low];
+  T v2 = bottom_data[y_low * stride + x_high];
+  T v3 = bottom_data[y_high * stride + x_low];
+  T v4 = bottom_data[y_high * stride + x_high];
   T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
 
   T val = (w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
@@ -233,9 +234,9 @@ __global__ void RoIAlignForward(
           const T x = roi_start_w + pw * bin_size_w +
                       static_cast<T>(ix + .5f) * bin_size_w /
                           static_cast<T>(roi_bin_grid_w);
-          T val = bilinear_interpolate(offset_bottom_data, level_height,
-                                       level_width, y, x, index, bottom_data,
-                                       bottom_data + (5 * 256 * 256 * 256), c);
+          T val = bilinear_interpolate(
+              offset_bottom_data, level_height, level_width, width, y, x, index,
+              bottom_data, bottom_data + (5 * 256 * 256 * 256), c);
           output_val += val;
         }
       }

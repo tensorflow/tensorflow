@@ -1,14 +1,6 @@
 # Description:
 # TensorFlow SavedModel.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -18,10 +10,17 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
     "if_static_and_not_mobile",
 )
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "constants",
@@ -124,11 +123,33 @@ cc_library(
         "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
     ]),
+    alwayslink = 1,
 )
 
 tf_cc_test(
-    name = "loader_test",
-    srcs = ["loader_test.cc"],
+    name = "saved_model_bundle_test",
+    srcs = ["saved_model_bundle_test.cc"],
+    data = [
+        ":saved_model_half_plus_two",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":constants",
+        ":loader",
+        ":signature_constants",
+        ":tag_constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_bundle_lite_test",
+    srcs = ["saved_model_bundle_lite_test.cc"],
     data = [
         ":saved_model_half_plus_two",
     ],
@@ -155,5 +176,6 @@ filegroup(
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
         "testdata/half_plus_two_v2/**",
+        "testdata/x_plus_y_v2_debuginfo/**",
     ]),
 )

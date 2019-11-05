@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -30,7 +32,6 @@ py_library(
         "lists.py",
         "logical_expressions.py",
         "return_statements.py",
-        "side_effect_guards.py",
         "slices.py",
     ],
     srcs_version = "PY2AND3",
@@ -41,6 +42,7 @@ py_library(
         "//tensorflow/python/autograph/lang",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
     ],
 )
@@ -81,13 +83,18 @@ py_test(
 py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "no_windows",
+        "nopip",
+    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/impl",
     ],
 )
 
@@ -173,18 +180,6 @@ py_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "side_effect_guards_test",
-    srcs = ["side_effect_guards_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

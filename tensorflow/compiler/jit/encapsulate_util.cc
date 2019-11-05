@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
@@ -315,6 +315,10 @@ const char kOutsideCompilationOriginalNodeAttrName[] =
 const char kOutsideCompilationSrcOutputAttrName[] = "_xla_oc_to_oc_src_output";
 const char kXlaControlDependenciesWithinXlaClusterAttrName[] =
     "_xla_control_dependencies_within_xla_cluster";
+const char kXlaIsLiftedArgAttrName[] = "_xla_is_lifted_arg";
+const char kXlaLiftedArgOutsideCompilationAttrName[] = "_xla_lifted_arg_oc";
+const char kXlaOutsideCompilationInputsAttrName[] = "_xla_oc_inputs";
+const char kXlaIsPlaceholderForArg[] = "_xla_is_placeholder_for_arg";
 
 Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   // Perform shape inference.

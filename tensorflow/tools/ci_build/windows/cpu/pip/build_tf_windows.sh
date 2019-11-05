@@ -67,7 +67,6 @@ EXTRA_TEST_FLAGS=""
 # --release_build        Build for release, compilation time will be longer to
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
-# --test_contrib_only    Use tensorflow/contrib/... as test target
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
@@ -75,7 +74,6 @@ while [[ $# -gt 0 ]]; do
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
-    --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
     --extra_build_flags)
       shift
       if [[ -z "$1" ]]; then
@@ -134,10 +132,12 @@ fi
 run_configure_for_cpu_build
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+  --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
@@ -167,11 +167,11 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 # https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
-  --experimental_windows_native_test_wrapper \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu,-v1only \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
+  --output_filter=^$ \
   ${TEST_TARGET}

@@ -1,15 +1,36 @@
-package(default_visibility = ["//tensorflow:internal"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
     name = "assert_next_dataset_test",
     size = "medium",
     srcs = ["assert_next_dataset_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
+    name = "inject_prefetch_test",
+    size = "small",
+    srcs = ["inject_prefetch_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [

@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RaggedFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseFeature"
     mtype: "<type \'type\'>"
   }

@@ -147,7 +147,8 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.emplace_back(make_safe(py_array));
+    py_outputs_safe.emplace_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // 6. If we reach this point, we have successfully built a list of objects
@@ -274,7 +275,8 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.push_back(make_safe(py_array));
+    py_outputs_safe.push_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // If we reach this point, we have successfully built a list of objects
@@ -423,7 +425,8 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.emplace_back(make_safe(py_array));
+    py_outputs_safe.emplace_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // If we reach this point, we have successfully built a list of objects so we
@@ -543,9 +546,7 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
 std::vector<TF_Output> GetOperationInputs(TF_Operation* oper) {
   int num_inputs = TF_OperationNumInputs(oper);
   std::vector<TF_Output> inputs(num_inputs);
-  for (int i = 0; i < num_inputs; ++i) {
-    inputs[i] = TF_OperationInput({oper, i});
-  }
+  TF_OperationAllInputs(oper, inputs.data(), inputs.size());
   return inputs;
 }
 
@@ -636,6 +637,48 @@ void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
                                         types.data(), status);
 }
 
+void CreatePlaceholder(TF_Graph* graph, TF_Status* s, string&& name,
+                       TF_DataType dtype, TF_Output* output) {
+  TF_OperationDescription* desc =
+      TF_NewOperation(graph, "Placeholder", name.data());
+  TF_SetAttrType(desc, "dtype", dtype);
+  TF_Operation* op = TF_FinishOperation(desc, s);
+  output->oper = op;
+  output->index = 0;
+}
+
+std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
+                                             const char* prefix,
+                                             TF_Status* status) {
+  std::vector<TF_Output> outputs;
+  dtypes = PySequence_Fast(dtypes, "dtypes must be a sequence");
+  if (dtypes == nullptr) {
+    Set_TF_Status_from_Status(status, errors::Internal("dtypes is nullptr"));
+    return outputs;
+  }
+  Safe_PyObjectPtr dtypes_holder(make_safe(dtypes));
+  Py_ssize_t len = PySequence_Fast_GET_SIZE(dtypes);
+  outputs.reserve(len);
+  for (size_t i = 0; i < len; i++) {
+    PyObject* dtype = PySequence_Fast_GET_ITEM(dtypes, i);
+    if (!dtype) {
+      Set_TF_Status_from_Status(status,
+                                errors::Internal("Could not get dtype ", i));
+      return outputs;
+    }
+#if PY_MAJOR_VERSION >= 3
+    TF_DataType tf_datatype = static_cast<TF_DataType>(PyLong_AsLong(dtype));
+#else
+    TF_DataType tf_datatype = static_cast<TF_DataType>(PyInt_AsLong(dtype));
+#endif
+    outputs.push_back(TF_Output());
+    CreatePlaceholder(graph, status, strings::StrCat(prefix, i), tf_datatype,
+                      &outputs.back());
+    if (!status->status.ok()) break;
+  }
+  return outputs;
+}
+
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
                                     const std::vector<int64_t>& dims,
                                     bool unknown_shape, TF_Status* status) {
@@ -672,7 +715,7 @@ PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
   Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
   Set_TF_Status_from_Status(status, s);
   if (!s.ok()) Py_RETURN_NONE;
-  return out;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(out));
 }
 
 }  // namespace tensorflow

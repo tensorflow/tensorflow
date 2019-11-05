@@ -100,7 +100,10 @@ accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel
 
 `-order_by`: Order the results by [name|depth|bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
-`-account_type_regexes`: Account and display the nodes whose types match one of the type regexes specified. tfprof allow user to define extra operation types for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are comma-sperated.
+`-account_type_regexes`: Account and display the nodes whose types match one of
+the type regexes specified. tfprof allow user to define extra operation types
+for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are
+comma-separated.
 
 `-start_name_regexes`: Show node starting from the node that matches the regexes, recursively. regexes are comma-separated.
 

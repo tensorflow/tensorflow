@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
 #ifdef TENSORFLOW_USE_SYCL
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/util/debug_events_writer.h"
 
 namespace tensorflow {
 
@@ -69,7 +70,7 @@ class CopyOp : public OpKernel {
       OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
                                                        &copied_tensor));
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
       bool off_host_input = device->device_type() == DEVICE_GPU &&
@@ -388,6 +389,54 @@ class DebugNumericSummaryOp : public BaseDebugOp {
   float lower_bound_;
   float upper_bound_;
   bool mute_if_healthy_;
+};
+
+// Identity op for tfdbg v2: Writes debug data using DebugEventsWriter.
+class DebugIdentityV2Op : public OpKernel {
+ public:
+  explicit DebugIdentityV2Op(OpKernelConstruction* context)
+      : OpKernel(context),
+        device_name_(context->device()->name()),
+        output_slot_(-1),
+        tensor_debug_mode_(0) {
+    std::vector<string> debug_urls;
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls));
+    for (const string& debug_url : debug_urls) {
+      if (absl::StartsWith(debug_url, DebugIO::kFileURLScheme)) {
+        dump_roots_.emplace_back(
+            debug_url.substr(strlen(DebugIO::kFileURLScheme)));
+      } else {
+        context->SetStatus(
+            errors::Internal("Unsupported debug URL schema in: ", debug_url));
+      }
+    }
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tfdbg_context_id", &tfdbg_context_id_));
+    OP_REQUIRES_OK(context, context->GetAttr("op_name", &op_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("output_slot", &output_slot_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor = context->input(0);
+    for (const string& dump_root : dump_roots_) {
+      tfdbg::DebugEventsWriter* debug_events_writer =
+          tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
+      debug_events_writer->WriteGraphExecutionTrace(
+          tfdbg_context_id_, device_name_, op_name_, output_slot_,
+          tensor_debug_mode_, tensor);
+    }
+    context->set_output(0, tensor);
+  }
+
+ private:
+  std::vector<string> dump_roots_;
+  string tfdbg_context_id_;
+  string device_name_;
+  string op_name_;
+  int32 output_slot_;
+  int32 tensor_debug_mode_;
 };
 
 }  // namespace tensorflow

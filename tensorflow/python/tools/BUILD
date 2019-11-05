@@ -1,14 +1,15 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
@@ -270,6 +271,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:_pywrap_kernel_registry",
         "//tensorflow/python:platform",
     ],
 )

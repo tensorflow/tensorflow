@@ -80,15 +80,15 @@ PyObject* ZeroDimArrayToScalar(PyObject* obj) {
 // Converts Python object `c` that should hold a Python string into a
 // C++ string in *out.  Returns nullptr on success, or a message on error.
 // Defined below, but forward declared here for use in PyRepr.
-const char* ConvertOneString(PyObject* v, string* out);
+const char* ConvertOneString(PyObject* v, tstring* out);
 
-string PyRepr(PyObject* obj) {
+tstring PyRepr(PyObject* obj) {
   if (obj == nullptr) {
     return "<null>";
   }
   Safe_PyObjectPtr repr_obj = make_safe(PyObject_Repr(obj));
   if (repr_obj) {
-    string repr_str;
+    tstring repr_str;
     if (ConvertOneString(repr_obj.get(), &repr_str) == nullptr) {
       return repr_str;
     }
@@ -446,7 +446,7 @@ DEFINE_HELPER(ConvertNumpyHalf, Eigen::half, DT_HALF, ConvertOneNumpyHalf);
 
 // String support
 
-const char* ConvertOneString(PyObject* v, string* out) {
+const char* ConvertOneString(PyObject* v, tstring* out) {
   if (PyBytes_Check(v)) {
     out->assign(PyBytes_AS_STRING(v), PyBytes_GET_SIZE(v));
     return nullptr;
@@ -469,7 +469,7 @@ const char* ConvertOneString(PyObject* v, string* out) {
   return ErrorMixedTypes;
 }
 
-DEFINE_HELPER(ConvertString, string, DT_STRING, ConvertOneString);
+DEFINE_HELPER(ConvertString, tstring, DT_STRING, ConvertOneString);
 
 // Complex support
 

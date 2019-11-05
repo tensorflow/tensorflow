@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -46,6 +48,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+class XrtClientSession : public ClientSession {
+ public:
+  explicit XrtClientSession(const Scope& scope) : ClientSession(scope) {
+    auto clear_all = ops::XRTReleaseAllAllocations(scope);
+    std::vector<Tensor> outputs;
+    TF_CHECK_OK(Run(ClientSession::FeedType(), {}, {clear_all}, &outputs));
+  }
+};
 
 string* xla_test_device_ptr;  // initial value set in main()
 string* xla_platform_ptr;     // initial value set in main()
@@ -116,7 +127,7 @@ xla::LiteralProto FloatMatrix(
 
 xla::Literal ReadOutputLiteral(const std::vector<Tensor>& outputs, size_t idx) {
   xla::LiteralProto response;
-  CHECK(response.ParseFromString(outputs[idx].scalar<string>()()));
+  CHECK(response.ParseFromString(outputs[idx].scalar<tstring>()()));
   return xla::Literal::CreateFromProto(response).ValueOrDie();
 }
 
@@ -235,6 +246,26 @@ xla::XlaComputation AddAndSubTuple() {
   return builder.Build().ValueOrDie();
 }
 
+xla::XlaComputation BroadcastComputation(
+    const xla::Shape& shape, absl::Span<const xla::int64> dimensions) {
+  xla::XlaBuilder builder("BroadcastComputation");
+  auto p0 = xla::Parameter(&builder, 0, shape, "P0");
+  xla::Broadcast(p0, dimensions);
+  return builder.Build().ValueOrDie();
+}
+
+xla::XlaComputation IsEqualComputation(const xla::Shape& shape) {
+  xla::XlaBuilder builder("IsEqualComputation");
+  auto p0 = xla::Parameter(&builder, 0, shape, "P0");
+  auto p1 = xla::Parameter(&builder, 1, shape, "P1");
+  auto cmp =
+      xla::Ne(xla::Sub(p0, p1), xla::Zero(&builder, shape.element_type()));
+  auto icmp = xla::ConvertElementType(cmp, xla::S32);
+  xla::ReduceAll(icmp, xla::Zero(&builder, xla::S32),
+                 xla::CreateScalarAddComputation(xla::S32, &builder));
+  return builder.Build().ValueOrDie();
+}
+
 void StoreComputationSnapshot(const xla::XlaComputation& computation,
                               xla::HloSnapshot* dst) {
   auto snapshot = computation.Snapshot().ValueOrDie();
@@ -279,14 +310,80 @@ TEST(RawApiTest, AllocFromTensor) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
+}
+
+TEST(RawApiTest, AllocUninitialized) {
+  xla::Literal literal =
+      xla::LiteralUtil::CreateR2<float>({{4.0f, 5.0f}, {6.0f, 7.0f}});
+  Tensor tensor;
+  TF_ASSERT_OK(LiteralToHostTensor(literal, DT_FLOAT, &tensor));
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  std::vector<int> layout =
+      GetAttrLayout(literal.shape().layout().minor_to_major());
+
+  auto allocate_op =
+      ops::XRTAllocateUninitialized(root, DT_FLOAT, tensor.shape());
+
+  Tensor handle;
+  std::vector<Tensor> outputs;
+  XrtClientSession session(root);
+  // Allocate the tensor
+  {
+    TF_EXPECT_OK(session.Run({allocate_op}, &outputs));
+    handle = outputs[0];
+  }
+
+  // Make sure it has the expected shape
+  {
+    auto read_back_op = ops::XRTReadLiteral(root, handle);
+    TF_ASSERT_OK(root.status());
+
+    TF_EXPECT_OK(session.Run({read_back_op}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+    xla::LiteralProto read_back_literal;
+    EXPECT_TRUE(
+        read_back_literal.ParseFromString(outputs[0].scalar<tstring>()()));
+    Tensor read_back_tensor;
+    TF_ASSERT_OK(LiteralToHostTensor(
+        xla::Literal::CreateFromProto(read_back_literal).ValueOrDie(), DT_FLOAT,
+        &read_back_tensor));
+
+    // The shape should be the same as 'tensor', but we don't have any
+    // expectation about the value of the tensors yet since it is uninitialized
+    EXPECT_EQ(tensor.shape(), read_back_tensor.shape());
+  }
+
+  // Make sure we can write to it
+  xla::LiteralProto new_literal =
+      xla::LiteralUtil::CreateR2({{9.0f, 2.0f}, {4.0f, 1.0f}}).ToProto();
+  {
+    auto new_value = ops::Const(root.WithDevice("/device:CPU:0"),
+                                new_literal.SerializeAsString());
+    auto write_op = ops::XRTWriteLiteral(root, Input(handle), new_value);
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({write_op}, &outputs));
+  }
+
+  // Now read it back
+  {
+    auto read_back_op = ops::XRTReadLiteralAndRelease(root, handle);
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({read_back_op}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+
+    xla::LiteralProto response;
+    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
+    EXPECT_TRUE(CompareLiteralProtos(response, new_literal));
+  }
 }
 
 TEST(RawApiTest, AllocFromTensorTuple) {
@@ -310,13 +407,13 @@ TEST(RawApiTest, AllocFromTensorTuple) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
 }
 
@@ -336,13 +433,13 @@ TEST(RawApiTest, AllocFromTensorTupleSingle) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
 }
 
@@ -362,13 +459,13 @@ TEST(RawApiTest, AllocFromTensorRelayout) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   // We have sent literal's data (in array layout) with a attribute layout
   // {0,1}, so the expected literal read from device needs to be changed
   // accordingly.
@@ -389,14 +486,14 @@ TEST(RawApiTest, AllocAndRewrite) {
   auto read_back = ops::XRTReadLiteral(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back, handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
   int64 allocation_handle = outputs[1].scalar<int64>()();
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 
   xla::LiteralProto new_literal =
@@ -415,7 +512,7 @@ TEST(RawApiTest, AllocAndRewrite) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto new_response;
-  EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
 
   Tensor release_tensor(DT_INT64, TensorShape({1}));
@@ -442,7 +539,7 @@ TEST(RawApiTest, AllocReleaseMany) {
   auto handle2 = ops::XRTAllocate(root, value2);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({handle1, handle2}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
@@ -491,7 +588,7 @@ TEST(RawApiTest, CompileAndReleaseMany) {
   auto c_handle2 = ops::XRTCompile(root, computation2);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({c_handle1.handle, c_handle2.handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
@@ -518,7 +615,7 @@ TEST(RawApiTest, AllocAndClearAll) {
   auto handle = ops::XRTAllocate(root, value);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({handle}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
@@ -549,13 +646,13 @@ TEST(RawApiTest, ReadAndWriteState) {
       root.WithControlDependencies(read_back), handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(
       session.Run(ClientSession::FeedType(), {read_back}, {release}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 }
@@ -571,12 +668,12 @@ TEST(RawApiTest, ReadAndWriteStateAutoFree) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 }
 
@@ -602,7 +699,7 @@ TEST(RawApiTest, SubBuffer) {
   auto value_00 = ops::XRTReadLiteralAndRelease(root, sub_00);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({value_0, value_1, value_00}, &outputs));
 
@@ -610,13 +707,13 @@ TEST(RawApiTest, SubBuffer) {
   auto base_elements = base_literal.DecomposeTuple();
   auto nested_0_elements = base_elements[0].Clone().DecomposeTuple();
   xla::LiteralProto response_0;
-  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(base_elements[0], response_0));
   xla::LiteralProto response_1;
-  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<string>()()));
+  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(base_elements[1], response_1));
   xla::LiteralProto response_00;
-  EXPECT_TRUE(response_00.ParseFromString(outputs[2].scalar<string>()()));
+  EXPECT_TRUE(response_00.ParseFromString(outputs[2].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(nested_0_elements[0], response_00));
 }
 
@@ -678,13 +775,13 @@ TEST(RawApiTest, MakeTuple) {
   auto res_1 = ops::XRTReadLiteralAndRelease(root, handle_4);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({res_0, res_1}, &outputs));
   xla::LiteralProto response_0;
-  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<tstring>()()));
   xla::LiteralProto response_1;
-  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<string>()()));
+  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<tstring>()()));
 
   auto expected_0 = MakeTuple0();
   EXPECT_TRUE(CompareLiteralProtos(response_0, expected_0));
@@ -718,7 +815,7 @@ TEST(RawApiTest, ExecuteChainedOpByOp) {
       root, ops::Const(root.WithDevice("/device:CPU:0"), c_sub_scale));
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(
       session.Run({c_add_scale_op.handle, c_sub_scale_op.handle}, &outputs));
@@ -756,7 +853,7 @@ TEST(RawApiTest, ExecuteChainedOpByOp) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({-150.0f, -36.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -788,7 +885,7 @@ TEST(RawApiTest, ExecuteChained) {
       root, ops::Const(root.WithDevice("/device:CPU:0"), c_sub_scale));
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(
       session.Run({c_add_scale_op.handle, c_sub_scale_op.handle}, &outputs));
@@ -876,7 +973,7 @@ TEST(RawApiTest, ExecuteChained) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({-150.0f, -36.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -920,18 +1017,18 @@ TEST(RawApiTest, CompileAndExecute) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
 
@@ -975,18 +1072,18 @@ TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
 
@@ -1025,13 +1122,14 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
   auto release = ops::XRTReleaseCompilationHandle(root, c_handle.handle);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run(ClientSession::FeedType(), {c_handle.program_shape},
                            {release}, &outputs));
 
   xla::ProgramShapeProto program_shape_proto;
-  EXPECT_TRUE(program_shape_proto.ParseFromString(outputs[0].vec<string>()(0)));
+  EXPECT_TRUE(
+      program_shape_proto.ParseFromString(outputs[0].vec<tstring>()(0)));
   xla::ProgramShape program_shape(program_shape_proto);
   EXPECT_EQ(program_shape.parameters_size(), 1);
 
@@ -1094,12 +1192,12 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected =
       xla::LiteralUtil::CreateR2WithLayout<float>({{18.0f}, {44.0f}}, layout);
@@ -1129,12 +1227,12 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR0<float>(3.0f);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -1179,12 +1277,12 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto sum = xla::LiteralUtil::CreateR1<float>({9.0f, 7.0f});
   auto expected = xla::LiteralUtil::MakeTuple({&sum});
@@ -1230,7 +1328,7 @@ TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
                                 {Output(p0_handle), Output(p1_handle)});
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({result}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
@@ -1246,7 +1344,7 @@ TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
     EXPECT_EQ(voutputs.size(), 1);
 
     xla::LiteralProto response;
-    EXPECT_TRUE(response.ParseFromString(voutputs[0].scalar<string>()()));
+    EXPECT_TRUE(response.ParseFromString(voutputs[0].scalar<tstring>()()));
 
     auto expected = xla::LiteralUtil::CreateR0<float>(kResults[i]);
     EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -1272,7 +1370,7 @@ TEST(RawApiTest, LeakCompilationReference) {
   auto c_handle = ops::XRTCompile(root, computation);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({c_handle.handle}, &outputs));
 }
@@ -1316,7 +1414,7 @@ TEST(RawApiTest, CompileAndExecuteWithReusedBuffers) {
   e.set_release_compilation_handle(true);
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
-  ClientSession session(root);
+  XrtClientSession session(root);
   auto e_config =
       ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
   auto c_data =
@@ -1412,18 +1510,18 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   auto read_back = ops::XRTReadLiteralAndRelease(root, result);
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR0<int64>(15123899);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(xla::ShapeUtil::HasPrimitiveType(
       xla::Shape(program_shape.result()), xla::S64));
@@ -1444,7 +1542,7 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
   }
   TF_ASSERT_OK(root.status());
 
-  ClientSession session(root);
+  XrtClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run(handle_outputs, &outputs));
   EXPECT_EQ(outputs.size(), handle_outputs.size());
@@ -1483,8 +1581,97 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
   // we have on record.
   for (size_t i = 1, j = 0; i < handles.size(); i += 2, ++j) {
     xla::LiteralProto response;
-    EXPECT_TRUE(response.ParseFromString(outputs[j].scalar<string>()()));
+    EXPECT_TRUE(response.ParseFromString(outputs[j].scalar<tstring>()()));
     EXPECT_TRUE(CompareLiteralProtos(allocs[i].value(), response));
+  }
+}
+
+TEST(RawApiTest, TestDeviceMemorySwap) {
+  const xla::Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  // 100MB F32 tensor.
+  const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {5000, 5000});
+  const xla::int64 tensor_size = xla::ShapeUtil::ByteSizeOf(shape);
+  // On CPU we cannot trigger OOM/swap. For TPU and GPU we select 16GB as
+  // maximum memory.
+  xla::int64 device_memory_size = 8LL * 1024 * 1024 * 1024;
+  if (*xla_test_device_ptr == "TPU" || *xla_test_device_ptr == "XLA_GPU") {
+    device_memory_size = 16LL * 1024 * 1024 * 1024;
+  }
+
+  xrt::XLAAllocation p0;
+  *p0.mutable_value() = xla::LiteralUtil::CreateR0<float>(0.90434).ToProto();
+
+  // Create a computation which broadcasts a scalar to a big tensor.
+  xrt::XLAComputation c_bcast;
+  {
+    auto shapes = c_bcast.mutable_config()->mutable_program_shape();
+    *shapes->add_parameters() = scalar_shape.ToProto();
+    *shapes->mutable_result() = shape.ToProto();
+    StoreComputationSnapshot(
+        BroadcastComputation(scalar_shape, shape.dimensions()),
+        c_bcast.mutable_hlo_snapshot());
+  }
+
+  // Create a computation which compares two tensors.
+  xrt::XLAComputation c_equal;
+  {
+    auto shapes = c_equal.mutable_config()->mutable_program_shape();
+    *shapes->add_parameters() = shape.ToProto();
+    *shapes->add_parameters() = shape.ToProto();
+    *shapes->mutable_result() =
+        xla::ShapeUtil::MakeShape(xla::S32, {}).ToProto();
+    StoreComputationSnapshot(IsEqualComputation(shape),
+                             c_equal.mutable_hlo_snapshot());
+  }
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(false);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  XrtClientSession session(root);
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto bcast_computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c_bcast.SerializeAsString());
+  auto c_bcast_handle = ops::XRTCompile(root, bcast_computation);
+  auto equal_computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c_equal.SerializeAsString());
+  auto c_equal_handle = ops::XRTCompile(root, equal_computation);
+  auto p0_value =
+      ops::Const(root.WithDevice("/device:CPU:0"), p0.SerializeAsString());
+  auto p0_handle = ops::XRTAllocate(root, p0_value);
+  std::vector<Tensor> outputs;
+  std::vector<xla::int64> device_handles;
+
+  // Create more data the device can take using the broadcast computation.
+  xla::int64 num_tensors = 8 + device_memory_size / tensor_size;
+  for (xla::int64 i = 0; i < num_tensors; ++i) {
+    auto result = ops::XRTExecute(root, c_bcast_handle.handle, e_config,
+                                  {Output(p0_handle)});
+    TF_ASSERT_OK(root.status());
+    TF_ASSERT_OK(session.Run({result}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+    device_handles.push_back(outputs[0].scalar<int64>()());
+  }
+
+  // Trigger computations on XRT handles to verify the swap-out/swap-in logic,
+  // by comparing sequential couple of tensors.
+  auto zero_literal = xla::LiteralUtil::CreateR0<xla::int32>(0);
+  for (size_t i = 0; i + 1 < device_handles.size(); ++i) {
+    auto exec_op = ops::XRTExecute(
+        root, c_equal_handle.handle, e_config,
+        {Input(device_handles[i]), Input(device_handles[i + 1])});
+    auto read_back = ops::XRTReadLiteral(root, exec_op);
+
+    TF_ASSERT_OK(root.status());
+    TF_ASSERT_OK(session.Run({read_back}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+
+    xla::LiteralProto response;
+    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
+    auto literal = xla::Literal::CreateFromProto(response).ValueOrDie();
+    EXPECT_EQ(literal, zero_literal);
   }
 }
 

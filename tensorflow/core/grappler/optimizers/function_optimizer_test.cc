@@ -38,7 +38,7 @@ class FunctionOptimizerTest : public GrapplerTest {};
 TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Build a graph to compute y = XTimesTwo(x)
   GrapplerItem item;
@@ -84,7 +84,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
 TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Create and instantiate a version of the XTimesTwo function that only
   // accepts floats a inputs.
@@ -143,7 +143,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
 TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithOutputMapping) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   FunctionDef func = FunctionDefHelper::Create(
       // Name
@@ -192,7 +192,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithOutputMapping) {
 TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithInputForwarding) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   FunctionDef func = FunctionDefHelper::Create(
       // Name
@@ -251,7 +251,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithInputForwarding) {
 TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
@@ -296,7 +296,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
 TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithNestedFunctionCall) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Define square via function library:
   //   MySquare(x) = MyMul(x, x)
@@ -343,7 +343,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithNestedFunctionCall) {
 }
 
 TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_TestFunc) {
-  FunctionOptimizer optimizer(RewriterConfig::ON);
+  FunctionOptimizer optimizer(RewriterConfig::ON, true);
 
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -392,7 +392,7 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_TestFunc) {
 }
 
 TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
-  FunctionOptimizer optimizer(RewriterConfig::ON);
+  FunctionOptimizer optimizer(RewriterConfig::ON, true);
 
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -439,7 +439,7 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
 }
 
 TEST_F(FunctionOptimizerTest, InlineSymbolicGradientNoInlineFunc) {
-  FunctionOptimizer optimizer(RewriterConfig::ON);
+  FunctionOptimizer optimizer(RewriterConfig::ON, true);
 
   FunctionDef func = FunctionDefHelper::Define(
       "TestFunc", {"x:float", "y:float"}, {"l:float"}, {},
@@ -481,7 +481,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -520,14 +520,16 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
         {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
-         // Function body nodes are not placed, however function input nodes
-         // must copy device assignment from input arguments.
+         // Function body nodes copy only job/task/replica parts of device
+         // assignment, and function input nodes must copy full device
+         // assignment from input arguments. Optimized graph is not fully
+         // placed.
          NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
          NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, kDevice),
-         // TODO(ezhulenev): Currently inlined function body "implicitly placed"
-         // with a 'inline_options.initialize_empty_device' flag.
+         // NOTE(ezhulenev): Currently multi-device function inlining placer
+         // strategy will override all empty devices with function call device.
          NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, kDevice),
-         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}),
 
          NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, kDevice)},
         // Function library.
@@ -577,7 +579,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::ON);
+  FunctionOptimizer optimizer(RewriterConfig::ON, true);
 
   const Tensor kOne = test::AsScalar<float>(1.0);
   const Tensor kTwo = test::AsScalar<float>(2.0);
@@ -734,7 +736,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -780,7 +782,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
        NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, cpu0),
        NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, cpu1),
        NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, cpu1),
-       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu0),
 
        NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, cpu0)},
       // Function library.
@@ -794,7 +796,7 @@ TEST_F(FunctionOptimizerTest,
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   const Tensor kOne = test::AsScalar<float>(1.0);
   const Tensor kTwo = test::AsScalar<float>(2.0);
@@ -914,7 +916,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionDoNotInlineDeadOutputs) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   // Function output can be dead.
   FunctionDef dead_outputs = FunctionDefHelper::Create(
@@ -986,7 +988,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithMergedDeadTensors) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   // Function output can't be dead because it goes through the Merge node.
   FunctionDef no_dead_outputs = FunctionDefHelper::Create(
@@ -1077,7 +1079,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithNestedFunctionCall) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -1157,26 +1159,25 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithNestedFunctionCall) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
-TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
+GrapplerItem ConditionalAdd() {
+  // Returns the conditional (is_add) ? a + b : a * b;
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
-
-  FunctionDef add_func = FunctionDefHelper::Create(
+  FunctionDef add_func = FDH::Create(
       "MyAdd", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
       {{{"add"}, "Add", {"x", "y"}, {{"T", "$T"}}}},
       /* Mapping between function returns and function node outputs. */
       {{"z", "add:z:0"}});
 
-  FunctionDef mul_func = FunctionDefHelper::Create(
+  FunctionDef mul_func = FDH::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
       {{{"mul"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
       /* Mapping between function returns and function node outputs. */
       {{"z", "mul:z:0"}});
 
   // Compute: return cond ? a + b : a * b
-  FunctionDef add_or_mul_func = FunctionDefHelper::Create(
+  FunctionDef add_or_mul_func = FDH::Create(
       "AddOrMul", {"cond:bool", "x:float", "y:float"}, {"z:float"}, {},
       {
           {{"if_node"},
@@ -1219,7 +1220,14 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
        NDef("d", "Identity", {"c", "^c"}, {{"T", DT_FLOAT}}, kDevice)},
       // Function library.
       {add_or_mul_func, add_func, mul_func});
+  return item;
+}
 
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE, true);
+
+  // item.fetch['d'] == (is_add) ? a + b : a * b
+  GrapplerItem item = ConditionalAdd();
   GraphDef optimized_graph;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
 
@@ -1277,10 +1285,73 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
   }
 }
 
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionDontLowerControlFlow) {
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE,
+                              /*lower_control_flow=*/false);
+
+  // item.fetch['d'] == (is_add) ? a + b : a * b
+  GrapplerItem item = ConditionalAdd();
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  const auto count_nodes_with_op = [&](const string& op) {
+    return absl::c_count_if(optimized_graph.node(), [&](const NodeDef& node) {
+      return node.op() == op;
+    });
+  };
+
+  // All `PartitionedCall` nodes in the optimized graph must be inlined, and
+  // `If` node must be lowered to `Switch` and `Merge` nodes.
+  EXPECT_EQ(count_nodes_with_op("PartitionedCall"), 0);
+  EXPECT_EQ(count_nodes_with_op("If"), 1);
+  EXPECT_EQ(count_nodes_with_op("Switch"), 0);
+  EXPECT_EQ(count_nodes_with_op("Merge"), 0);
+
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
+
+  Tensor one = test::AsScalar<float>(1.0);
+  Tensor two = test::AsScalar<float>(2.0);
+  Tensor three = test::AsScalar<float>(3.0);
+
+  const auto feed_args = [&](bool is_add) {
+    std::vector<std::pair<string, Tensor>> feed;
+    feed.emplace_back("a", one);
+    feed.emplace_back("b", two);
+    feed.emplace_back("is_add", test::AsScalar<bool>(is_add));
+    return feed;
+  };
+
+  {  // Check 'is_add == true': a + b
+    item.feed = feed_args(true);
+    optimized.feed = feed_args(true);
+
+    auto tensors_expected = EvaluateFetchNodes(item);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    test::ExpectTensorEqual<float>(tensors_expected[0], three);
+
+    auto tensors = EvaluateFetchNodes(optimized);
+    ASSERT_EQ(tensors.size(), tensors_expected.size());
+    test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  }
+
+  {  // Check 'is_add == false': a * b
+    item.feed = feed_args(false);
+    optimized.feed = feed_args(false);
+
+    auto tensors_expected = EvaluateFetchNodes(item);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    test::ExpectTensorEqual<float>(tensors_expected[0], two);
+
+    auto tensors = EvaluateFetchNodes(optimized);
+    ASSERT_EQ(tensors.size(), tensors_expected.size());
+    test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  }
+}
+
 TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Mark XTimesTwo as noinline.
   FunctionDef x_times_two = test::function::XTimesTwo();
@@ -1329,7 +1400,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionXTimesTwo) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Mark XTimesTwo as noinline.
   FunctionDef x_times_two = test::function::XTimesTwo();
@@ -1392,7 +1463,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionXTimesTwo) {
 TEST_F(FunctionOptimizerTest, SpecializeFunctionPushDownConstInput) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -1456,7 +1527,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionPushDownConstInput) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -1535,7 +1606,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionPushDownConstInput) {
 TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // Mark MyMul as noinline.
   FunctionDef mul_func = FunctionDefHelper::Create(
@@ -1657,7 +1728,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
 TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
   using test::function::NDef;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // MyFunc computes x*y three times and has three output values.
   FunctionDef my_func = FunctionDefHelper::Create(
@@ -1765,7 +1836,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
   // MyFunc computes x*y three times and has three output values.
   FunctionDef my_func = FunctionDefHelper::Create(
@@ -1924,7 +1995,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
 
 TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
   using test::function::NDef;
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
   auto func = test::function::XTimesTwo();
   (*func.mutable_attr())["_noinline"].set_b(true);
   GrapplerItem item;

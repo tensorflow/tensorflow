@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #endif  // GOOGLE_CUDA
 
@@ -273,7 +275,7 @@ class BiasGradOp : public OpKernel {
       using AccumT = typename AccumulatorType<T>::type;
       if (data_format_ == FORMAT_NCHW) {
         const functor::ReduceMiddleDimensions<
-            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>,
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>,
             Eigen::internal::SumReducer<T>>
             redux;
         Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
@@ -282,7 +284,7 @@ class BiasGradOp : public OpKernel {
               output, 1);
       } else {
         const functor::ReduceOuterDimensions<
-            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>>
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>>
             redux;
 
         Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,
@@ -318,7 +320,7 @@ REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 class BiasOp<GPUDevice, T> : public BinaryOp<T> {
  public:
@@ -377,6 +379,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
       BiasOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(int32);
 #undef REGISTER_GPU_KERNEL
 
 struct BiasGradAutotuneGroup {
@@ -441,7 +444,7 @@ class BiasAddParams {
   string ToString() const {
     // clang-format off
     return strings::StrCat(
-        "(", str_util::Join(in_shape_, ", "), "), ",
+        "(", absl::StrJoin(in_shape_, ", "), "), ",
         data_format_, ", ", dtype_, ", ", device_id_);
     // clang-format on
   }
@@ -617,6 +620,6 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

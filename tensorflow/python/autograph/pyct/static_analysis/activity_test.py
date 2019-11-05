@@ -19,15 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.qual_names import QN
 from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
+from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.platform import test
+
+
+QN = qual_names.QN
+NodeAnno = annos.NodeAnno
+
+global_a = 7
+global_b = 17
 
 
 class ScopeTest(test.TestCase):
@@ -48,30 +55,20 @@ class ScopeTest(test.TestCase):
     self.assertIn(qn, scope.read)
     self.assertIn(qn, scope.modified)
 
-  def test_basic(self):
-    scope = activity.Scope(None)
-    self.assertMissing(QN('foo'), scope)
-
-    scope.mark_read(QN('foo'))
-    self.assertReadOnly(QN('foo'), scope)
-
-    scope.mark_modified(QN('foo'))
-    self.assertReadWrite(QN('foo'), scope)
-
   def test_copy_from(self):
     scope = activity.Scope(None)
-    scope.mark_modified(QN('foo'))
+    scope.modified.add(QN('foo'))
     other = activity.Scope(None)
     other.copy_from(scope)
 
     self.assertWriteOnly(QN('foo'), other)
 
-    scope.mark_modified(QN('bar'))
+    scope.modified.add(QN('bar'))
     scope.copy_from(other)
 
     self.assertMissing(QN('bar'), scope)
 
-    scope.mark_modified(QN('bar'))
+    scope.modified.add(QN('bar'))
     scope.merge_from(other)
 
     self.assertWriteOnly(QN('bar'), scope)
@@ -79,37 +76,41 @@ class ScopeTest(test.TestCase):
 
   def test_copy_of(self):
     scope = activity.Scope(None)
-    scope.mark_read(QN('foo'))
+    scope.read.add(QN('foo'))
     other = activity.Scope.copy_of(scope)
 
     self.assertReadOnly(QN('foo'), other)
 
     child_scope = activity.Scope(scope)
-    child_scope.mark_read(QN('bar'))
+    child_scope.read.add(QN('bar'))
     other = activity.Scope.copy_of(child_scope)
 
     self.assertReadOnly(QN('bar'), other)
 
   def test_referenced(self):
     scope = activity.Scope(None)
-    scope.mark_read(QN('a'))
+    scope.read.add(QN('a'))
 
     child = activity.Scope(scope)
-    child.mark_read(QN('b'))
+    child.read.add(QN('b'))
 
     child2 = activity.Scope(child, isolated=False)
-    child2.mark_read(QN('c'))
+    child2.read.add(QN('c'))
 
-    self.assertTrue(QN('c') in child2.referenced)
-    self.assertTrue(QN('b') in child2.referenced)
-    self.assertFalse(QN('a') in child2.referenced)
+    child2.finalize()
+    child.finalize()
+    scope.finalize()
 
-    self.assertTrue(QN('c') in child.referenced)
-    self.assertTrue(QN('b') in child.referenced)
-    self.assertFalse(QN('a') in child.referenced)
+    self.assertIn(QN('c'), child2.referenced)
+    self.assertIn(QN('b'), child2.referenced)
+    self.assertIn(QN('a'), child2.referenced)
+
+    self.assertIn(QN('c'), child.referenced)
+    self.assertIn(QN('b'), child.referenced)
+    self.assertIn(QN('a'), child.referenced)
 
 
-class ActivityAnalyzerTest(test.TestCase):
+class ActivityAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn, future_features=())
@@ -135,6 +136,9 @@ class ActivityAnalyzerTest(test.TestCase):
     """Assert the scope contains specific used, modified & created variables."""
     self.assertSymbolSetsAre(used, scope.read, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
+
+
+class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
 
   def test_print_statement(self):
 
@@ -420,7 +424,7 @@ class ActivityAnalyzerTest(test.TestCase):
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('b',), ())
-    self.assertScopeIs(body_scope.parent, ('b',), ('a', 'b'))
+    self.assertScopeIs(body_scope.parent, ('b',), ())
 
     args_scope = anno.getanno(fn_node.args, anno.Static.SCOPE)
     self.assertSymbolSetsAre(('a', 'b'), args_scope.params.keys(), 'params')
@@ -469,6 +473,102 @@ class ActivityAnalyzerTest(test.TestCase):
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+
+  def test_comprehension_targets_are_isolated(self):
+
+    def test_fn(a):
+      b = {c for c in a}  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('a',), ('b',))
+
+  def test_comprehension_targets_are_isolated_list_function_w_generator(self):
+
+    def test_fn(a):
+      b = list(c for c in a)  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('a', 'list'), ('b',))
+
+  def test_list_comprehension_targets_are_sometimes_isolated(self):
+
+    def test_fn(a):
+      b = [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a',), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a',), ('b',))
+
+  def test_comprehension_targets_are_isolated_in_augassign(self):
+
+    def test_fn(a, b):
+      b += [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b',))
+
+  def test_comprehension_generator_order(self):
+
+    def test_fn(a, b, c):  # pylint:disable=unused-argument
+      e = {d: (a, b) for (a, b) in c for d in b}  # pylint:disable=unused-variable,g-complex-comprehension
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('c',), ('e',))
+
+  def test_global_symbol(self):
+
+    def test_fn(c):
+      global global_a
+      global global_b
+      global_a = global_b + c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
+
+  def test_class_definition_basic(self):
+
+    def test_fn(a, b):
+      class C(a(b)):
+        d = 1
+      return C
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('a', 'b', 'C'), ('C',))
+
+  def test_class_definition_isolates_method_writes(self):
+
+    def test_fn(a, b, c):
+      class C(a(b)):
+        d = 1
+
+        def e(self):
+          f = c + 1
+          return f
+      return C
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('a', 'b', 'C', 'c'), ('C',))
 
 
 if __name__ == '__main__':

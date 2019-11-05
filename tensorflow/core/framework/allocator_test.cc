@@ -86,6 +86,52 @@ TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
   EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
 }
 
+TEST(AllocatorAttributesTest, Merge) {
+  AllocatorAttributes a, b;
+
+  // Merging nic_compatible=True and nic_compatible=False results in
+  // nic_compatible=True.
+  EXPECT_EQ(a.value, 0);
+  EXPECT_EQ(b.value, 0);
+  EXPECT_FALSE(a.nic_compatible());
+  EXPECT_FALSE(b.nic_compatible());
+  b.set_nic_compatible(true);
+  a.Merge(b);
+  EXPECT_TRUE(a.nic_compatible());
+  EXPECT_TRUE(b.nic_compatible());
+
+  // a.Merge(b) does not change b.
+  EXPECT_EQ(a.scope_id, 0);
+  EXPECT_EQ(b.scope_id, 0);
+  a.scope_id = 1;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 0);
+
+  // If a.scope_id=1 and b.scope_id=0, then b.Merge(a) results in b.scope_id=1.
+  a.scope_id = 1;
+  b.scope_id = 0;
+  b.Merge(a);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 1);
+
+  // If a.scope_id and b.scope_id are same, then merge leaves them unchanged.
+  a.scope_id = 2;
+  b.scope_id = 2;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 2);
+  EXPECT_EQ(b.scope_id, 2);
+}
+
+TEST(AllocatorAttributesDeathTest, MergeDifferentScopeIds) {
+  AllocatorAttributes a, b;
+  // If a.scope_id and b.scope_id are both positive but different, then
+  // a.Merge(b) should cause a CHECK failure.
+  a.scope_id = 3;
+  b.scope_id = 4;
+  EXPECT_DEATH({ a.Merge(b); }, "");
+}
+
 TEST(CPUAllocatorTest, Simple) {
   EnableCPUAllocatorStats(true);
   Allocator* a = cpu_allocator();

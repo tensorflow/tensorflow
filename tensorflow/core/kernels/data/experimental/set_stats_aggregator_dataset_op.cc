@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
@@ -83,17 +85,16 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    StatsAggregatorResource* stats_aggregator_resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
-                                       &stats_aggregator_resource));
-    core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
-    string tag;
+    core::RefCountPtr<StatsAggregatorResource> resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
-    string prefix;
+    tstring prefix;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "counter_prefix", &prefix));
 
-    *output = new Dataset(ctx, input, ctx->input(1), stats_aggregator_resource,
-                          tag, prefix);
+    *output =
+        new Dataset(ctx, input, ctx->input(1), resource.get(), tag, prefix);
   }
 
  private:
@@ -101,12 +102,12 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      const Tensor& resource_handle,
-                     StatsAggregatorResource* stats_aggregator_resource,
-                     const string& tag, const string& prefix)
+                     StatsAggregatorResource* resource, const string& tag,
+                     const string& prefix)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           resource_handle_(resource_handle),
-          stats_aggregator_resource_(stats_aggregator_resource),
+          stats_aggregator_resource_(resource),
           tag_(tag),
           prefix_(prefix) {
       input_->Ref();
@@ -137,6 +138,10 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -162,22 +167,29 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return dataset()->input_->MakeIterator(&iter_ctx, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        StatsAggregatorResource* stats_aggregator_resource =
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+      }
+
+      IteratorContext ContextWithAggregator(IteratorContext* ctx) {
+        StatsAggregatorResource* resource =
             dataset()->stats_aggregator_resource_;
         IteratorContext::Params params(ctx);
         params.stats_aggregator = std::shared_ptr<StatsAggregator>(
-            new StatsAggregatorWithTagAndPrefix(
-                stats_aggregator_resource->stats_aggregator(), dataset()->tag_,
-                dataset()->prefix_));
+            new StatsAggregatorWithTagAndPrefix(resource->stats_aggregator(),
+                                                dataset()->tag_,
+                                                dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
-        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return iter_ctx;
       }
 
      protected:
@@ -206,14 +218,18 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     const Tensor resource_handle_;
     StatsAggregatorResource* stats_aggregator_resource_;
-    string tag_;
-    string prefix_;
+    tstring tag_;
+    tstring prefix_;
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("SetStatsAggregatorDataset").Device(DEVICE_CPU),
+                        SetStatsAggregatorDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalSetStatsAggregatorDataset").Device(DEVICE_CPU),
     SetStatsAggregatorDatasetOp);
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

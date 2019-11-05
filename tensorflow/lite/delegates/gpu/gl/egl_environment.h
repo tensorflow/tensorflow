@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_context.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_surface.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 
 namespace tflite {
 namespace gpu {
@@ -53,9 +53,9 @@ class EglEnvironment {
   Status InitPBufferContext();
 
   EGLDisplay display_ = EGL_NO_DISPLAY;
-  EglContext context_;
   EglSurface surface_draw_;
   EglSurface surface_read_;
+  EglContext context_;
   GpuInfo gpu_info_;
 
   // Strange hack that helps on Mali GPUs

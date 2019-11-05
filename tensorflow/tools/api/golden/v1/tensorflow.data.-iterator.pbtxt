@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "initializer"
     mtype: "<type \'property\'>"
   }

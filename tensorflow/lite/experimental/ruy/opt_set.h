@@ -16,8 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_OPT_SET_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_OPT_SET_H_
 
-#ifndef RUY_OPT_SET
-#define RUY_OPT_SET 0x3ff
+// RUY_OPT_SET is a compile-time API that Ruy provides for enabling/disabling
+// certain optimizations. It should be used by defining that macro on the
+// compiler command line.
+//
+// Each bit in RUY_OPT_SET controls a particular optimization done in Ruy.
+#if !defined(RUY_OPT_SET)
+// Default to all optimizations.
+#define RUY_OPT_SET 0x7ff
 #endif
 
 #define RUY_OPT_INTRINSICS 0x1
@@ -30,5 +36,8 @@ limitations under the License.
 #define RUY_OPT_AVOID_ALIASING 0x80
 #define RUY_OPT_MAX_STREAMING 0x100
 #define RUY_OPT_PREFETCH 0x200
+#define RUY_OPT_PACK_AHEAD 0x400
+
+#define RUY_OPT_ENABLED(ruy_opt) ((RUY_OPT_SET & ruy_opt) != 0)
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_OPT_SET_H_

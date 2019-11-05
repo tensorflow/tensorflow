@@ -1,0 +1,24 @@
+op {
+  name: "InitializeTable"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tkey"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tval"
+  }
+  attr {
+    name: "Tkey"
+    type: "type"
+  }
+  attr {
+    name: "Tval"
+    type: "type"
+  }
+}

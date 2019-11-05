@@ -146,10 +146,7 @@ Status RecordWriter::Flush() {
     return Status(::tensorflow::error::FAILED_PRECONDITION,
                   "Writer not initialized or previously closed");
   }
-  if (IsZlibCompressed(options_)) {
-    return dest_->Flush();
-  }
-  return Status::OK();
+  return dest_->Flush();
 }
 
 }  // namespace io

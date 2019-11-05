@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -63,6 +64,7 @@ def get_single_element(dataset):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
   # pylint: disable=protected-access
-  return dataset._element_structure._from_compatible_tensor_list(
+  return structure.from_compatible_tensor_list(
+      dataset.element_spec,
       gen_dataset_ops.dataset_to_single_element(
-          dataset._variant_tensor, **dataset_ops.flat_structure(dataset)))
+          dataset._variant_tensor, **dataset._flat_structure))  # pylint: disable=protected-access

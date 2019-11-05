@@ -615,18 +615,16 @@ def ctc_loss_v2(labels,
   pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Notes:
-      - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
-      setting of
-        preprocess_collapse_repeated=False, ctc_merge_repeated=True
-      - Labels may be supplied as either a dense, zero-padded tensor with a
-        vector of label sequence lengths OR as a SparseTensor.
-      - On TPU and GPU:
-          - Only dense padded labels are supported.
-      - On CPU:
-          - Caller may use SparseTensor or dense padded labels but calling with
-            a SparseTensor will be significantly faster.
-      - Default blank label is 0 rather num_classes - 1, unless overridden by
-        blank_index.
+
+  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
+    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
+  - Labels may be supplied as either a dense, zero-padded tensor with a
+    vector of label sequence lengths OR as a SparseTensor.
+  - On TPU and GPU: Only dense padded labels are supported.
+  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
+    a SparseTensor will be significantly faster.
+  - Default blank label is 0 rather num_classes - 1, unless overridden by
+    blank_index.
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor

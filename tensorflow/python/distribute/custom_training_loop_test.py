@@ -23,9 +23,12 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
@@ -81,6 +84,32 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     dataset = self._get_dataset()
 
     def train_step(data):
+      return data
+
+    @def_function.function
+    def f_train_step(input_data):
+      return distribution.experimental_local_results(
+          distribution.experimental_run_v2(train_step, args=(input_data,)))
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = []
+    for x in dist_dataset:
+      output = f_train_step(x)
+      results.append(output)
+    self._validate_outputs(results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"]
+      ))
+  def testRunInFunctionAutoGraphApplication(self, distribution):
+    dataset = self._get_dataset()
+
+    def train_step(data):
+      if math_ops.reduce_sum(data) < 0:
+        return -data
       return data
 
     @def_function.function
@@ -195,9 +224,11 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   def _get_dataset(self):
     if tf2.enabled():
-      return dataset_ops.DatasetV2.range(10).batch(2)
+      return dataset_ops.DatasetV2.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
     else:
-      return dataset_ops.Dataset.range(10).batch(2)
+      return dataset_ops.Dataset.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
 
   def _validate_outputs(self, actual_results):
     expected_results = [[i, i+1] for i in range(0, 10, 2)]
@@ -210,6 +241,43 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
         final_result.extend(val.numpy())
       self.assertAllEqual(expected_result, final_result)
 
+
+class GradientTapeTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"],
+          model_in_tf_function=[True, False]
+      ))
+  def test1(self, distribution, model_in_tf_function):
+    # b/134975331
+    if model_in_tf_function and isinstance(
+        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest("model inside tf.function doesn't work with TPUStrategy")
+
+    def model(x):
+      return x * x
+
+    if model_in_tf_function:
+      model = def_function.function(model)
+
+    with distribution.scope():
+      x = variables.Variable(1.0)
+
+      @def_function.function
+      def train_step():
+        def replica_step():
+          with backprop.GradientTape() as tape:
+            y = model(x)
+          return tape.gradient(y, x)
+        return distribution.experimental_run_v2(replica_step)
+
+      grads = distribution.experimental_local_results(train_step())
+      self.assertLen(grads, distribution.num_replicas_in_sync)
+      self.assertTrue(all(g is not None for g in grads))
+
+
 if __name__ == "__main__":
   test.main()
-

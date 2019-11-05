@@ -854,7 +854,7 @@ def _find_children_hints(call, graph_def):
     if n in reachable_by_output:
       if n not in reachable_by_input and n not in output_nodes_set:
         # special handle for while loop function def.
-        if node.op == "While":
+        if node.op == "While" or node.op == "StatelessWhile":
           body_name = node.attr["body"].func.name
           inputs_outside_loop = node.input
           for function_def in graph_def.library.function:
@@ -862,8 +862,8 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i, _ in enumerate(function_inputs):
-                nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
+              for i, function_input in enumerate(function_inputs):
+                nodes_mapping[function_input.name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
@@ -1182,8 +1182,7 @@ def _convert_op_hints_to_stubs_helper(
       # Re-wire the children hints inputs/outputs, so latter child's inputs
       # connect to previous child node's outputs.
       children_inputs_mappings = hints[hint_uuid].children_inputs_mappings
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         if j == 0:
           for mapping in children_inputs_mappings["parent_first_child_input"]:
             parent_input_index = _get_correct_mapping(
@@ -1210,8 +1209,7 @@ def _convert_op_hints_to_stubs_helper(
             child_hint.outputs[child_output_index] = hints[hint_uuid].outputs[
                 parent_output_index]
 
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         curr_graph_def = _convert_single_op_hint_to_stub(
             child_hint, curr_graph_def, function_def_nodes,
             j == len(children_hints) - 1)

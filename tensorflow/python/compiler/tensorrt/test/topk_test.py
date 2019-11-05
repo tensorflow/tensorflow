@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import array_ops
@@ -28,26 +27,20 @@ from tensorflow.python.platform import test
 
 
 class TopKTest(trt_test.TfTrtIntegrationTestBase):
+  """Testing Top-K in TF-TRT conversion."""
+
+  def GraphFn(self, x):
+    k = 5
+    k_tensor = constant_op.constant(k, dtype=dtypes.int32, name="Const")
+    values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
+    values = array_ops.identity(values, name="output_0")
+    indices = array_ops.identity(indices, name="output_1")
+    return values, indices
 
   def GetParams(self):
-    """Testing Top-K in TF-TRT conversion."""
-    dtype = dtypes.float32
-    input_name = "input"
-    input_dims = [100, 100]
     k = 5
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      k_tensor = constant_op.constant(k, dtype=dtypes.int32, name="Const")
-      values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
-      values = array_ops.identity(values, name="output_values")
-      indices = array_ops.identity(indices, name="output_indices")
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=["output_values", "output_indices"],
-        expected_output_dims=[[[100, k], [100, k]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 100]],
+                            [[100, k], [100, k]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -55,30 +48,24 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
 
 
 class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
+  """Testing that output type of engine using Top-K is set correctly."""
+
+  def GraphFn(self, x):
+    k = 5
+    k_tensor = constant_op.constant(k, dtype=dtypes.int32, name="Const")
+    values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
+    # Reshape will act as a layer between the TopK output and the engine
+    # output, requiring the output tensor of reshape to be set explicitly to
+    # int32.
+    indices = array_ops.reshape(indices, [100, 1, 5], name="Reshape")
+    values = array_ops.identity(values, name="output_0")
+    indices = array_ops.identity(indices, name="output_1")
+    return values, indices
 
   def GetParams(self):
-    """Testing that output type of engine using Top-K is set correctly."""
-    dtype = dtypes.float32
-    input_name = "input"
-    input_dims = [100, 100]
     k = 5
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      k_tensor = constant_op.constant(k, dtype=dtypes.int32, name="Const")
-      values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
-      # Reshape will act as a layer between the TopK output and the engine
-      # output, requiring the output tensor of reshape to be set explicitly to
-      # int32.
-      indices = array_ops.reshape(indices, [100, 1, 5], name="Reshape")
-      values = array_ops.identity(values, name="output_values")
-      indices = array_ops.identity(indices, name="output_indices")
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=["output_values", "output_indices"],
-        expected_output_dims=[[[100, k], [100, 1, k]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 100]],
+                            [[100, k], [100, 1, k]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

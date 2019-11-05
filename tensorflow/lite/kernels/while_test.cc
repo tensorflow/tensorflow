@@ -59,8 +59,6 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   }
 }
 
-// This requires dynamic sized subgraphs and it's not supported right now.
-// TODO(ycling): Support dynamic sized subgraphs.
 TEST_F(WhileTest, TestPadLoop) {
   interpreter_.reset(new Interpreter);
   interpreter_->AddSubgraphs(2);
@@ -70,8 +68,6 @@ TEST_F(WhileTest, TestPadLoop) {
 
   interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
   interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
-  // This is not supported yet. The test ensures thatit doesn't crash and raises
-  // an error properly.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
@@ -82,13 +78,12 @@ TEST_F(WhileTest, TestPadLoop) {
   CheckIntTensor(output1, {1}, {4});
   TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
   CheckIntTensor(output2, {11}, {0, 0, 0, 5, 7, 0, 0, 0, 0, 0, 0});
+
+  // The extra invocation serves as a regiression test: There was a bug that
+  // invoking a while loop with dynamic shaped body makes the interpreter
+  // state uninvokable.
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 }
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

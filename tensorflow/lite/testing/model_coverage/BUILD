@@ -4,7 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-py_binary(
+py_library(
     name = "model_coverage_lib",
     srcs = ["model_coverage_lib.py"],
     srcs_version = "PY2AND3",

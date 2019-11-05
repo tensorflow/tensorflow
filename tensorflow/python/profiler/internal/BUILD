@@ -1,11 +1,10 @@
-package(default_visibility = ["//tensorflow/python/profiler:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
+package(
+    default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "flops_registry",
@@ -68,6 +67,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     tags = [
+        "no_gpu",  # b/138442728
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

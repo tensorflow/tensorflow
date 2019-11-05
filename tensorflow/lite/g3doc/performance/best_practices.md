@@ -16,7 +16,7 @@ accuracy and latency tradeoffs for some common image classification models.
 
 ![Graph of model size vs accuracy](../images/performance/model_size_vs_accuracy.png "Model Size vs Accuracy")
 
-![Graph of model size vs latency](../images/performance/model_size_vs_latency.png "Model Size vs Latency")
+![Graph of accuracy vs latency](../images/performance/accuracy_vs_latency.png "Accuracy vs Latency")
 
 One example of models optimized for mobile devices are
 [MobileNets](https://arxiv.org/abs/1704.04861), which are optimized for mobile
@@ -59,7 +59,7 @@ training should be used instead.
 
 We strongly recommend running benchmarks to make sure that the accuracy is not
 impacted during model compression. Check out our
-[model optimization toolkit](model_optimization.md) for details.
+[model optimization docs](model_optimization.md) for details.
 
 ## Tweak the number of threads
 

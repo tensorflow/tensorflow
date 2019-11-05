@@ -100,6 +100,28 @@ XLA_TEST_F(TransferManagerTest, TransferR1F32) {
                                         result);
 }
 
+XLA_TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
+  // Test transferring R1s from 0 to kMaxR1Size. The goal is to find bugs
+  // related to "awkwardly" sized R1s.
+  constexpr int kMaxR1Size = (1 << 11);
+  for (int i = 0; i < kMaxR1Size; ++i) {
+    std::vector<float> inputs(i);
+    std::iota(inputs.begin(), inputs.end(), 0);
+    Literal literal = LiteralUtil::CreateR1<float>(inputs);
+    const Shape& shape = literal.shape();
+    auto device_buffer = AllocateDeviceBuffer(shape);
+
+    // Round trip literal through device.
+    ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                            device_buffer));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result,
+        transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+    LiteralTestUtil::ExpectR1Equal<float>(inputs, result);
+  }
+}
+
 XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
   std::vector<float> test_vector(1024 * 1024);
   std::iota(test_vector.begin(), test_vector.end(), 0);
@@ -276,8 +298,8 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
 }
 
 XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
-  // "Copy" a token from the device. The token has no physical representation so
-  // no copying is actually performed, but it shouldn't fail.
+  // "Copy" a token from the device. The token has no physical representation
+  // so no copying is actually performed, but it shouldn't fail.
   // TODO(b/110532604): Add transferring the token to device when this is
   // supported.
   auto device_buffer = AllocateDeviceBuffer(ShapeUtil::MakeTokenShape());

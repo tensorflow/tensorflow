@@ -12,15 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/toco/python/toco_python_api.h"
+
 #include <map>
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/python/toco_python_api.h"
+#include "tensorflow/lite/toco/toco_convert.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/toco_graphviz_dump_options.h"
 #include "tensorflow/lite/toco/toco_port.h"
@@ -33,7 +36,9 @@ namespace toco {
 // sure we input and output bytes rather than unicode strings for Python3.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* toco_flags_proto_txt_raw,
-                      PyObject* input_contents_txt_raw, bool extended_return) {
+                      PyObject* input_contents_txt_raw, bool extended_return,
+                      PyObject* debug_info_txt_raw,
+                      bool enable_mlir_converter) {
   // Use Python C API to validate and convert arguments. In py3 (bytes),
   // in py2 (str).
   auto ConvertArg = [&](PyObject* obj, bool* error) {
@@ -70,12 +75,35 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   // Use TOCO to produce new outputs.
   toco::ModelFlags model_flags;
   if (!model_flags.ParseFromString(model_flags_proto_txt)) {
-    PyErr_SetString(PyExc_ValueError, "Model proto failed to parse.");
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to convert Model to Python String.");
     return nullptr;
   }
   toco::TocoFlags toco_flags;
   if (!toco_flags.ParseFromString(toco_flags_proto_txt)) {
-    PyErr_SetString(PyExc_ValueError, "Toco proto failed to parse.");
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to convert Toco to Python String.");
+    return nullptr;
+  }
+
+  tensorflow::GraphDebugInfo debug_info;
+  if (debug_info_txt_raw && debug_info_txt_raw != Py_None) {
+    std::string debug_info_txt = ConvertArg(debug_info_txt_raw, &error);
+    if (error) {
+      PyErr_SetString(PyExc_ValueError, "Input DebugInfo is invalid.");
+      return nullptr;
+    }
+    if (!debug_info.ParseFromString(debug_info_txt)) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Failed to convert DebugInfo to Python String.");
+      return nullptr;
+    }
+  }
+
+  tensorflow::GraphDef graph_def;
+  if (!graph_def.ParseFromString(input_contents_txt)) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to convert GraphDef to Python String.");
     return nullptr;
   }
 
@@ -87,25 +115,32 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     dump_options.dump_graphviz_video = toco_flags.dump_graphviz_include_video();
   }
 
-  // Convert model.
-  std::unique_ptr<toco::Model> model =
-      toco::Import(toco_flags, model_flags, input_contents_txt);
-  toco::Transform(toco_flags, model.get());
   string output_file_contents_txt;
-  auto status = Export(toco_flags, *model, toco_flags.allow_custom_ops(),
-                       &output_file_contents_txt);
+  tensorflow::Status status;
+  int64 arithmetic_ops_count;
+
+  // Convert model.
+  if (enable_mlir_converter) {
+    status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
+        model_flags, toco_flags, debug_info, graph_def,
+        &output_file_contents_txt);
+  } else {
+    status = Convert(input_contents_txt, toco_flags, model_flags,
+                     &output_file_contents_txt, &arithmetic_ops_count);
+  }
+
   if (!status.ok()) {
     PyErr_SetString(PyExc_Exception, status.error_message().c_str());
     return nullptr;
   }
-  if (extended_return) {
+  if (extended_return && !enable_mlir_converter) {
     PyObject* dict = PyDict_New();
     PyDict_SetItemString(
         dict, "flatbuffer",
         ::tflite::python_utils::ConvertToPyString(
             output_file_contents_txt.data(), output_file_contents_txt.size()));
     PyDict_SetItemString(dict, "arithmetic_ops",
-                         PyLong_FromLong(model->ArithmeticOpsCount()));
+                         PyLong_FromLong(arithmetic_ops_count));
     return dict;
   }
   // Convert arguments back to byte (py3) or str (py2)

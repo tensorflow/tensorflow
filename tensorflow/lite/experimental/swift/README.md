@@ -59,10 +59,10 @@ Build the `TensorFlowLite` Swift library target:
 bazel build tensorflow/lite/experimental/swift:TensorFlowLite
 ```
 
-Build the `TensorFlowLiteTests` target:
+Build the `Tests` target:
 
 ```shell
-bazel test tensorflow/lite/experimental/swift:TensorFlowLiteTests --swiftcopt=-enable-testing
+bazel test tensorflow/lite/experimental/swift:Tests --swiftcopt=-enable-testing
 ```
 
 Note: `--swiftcopt=-enable-testing` is required for optimized builds (`-c opt`).

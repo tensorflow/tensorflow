@@ -19,7 +19,7 @@ namespace xla { class ExecutableRunOptions; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void entry_point(
-    void* result, const xla::ExecutableRunOptions* run_options,
+    void* result, const ::xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
 extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
@@ -333,9 +333,9 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Shape of the args and results.
-  static const xla::ProgramShapeProto* StaticProgramShape() {
-    static const xla::ProgramShapeProto* kShape = []() {
-    xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
+  static const ::xla::ProgramShapeProto* StaticProgramShape() {
+    static const ::xla::ProgramShapeProto* kShape = []() {
+    ::xla::ProgramShapeProto* proto = new ::xla::ProgramShapeProto;
     proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 149);
     return proto;
   }();
@@ -343,8 +343,8 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Metadata that can be used to pretty-print profile counters.
-  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
       nullptr;
     return kHloProfilePrinterData;
   }

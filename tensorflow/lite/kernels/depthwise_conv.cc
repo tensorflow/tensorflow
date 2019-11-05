@@ -24,7 +24,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
@@ -69,7 +70,6 @@ struct OpData {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  cpu_backend_support::IncrementUsageCounter(context);
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
@@ -77,7 +77,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -114,6 +113,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               data_type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, output->type, data_type);
   TF_LITE_ENSURE_EQ(context, filter->type, data_type);
+  // Filter in DepthwiseConv is expected to be [1, H, W, O].
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 0), 1);
 
   if (hasBias) {
     bias = GetInput(context, node, kBiasTensor);
@@ -206,7 +207,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(filter), GetTensorData<float>(filter),
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   }
 }
 
@@ -247,7 +248,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(filter), GetTensorData<uint8_t>(filter),
         GetTensorShape(bias), GetTensorData<int32_t>(bias),
         GetTensorShape(output), GetTensorData<uint8_t>(output),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   }
 }
 
@@ -289,7 +290,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<int8>(filter), GetTensorShape(bias),
         GetTensorData<int32>(bias), GetTensorShape(output),
         GetTensorData<int8>(output),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   }
 }
 

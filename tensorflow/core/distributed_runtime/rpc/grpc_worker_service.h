@@ -33,7 +33,7 @@ namespace tensorflow {
 class AsyncServiceInterface;
 class ConfigProto;
 struct WorkerEnv;
-struct WorkerSession;
+class WorkerSession;
 class GrpcResponseCache;
 
 class GrpcWorker : public Worker {
@@ -75,14 +75,6 @@ struct GrpcWorkerServiceOptions {
   // default queue depth for a method.
   std::unordered_map<int, int> queue_depth;
   int num_serving_threads = 8;
-
-  // Setting cache_rpc_response to true will enable sender side caching of
-  // response for RecvTensorAsync and RecvBufAsync to allow receiver to retry
-  // requests . This is only necessary when the network fabric is experiencing a
-  // significant error rate.  Without it we'll fail a step on an network error,
-  // while with it we'll be able to complete long steps (like complex
-  // initializations) in the face of some network errors during RecvTensor.
-  bool cache_rpc_response = false;
 };
 
 // Returns an implementation of WorkerService rpc service.

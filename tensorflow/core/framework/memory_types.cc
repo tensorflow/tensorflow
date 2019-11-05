@@ -137,7 +137,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
   if (!host_memory_args.empty()) {
     return errors::InvalidArgument(
-        "HostMemory args '", str_util::Join(host_memory_args, "', '"),
+        "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
   }
   CHECK_LE(inp_mtypes->size(), inp_dtypes.size());
@@ -156,14 +156,14 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   }
 
   std::vector<int32> hostmem_attr;
-  if (GetNodeAttr(ndef, "_input_hostmem", &hostmem_attr).ok()) {
+  if (TryGetNodeAttr(ndef, "_input_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < inp_mtypes->size()) {
         (*inp_mtypes)[i] = HOST_MEMORY;
       }
     }
   }
-  if (GetNodeAttr(ndef, "_output_hostmem", &hostmem_attr).ok()) {
+  if (TryGetNodeAttr(ndef, "_output_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < out_mtypes->size()) {
         (*out_mtypes)[i] = HOST_MEMORY;

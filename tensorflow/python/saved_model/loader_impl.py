@@ -311,7 +311,9 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
+      available_tags.append(set(meta_graph_def.meta_info_def.tags))
       if set(meta_graph_def.meta_info_def.tags) == set(tags):
         meta_graph_def_to_load = meta_graph_def
         found_match = True
@@ -322,7 +324,7 @@ class SavedModelLoader(object):
           "MetaGraphDef associated with tags " + str(tags).strip("[]") +
           " could not be found in SavedModel. To inspect available tag-sets in"
           " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
-      )
+          "\navailable_tags: " + str(available_tags))
     return meta_graph_def_to_load
 
   def load_graph(self, graph, tags, import_scope=None, **saver_kwargs):

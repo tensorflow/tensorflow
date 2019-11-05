@@ -18,15 +18,22 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/base/optimization.h"
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
+
+namespace internal {
+// Current trace level.
+// Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
+// Modified by TraceMeRecorder singleton when tracing starts/stops.
+extern std::atomic<int> g_trace_level;
+}  // namespace internal
 
 // TraceMeRecorder is a singleton repository of TraceMe events.
 // It can be safely and cheaply appended to by multiple threads.
@@ -70,17 +77,17 @@ class TraceMeRecorder {
 
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
-    return ABSL_PREDICT_FALSE(trace_level_.load(std::memory_order_acquire) >=
-                              level);
+    return ABSL_PREDICT_FALSE(
+        internal::g_trace_level.load(std::memory_order_acquire) >= level);
   }
+
+  // Default value for trace_level_ when tracing is disabled
+  static constexpr int kTracingDisabled = -1;
 
   // Records an event. Non-blocking.
   static void Record(Event event);
 
  private:
-  // Default value for trace_level_ when tracing is disabled
-  static constexpr int kTracingDisabled = -1;
-
   class ThreadLocalRecorder;
 
   // Returns singleton.
@@ -101,15 +108,10 @@ class TraceMeRecorder {
   // Gathers events from all active threads, and clears their buffers.
   Events Clear() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  // Current trace level.
-  // Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
-  // Modified by TraceMeRecorder singleton when tracing starts/stops.
-  static std::atomic<int> trace_level_;
-
   mutex mutex_;
   // Map of the static container instances (thread_local storage) for each
   // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
+  std::unordered_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
   // Events from threads that died during recording.
   TraceMeRecorder::Events orphaned_events_ GUARDED_BY(mutex_);
 };

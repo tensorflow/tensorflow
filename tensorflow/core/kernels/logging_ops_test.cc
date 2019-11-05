@@ -42,12 +42,18 @@ class PrintingV2GraphTest : public OpsTestBase {
 
 TEST_F(PrintingV2GraphTest, StringSuccess) {
   TF_ASSERT_OK(Init());
-  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  AddInputFromArray<tstring>(TensorShape({}), {"bar"});
   TF_ASSERT_OK(RunOpKernel());
 }
 
 TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
   ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
+}
+
+TEST_F(PrintingV2GraphTest, InvalidInputRank) {
+  TF_ASSERT_OK(Init());
+  AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
+  ASSERT_NE(::tensorflow::Status::OK(), RunOpKernel());
 }
 
 class PrintingGraphTest : public OpsTestBase {
@@ -90,8 +96,8 @@ TEST_F(PrintingGraphTest, Int32Success_Summarize6) {
 TEST_F(PrintingGraphTest, StringSuccess) {
   TF_ASSERT_OK(Init(DT_INT32, DT_STRING));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
-  AddInputFromArray<string>(TensorShape({}), {"foo"});
-  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  AddInputFromArray<tstring>(TensorShape({}), {"foo"});
+  AddInputFromArray<tstring>(TensorShape({}), {"bar"});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
@@ -101,8 +107,8 @@ TEST_F(PrintingGraphTest, StringSuccess) {
 TEST_F(PrintingGraphTest, MsgSuccess) {
   TF_ASSERT_OK(Init(DT_INT32, DT_STRING, "Message: "));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
-  AddInputFromArray<string>(TensorShape({}), {"foo"});
-  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  AddInputFromArray<tstring>(TensorShape({}), {"foo"});
+  AddInputFromArray<tstring>(TensorShape({}), {"bar"});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
@@ -112,8 +118,8 @@ TEST_F(PrintingGraphTest, MsgSuccess) {
 TEST_F(PrintingGraphTest, FirstNSuccess) {
   TF_ASSERT_OK(Init(DT_INT32, DT_STRING, "", 3));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
-  AddInputFromArray<string>(TensorShape({}), {"foo"});
-  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  AddInputFromArray<tstring>(TensorShape({}), {"foo"});
+  AddInputFromArray<tstring>(TensorShape({}), {"bar"});
   // run 4 times but we only print 3 as intended
   for (int i = 0; i < 4; i++) TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));

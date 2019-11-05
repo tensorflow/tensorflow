@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 // The following line is used by copybara to set or unset the USE_OSS_FARMHASH
@@ -77,7 +77,7 @@ inline uint64 FingerprintCat64(const uint64 fp1, const uint64 fp2) {
 
 // This is a portable fingerprint interface for strings that will never change.
 // However, it is not suitable for cryptography.
-inline uint64 Fingerprint64(StringPiece s) {
+inline uint64 Fingerprint64(const StringPiece s) {
 #ifdef USE_OSS_FARMHASH
   return ::util::Fingerprint64(s.data(), s.size());
 #else
@@ -91,7 +91,7 @@ inline uint64 Fingerprint64(StringPiece s) {
 }
 
 // 128-bit variant of Fingerprint64 above (same properties and caveats apply).
-inline Fprint128 Fingerprint128(StringPiece s) {
+inline Fprint128 Fingerprint128(const StringPiece s) {
 #ifdef USE_OSS_FARMHASH
   const auto fingerprint = ::util::Fingerprint128(s.data(), s.size());
   return {::util::Uint128Low64(fingerprint),

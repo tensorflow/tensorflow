@@ -65,8 +65,19 @@ const char* kCPU1 = "/job:localhost/replica:0/task:0/device:CPU:1";
 const char* kGPU1 = "/job:localhost/replica:0/task:0/device:GPU:1";
 const char* kXPU1 = "/job:localhost/replica:0/task:0/device:XPU:1";
 
+const char* kCPU0Partial = "/device:CPU:0";
+const char* kGPU0Partial = "/device:GPU:0";
+const char* kXPU0Partial = "/device:XPU:0";
+
 TEST(PickDeviceForXla, UniqueDevice) {
   CheckPickDeviceResult(kGPU0, false, {kGPU0, kGPU0});
+}
+
+TEST(PickDeviceForXla, MoreSpecificDevice) {
+  CheckPickDeviceResult(kCPU0, false, {kCPU0, kCPU0Partial});
+  CheckPickDeviceResult(kGPU0, false, {kGPU0, kGPU0Partial});
+  // Unknown devices do not support merging of full and partial specifications.
+  CheckPickDeviceHasError(false, {kXPU1, kXPU0Partial});
 }
 
 TEST(PickDeviceForXla, DeviceOrder) {

@@ -14,7 +14,7 @@ import "tensorflow/core/framework/types.proto";
 // LINT.IfChange
 message OpDef {
   // Op names starting with an underscore are reserved for internal use.
-  // Names should be CamelCase and match the regexp "[A-Z][a-zA-Z0-9_]*".
+  // Names should be CamelCase and match the regexp "[A-Z][a-zA-Z0-9>_]*".
   string name = 1;
 
   // For describing inputs and outputs.

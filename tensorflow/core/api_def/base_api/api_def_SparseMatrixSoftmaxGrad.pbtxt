@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "SparseMatrixSoftmaxGrad"
+  in_arg {
+    name: "softmax"
+    description: "A CSRSparseMatrix."
+  }
+  in_arg {
+    name: "grad_softmax"
+    description: "The gradient of `softmax`."
+  }
+  out_arg {
+    name: "gradient"
+    description: "The output gradient."
+  }
+  summary: "Calculates the gradient of the SparseMatrixSoftmax op."
+}

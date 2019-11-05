@@ -28,9 +28,9 @@ string MatMulBCastToStr(const MatMulBCast& b) {
   }
   string ret;
   strings::StrAppend(
-      &ret, "[", str_util::Join(b.output_batch_shape().dim_sizes(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.x_batch_indices(), ","), "]");
-  strings::StrAppend(&ret, "[", str_util::Join(b.y_batch_indices(), ","), "]");
+      &ret, "[", absl::StrJoin(b.output_batch_shape().dim_sizes(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
+  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
   return ret;
 }
 

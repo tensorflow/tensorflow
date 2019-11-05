@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -1550,7 +1549,7 @@ inline void SparseMatMul<TL, TR>::Compute(
   // Note buffer needs enough space to hold at most a KR * NR matrix since that
   // is the block size per iteration.
   const int buffer_num_rows =
-      std::min(KR, right_dim0) * (std::min(NR, right_dim1) + N - 1) / N;
+      std::min(KR, right_dim0) * ((std::min(NR, right_dim1) + N - 1) / N);
   MatrixR buffer(buffer_num_rows, N);
   std::vector<ConstMatrixMapR*> right_slices;
 
@@ -1612,12 +1611,17 @@ inline void SparseMatMul<TL, TR>::Compute(
       }
       bc.Wait();
       tasks.clear();
-      gtl::STLDeleteElements(&right_slices);
+      for (auto& temp : right_slices) {
+        delete temp;
+      }
       right_slices.clear();
     }
   }
   for (auto& left_slice : left_slices) {
-    gtl::STLDeleteElements(&left_slice);
+    for (auto& temp : left_slice) {
+      delete temp;
+    }
+    left_slice.clear();
   }
 }
 

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/lite/delegates/flex/util.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
@@ -94,24 +94,25 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
  public:
   explicit StringTfLiteTensorBuffer(const TfLiteTensor* tensor)
-      : StringTfLiteTensorBuffer(tensor, tensor->data.raw != nullptr
-                                             ? GetStringCount(tensor->data.raw)
-                                             : 0) {}
+      : StringTfLiteTensorBuffer(
+            tensor, tensor->data.raw != nullptr ? GetStringCount(tensor) : 0) {}
 
   ~StringTfLiteTensorBuffer() override {
     LogDeallocation();
-    tensorflow::TypedAllocator::Deallocate<tensorflow::string>(
-        tensorflow::cpu_allocator(), static_cast<tensorflow::string*>(data()),
+    tensorflow::TypedAllocator::Deallocate<tensorflow::tstring>(
+        tensorflow::cpu_allocator(), static_cast<tensorflow::tstring*>(data()),
         num_strings_);
   }
 
-  size_t size() const override { return num_strings_ * sizeof(string); }
+  size_t size() const override {
+    return num_strings_ * sizeof(tensorflow::tstring);
+  }
 
  private:
   StringTfLiteTensorBuffer(const TfLiteTensor* tensor, int num_strings)
       : BaseTfLiteTensorBuffer(
             num_strings != 0
-                ? tensorflow::TypedAllocator::Allocate<tensorflow::string>(
+                ? tensorflow::TypedAllocator::Allocate<tensorflow::tstring>(
                       tensorflow::cpu_allocator(), num_strings,
                       tensorflow::AllocationAttributes())
                 : nullptr),
@@ -119,9 +120,9 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
     LogAllocation();
 
     if (data()) {
-      string* p = static_cast<string*>(data());
+      tensorflow::tstring* p = static_cast<tensorflow::tstring*>(data());
       for (size_t i = 0; i < num_strings_; ++p, ++i) {
-        auto ref = GetString(tensor->data.raw, i);
+        auto ref = GetString(tensor, i);
         p->assign(ref.str, ref.len);
       }
     }

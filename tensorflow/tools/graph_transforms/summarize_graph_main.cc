@@ -94,7 +94,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
       for (int i = 0; i < shape.dims(); ++i) {
         sizes.push_back(shape.dim_size(i));
       }
-      sizes_string = str_util::Join(sizes, ",");
+      sizes_string = absl::StrJoin(sizes, ",");
     }
     input_layer_shapes.push_back(sizes_string);
   }
@@ -103,10 +103,10 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
   for (const NodeDef* node : outputs) {
     output_layers.push_back(node->name());
   }
-  string input_layer_value = str_util::Join(input_layers, ",");
-  string input_layer_type_value = str_util::Join(input_layer_types, ",");
-  string input_layer_shape_value = str_util::Join(input_layer_shapes, ":");
-  string output_layer_value = str_util::Join(output_layers, ",");
+  string input_layer_value = absl::StrJoin(input_layers, ",");
+  string input_layer_type_value = absl::StrJoin(input_layer_types, ",");
+  string input_layer_shape_value = absl::StrJoin(input_layer_shapes, ":");
+  string output_layer_value = absl::StrJoin(output_layers, ",");
 
   std::cout << "To use with tensorflow/tools/benchmark:benchmark_model try "
                "these arguments:"
@@ -126,7 +126,7 @@ Status PrintStructure(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
   for (const NodeDef& node : sorted_graph.node()) {
     std::cout << node.name() << " (" << node.op() << "): ["
-              << str_util::Join(node.input(), ", ") << "]";
+              << absl::StrJoin(node.input(), ", ") << "]";
     if (node.op() == "Const") {
       Tensor tensor;
       if (node.attr().count("value") &&

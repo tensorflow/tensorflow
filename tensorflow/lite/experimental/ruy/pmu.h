@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PMU_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PMU_H_
 
-#include <cstdint>
-
 namespace ruy {
 
 class PmuEventsPrivate;
@@ -28,13 +26,14 @@ class PmuEvents {
   ~PmuEvents();
   void StartRecording();
   void StopRecording();
-  float L1AccessCount() const;
   float L1RefillCount() const;
   float L2RefillCount() const;
   float L3RefillCount() const;
-  float BranchMispredictionRate() const;
-  float FrontendStallRate() const;
-  float BackendStallRate() const;
+  float BranchMispredictionCount() const;
+  float FrontendStallCount() const;
+  float BackendStallCount() const;
+  float L1TLBRefillCount() const;
+  float L2TLBRefillCount() const;
 
  private:
   PmuEventsPrivate* priv = nullptr;

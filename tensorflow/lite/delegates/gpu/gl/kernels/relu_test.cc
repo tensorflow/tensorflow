@@ -33,8 +33,8 @@ class ReluTest : public ::testing::Test {
   ReluTest() = default;
   ~ReluTest() override = default;
 
-  TensorRefFloat32 GetTensorRef(int ref) {
-    TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> GetTensorRef(int ref) {
+    TensorRef<BHWC> tensor_ref;
     tensor_ref.type = DataType::FLOAT32;
     tensor_ref.ref = ref;
     tensor_ref.shape = BHWC(1, 2, 2, 1);
@@ -50,7 +50,7 @@ TEST_F(ReluTest, Smoke) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 0.0, 2.0, 8.0}));
 }
@@ -63,7 +63,7 @@ TEST_F(ReluTest, ClipOnly) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 0.0, 2.0, 6.0}));
 }
@@ -76,7 +76,7 @@ TEST_F(ReluTest, AlphaOnly) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-3.0, 0.0, 2.0, 8.0}));
 }
@@ -89,7 +89,7 @@ TEST_F(ReluTest, ClipAndAlpha) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-3.0, 0.0, 2.0, 6.0}));
 }

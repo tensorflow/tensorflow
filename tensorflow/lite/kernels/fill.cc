@@ -38,6 +38,7 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
   for (int i = 0; i < output_shape->size; ++i) {
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
+      TfLiteIntArrayFree(output_shape);
       context->ReportError(context, "Fill dimensions must be >= 0", dims->type);
       return kTfLiteError;
     }

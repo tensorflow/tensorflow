@@ -114,6 +114,8 @@ class GlBuffer {
 
 Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer);
 
+Status GetSSBOSize(GLuint id, int64_t* size_bytes);
+
 // Creates new shader storage buffer that will be modified and used many
 // times.
 //
@@ -140,6 +142,32 @@ Status AppendFromBuffer(const GlBuffer& buffer, std::vector<T>* data) {
   return buffer.Read<T>(
       absl::MakeSpan(data->data() + data->size() - num_elements, num_elements));
 }
+
+// Persistent buffer provides CPU pointer to the buffer that is valid all the
+// time. A user should properly synchronize the access to the buffer on CPU and
+// GPU sides.
+class GlPersistentBuffer : public GlBuffer {
+ public:
+  GlPersistentBuffer(GLenum target, GLuint id, size_t bytes_size, size_t offset,
+                     bool has_ownership, void* data);
+  GlPersistentBuffer();
+
+  // Move-only
+  GlPersistentBuffer(GlPersistentBuffer&& buffer);
+  GlPersistentBuffer& operator=(GlPersistentBuffer&& buffer);
+  GlPersistentBuffer(const GlPersistentBuffer&) = delete;
+  GlPersistentBuffer& operator=(const GlPersistentBuffer&) = delete;
+
+  ~GlPersistentBuffer();
+
+  void* data() { return data_; }
+
+ private:
+  void* data_;
+};
+
+// Creates read-write persistent buffer with valid CPU pointer
+Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details are below.
@@ -178,16 +206,22 @@ class BufferId {
 // RAII for binding and unbinding a buffer.
 class BufferBinder {
  public:
-  BufferBinder(GLenum target, GLuint id) : target_(target) {
+  BufferBinder(GLenum target, GLuint id) : target_(target), prev_id_(0) {
+    TFLITE_GPU_CALL_GL(glBindBuffer, target_, id).IgnoreError();
+  }
+
+  BufferBinder(GLenum target, GLuint id, GLuint prev_id)
+      : target_(target), prev_id_(prev_id) {
     TFLITE_GPU_CALL_GL(glBindBuffer, target_, id).IgnoreError();
   }
 
   ~BufferBinder() {
-    TFLITE_GPU_CALL_GL(glBindBuffer, target_, 0).IgnoreError();
+    TFLITE_GPU_CALL_GL(glBindBuffer, target_, prev_id_).IgnoreError();
   }
 
  private:
   const GLenum target_;
+  GLuint prev_id_;
 };
 
 // RAII for mapping and unmapping a buffer.

@@ -66,10 +66,6 @@ class GenericTransferManager : public TransferManager {
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
-  Status TransferLiteralFromDeviceInternal(se::StreamExecutor* executor,
-                                           const ShapedBuffer& device_buffer,
-                                           MutableBorrowingLiteral literal);
-
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;
 

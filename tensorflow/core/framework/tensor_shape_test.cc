@@ -479,7 +479,7 @@ TensorShapeIterOld TensorShapeOld::end() const {
 
 string TensorShapeOld::DebugString() const {
   return strings::StrCat(
-      "[", str_util::Join(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
+      "[", absl::StrJoin(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
 }
 
 string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
