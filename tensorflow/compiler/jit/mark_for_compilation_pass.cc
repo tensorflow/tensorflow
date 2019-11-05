@@ -1080,7 +1080,7 @@ std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   auto whitelist = absl::WrapUnique(new absl::flat_hash_set<string>());
 
-  for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
+  for (auto s : absl::StrSplit(flags->tf_xla_supported_ops, ",")) {
     bool fusible = s == "FUSIBLE";
     bool added = false;
     if (s == "PW" || fusible) {
@@ -1241,7 +1241,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     if (!all_ops.contains(string(*s))) {
       return errors::InvalidArgument(
           "The operation '", *s,
-          "' passed to --tf_xla_supported_nodes is not supported by XLA.");
+          "' passed to --tf_xla_supported_ops is not supported by XLA.");
     }
   }
 
@@ -1284,7 +1284,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
     if (whitelist->size() > 0 && !whitelist->contains(node->def().op())) {
       VLOG(1) << "Rejecting " << node->name()
-              << " as is was not listed in --tf_xla_supported_nodes.";
+              << " as is was not listed in --tf_xla_supported_ops.";
       continue;
     }
 

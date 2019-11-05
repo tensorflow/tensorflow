@@ -50,7 +50,7 @@ bool SetterForXlaAutoJitFlag(const string& value) {
 
   if (value == "fusible") {
     mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 1;
-    mark_for_compilation_flags->tf_xla_supported_nodes = "FUSIBLE";
+    mark_for_compilation_flags->tf_xla_supported_ops = "FUSIBLE";
     return true;
   }
 
@@ -85,8 +85,8 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_max_cluster_size",
            &mark_for_compilation_flags->tf_xla_max_cluster_size,
            "Maximum number of operators in an XLA compilation."),
-      Flag("tf_xla_supported_nodes",
-           &mark_for_compilation_flags->tf_xla_supported_nodes,
+      Flag("tf_xla_supported_ops",
+           &mark_for_compilation_flags->tf_xla_supported_ops,
            "Limit the operations clustered to XLA to those operations. "
            "If multiple, separate them by comma. Shortcuts: "
            " PW: All point-wise operations."
