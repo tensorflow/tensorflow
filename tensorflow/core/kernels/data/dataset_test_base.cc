@@ -675,7 +675,7 @@ Status DatasetOpsTestBase::CheckIteratorPrefix(
 
 Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
-    const std::vector<int>& breakpoints) {
+    const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(
       dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
@@ -683,7 +683,7 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
   int cur_iteration = 0;
-  auto expected_outputs_it = expected_outputs.begin();
+  std::vector<Tensor> out_tensors;
   for (int breakpoint : breakpoints) {
     VariantTensorData data;
     VariantTensorDataWriter writer(&data);
@@ -694,16 +694,10 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
                                  *dataset_, &iterator));
 
     while (cur_iteration <= breakpoint) {
-      std::vector<Tensor> out_tensors;
-      TF_RETURN_IF_ERROR(iterator->GetNext(iterator_ctx_.get(), &out_tensors,
-                                           &end_of_sequence));
-      if (!end_of_sequence) {
-        EXPECT_NE(expected_outputs_it, expected_outputs.end());
-        for (const auto& out_tensor : out_tensors) {
-          TF_EXPECT_OK(ExpectEqual(out_tensor, *expected_outputs_it));
-          expected_outputs_it++;
-        }
-      }
+      std::vector<Tensor> next;
+      TF_RETURN_IF_ERROR(
+          iterator->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
+      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
     }
 
@@ -716,19 +710,26 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
       EXPECT_FALSE(end_of_sequence);
     } else {
       EXPECT_TRUE(end_of_sequence);
-      EXPECT_EQ(expected_outputs_it, expected_outputs.end());
     }
   }
+  TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
+                           /*compare_order=*/compare_order));
   return Status::OK();
 }
 
 Status DatasetOpsTestBaseV2::Initialize(const DatasetParams& dataset_params) {
+  if (initialized_) {
+    return errors::Internal(
+        "The fields (e.g. dataset_kernel_, dataset_ctx_, dataset_, "
+        "iterator_ctx_, iterator_) have already been initialized.");
+  }
   TF_RETURN_IF_ERROR(InitializeRuntime(dataset_params));
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
   TF_RETURN_IF_ERROR(dataset_->MakeIterator(
       iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  initialized_ = true;
   return Status::OK();
 }
 
