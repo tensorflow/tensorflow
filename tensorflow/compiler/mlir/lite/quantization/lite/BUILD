@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 package(
     default_visibility = [
         ":friends",
@@ -9,6 +11,7 @@ package_group(
     name = "friends",
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
+        "//learning/brain/experimental/mlir/...",
         "//tensorflow/lite/...",
     ],
 )
@@ -36,5 +39,20 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+    ],
+)
+
+# Binary to apply quantization on the annotated files.
+tf_cc_binary(
+    name = "tfl_quantizer",
+    srcs = [
+        "tfl_quantizer.cc",
+    ],
+    deps = [
+        ":quantize_model",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
     ],
 )

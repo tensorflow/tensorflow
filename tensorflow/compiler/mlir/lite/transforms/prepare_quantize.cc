@@ -81,6 +81,11 @@ class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
   // ranges.
   bool SetInputNodesQuantizationParams(FuncOp func);
 
+  // The function might contain more stats ops than required, and it will
+  // introduce requantize if the calibration stats have conflicts. This method
+  // tries to remove all the redundant stats ops.
+  bool RemoveRedundantStats(FuncOp func);
+
   // Verify the quantization specification is expected for quantizing the
   // current function.
   bool IsLegalQuantSpecs(FuncOp func) {
@@ -170,19 +175,26 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
+bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
+  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+}
+
 using PrepareQuantStats =
     TFL::ConvertStatsToQDQs<TFL::QuantizeOp, TFL::DequantizeOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
-  // Set the quantization parameters for the quantizable input nodes. If this
-  // failed, return the function immediately. This is only required for
-  // quantization aware training model conversion.
-  // TODO(fengliuai): send the signal to the pass manager.
-  if (!quant_specs_.post_training_quantization &&
-      SetInputNodesQuantizationParams(func)) {
-    return;
+
+  if (quant_specs_.post_training_quantization) {
+    RemoveRedundantStats(func);
+  } else {
+    // Set the quantization parameters for the quantizable input nodes. If this
+    // failed, return the function immediately. This is only required for
+    // quantization aware training model conversion.
+    if (SetInputNodesQuantizationParams(func)) {
+      return;
+    }
   }
 
   // During the legalization, unsigned quantized type is used, so we have to

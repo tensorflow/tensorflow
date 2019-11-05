@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
@@ -344,6 +345,12 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // and dequantize ops to this function.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         OpQuantSpecGetter op_quant_spec_getter);
+
+// The function might contain more stats ops than required, and it will
+// introduce requantize if the calibration stats have conflicts. This method
+// tries to remove all the redundant stats ops.
+bool RemoveRedundantStatsOps(mlir::FuncOp func,
+                             OpQuantSpecGetter op_quant_spec_getter);
 
 }  // namespace TFL
 }  // namespace mlir
