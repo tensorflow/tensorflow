@@ -159,12 +159,12 @@ public:
   }
 
   /// This is the list of blocks in the function.
-  using RegionType = Region::RegionType;
-  RegionType &getBlocks() { return getBody().getBlocks(); }
+  using BlockListType = Region::BlockListType;
+  BlockListType &getBlocks() { return getBody().getBlocks(); }
 
   // Iteration over the block in the function.
-  using iterator = RegionType::iterator;
-  using reverse_iterator = RegionType::reverse_iterator;
+  using iterator = BlockListType::iterator;
+  using reverse_iterator = BlockListType::reverse_iterator;
 
   iterator begin() { return getBody().begin(); }
   iterator end() { return getBody().end(); }
