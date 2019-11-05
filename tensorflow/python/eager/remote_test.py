@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.server_lib import ClusterSpec
 
 
 class SingleWorkerTest(test.TestCase):
@@ -336,6 +337,10 @@ class MultiJobsTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       remote.connect_to_cluster(self._cluster_resolver)
+
+  def testConnectToClusterWithLocalMaster(self):
+    local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
+    remote.connect_to_cluster(local_resolver)
 
 
 def _strip_prefix(s, prefix):
