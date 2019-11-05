@@ -1,8 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.google.bzl", "cuda_py_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_test")
 load(
     "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -1432,6 +1430,28 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "determinant_ops_test",
+    size = "medium",
+    srcs = ["determinant_ops_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
