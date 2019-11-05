@@ -938,12 +938,13 @@ def save(obj, export_dir, signatures=None, options=None):
         os.path.join(
             utils_impl.get_or_create_debug_dir(export_dir),
             constants.DEBUG_INFO_FILENAME_PB),
-        graph_debug_info.SerializeToString())
+        graph_debug_info.SerializeToString(deterministic=True))
 
   # Note that this needs to be the last file operation when saving the
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.
-  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
+  file_io.atomic_write_string_to_file(
+      path, saved_model.SerializeToString(deterministic=True))
 
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured

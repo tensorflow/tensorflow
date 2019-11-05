@@ -421,7 +421,8 @@ class _SavedModelBuilder(object):
       path = os.path.join(
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
-      file_io.write_string_to_file(path, self._saved_model.SerializeToString())
+      file_io.write_string_to_file(
+          path, self._saved_model.SerializeToString(deterministic=True))
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
 
     return path
