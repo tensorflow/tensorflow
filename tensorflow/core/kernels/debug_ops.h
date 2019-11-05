@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
+#include <numeric>
+
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
