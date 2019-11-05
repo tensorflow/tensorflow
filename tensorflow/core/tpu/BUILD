@@ -13,8 +13,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto",
         "@com_google_absl//absl/base",
     ],
 )
@@ -27,8 +27,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto",
     ],
 )

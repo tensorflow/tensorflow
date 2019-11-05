@@ -31,7 +31,7 @@ cc_library(
     ],
     deps = [
         ":cluster_utils",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
     ],
@@ -50,7 +50,7 @@ cc_library(
         ":cluster",
         ":cluster_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
@@ -67,7 +67,7 @@ tf_cc_test(
         ":resolve_cluster",
         ":resolve_svdf",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -85,7 +85,7 @@ cc_library(
         ":cluster",
         ":cluster_utils",
         ":resolve_svdf",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/lite/toco:tooling_util",
     ],
 )

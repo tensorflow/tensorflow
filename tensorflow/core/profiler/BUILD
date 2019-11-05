@@ -11,13 +11,13 @@ tf_cc_binary(
     name = "profiler",
     srcs = ["profiler.cc"],
     deps = [
-        ":protos_all_cc",
+        ":protos_all",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
@@ -33,7 +33,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:protos_all",
     ],
 )
 

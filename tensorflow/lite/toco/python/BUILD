@@ -37,13 +37,13 @@ cc_library(
         "//third_party/python_runtime:headers",
         "//tensorflow/core:lib",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//tensorflow/lite/toco:model_flags_proto",
         "//tensorflow/lite/toco:toco_convert",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_flags_proto",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
