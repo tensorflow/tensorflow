@@ -38,6 +38,8 @@ message Operation {
   // multi-device function should use the same step id to make sure that they
   // can communicate through Send/Recv ops.
   int64 func_step_id = 8;
+  // Indicates whether the op is a function.
+  bool is_function = 9;
 }
 
 message QueueItem {

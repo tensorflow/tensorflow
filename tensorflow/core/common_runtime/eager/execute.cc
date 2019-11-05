@@ -413,6 +413,14 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return Status::OK();
   }
 
+  if (op->remote_func_params().has_value() &&
+      op->remote_func_params().value().step_id.has_value()) {
+    // If the op is a component of a multi-device function, don't compile it
+    // with XLA.
+    *compile_with_xla = false;
+    return Status::OK();
+  }
+
   // Does node have an explicit request to compile or not?
   Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
   if (status.ok()) {
@@ -670,6 +678,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 
   op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
   remote_op->set_device(op->Device()->name());
+  remote_op->set_is_function(op->is_function());
 }
 
 Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,

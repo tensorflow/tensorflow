@@ -336,8 +336,12 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   }
   absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
       absl::nullopt;
-  if (operation.is_component_function()) {
-    remote_func_params = {operation.id(), operation.func_step_id()};
+  if (operation.is_function()) {
+    if (operation.is_component_function()) {
+      remote_func_params = {operation.id(), operation.func_step_id()};
+    } else {
+      remote_func_params = {operation.id(), absl::nullopt};
+    }
   }
   op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
                                           types, eager_executor,
