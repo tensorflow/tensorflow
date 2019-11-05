@@ -18,6 +18,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectHooks.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -27,6 +28,8 @@
 
 using namespace mlir;
 using namespace detail;
+
+DialectAsmParser::~DialectAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // Dialect Registration
@@ -99,23 +102,23 @@ LogicalResult Dialect::verifyRegionResultAttribute(Operation *, unsigned,
 }
 
 /// Parse an attribute registered to this dialect.
-Attribute Dialect::parseAttribute(StringRef attrData, Type type,
-                                  Location loc) const {
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no attribute parsing hook";
+Attribute Dialect::parseAttribute(DialectAsmParser &parser, Type type) const {
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace()
+      << "' provides no attribute parsing hook";
   return Attribute();
 }
 
 /// Parse a type registered to this dialect.
-Type Dialect::parseType(StringRef tyData, Location loc) const {
+Type Dialect::parseType(DialectAsmParser &parser) const {
   // If this dialect allows unknown types, then represent this with OpaqueType.
   if (allowsUnknownTypes()) {
     auto ns = Identifier::get(getNamespace(), getContext());
-    return OpaqueType::get(ns, tyData, getContext());
+    return OpaqueType::get(ns, parser.getFullSymbolSpec(), getContext());
   }
 
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no type parsing hook";
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace() << "' provides no type parsing hook";
   return Type();
 }
 

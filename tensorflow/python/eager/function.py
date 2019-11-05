@@ -143,9 +143,11 @@ def _flat_shape_list(*params):
   Returns:
     A list of entries containing either `None` or `TensorShape`.
   """
-  return [tensor_shape.TensorShape(x.shape)
-          if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec)) else None
-          for x in nest.flatten(params, expand_composites=True)]
+  return [
+      tensor_shape.TensorShape(x.shape)
+      if isinstance(x, (ops.Tensor, tensor_spec.DenseSpec)) else None
+      for x in nest.flatten(params, expand_composites=True)
+  ]
 
 
 def _shape_less_specific_than(relaxed, to_check):
@@ -851,11 +853,6 @@ class _TapeGradientFunctions(object):
 
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
-    # Keep track of the forward graph so that if the backwards graph
-    # tries to capture tensors those will be correctly captured first in
-    # the forward graph. This is an edge case that can only happen with
-    # tf.custom_gradient.
-    backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
     with backwards_graph.as_default():
       gradients_wrt_outputs = []
       for output in trainable_outputs:
@@ -1656,7 +1653,7 @@ class ConcreteFunction(object):
                      self._func_graph.inputs[i].shape,
                      arg.shape))
       elif (self._signature is not None and
-            isinstance(self._signature[i], tensor_spec.TensorSpec)):
+            isinstance(self._signature[i], tensor_spec.DenseSpec)):
         tensor_inputs.append(
             ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
@@ -2213,7 +2210,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
                                             flat_input_signature)):
-    if not _pywrap_utils.IsTensor(value):
+    if (isinstance(spec, tensor_spec.TensorSpec) and
+        not _pywrap_utils.IsTensor(value)):
       try:
         flatten_inputs[index] = ops.convert_to_tensor(
             value, dtype_hint=spec.dtype)
@@ -2397,11 +2395,12 @@ class Function(object):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
         flat_inputs = nest.flatten(args, expand_composites=True)
-        if any(not isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec))
+        if any(not isinstance(arg, (ops.Tensor, tensor_spec.DenseSpec,
+                                    resource_variable_ops.BaseResourceVariable))
                for arg in flat_inputs):
           raise ValueError("When input_signature is provided, all inputs to "
-                           "the Python function must be Tensors or "
-                           "tf.TensorSpec objects.")
+                           "the Python function must be Tensors, Variables, "
+                           "tf.TensorSpec or tf.VariableSpec objects.")
         if any(not spec.is_compatible_with(other)
                for spec, other in zip(self.flat_input_signature, flat_inputs)):
           raise ValueError("Python inputs incompatible with input_signature: "
@@ -2706,7 +2705,7 @@ def register(func, *args, **kwargs):
 
 
 def validate_signature(signature):
-  if any(not isinstance(arg, tensor_spec.TensorSpec)
+  if any(not isinstance(arg, tensor_spec.DenseSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature {}; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects."

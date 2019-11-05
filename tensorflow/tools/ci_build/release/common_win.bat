@@ -48,7 +48,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install oauth2client==4.1.2
     %PIP_EXE% install portpicker==1.2.0
     %PIP_EXE% install parso==0.1.1
-    %PIP_EXE% install protobuf==3.6.1
+    %PIP_EXE% install protobuf==3.8.0
     %PIP_EXE% install scikit-learn==0.19.2
     %PIP_EXE% install scipy==1.1.0
     %PIP_EXE% install termcolor==1.1.0

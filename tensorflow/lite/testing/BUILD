@@ -494,6 +494,8 @@ edgetpu_ops = [
     "mean",
     "mul",
     "pad",  # high error
+    "relu",
+    "relu1",
     "relu6",
     "reshape",
     "resize_bilinear",

@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -1839,7 +1840,11 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
+  StringRef data;
+  if (parser.parseKeyword(&data)) return Type();
+
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
@@ -1862,14 +1867,14 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
     case TensorFlowTypes::RESOURCE:
-      return ParseResourceType(data, loc);
+      return ParseResourceType(parser, loc);
     case TensorFlowTypes::VARIANT:
-      return ParseVariantType(data, loc);
+      return ParseVariantType(parser, loc);
   }
 }
 
 // Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
+void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
   switch (ty.getKind()) {
     default:
@@ -1889,46 +1894,26 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
 
 namespace {
 template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, StringRef type_with_subtype,
-                          StringRef spec, Location loc) {
-  bool success = spec.consume_front(type_with_subtype);
-  DCHECK(success) << spec.str();
-
+Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser,
+                          Location loc) {
   // Default type without inferred subtypes.
-  if (spec.empty()) return TypeWithSubtype::get(context);
-
-  if (!spec.consume_front("<") || !spec.consume_back(">"))
-    return emitError(loc) << "tf." << type_with_subtype
-                          << " delimiter <...> mismatch",
-           nullptr;
+  if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
 
   // Most types with subtypes have only one subtype.
-  SmallVector<StringRef, 1> subtype_specs;
-  llvm::SplitString(spec, subtype_specs, ",");
-  if (subtype_specs.empty())
-    return emitError(loc) << "invalid type: tf." << type_with_subtype << "<>",
-           nullptr;
-
   SmallVector<TensorType, 1> subtypes;
-  subtypes.reserve(subtype_specs.size());
-  for (StringRef subtype_spec : subtype_specs) {
-    subtype_spec = subtype_spec.trim();
-    Type type = mlir::parseType(subtype_spec, context);
-    if (!type) {
-      return emitError(loc) << "invalid type: " << subtype_spec, nullptr;
-    }
+  do {
+    TensorType tensor_ty;
+    if (parser.parseType(tensor_ty)) return Type();
+    subtypes.push_back(tensor_ty);
+  } while (succeeded(parser.parseOptionalComma()));
 
-    if (TensorType tensor_ty = type.dyn_cast<TensorType>()) {
-      subtypes.push_back(tensor_ty);
-    } else {
-      return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
-    }
-  }
+  if (parser.parseGreater()) return Type();
   return TypeWithSubtype::getChecked(subtypes, context, loc);
 }
 
 template <typename TypeWithSubtype>
-void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
+void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
+                          DialectAsmPrinter &os) {
   os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
@@ -1939,22 +1924,23 @@ void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
 }
 }  // anonymous namespace
 
-Type TensorFlowDialect::ParseResourceType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), "resource", spec,
-                                            loc);
+Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser,
+                                          Location loc) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintResourceType(ResourceType ty,
-                                          raw_ostream &os) const {
+                                          DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("resource", ty, os);
 }
 
-Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), "variant", spec, loc);
+Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser,
+                                         Location loc) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         raw_ostream &os) const {
+                                         DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("variant", ty, os);
 }
 

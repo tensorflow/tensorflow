@@ -132,9 +132,10 @@ def connect_to_cluster(cluster_spec_or_resolver,
       protocol=protocol,
       default_session_config=context.context().config)
 
-  # TODO(b/142500669): Don't leak existing grpc server if calling multiple
-  # times.
-  context.set_server_def(server_def)
+  if context.get_server_def() is None:
+    context.set_server_def(server_def)
+  else:
+    context.update_server_def(server_def)
 
   if make_master_device_default and isinstance(
       cluster_spec_or_resolver,

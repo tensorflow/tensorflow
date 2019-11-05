@@ -13,6 +13,16 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-NEXT:   %[[RESULT:.*]] = addf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
+// CHECK-LABEL: func @element_wise_scalar
+func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
+          %result: memref<f32>) {
+// CHECK: "xla_lhlo.add"
+// CHECK-NEXT: return
+  "xla_lhlo.add"(%lhs, %rhs, %result)
+      : (memref<f32>, memref<f32>, memref<f32>) -> ()
+  return
+}
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
           %result: memref<2x2xf32>) {

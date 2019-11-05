@@ -90,6 +90,7 @@ cc_library(
         "include/mlir/IR/Diagnostics.h",
         "include/mlir/IR/Dialect.h",
         "include/mlir/IR/DialectHooks.h",
+        "include/mlir/IR/DialectImplementation.h",
         "include/mlir/IR/DialectInterface.h",
         "include/mlir/IR/Function.h",
         "include/mlir/IR/FunctionSupport.h",
@@ -934,11 +935,11 @@ gentbl(
         ),
         (
             "-gen-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVEnums.h.inc",
         ),
         (
             "-gen-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -962,26 +963,6 @@ gentbl(
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "SPIRVBitEnumIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-spirv-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc",
-        ),
-        (
-            "-gen-spirv-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
-    td_srcs = [
-        ":SPIRVOpsTdFiles",
     ],
 )
 
@@ -1036,7 +1017,6 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
-        ":SPIRVBitEnumIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1278,6 +1258,8 @@ cc_library(
         ":LoopOps",
         ":LoopsToGPU",
         ":Pass",
+        ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
     alwayslink = 1,
@@ -1850,7 +1832,6 @@ cc_binary(
     srcs = [
         "tools/mlir-tblgen/DocGenUtilities.h",
         "tools/mlir-tblgen/EnumsGen.cpp",
-        "tools/mlir-tblgen/EnumsGen.h",
         "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
         "tools/mlir-tblgen/OpDefinitionsGen.cpp",
         "tools/mlir-tblgen/OpDocGen.cpp",

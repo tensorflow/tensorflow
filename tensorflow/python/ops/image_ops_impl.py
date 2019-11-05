@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -2024,15 +2023,11 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  if compat.forward_compatible(2019, 4, 4):
-    jpeg_quality = random_ops.random_uniform([],
-                                             min_jpeg_quality,
-                                             max_jpeg_quality,
-                                             seed=seed,
-                                             dtype=dtypes.int32)
-  else:
-    np.random.seed(seed)
-    jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  jpeg_quality = random_ops.random_uniform([],
+                                           min_jpeg_quality,
+                                           max_jpeg_quality,
+                                           seed=seed,
+                                           dtype=dtypes.int32)
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
@@ -2070,13 +2065,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
     image = convert_image_dtype(image, dtypes.uint8)
-    if compat.forward_compatible(2019, 4, 4):
-      if not _is_tensor(jpeg_quality):
-        # If jpeg_quality is a int (not tensor).
-        jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
-      image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
-    else:
-      image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    if not _is_tensor(jpeg_quality):
+      # If jpeg_quality is a int (not tensor).
+      jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
+    image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
     image = gen_image_ops.decode_jpeg(image, channels=channels)
     return convert_image_dtype(image, orig_dtype)
@@ -2825,17 +2817,9 @@ def non_max_suppression_padded(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    if compat.forward_compatible(2018, 8, 7) or pad_to_max_output_size:
-      return gen_image_ops.non_max_suppression_v4(boxes, scores,
-                                                  max_output_size,
-                                                  iou_threshold,
-                                                  score_threshold,
-                                                  pad_to_max_output_size)
-    else:
-      return gen_image_ops.non_max_suppression_v3(boxes, scores,
-                                                  max_output_size,
-                                                  iou_threshold,
-                                                  score_threshold)
+    return gen_image_ops.non_max_suppression_v4(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold,
+                                                pad_to_max_output_size)
 
 
 @tf_export('image.non_max_suppression_overlaps')

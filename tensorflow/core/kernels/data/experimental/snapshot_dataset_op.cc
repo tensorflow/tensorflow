@@ -356,7 +356,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     SerializationContext::Params params;
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
-    params.check_external_state = false;
+    params.external_state_policy =
+        SerializationContext::ExternalStatePolicy::kIgnore;
 
     GraphDef graph_def;
     OP_REQUIRES_OK(

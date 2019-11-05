@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#ifdef TEST_OPS
-#else
+#ifndef TEST_OPS
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
@@ -80,6 +79,16 @@ def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
   let arguments = (ins
     TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
+}
+
+//===----------------------------------------------------------------------===//
+// Test Operands
+//===----------------------------------------------------------------------===//
+
+def SymbolScopeOp : TEST_Op<"symbol_scope",
+    [SymbolTable, SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let summary =  "operation which defines a new symbol table";
+  let regions = (region SizedRegion<1>:$region);
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,6 +199,16 @@ def UpdateFloatElementsAttr : Pat<
   (FloatElementsAttrOp
     ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
     $f64attr)>;
+
+//===----------------------------------------------------------------------===//
+// Test Attribute Constraints
+//===----------------------------------------------------------------------===//
+
+def SymbolRefOp : TEST_Op<"symbol_ref_attr"> {
+  let arguments = (ins
+    Confined<SymbolRefAttr, [ReferToOp<"FuncOp">]>:$symbol
+  );
+}
 
 //===----------------------------------------------------------------------===//
 // Test Regions

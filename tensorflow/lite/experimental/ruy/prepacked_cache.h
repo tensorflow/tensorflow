@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 namespace ruy {
+
+enum CachePolicy { kNoCache, kCacheLHSOnGemV };
+
 // "Low effort" Least Recently Used Cache for Prepacked Matrices
 // A cache mechanism for prepacked matrices that ejects oldest entries.
 // The implementation is "low effort" in the following ways:
@@ -44,7 +47,7 @@ namespace ruy {
 // be done in a multi-threaded context.
 class PrepackedCache {
  public:
-  static constexpr int kDefaultEjectionThresholdBytes = 1 << 20;
+  static constexpr int kDefaultEjectionThresholdBytes = 1 << 28;
 
   using CacheKey = std::pair<void *, void *>;
 

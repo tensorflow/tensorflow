@@ -112,7 +112,7 @@ class TracingCallbackTest(
 
     # Before FlushExecutionFiles() is called, the .execution file should be
     # empty.
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = reader.execution_iterator()
     with self.assertRaises(StopIteration):
       next(execution_iter)
@@ -280,7 +280,7 @@ class TracingCallbackTest(
 
     # Before FlushExecutionFiles() is called, the .execution and
     # .graph_execution_traces files should be both empty.
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = reader.execution_iterator()
     graph_execution_traces_iter = reader.graph_execution_traces_iterator()
     with self.assertRaises(StopIteration):
@@ -352,7 +352,7 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = reader.execution_iterator()
     for _ in range(2):
       debug_event = next(execution_iter)
@@ -376,7 +376,7 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(new_dump_root)
+    reader = debug_events_reader.DebugEventsReader(new_dump_root)
     execution_iter = reader.execution_iterator()
     for _ in range(2):
       debug_event = next(execution_iter)
@@ -388,7 +388,7 @@ class TracingCallbackTest(
     with self.assertRaises(StopIteration):
       next(execution_iter)
 
-    old_dump_root_reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    old_dump_root_reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = old_dump_root_reader.execution_iterator()
     # The old dump root shouldn't have been written to.
     with self.assertRaises(StopIteration):
@@ -441,7 +441,7 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     source_files_iter = reader.source_files_iterator()
     stack_frames_iter = reader.stack_frames_iterator()
     execution_iter = reader.execution_iterator()
@@ -484,7 +484,7 @@ class TracingCallbackTest(
     writer.FlushExecutionFiles()
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     execution_iter = reader.execution_iterator()
     prev_wall_time = 1
     for debug_event in execution_iter:

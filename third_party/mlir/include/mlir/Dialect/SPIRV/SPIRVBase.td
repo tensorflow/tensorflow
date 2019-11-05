@@ -21,12 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -275,49 +273,6 @@ class SPV_Optional<Type type> : Variadic<type>;
 
 // TODO(ravishankarm): From 1.4, this should also include Composite type.
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
-
-//===----------------------------------------------------------------------===//
-// SPIR-V BitEnum definition
-//===----------------------------------------------------------------------===//
-
-// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
-// ordinal number of the bit that is set. It is the 32-bit integer with only
-// one bit set.
-class BitEnumAttrCase<string sym, int val> :
-    EnumAttrCaseInfo<sym, val>,
-    IntegerAttrBase<I32, "case " # sym> {
-  let predicate = CPred<
-    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
-}
-
-// A bit enum stored with 32-bit IntegerAttr.
-//
-// Op attributes of this kind are stored as IntegerAttr. Extra verification will
-// be generated on the integer to make sure only allowed bit are set.
-class BitEnumAttr<string name, string description,
-                  list<BitEnumAttrCase> cases> :
-    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
-  let predicate = And<[
-    IntegerAttrBase<I32, "">.predicate,
-    // Make sure we don't have unknown bit set.
-    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
-          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
-          ")))">
-  ]>;
-
-  let underlyingType = "uint32_t";
-
-  // We need to return a string because we may concatenate symbols for multiple
-  // bits together.
-  let symbolToStringFnRetType = "std::string";
-
-  // The string used to separate bit enum cases in strings.
-  string separator = "|";
-
-  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
-  // we will use our own autogen logic.
-  let skipAutoGen = 1;
-}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
@@ -803,9 +758,9 @@ def SPV_DecorationAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_D_1D          : I32EnumAttrCase<"1D", 0>;
-def SPV_D_2D          : I32EnumAttrCase<"2D", 1>;
-def SPV_D_3D          : I32EnumAttrCase<"3D", 2>;
+def SPV_D_1D          : I32EnumAttrCase<"Dim1D", 0>;
+def SPV_D_2D          : I32EnumAttrCase<"Dim2D", 1>;
+def SPV_D_3D          : I32EnumAttrCase<"Dim3D", 2>;
 def SPV_D_Cube        : I32EnumAttrCase<"Cube", 3>;
 def SPV_D_Rect        : I32EnumAttrCase<"Rect", 4>;
 def SPV_D_Buffer      : I32EnumAttrCase<"Buffer", 5>;

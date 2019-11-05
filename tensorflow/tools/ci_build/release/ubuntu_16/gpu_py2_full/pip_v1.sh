@@ -58,9 +58,7 @@ export IS_NIGHTLY=0 # Not nightly
 export TF_PROJECT_NAME=${PROJECT_NAME}
 export TF_PIP_TEST_ROOT="pip_test"
 
-./tensorflow/tools/ci_build/builds/pip_new.sh
+# To build both tensorflow and tensorflow-gpu pip packages
+export TF_BUILD_BOTH_GPU_PACKAGES=1
 
-# Copy and rename to tensorflow
-for WHL_PATH in $(ls "${KOKORO_ARTIFACTS_DIR}"/tensorflow/${TF_PIP_TEST_ROOT}/whl/tensorflow_gpu*.whl); do
-  copy_to_new_project_name "${WHL_PATH}" tensorflow
-done
+./tensorflow/tools/ci_build/builds/pip_new.sh

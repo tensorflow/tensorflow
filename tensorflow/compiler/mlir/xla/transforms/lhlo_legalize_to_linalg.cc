@@ -66,10 +66,11 @@ class LhloToLinalgOpConverter : public ConversionPattern {
       if (!memref_type) {
         return matchFailure();
       }
-      if (nloops && nloops != memref_type.getRank()) {
+      unsigned rank = memref_type.getRank();
+      if (!rank || (nloops && nloops != rank)) {
         return matchFailure();
       }
-      nloops = std::max(nloops, static_cast<unsigned>(memref_type.getRank()));
+      nloops = std::max(nloops, rank);
       indexing_maps.emplace_back(
           AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
       auto& result_or_body_arg =

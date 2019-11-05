@@ -19,12 +19,14 @@ from __future__ import print_function
 
 import collections
 import json
+import operator
 
 import numpy as np
 import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -340,7 +342,6 @@ class TextVectorization(CombinerPreprocessingLayer):
       raise ValueError(
           "adapt() requires a Dataset or a Numpy array as input, got {}".format(
               type(data)))
-
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
@@ -631,62 +632,53 @@ class _TextVectorizationCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
-    # The batch dimension is irrelevant for counting token occurences, so we
-    # concat into a single token vector
     if dtypes.as_dtype(self._input_dtype) != dtypes.as_dtype(values.dtype):
       raise RuntimeError("Expected input type %s, got %s" %
                          (self._input_dtype, values.dtype))
     if ragged_tensor.is_ragged(values):
       values = values.to_list()
-    flattened_batch = np.concatenate(values)
-    vocab, counts = np.unique(flattened_batch, return_counts=True)
-    if self._compute_idf:
-      document_counts = np.sum(
-          [np.in1d(vocab, document).astype(int) for document in values], axis=0)
-      num_documents = len(values)
-    else:
-      document_counts = None
-      num_documents = None
-    batch_accumulator = self._create_accumulator(vocab, counts, document_counts,
-                                                 num_documents)
+    if isinstance(values, ops.EagerTensor):
+      values = values.numpy()
+    if isinstance(values, np.ndarray):
+      values = values.tolist()
+
     if accumulator is None:
-      return batch_accumulator
-    else:
-      return self.merge([accumulator, batch_accumulator])
+      accumulator = self._create_accumulator()
+
+    # TODO(momernick): Benchmark improvements to this algorithm.
+    for document in values:
+      current_doc_id = accumulator.metadata[0]
+      for token in document:
+        accumulator.count_dict[token] += 1
+        if self._compute_idf:
+          doc_count = accumulator.per_doc_count_dict[token]
+          if doc_count["last_doc_id"] != current_doc_id:
+            doc_count["count"] += 1
+            doc_count["last_doc_id"] = current_doc_id
+      accumulator.metadata[0] += 1
+
+    return accumulator
 
   def merge(self, accumulators):
     """Merge several accumulators to a single accumulator."""
-    # TODO(b/142871075): Benchmark different alternatives for merge algorithm.
-    concat_vocab = np.concatenate(
-        [getattr(acc, _ACCUMULATOR_VOCAB_NAME) for acc in accumulators])
-    concat_counts = np.concatenate(
-        [getattr(acc, _ACCUMULATOR_COUNTS_NAME) for acc in accumulators])
-    if self._compute_idf:
-      concat_document_counts = np.concatenate(
-          [getattr(acc, _ACCUMULATOR_DOCUMENT_COUNTS) for acc in accumulators])
-    merged_values, merged_indices = np.unique(concat_vocab, return_inverse=True)
+    if not accumulators:
+      return accumulators
 
-    def sum_segment(index, array_to_segment):
-      """Sum the counts from a segment specified by merged_indices == index."""
-      indices = np.nonzero(merged_indices == index)
-      return np.sum(array_to_segment[indices])
+    base_accumulator = accumulators[0]
 
-    segmented_sum = np.vectorize(sum_segment, excluded=["array_to_segment"])
-    indices = np.arange(np.max(merged_indices) + 1)
-    merged_counts = segmented_sum(indices, array_to_segment=concat_counts)
-    sorted_indices = np.argsort(-merged_counts)
-    vocab = merged_values[sorted_indices]
-    counts = merged_counts[sorted_indices]
-    if self._compute_idf:
-      document_counts = segmented_sum(
-          indices, array_to_segment=concat_document_counts)[sorted_indices]
-      num_documents = np.sum(
-          [getattr(acc, _ACCUMULATOR_NUM_DOCUMENTS) for acc in accumulators])
-    else:
-      document_counts = None
-      num_documents = None
-    return self._create_accumulator(vocab, counts, document_counts,
-                                    num_documents)
+    for accumulator in accumulators[1:]:
+      base_accumulator.metadata[0] += accumulator.metadata[0]
+      for token, value in accumulator.count_dict.items():
+        base_accumulator.count_dict[token] += value
+      if self._compute_idf:
+        for token, value in accumulator.per_doc_count_dict.items():
+          # Any newly created token counts in 'base_accumulator''s
+          # per_doc_count_dict will have a last_doc_id of -1. This is always
+          # less than the next doc id (which are strictly positive), so any
+          # future occurences are guaranteed to be counted.
+          base_accumulator.per_doc_count_dict[token]["count"] += value["count"]
+
+    return base_accumulator
 
   def _inverse_document_frequency(self, document_counts, num_documents):
     """Compute the inverse-document-frequency (IDF) component of TFIDF.
@@ -701,7 +693,7 @@ class _TextVectorizationCombiner(Combiner):
     Returns:
       An array of "inverse document frequency" weights.
     """
-    return np.log(1 + num_documents / (1 + document_counts))
+    return np.log(1 + num_documents / (1 + np.array(document_counts)))
 
   def extract(self, accumulator):
     """Convert an accumulator into a dict of output values.
@@ -717,15 +709,20 @@ class _TextVectorizationCombiner(Combiner):
         "oov_idf": The inverse-document-frequency for the OOV token.
     """
     if self._compute_idf:
-      vocab, _, document_counts, num_documents = accumulator
+      vocab_counts, document_counts, num_documents = accumulator
     else:
-      vocab, _ = accumulator
-    vocab = vocab[:self._vocab_size] if self._vocab_size is not None else vocab
+      vocab_counts, _, _ = accumulator
+
+    sorted_counts = sorted(
+        vocab_counts.items(), key=operator.itemgetter(1, 0), reverse=True)
+    vocab_data = (
+        sorted_counts[:self._vocab_size] if self._vocab_size else sorted_counts)
+    vocab = [data[0] for data in vocab_data]
+
     if self._compute_idf:
-      if self._vocab_size is not None:
-        document_counts = document_counts[:self._vocab_size]
-      idf = self._inverse_document_frequency(document_counts, num_documents)
-      oov_idf = np.array([np.log(1 + num_documents)])
+      doc_counts = [document_counts[token]["count"] for token in vocab]
+      idf = self._inverse_document_frequency(doc_counts, num_documents[0])
+      oov_idf = np.array([np.log(1 + num_documents[0])])
       return {_VOCAB_NAME: vocab, _IDF_NAME: idf, _OOV_IDF_NAME: oov_idf}
     else:
       return {_VOCAB_NAME: vocab}
@@ -735,47 +732,51 @@ class _TextVectorizationCombiner(Combiner):
     raise NotImplementedError(
         "TextVectorization does not restore or support streaming updates.")
 
-  def _accumulator_fields(self):
-    """Returns the list of fields stored on the accumulator."""
-    fields = [_ACCUMULATOR_VOCAB_NAME, _ACCUMULATOR_COUNTS_NAME]
-    if self._compute_idf:
-      fields += [_ACCUMULATOR_DOCUMENT_COUNTS, _ACCUMULATOR_NUM_DOCUMENTS]
-    return fields
-
   def serialize(self, accumulator):
     """Serialize an accumulator for a remote call."""
-    fields = self._accumulator_fields()
-    output_dict = {name: getattr(accumulator, name).tolist() for name in fields}
+    output_dict = {}
+    output_dict["metadata"] = accumulator.metadata
+    output_dict["vocab"] = list(accumulator.count_dict.keys())
+    output_dict["vocab_counts"] = list(accumulator.count_dict.values())
+    if self._compute_idf:
+      output_dict["idf_vocab"] = list(accumulator.per_doc_count_dict.keys())
+      output_dict["idf_counts"] = [
+          counter["count"]
+          for counter in accumulator.per_doc_count_dict.values()
+      ]
     return compat.as_bytes(json.dumps(output_dict))
 
   def deserialize(self, encoded_accumulator):
     """Deserialize an accumulator received from 'serialize()'."""
     accumulator_dict = json.loads(compat.as_text(encoded_accumulator))
-    args = [accumulator_dict[field] for field in self._accumulator_fields()]
-    return self._create_accumulator(*args)
 
-  def _create_accumulator(self,
-                          vocab,
-                          counts,
-                          document_counts=None,
-                          num_documents=None):
-    """Accumulate a sorted array of vocab tokens and corresponding counts."""
-    accumulator = collections.namedtuple("Accumulator",
-                                         self._accumulator_fields())
-    counts = np.array(counts)
-    vocab = np.array(vocab)
-    if dtypes.as_dtype(vocab.dtype) != dtypes.as_dtype(self._input_dtype):
-      raise ValueError("Expected vocab type %s, got %s" %
-                       (self._input_dtype, vocab.dtype))
-    if not np.issubdtype(counts.dtype, np.number):
-      raise ValueError("Expected counts to be numeric")
+    accumulator = self._create_accumulator()
+    accumulator.metadata[0] = accumulator_dict["metadata"][0]
 
-    sorted_indices = np.argsort(-counts)
-    counts = counts[sorted_indices]
-    vocab = vocab[sorted_indices]
+    count_dict = dict(
+        zip(accumulator_dict["vocab"], accumulator_dict["vocab_counts"]))
+    accumulator.count_dict.update(count_dict)
+
     if self._compute_idf:
-      document_counts = np.array(document_counts)[sorted_indices]
-      num_documents = np.array(num_documents)
-      return accumulator(vocab, counts, document_counts, num_documents)
+      create_dict = lambda x: {"count": x, "last_doc_id": -1}
+      idf_count_dicts = [
+          create_dict(count) for count in accumulator_dict["idf_counts"]
+      ]
+      idf_dict = dict(zip(accumulator_dict["idf_vocab"], idf_count_dicts))
+      accumulator.per_doc_count_dict.update(idf_dict)
+
+    return accumulator
+
+  def _create_accumulator(self):
+    """Accumulate a sorted array of vocab tokens and corresponding counts."""
+    accumulator = collections.namedtuple(
+        "Accumulator", ["count_dict", "per_doc_count_dict", "metadata"])
+
+    count_dict = collections.defaultdict(int)
+    if self._compute_idf:
+      create_default_dict = lambda: {"count": 0, "last_doc_id": -1}
+      per_doc_count_dict = collections.defaultdict(create_default_dict)
     else:
-      return accumulator(vocab, counts)
+      per_doc_count_dict = None
+    metadata = [0]
+    return accumulator(count_dict, per_doc_count_dict, metadata)

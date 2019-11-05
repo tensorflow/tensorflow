@@ -1065,34 +1065,82 @@ class TextVectorizationCombinerTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
+  def compare_text_accumulators(self, a, b, msg=None):
+    if a is None or b is None:
+      self.assertAllEqual(a, b, msg=msg)
+
+    self.assertAllEqual(a.count_dict, b.count_dict, msg=msg)
+    self.assertAllEqual(a.metadata, b.metadata, msg=msg)
+
+    if a.per_doc_count_dict is not None:
+
+      def per_doc_counts(accumulator):
+        count_values = [
+            count_dict["count"]
+            for count_dict in accumulator.per_doc_count_dict.values()
+        ]
+        return dict(zip(accumulator.per_doc_count_dict.keys(), count_values))
+
+      self.assertAllEqual(per_doc_counts(a), per_doc_counts(b), msg=msg)
+
+  compare_accumulators = compare_text_accumulators
+
+  def update_accumulator(self, accumulator, data):
+    accumulator.count_dict.update(dict(zip(data["vocab"], data["counts"])))
+    accumulator.metadata[0] = data["num_documents"]
+
+    if "document_counts" in data:
+      create_dict = lambda x: {"count": x, "last_doc_id": -1}
+      idf_count_dicts = [
+          create_dict(count) for count in data["document_counts"]
+      ]
+      idf_dict = dict(zip(data["vocab"], idf_count_dicts))
+
+      accumulator.per_doc_count_dict.update(idf_dict)
+
+    return accumulator
+
   def test_combiner_api_compatibility_int_mode(self):
     data = np.array([["earth", "wind", "and", "fire"],
                      ["earth", "wind", "and", "michigan"]])
     combiner = text_vectorization._TextVectorizationCombiner(compute_idf=False)
-    expected = {
+    expected_accumulator_output = {
         "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "counts": np.array([2, 2, 2, 1, 1]),
+        "num_documents": np.array(2),
     }
+    expected_extract_output = {
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
+    }
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
     self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected)
+                                                        expected_accumulator)
     self.validate_accumulator_uniqueness(combiner, data)
+    self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
   def test_combiner_api_compatibility_tfidf_mode(self):
     data = np.array([["earth", "wind", "and", "fire"],
                      ["earth", "wind", "and", "michigan"]])
     combiner = text_vectorization._TextVectorizationCombiner(compute_idf=True)
     expected_extract_output = {
-        "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
         "idf": np.array([0.510826, 0.510826, 0.510826, 0.693147, 0.693147]),
         "oov_idf": np.array([1.098612])
     }
     expected_accumulator_output = {
-        "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
+        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
         "counts": np.array([2, 2, 2, 1, 1]),
         "document_counts": np.array([2, 2, 2, 1, 1]),
-        "num_documents": np.array(1),
+        "num_documents": np.array(2),
     }
-    self.validate_accumulator_serialize_and_deserialize(
-        combiner, data, expected_accumulator_output)
+
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
+    self.validate_accumulator_serialize_and_deserialize(combiner, data,
+                                                        expected_accumulator)
     self.validate_accumulator_uniqueness(combiner, data)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
@@ -1108,13 +1156,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               3,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.693147, 0.847298, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1128,13 +1176,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               10,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1148,13 +1196,13 @@ class TextVectorizationCombinerTest(
           "vocab_size":
               None,
           "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "counts": np.array([3, 2, 1, 1]),
               "document_counts": np.array([3, 2, 1, 1]),
               "num_documents": np.array(4),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth", "and"]),
               "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
               "oov_idf": np.array([1.609438]),
           },
@@ -1170,7 +1218,7 @@ class TextVectorizationCombinerTest(
               "num_documents": np.array(5),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "and", "earth"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.980829, 1.252763, 1.252763]),
               "oov_idf": np.array([1.791759]),
           },
@@ -1194,7 +1242,7 @@ class TextVectorizationCombinerTest(
               "num_documents": np.array(5),
           },
           "expected_extract_output": {
-              "vocab": np.array(["wind", "earth", "fire"]),
+              "vocab": np.array(["wind", "fire", "earth"]),
               "idf": np.array([0.980829, 1.252763, 1.252763]),
               "oov_idf": np.array([1.791759]),
           },
@@ -1207,8 +1255,9 @@ class TextVectorizationCombinerTest(
                                 compute_idf=True):
     combiner = text_vectorization._TextVectorizationCombiner(
         vocab_size=vocab_size, compute_idf=compute_idf)
-    expected_accumulator = combiner._create_accumulator(
-        **expected_accumulator_output)
+    expected_accumulator = combiner._create_accumulator()
+    expected_accumulator = self.update_accumulator(expected_accumulator,
+                                                   expected_accumulator_output)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
 

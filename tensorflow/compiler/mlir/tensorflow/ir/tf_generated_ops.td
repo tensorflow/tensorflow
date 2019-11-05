@@ -27,8 +27,7 @@ limitations under the License.
 //
 // Ops in this file are sorted alphabetically.
 
-#ifdef TF_OP_BASE
-#else
+#ifndef TF_OP_BASE
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 #endif // TF_OP_BASE
 
@@ -4081,6 +4080,30 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SignOp : TF_Op<"Sign", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns an element-wise indication of the sign of a number.";
+
+  let description = [{
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+
+Example usage:
+>>> tf.math.sign([0., 2., -3.])
+<tf.Tensor: shape=(3,), dtype=float32, numpy=array([ 0.,  1., -1.], dtype=float32)>
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

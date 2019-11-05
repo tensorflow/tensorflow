@@ -17,10 +17,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -405,8 +405,7 @@ bool HardcodeMinMaxForPack(Model* model, Operator* op) {
   }
   const auto& first_input_minmax = first_input_array.GetMinMax();
 
-  CHECK_GT(op->inputs.size(), 1);
-  for (int i = 1; i != op->inputs.size(); i++) {
+  for (int i = 1; i < op->inputs.size(); i++) {
     const auto& input_array = model->GetArray(op->inputs[i]);
     if (!input_array.minmax) {
       return false;

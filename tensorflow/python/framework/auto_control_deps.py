@@ -362,8 +362,11 @@ class AutomaticControlDependencies(object):
     for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
       if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
-            [o for o in self.ops_which_must_run
-             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+            [
+                o for o in self.ops_which_must_run
+                if r.graph.building_function or
+                (o._control_flow_context is r.op._control_flow_context)  # pylint: disable=protected-access
+            ])
 
 
 def automatic_control_dependencies(f):

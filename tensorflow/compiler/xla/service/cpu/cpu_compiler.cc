@@ -93,7 +93,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -251,10 +250,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
-
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
@@ -337,9 +332,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<CpuInstructionFusion>();
 
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
   return pipeline.Run(module).status();
 }
 

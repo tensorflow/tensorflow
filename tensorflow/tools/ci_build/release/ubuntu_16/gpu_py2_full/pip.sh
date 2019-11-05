@@ -60,4 +60,7 @@ export IS_NIGHTLY=0 # Not nightly
 export TF_PROJECT_NAME=${PROJECT_NAME}
 export TF_PIP_TEST_ROOT="pip_test"
 
+# To build both tensorflow and tensorflow-gpu pip packages
+export TF_BUILD_BOTH_GPU_PACKAGES=1
+
 ./tensorflow/tools/ci_build/builds/pip_new.sh

@@ -170,8 +170,8 @@ tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
 
-bool tblgen::EnumAttr::skipAutoGen() const {
-  return def->getValueAsBit("skipAutoGen");
+bool tblgen::EnumAttr::isBitEnum() const {
+  return def->isSubClassOf("BitEnumAttr");
 }
 
 StringRef tblgen::EnumAttr::getEnumClassName() const {

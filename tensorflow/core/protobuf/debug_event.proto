@@ -53,6 +53,15 @@ enum TensorDebugMode {
 
   // Full tensor value.
   FULL_TENSOR = 7;
+
+  // Reduce the elements of a tensor to a rank-1 tensor of shape [3], in which
+  // - the 1st element is -inf if any element of the tensor is -inf,
+  //   or zero otherwise.
+  // - the 2nd element is +inf if any element of the tensor is +inf,
+  //   or zero otherwise.
+  // - the 3rd element is nan if any element of the tensor is nan, or zero
+  //   otherwise.
+  REDUCE_INF_NAN_THREE_SLOTS = 8;
 }
 
 // An Event related to the debugging of a TensorFlow program.

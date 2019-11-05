@@ -148,6 +148,10 @@ class Model(network.Network):
     # predict on a model without compiling it.
     self._distribution_strategy = None
     self._compile_time_distribution_strategy = None
+    if (ops.executing_eagerly_outside_functions() and
+        distribution_strategy_context.has_strategy()):
+      self._set_strategy(
+          distribution_strategy_context.get_strategy())
 
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
@@ -157,6 +161,10 @@ class Model(network.Network):
     self._run_eagerly = None
     self._experimental_run_tf_function = (
         ops.executing_eagerly_outside_functions())
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_strategy(self, strategy):
+    self._compile_time_distribution_strategy = strategy
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -241,10 +249,12 @@ class Model(network.Network):
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
-            `tf.losses.Loss` instance. See `tf.losses`. If the model has
-            multiple outputs, you can use a different loss on each output by
-            passing a dictionary or a list of losses. The loss value that will
-            be minimized by the model will then be the sum of all individual
+            `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
+            function is any callable with the signature
+            `scalar_loss = fn(y_true, y_pred)`. If the model has multiple
+            outputs, you can use a different loss on each output by passing a
+            dictionary or a list of losses. The loss value that will be
+            minimized by the model will then be the sum of all individual
             losses.
         metrics: List of metrics to be evaluated by the model during training
             and testing. Typically you will use `metrics=['accuracy']`.
@@ -324,9 +334,6 @@ class Model(network.Network):
         or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
-
-    self._compile_time_distribution_strategy = (
-        distribution_strategy_context.get_strategy())
 
     if distribute is not None:
       if tf2.enabled() or self._experimental_run_tf_function:

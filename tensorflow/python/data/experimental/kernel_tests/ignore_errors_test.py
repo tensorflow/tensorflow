@@ -126,6 +126,18 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  def testZipIgnoreError(self):
+    a = dataset_ops.Dataset.from_tensor_slices([1., 2., 0., 4.])
+    b = a.map(lambda x: array_ops.check_numerics(1. / x, "error"))
+
+    dataset = dataset_ops.Dataset.zip((b, a)).apply(error_ops.ignore_errors())
+    get_next = self.getNext(dataset)
+
+    for x in [1., 2., 4.]:
+      self.assertEqual((1. / x, x), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
 
 if __name__ == "__main__":
   test.main()

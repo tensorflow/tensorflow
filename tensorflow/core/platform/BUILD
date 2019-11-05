@@ -17,9 +17,9 @@ load(
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_fingerprint_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
-    "tf_fingerprint_deps",
 )
 load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
@@ -476,6 +476,7 @@ cc_library(
     hdrs = ["str_util.h"],
     deps = [
         ":logging",
+        ":macros",
         ":stringpiece",
         ":types",
         "@com_google_absl//absl/strings",

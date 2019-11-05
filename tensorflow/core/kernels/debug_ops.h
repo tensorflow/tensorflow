@@ -16,9 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
+
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
 #endif  // TENSORFLOW_USE_SYCL
@@ -438,6 +448,151 @@ class DebugIdentityV2Op : public OpKernel {
   int32 output_slot_;
   int32 tensor_debug_mode_;
 };
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <typename T>
+struct ReduceInfNanTwoSlotsLaunch {
+  void Run(const GPUDevice& d, const T* data, int size, float output[2]);
+};
+
+extern template struct ReduceInfNanTwoSlotsLaunch<Eigen::half>;
+extern template struct ReduceInfNanTwoSlotsLaunch<float>;
+extern template struct ReduceInfNanTwoSlotsLaunch<double>;
+#endif
+
+template <typename Device, typename T>
+class DebugNumericSummaryV2Op;
+
+// Numeric summary op for tfdbg v2: CPU Kernel.
+template <typename T>
+class DebugNumericSummaryV2Op<CPUDevice, T> : public OpKernel {
+ public:
+  explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor = context->input(0);
+
+    if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
+      auto in = tensor.flat<T>();
+      const T* data = in.data();
+      const int64 size = in.size();
+
+      Tensor* output_tensor;
+      TensorShape shape({3});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      output_tensor->flat<float>()(0) = 0.0;  // Slot for -inf.
+      output_tensor->flat<float>()(1) = 0.0;  // Slot for inf.
+      output_tensor->flat<float>()(2) = 0.0;  // Slot for nan.
+
+      int fp_props =
+          std::accumulate(data, data + size, 0, [](const int x, const T& y) {
+            int result = x;
+            if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+              // Do nothing: common case.
+            } else if (Eigen::numext::isinf(y)) {
+              result |= y < static_cast<T>(0.f) ? kNegInfBit : kPosInfBit;
+            } else if (Eigen::numext::isnan(y)) {
+              result |= kNaNBit;
+            }
+            return result;
+          });
+
+      if (fp_props & kNegInfBit) {
+        output_tensor->flat<float>()(0) =
+            -std::numeric_limits<float>::infinity();
+      }
+      if (fp_props & kPosInfBit) {
+        output_tensor->flat<float>()(1) =
+            std::numeric_limits<float>::infinity();
+      }
+      if (fp_props & kNaNBit) {
+        output_tensor->flat<float>()(2) =
+            std::numeric_limits<float>::quiet_NaN();
+      }
+
+    } else {
+      // TODO(cais): Implement other tensor debug modes in debug_event.proto.
+      context->SetStatus(errors::Unimplemented(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+    }
+  }
+
+ private:
+  int tensor_debug_mode_;
+  int tensor_id_;
+  static constexpr int kNegInfBit = 0x01;
+  static constexpr int kPosInfBit = 0x02;
+  static constexpr int kNaNBit = 0x04;
+};
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+template <typename T>
+class DebugNumericSummaryV2Op<GPUDevice, T> : public AsyncOpKernel {
+ public:
+  typedef GPUDevice Device;
+
+  explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+  }
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
+      Tensor* output_tensor;
+      TensorShape shape({3});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<float>().data(),
+          output_tensor->flat<float>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0,
+                           output_tensor->flat<float>().size() * sizeof(float));
+      if (context->input(0).NumElements() == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks.
+      const Device& d = context->eigen_device<Device>();
+      auto input = context->input(0).flat<T>();
+      ReduceInfNanTwoSlotsLaunch<T>().Run(d, input.data(), input.size(),
+                                          output_tensor->flat<float>().data());
+
+      auto check_cb = [this, done]() { done(); };
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else {
+      // TODO(cais): Implement other tensor debug modes in debug_event.proto.
+      context->SetStatus(errors::Unimplemented(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+      done();
+    }
+  }
+
+ private:
+  int tensor_debug_mode_;
+  int tensor_id_;
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
 

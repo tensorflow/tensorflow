@@ -24,25 +24,12 @@ import tempfile
 import threading
 
 from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import googletest
-
-
-def ReadDebugEvents(filename):
-  reader = tf_record.tf_record_iterator(filename)
-
-  debug_events = []
-  try:
-    while True:
-      debug_event = debug_event_pb2.DebugEvent()
-      debug_event.ParseFromString(next(reader))
-      debug_events.append(debug_event)
-  except StopIteration:
-    return debug_events
 
 
 class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
@@ -83,11 +70,12 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(graphs_paths), 1)
 
     # Verify the content of the metadata file.
-    debug_events = ReadDebugEvents(metadata_paths[0])
-    self.assertEqual(len(metadata_paths), 1)
-    self.assertTrue(debug_events[0].debug_metadata.tensorflow_version)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    metadata_iter = reader.metadata_iterator()
+    debug_event = next(metadata_iter)
+    self.assertTrue(debug_event.debug_metadata.tensorflow_version)
     self.assertTrue(
-        debug_events[0].debug_metadata.file_version.startswith("debug.Event:"))
+        debug_event.debug_metadata.file_version.startswith("debug.Event:"))
 
   def testWriteSourceFilesAndStackFrames(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
@@ -106,22 +94,17 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
     writer.FlushNonExecutionFiles()
 
-    source_files_paths = glob.glob(
-        os.path.join(self.dump_root, "*.source_files"))
-    self.assertEqual(len(source_files_paths), 1)
-    actuals = ReadDebugEvents(source_files_paths[0])
-    self.assertEqual(len(actuals), num_protos)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.source_files_iterator())
+    self.assertLen(actuals, num_protos)
     for i in range(num_protos):
       self.assertEqual(actuals[i].source_file.file_path,
                        "/home/tf2user/main.py")
       self.assertEqual(actuals[i].source_file.host_name, "machine.cluster")
       self.assertEqual(actuals[i].source_file.lines, ["print(%d)" % i])
 
-    stack_frames_paths = glob.glob(
-        os.path.join(self.dump_root, "*.stack_frames"))
-    self.assertEqual(len(stack_frames_paths), 1)
-    actuals = ReadDebugEvents(stack_frames_paths[0])
-    self.assertEqual(len(actuals), num_protos)
+    actuals = list(reader.stack_frames_iterator())
+    self.assertLen(actuals, num_protos)
     for i in range(num_protos):
       self.assertEqual(actuals[i].stack_frame_with_id.id, "stack_%d" % i)
       self.assertEqual(actuals[i].stack_frame_with_id.file_line_col.file_index,
@@ -141,10 +124,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     writer.WriteDebuggedGraph(debugged_graph)
     writer.FlushNonExecutionFiles()
 
-    source_files_paths = glob.glob(os.path.join(self.dump_root, "*.graphs"))
-    self.assertEqual(len(source_files_paths), 1)
-    actuals = ReadDebugEvents(source_files_paths[0])
-    self.assertEqual(len(actuals), num_op_creations + 1)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.graphs_iterator())
+    self.assertLen(actuals, num_op_creations + 1)
     for i in range(num_op_creations):
       self.assertEqual(actuals[i].graph_op_creation.op_type, "Conv2D")
       self.assertEqual(actuals[i].graph_op_creation.op_name, "Conv2D_%d" % i)
@@ -206,11 +188,10 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     for thread in threads:
       thread.join()
 
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
     # Verify the content of the .source_files file.
-    source_files_paths = glob.glob(
-        os.path.join(self.dump_root, "*.source_files"))
-    self.assertEqual(len(source_files_paths), 1)
-    actuals = ReadDebugEvents(source_files_paths[0])
+    source_files_iter = reader.source_files_iterator()
+    actuals = list(source_files_iter)
     file_paths = sorted([actual.source_file.file_path for actual in actuals])
     self.assertEqual(file_paths, [
         "/home/tf2user/file_0.py", "/home/tf2user/file_1.py",
@@ -218,19 +199,14 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     ])
 
     # Verify the content of the .stack_frames file.
-    stack_frames_paths = glob.glob(
-        os.path.join(self.dump_root, "*.stack_frames"))
-    self.assertEqual(len(stack_frames_paths), 1)
-    actuals = ReadDebugEvents(stack_frames_paths[0])
+    actuals = list(reader.stack_frames_iterator())
     stack_frame_ids = sorted(
         [actual.stack_frame_with_id.id for actual in actuals])
     self.assertEqual(stack_frame_ids,
                      ["stack_frame_0", "stack_frame_1", "stack_frame_2"])
 
     # Verify the content of the .graphs file.
-    graphs_paths = glob.glob(os.path.join(self.dump_root, "*.graphs"))
-    self.assertEqual(len(graphs_paths), 1)
-    actuals = ReadDebugEvents(graphs_paths[0])
+    actuals = list(reader.graphs_iterator())
     graph_op_names = sorted(
         [actual.graph_op_creation.op_name for actual in actuals])
     self.assertEqual(graph_op_names, ["Op0", "Op1", "Op2"])
@@ -243,17 +219,15 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       execution.op_type = "OpType%d" % i
       writer.WriteExecution(execution)
 
-    execution_paths = glob.glob(os.path.join(self.dump_root, "*.execution"))
-    self.assertEqual(len(execution_paths), 1)
-    actuals = ReadDebugEvents(execution_paths[0])
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.execution_iterator())
     # Before FlushExecutionFiles() is called. No data should have been written
     # to the file.
     self.assertEqual(len(actuals), 0)
-    writer.FlushExecutionFiles()
 
-    actuals = ReadDebugEvents(execution_paths[0])
-    self.assertEqual(
-        len(actuals), debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
+    writer.FlushExecutionFiles()
+    actuals = list(reader.execution_iterator())
+    self.assertLen(actuals, debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
     for i in range(debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE):
       self.assertEqual(
           actuals[i].execution.op_type,
@@ -269,10 +243,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       writer.WriteExecution(execution)
     writer.FlushExecutionFiles()
 
-    execution_paths = glob.glob(os.path.join(self.dump_root, "*.execution"))
-    self.assertEqual(len(execution_paths), 1)
-    actuals = ReadDebugEvents(execution_paths[0])
-    self.assertEqual(len(actuals), num_execution_events)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.execution_iterator())
+    self.assertLen(actuals, num_execution_events)
     for i in range(num_execution_events):
       self.assertEqual(actuals[i].execution.op_type, "OpType%d" % i)
 
@@ -284,19 +257,15 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       trace.op_name = "Op%d" % i
       writer.WriteGraphExecutionTrace(trace)
 
-    trace_paths = glob.glob(
-        os.path.join(self.dump_root, "*.graph_execution_traces"))
-    self.assertEqual(len(trace_paths), 1)
-    actuals = ReadDebugEvents(trace_paths[0])
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.graph_execution_traces_iterator())
     # Before FlushExecutionFiles() is called. No data should have been written
     # to the file.
     self.assertEqual(len(actuals), 0)
 
     writer.FlushExecutionFiles()
-    actuals = ReadDebugEvents(trace_paths[0])
-    self.assertEqual(
-        len(actuals), debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
-
+    actuals = list(reader.graph_execution_traces_iterator())
+    self.assertLen(actuals, debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE)
     for i in range(debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE):
       self.assertEqual(
           actuals[i].graph_execution_trace.op_name,
@@ -312,11 +281,9 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       writer.WriteGraphExecutionTrace(trace)
     writer.FlushExecutionFiles()
 
-    trace_paths = glob.glob(
-        os.path.join(self.dump_root, "*.graph_execution_traces"))
-    self.assertEqual(len(trace_paths), 1)
-    actuals = ReadDebugEvents(trace_paths[0])
-    self.assertEqual(len(actuals), num_execution_events)
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.graph_execution_traces_iterator())
+    self.assertLen(actuals, num_execution_events)
     for i in range(num_execution_events):
       self.assertEqual(actuals[i].graph_execution_trace.op_name, "Op%d" % i)
 
@@ -357,22 +324,18 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     writer.FlushExecutionFiles()
 
     # Verify the content of the .execution file.
-    execution_paths = glob.glob(os.path.join(self.dump_root, "*.execution"))
-    self.assertEqual(len(execution_paths), 1)
-    actuals = ReadDebugEvents(execution_paths[0])
+    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    actuals = list(reader.execution_iterator())
     op_types = sorted([actual.execution.op_type for actual in actuals])
-    self.assertEqual(len(op_types), circular_buffer_size)
-    self.assertEqual(len(op_types), len(set(op_types)))
+    self.assertLen(op_types, circular_buffer_size)
+    self.assertLen(op_types, len(set(op_types)))
 
     # Verify the content of the .execution file.
-    traces_paths = glob.glob(
-        os.path.join(self.dump_root, "*.graph_execution_traces"))
-    self.assertEqual(len(traces_paths), 1)
-    actuals = ReadDebugEvents(traces_paths[0])
+    actuals = list(reader.graph_execution_traces_iterator())
     op_names = sorted(
         [actual.graph_execution_trace.op_name for actual in actuals])
-    self.assertEqual(len(op_names), circular_buffer_size)
-    self.assertEqual(len(op_names), len(set(op_names)))
+    self.assertLen(op_names, circular_buffer_size)
+    self.assertLen(op_names, len(set(op_names)))
 
 
 if __name__ == "__main__":

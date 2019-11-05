@@ -16,6 +16,8 @@
 // =============================================================================
 
 #include "TestDialect.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"

@@ -4,13 +4,11 @@
 # Verify that invalid LegacyFedInput ops without any inputs are replaced with
 # Placeholder ops.
 
-# CHECK-NOT: LegacyFedInput
-# CHECK: tf.Placeholder.input{{.*}}(tensor<f32>) -> tensor<f32>
+# CHECK: func @main(%arg0: tensor<f32>)
 # CHECK-NOT: LegacyFedInput
 
 # If input data type isn't specified, uses the one in the graph
-# NODATATYPE-NOT: LegacyFedInput
-# NODATATYPE: tf.Placeholder.input{{.*}}(tensor<f32>) -> tensor<f32>
+# NODATATYPE: func @main(%arg0: tensor<f32>)
 # NODATATYPE-NOT: LegacyFedInput
 
 node {

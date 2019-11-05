@@ -89,6 +89,19 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
                                    ModelT* model, TensorT* tensor,
                                    ErrorReporter* error_reporter);
 
+// Populates the scales vector based on max and min values of quant_params
+TfLiteStatus GetSymmetricScalesFromMaxMin(QuantizationParametersT* quant_params,
+                                          std::vector<float>* scales,
+                                          ErrorReporter* error_reporter);
+
+// Adjusts scale of weights if incompatible with bias scale and likely to
+// cause overflow.
+TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
+                                       const float* bias_data,
+                                       const size_t bias_size,
+                                       const float input_scale,
+                                       ErrorReporter* error_reporter);
+
 // Quantize tensor with per channel.
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,

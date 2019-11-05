@@ -17,19 +17,23 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <limits>
 #include <numeric>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -135,6 +139,26 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation) {
   return true;
 }
 
+string RoundTripFpToString(tensorflow::bfloat16 value) {
+  return absl::StrFormat("%.4g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(Eigen::half value) {
+  return absl::StrFormat("%.5g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(float value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::FloatToBuffer(value, buffer);
+  return buffer;
+}
+
+string RoundTripFpToString(double value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::DoubleToBuffer(value, buffer);
+  return buffer;
+}
+
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
   PaddingConfig padding_config;
   for (int64 dnum = 0; dnum < rank; ++dnum) {
@@ -229,14 +253,14 @@ int64 Product(absl::Span<const int64> xs) {
                          std::multiplies<int64>());
 }
 
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
 
-  std::vector<std::pair<int64, int64>> bounds;
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
              partial_size_b = 1;
        ;) {
