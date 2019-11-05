@@ -796,6 +796,25 @@ class MicroBenchmarks(test.Benchmark):
     self._benchmark_tf_reduce_logsumexp(device=GPU,
                                         execution_mode=context.ASYNC)
 
+  def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
+    with context.device(device):
+      a = array_ops.ones((2, 2))
+      b = array_ops.ones((2, 2))
+      func = lambda: math_ops.tensordot(a, b, [[1], [0]])
+      self._run(func, 30000, execution_mode=execution_mode)
+
+  def benchmark_tf_tensordot_CPU(self):
+    self._benchmark_tf_tensordot()
+
+  def benchmark_tf_tensordot_CPU_async(self):
+    self._benchmark_tf_tensordot(execution_mode=context.ASYNC)
+
+  def benchmark_tf_tensordot_GPU(self):
+    self._benchmark_tf_tensordot(device=GPU)
+
+  def benchmark_tf_tensordot_GPU_async(self):
+    self._benchmark_tf_tensordot(device=GPU, execution_mode=context.ASYNC)
+
   def _benchmark_tf_zeros_like(self, m, device=CPU):
     with context.device(device):
       func = lambda: array_ops.zeros_like(m)
