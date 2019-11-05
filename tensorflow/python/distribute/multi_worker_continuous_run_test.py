@@ -70,8 +70,8 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       if gpus:
         # Set virtual GPU with memory limit of 64MB so that multiple worker
         # processes can share the physical GPU
-        config.set_virtual_device_configuration(
-            gpus[0], [context.VirtualDeviceConfiguration(64)])
+        config.set_logical_device_configuration(
+            gpus[0], [context.LogicalDeviceConfiguration(64)])
       for _ in range(100):
         worker_step_fn()
 

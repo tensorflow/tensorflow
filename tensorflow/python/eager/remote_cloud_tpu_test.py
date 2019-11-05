@@ -22,8 +22,8 @@ from absl import flags
 from absl.testing import absltest
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import config
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
@@ -56,18 +56,16 @@ class RemoteCloudTPUTest(absltest.TestCase):
   """Test that we can connect to a real Cloud TPU."""
 
   def test_connect(self):
-    self.assertCountEqual(
-        EXPECTED_DEVICES_PRE_CONNECT,
-        context.list_devices())
+    self.assertCountEqual(EXPECTED_DEVICES_PRE_CONNECT,
+                          config.list_logical_devices())
 
     resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project
     )
     remote.connect_to_cluster(resolver)
 
-    self.assertCountEqual(
-        EXPECTED_DEVICES_AFTER_CONNECT,
-        context.list_devices())
+    self.assertCountEqual(EXPECTED_DEVICES_AFTER_CONNECT,
+                          config.list_logical_devices())
 
     tpu_strategy_util.initialize_tpu_system(resolver)
 

@@ -1,4 +1,4 @@
-path: "tensorflow.config.experimental.VirtualDeviceConfiguration"
+path: "tensorflow.config.LogicalDeviceConfiguration"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
