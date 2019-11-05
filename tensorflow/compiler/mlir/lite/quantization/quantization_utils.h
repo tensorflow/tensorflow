@@ -59,6 +59,13 @@ struct OpQuantSpec {
   // quantized op. This vector is empty if the op doesn't have value restricted
   // outputs.
   llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
+
+  // Coefficient operand index and whether supporting per-channel quantization.
+  // For QAT, this information is carried by the FakeQuant*/QDQ ops, but
+  // post-training quantization, the quantization parameters need to be inferred
+  // from the tensor content and op property. A "-1" value indicates the
+  // operand doesn't support per-channel quantization.
+  llvm::DenseMap<int, int> coeff_op_quant_dim;
 };
 
 // A function signature for getting the particular OpQuantSpec for the provided
@@ -299,6 +306,19 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
 // returns UniformQuantizedType or UniformQuantizedPerAxisType respectively.
 // `narrow_range` is set to true for weights and `is_signed` is set to true
 // if it is using signed int symmetric quantization.
+//
+// Note that this method doesn't modify min and max, so they needs to be
+// adjusted before calling this method if symmetric quantized type needs to be
+// returned.
+TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
+                              Attribute max, int quant_dim,
+                              IntegerAttr num_bits, BoolAttr narrow_range,
+                              bool is_signed);
+
+// Same above, but the `channel_dim` is hardcoded to the last dimension to match
+// the behavior of tf.FakeQuantWithMinMaxVarsPerChannel. This method is called
+// when converting tf.FakeQuant* ops to MLIR's quant parameter representation,
+// aka. quant::QuantType.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range, bool is_signed);
@@ -328,9 +348,15 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // parameters in this type is based on the min and max element of the
 // attribute. When the elements in the `attr` are not in floating-point, or
 // the value range isn't straddling zero, an empty type is returned.
-Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
-                                            unsigned storage_type_width,
-                                            bool is_sign, bool narrow_range);
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
+                                      bool is_sign, bool narrow_range);
+
+// Returns the per channel quantized type for an element attribute.
+// `quant_dim` defines the quantization axis. The channel min/max are ajusted
+// to by symmetric if `symmetric` flag is set to True.
+Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
+                                             bool symmetric, unsigned num_bits,
+                                             bool is_sign, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the

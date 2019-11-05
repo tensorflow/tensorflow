@@ -265,7 +265,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    ChannelDimIndex<index>]> {
+    ChannelDimIndex<index>, AffineOpCoefficient<index, 1>]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -580,7 +580,8 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
-    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>]> {
+    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>,
+    AffineOpCoefficient<-1, 1>]> {
   let summary = "Fully connected op";
 
   let arguments = (ins

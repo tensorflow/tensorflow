@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
@@ -38,8 +39,8 @@ namespace TFL {
 // input_type/min/max/storag_type_width/narrow_range.
 static Type GetQuantizedType(Builder builder, Type input_type,
                              ArrayRef<double> min, ArrayRef<double> max,
-                             int storage_type_width, bool narrow_range,
-                             bool is_signed) {
+                             int quant_dim, int storage_type_width,
+                             bool narrow_range, bool is_signed) {
   auto converter =
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
@@ -50,21 +51,22 @@ static Type GetQuantizedType(Builder builder, Type input_type,
         narrow_range, converter.expressedType, is_signed);
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
-    if (!shape || min.size() != shape.getDimSize(shape.getRank() - 1)) {
+    if (!shape || min.size() != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
     quantizedEleType = quant::fakeQuantAttrsToType(
-        builder.getUnknownLoc(), storage_type_width, shape.getRank() - 1, min,
-        max, narrow_range, converter.expressedType, is_signed);
+        builder.getUnknownLoc(), storage_type_width, quant_dim, min, max,
+        narrow_range, converter.expressedType, is_signed);
   }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
-                              Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range, bool is_signed) {
+                              Attribute max, int quant_dim,
+                              IntegerAttr num_bits, BoolAttr narrow_range,
+                              bool is_signed) {
   SmallVector<double, 4> min_value, max_value;
   auto mins = min.dyn_cast<DenseFPElementsAttr>();
   auto maxs = max.dyn_cast<DenseFPElementsAttr>();
@@ -88,9 +90,24 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
     }
   }
   Type final_type =
-      GetQuantizedType(builder, input_type, min_value, max_value,
+      GetQuantizedType(builder, input_type, min_value, max_value, quant_dim,
                        num_bits.getInt(), narrow_range.getValue(), is_signed);
   return TypeAttr::get(final_type);
+}
+
+// TODO(fengliuai): expose the `quant_dim` argument.
+TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
+                              Attribute max, IntegerAttr num_bits,
+                              BoolAttr narrow_range, bool is_signed) {
+  // When input_type isn't a ranked shaped type, it shouldn't be per-axis
+  // quantizatied, and `quant_dim` shouldn't be used, otherwise, set it to the
+  // last dimension.
+  int quant_dim = 0;
+  if (auto shape = input_type.dyn_cast<RankedTensorType>()) {
+    quant_dim = shape.getRank() - 1;
+  }
+  return GetQuantizedTypeAttr(builder, input_type, min, max, quant_dim,
+                              num_bits, narrow_range, is_signed);
 }
 
 // Changes the axis of the input per-channel quantized type to match the
@@ -159,9 +176,8 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   return {};
 }
 
-Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
-                                            unsigned storage_type_width,
-                                            bool is_signed, bool narrow_range) {
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
+                                      bool is_signed, bool narrow_range) {
   Builder builder(attr.getContext());
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
@@ -191,8 +207,76 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
       max = std::max(max, ele_value);
     }
   }
-  auto type = GetQuantizedType(builder, attr.getType(), min, max,
-                               storage_type_width, narrow_range, is_signed);
+  auto type =
+      GetQuantizedType(builder, attr.getType(), min, max, /*quant_dim=*/0,
+                       num_bits, narrow_range, is_signed);
+  if (auto ele_type = type.dyn_cast_or_null<TensorType>())
+    return ele_type.getElementType();
+
+  return {};
+}
+
+Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
+                                             bool symmetric, unsigned num_bits,
+                                             bool is_signed,
+                                             bool narrow_range) {
+  Builder builder(attr.getContext());
+  auto shape = attr.getType().cast<ShapedType>().getShape();
+  if (shape.size() <= quant_dim) return {};
+  // `symmetric` can only be used when it is `signed` and `narrow_range`.
+  if (symmetric && (!is_signed || !narrow_range)) return {};
+
+  int dim_size = shape[quant_dim];
+  int slice_size = std::accumulate(std::next(shape.begin(), quant_dim + 1),
+                                   shape.end(), 1, std::multiplies<int64_t>());
+  SmallVector<double, 4> min(dim_size, std::numeric_limits<double>::max());
+  SmallVector<double, 4> max(dim_size, std::numeric_limits<double>::min());
+  auto fp = attr.dyn_cast<DenseFPElementsAttr>();
+  if (!fp) return {};
+
+  // If all the element values are same we don't need to scan the content.
+  if (fp.isSplat()) {
+    double single_value =
+        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
+    // When the single value isn't 0.0, we expand it to a range to include
+    // this single value and 0.0. This will give us a scale and zero point
+    // works for both this value and 0.0.
+    if (single_value < 0.0) {
+      min[0] = single_value;
+      max[0] = symmetric ? -single_value : 0.0;
+    } else if (single_value > 0.0) {
+      min[0] = symmetric ? -single_value : 0.0;
+      max[0] = single_value;
+    } else {
+      // If the tensor contents are all 0.0f, a fixed range is used to avoid
+      // INF error.
+      min[0] = -1.0;
+      max[0] = 1.0;
+    }
+    for (int i = 1; i < dim_size; ++i) {
+      min[i] = min[0];
+      max[i] = max[0];
+    }
+  } else {
+    int64_t flatten_index = 0;
+    for (auto it = fp.begin(), e = fp.end(); it != e; ++it, ++flatten_index) {
+      double ele_value = FloatAttr::getValueAsDouble(*it);
+      int slice_index = flatten_index / slice_size;
+      int channel_index = slice_index % dim_size;
+      min[channel_index] = std::min(min[channel_index], ele_value);
+      max[channel_index] = std::max(max[channel_index], ele_value);
+    }
+    if (symmetric) {
+      for (int i = 0; i < dim_size; ++i) {
+        max[i] = std::max(std::abs(min[i]), std::abs(max[i]));
+        // In case the scale is extremely small, a fixed scale is used.
+        if (max[i] < 1.0e-6) max[i] = 1.0;
+        min[i] = -max[i];
+      }
+    }
+  }
+  auto type = GetQuantizedType(builder, attr.getType(), min, max, quant_dim,
+                               num_bits, narrow_range, is_signed);
   if (auto ele_type = type.dyn_cast_or_null<TensorType>())
     return ele_type.getElementType();
 
