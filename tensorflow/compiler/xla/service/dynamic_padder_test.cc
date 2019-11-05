@@ -560,6 +560,30 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, SliceSingleElement) {
+  // Slicing out a single element is supported.
+  const string hlo_text = R"(
+HloModule Slicing
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  ROOT slice = s32[1]{0} slice(param_padded), slice={[0:1]}
+}
+)";
+
+  // The dynamic dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR1<int32>({0});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshape) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
