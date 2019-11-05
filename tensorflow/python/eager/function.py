@@ -1909,6 +1909,7 @@ class ConcreteFunction(object):
 
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
 _pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
