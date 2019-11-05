@@ -3702,8 +3702,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     const char* device_name_ptr = GetOptions(delegate).accelerator_name;
     if (device_name_ptr) {
       if (!GetDeviceHandle(context, device_name_ptr)) {
-        // If the selected accelerator cannot be found, NNAPI will not be used.
-        return kTfLiteOk;
+        return kTfLiteError;
       } else {
         // also check if the selected device is not CPU reference impl.
         const string kNnapiReferenceImplName = "nnapi-reference";
