@@ -31,8 +31,8 @@ cc_library(
     hdrs = ["conversion_log_util.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":toco_conversion_log_proto",
-        "//tensorflow/core:protos_all",
+        ":toco_conversion_log_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:version",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
@@ -50,9 +50,9 @@ tf_cc_test(
     deps = [
         ":conversion_log_util",
         "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model",
-        "//tensorflow/lite/toco:model_flags_proto",
+        "//tensorflow/lite/toco:model_flags_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",

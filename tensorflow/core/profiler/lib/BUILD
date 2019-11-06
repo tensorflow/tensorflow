@@ -24,7 +24,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:profiler_utils",
-        "//tensorflow/core/profiler:protos_all",
+        "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [],
