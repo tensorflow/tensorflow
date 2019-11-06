@@ -604,11 +604,11 @@ performed. The following comparisons are supported:
 -   equal (mnemonic: `"eq"`; integer value: `0`)
 -   not equal (mnemonic: `"ne"`; integer value: `1`)
 -   signed less than (mnemonic: `"slt"`; integer value: `2`)
--   signed less than or equal (mnemonic: `"slt"`; integer value: `3`)
+-   signed less than or equal (mnemonic: `"sle"`; integer value: `3`)
 -   signed greater than (mnemonic: `"sgt"`; integer value: `4`)
 -   signed greater than or equal (mnemonic: `"sge"`; integer value: `5`)
 -   unsigned less than (mnemonic: `"ult"`; integer value: `6`)
--   unsigned less than or equal (mnemonic: `"ult"`; integer value: `7`)
+-   unsigned less than or equal (mnemonic: `"ule"`; integer value: `7`)
 -   unsigned greater than (mnemonic: `"ugt"`; integer value: `8`)
 -   unsigned greater than or equal (mnemonic: `"uge"`; integer value: `9`)
 
