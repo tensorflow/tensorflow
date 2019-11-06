@@ -1195,7 +1195,6 @@ def ViewOp : Std_Op<"view"> {
   // TODO(andydavis) Add canonicalizer to fold constants into shape and map.
 }
 
-
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
   let hasFolder = 1;
