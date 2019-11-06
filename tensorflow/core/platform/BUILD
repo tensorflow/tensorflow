@@ -471,6 +471,24 @@ cc_library(
 )
 
 cc_library(
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":mutex",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "//tensorflow/core:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+cc_library(
     name = "str_util",
     srcs = ["str_util.cc"],
     hdrs = ["str_util.h"],
@@ -770,6 +788,7 @@ filegroup(
             "jpeg.h",
             "png.h",
             "setround.h",
+            "status.h",
             "stringprintf.h",
             "strong_hash.h",
             "str_util.h",
@@ -817,6 +836,7 @@ filegroup(
             "protobuf_util.cc",
             "scanner.cc",
             "setround.cc",
+            "status.cc",
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
