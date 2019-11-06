@@ -200,7 +200,13 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
-
+  // If the result isn't float and unquantizable, the min/max is ignored.
+  if (!res->getType()
+           .cast<mlir::ShapedType>()
+           .getElementType()
+           .isa<mlir::FloatType>()) {
+    return nullptr;
+  }
   auto mins = tensor.quantization->min;
   auto maxs = tensor.quantization->max;
   if (mins.size() != maxs.size() || mins.empty()) return nullptr;
