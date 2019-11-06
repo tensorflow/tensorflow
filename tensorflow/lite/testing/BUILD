@@ -499,6 +499,7 @@ edgetpu_ops = [
     "relu6",
     "reshape",
     "resize_bilinear",
+    "resize_nearest_neighbor",
     "sigmoid",
     "slice",
     "softmax",
