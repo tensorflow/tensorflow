@@ -59,6 +59,7 @@ tf_cc_test(
         "notap",  # b/139060984, requires implementing modular support for Google filesystem
     ],
     deps = [
+        ":filesystem_interface_impl",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:framework_internal",
