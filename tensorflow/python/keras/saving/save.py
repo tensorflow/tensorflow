@@ -147,7 +147,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
-    return saved_model_load.load(filepath, compile)
+    return saved_model_load.load(filepath, custom_objects, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

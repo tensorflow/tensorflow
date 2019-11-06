@@ -63,7 +63,7 @@ PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
 PUBLIC_ATTRIBUTES.add(constants.KERAS_ATTR)
 
 
-def load(path, compile=True):  # pylint: disable=redefined-builtin
+def load(path, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
   Any Keras layer or model saved to the SavedModel will be loaded back
@@ -79,11 +79,17 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
 
   Args:
     path: Path to SavedModel.
+    custom_objects: Optional dictionary mapping names
+          (strings) to custom classes or functions to be
+          considered during deserialization.
     compile: If true, compile the model after loading it.
 
   Returns:
     Object loaded from SavedModel.
   """
+  if not custom_objects:
+    custom_objects = {}
+
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
   model = tf_load.load_internal(path, loader_cls=KerasObjectLoader)
@@ -96,7 +102,7 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
         'training_config', None)
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
-          training_config))
+          training_config, custom_objects))
   # pylint: disable=protected-access
 
   return model
