@@ -719,9 +719,9 @@ TfLiteStatus FillQuantizationParams(
         if (!utils::HasMinMax(tensor) &&
             utils::HasBuffer(model, subgraph, tensor_idx)) {
           // Get input float data and tensor dimensions.
-          BufferT* buffer = model->buffers[tensor->buffer].get();
-          float* float_input_data =
-              reinterpret_cast<float*>(buffer->data.data());
+          const BufferT* buffer = model->buffers[tensor->buffer].get();
+          const float* float_input_data =
+              reinterpret_cast<const float*>(buffer->data.data());
 
           if (tensor->quantization == nullptr) {
             tensor->quantization = absl::make_unique<QuantizationParametersT>();
@@ -876,8 +876,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
           }
 
           // Get data and size of bias tensor.
-          BufferT* buffer = model->buffers[bias_tensor->buffer].get();
-          float* bias_data = reinterpret_cast<float*>(buffer->data.data());
+          const BufferT* buffer = model->buffers[bias_tensor->buffer].get();
+          const float* bias_data =
+              reinterpret_cast<const float*>(buffer->data.data());
           uint64_t bias_size;
           TF_LITE_ENSURE_STATUS(utils::NumElements(*bias_tensor, &bias_size));
 
