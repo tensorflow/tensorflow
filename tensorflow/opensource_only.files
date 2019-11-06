@@ -80,6 +80,7 @@ tensorflow/third_party/git/git_configure.bzl
 tensorflow/third_party/googleapis.BUILD
 tensorflow/third_party/gpus/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD
+tensorflow/third_party/gpus/crosstool/BUILD.rocm.tpl
 tensorflow/third_party/gpus/crosstool/BUILD.tpl
 tensorflow/third_party/gpus/crosstool/LICENSE
 tensorflow/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
