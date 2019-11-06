@@ -56,6 +56,9 @@ def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 // Any integer or floating-point tensor types
 def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
+// Any integer or predicate tensor types
+def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
+
 def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
@@ -255,8 +258,8 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
 class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
         HLO_BinaryElementwiseOp<mnemonic, [Commutative, NoSideEffect]> {
   let arguments = (ins
-    HLO_PredTensor:$lhs,
-    HLO_PredTensor:$rhs,
+    HLO_PredOrIntTensor:$lhs,
+    HLO_PredOrIntTensor:$rhs,
     BroadcastDimAttr:$broadcast_dimensions
   );
 }
