@@ -69,6 +69,12 @@ def if_not_v2(a):
         "//conditions:default": a,
     })
 
+def if_nvcc(a):
+    return select({
+        "@local_config_cuda//cuda:using_nvcc": a,
+        "//conditions:default": [],
+    })
+
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
 
@@ -287,6 +293,7 @@ def tf_copts(
         ]) +
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
+        if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
@@ -798,7 +805,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
             clean_dep("//tensorflow/core:ops"),
-            clean_dep("//tensorflow/core:protos_all_cc"),
+            clean_dep("//tensorflow/core:protos_all"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
         ]),
@@ -815,7 +822,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
             clean_dep("//tensorflow/core:ops"),
-            clean_dep("//tensorflow/core:protos_all_cc"),
+            clean_dep("//tensorflow/core:protos_all"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
         ]),
@@ -2330,25 +2337,25 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
-def tf_version_info_genrule():
+def tf_version_info_genrule(name, out):
     native.genrule(
-        name = "version_info_gen",
+        name = name,
         srcs = [
             clean_dep("@local_config_git//:gen/spec.json"),
             clean_dep("@local_config_git//:gen/head"),
             clean_dep("@local_config_git//:gen/branch_ref"),
         ],
-        outs = ["util/version_info.cc"],
+        outs = [out],
         cmd =
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
         tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
-def tf_py_build_info_genrule():
+def tf_py_build_info_genrule(name, out, **kwargs):
     native.genrule(
-        name = "py_build_info_gen",
-        outs = ["platform/build_info.py"],
+        name = name,
+        outs = [out],
         cmd =
             "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" " +
             " --is_config_cuda " + if_cuda("True", "False") +
@@ -2363,6 +2370,7 @@ def tf_py_build_info_genrule():
             ]), ""),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
+        **kwargs
     )
 
 def cc_library_with_android_deps(
@@ -2550,10 +2558,6 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
-
-# TODO(b/138724071): Remove when build is stable.
-def if_mlir_tflite(if_true, if_false = []):
-    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""

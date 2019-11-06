@@ -2605,8 +2605,7 @@ ENTRY entry_computation {
 }
 
 )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   auto module = module_or_status.ConsumeValueOrDie();
 
   RunCopyInsertion(module.get());

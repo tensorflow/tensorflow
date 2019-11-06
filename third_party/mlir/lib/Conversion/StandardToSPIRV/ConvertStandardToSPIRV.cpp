@@ -132,7 +132,7 @@ static Value *createAndLoadGlobalVarForEntryFnArg(PatternRewriter &rewriter,
         funcOp.getName().str() + "_arg_" + std::to_string(origArgNum);
     var = rewriter.create<spirv::GlobalVariableOp>(
         funcOp.getLoc(),
-        rewriter.getTypeAttr(getGlobalVarTypeForEntryFnArg(origArg->getType())),
+        TypeAttr::get(getGlobalVarTypeForEntryFnArg(origArg->getType())),
         rewriter.getStringAttr(varName), nullptr);
     var.setAttr(
         spirv::SPIRVDialect::getAttributeName(spirv::Decoration::DescriptorSet),
@@ -353,7 +353,7 @@ public:
 
 /// Convert load -> spv.LoadOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.load.
 class LoadOpConversion final : public ConversionPattern {
@@ -398,7 +398,7 @@ public:
 
 /// Convert store -> spv.StoreOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.store.
 class StoreOpConversion final : public ConversionPattern {

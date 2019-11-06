@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -385,8 +386,8 @@ Status ConvertAttributes(
 
 // Sets type attribute with the given name. If the attribute already exists with
 // a different value, returns an error.
-Status SetAttribute(absl::string_view name, mlir::Type type,
-                    AttrValueMap* values) {
+Status SetTypeAttribute(absl::string_view name, mlir::Type type,
+                        AttrValueMap* values) {
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertScalarTypeToDataType(type, &dtype));
   if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
@@ -400,6 +401,34 @@ Status SetAttribute(absl::string_view name, mlir::Type type,
       return errors::InvalidArgument("Expected ", DataType_Name(dtype), " '",
                                      name, "' attribute but found ",
                                      DataType_Name(actual_dtype));
+    }
+  }
+  return Status::OK();
+}
+
+Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
+                         AttrValueMap* values) {
+  tensorflow::TensorShapeProto tshape;
+  AttrValue value;
+  if (shaped_type.hasRank()) {
+    for (auto dim : shaped_type.getShape()) tshape.add_dim()->set_size(dim);
+  } else {
+    tshape.set_unknown_rank(true);
+  }
+  *value.mutable_shape() = tshape;
+
+  auto result = values->insert({string(name), value});
+  if (!result.second) {
+    // This should be extremely rare as it means we are adding the same
+    // attribute multiple times/have some redundancy in representing this
+    // attribute.
+    TensorShapeProto actual_shape = result.first->second.shape();
+    // Just check via string output as we shouldn't get here and if we do they
+    // should be trivially the same, else fail.
+    if (actual_shape.ShortDebugString() != tshape.ShortDebugString()) {
+      return errors::InvalidArgument("Expected ", tshape.ShortDebugString(),
+                                     " '", name, "' attribute but found ",
+                                     actual_shape.ShortDebugString());
     }
   }
   return Status::OK();

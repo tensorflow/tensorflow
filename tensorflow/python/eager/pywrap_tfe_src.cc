@@ -764,8 +764,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
+static std::atomic<int64_t> _uid;
 
 }  // namespace
 
@@ -970,7 +969,6 @@ const char* TFE_GetPythonString(PyObject* o) {
 }
 
 int64_t get_uid() {
-  tensorflow::mutex_lock l(_uid_mutex);
   return _uid++;
 }
 
@@ -1433,7 +1431,7 @@ static PyTypeObject TFE_Py_Tape_Type = {
     sizeof(TFE_Py_Tape),                          /* tp_basicsize */
     0,                                            /* tp_itemsize */
     &TFE_Py_Tape_Delete,                          /* tp_dealloc */
-    nullptr,                                      /* tp_print */
+    0,                                            /* tp_print */
     nullptr,                                      /* tp_getattr */
     nullptr,                                      /* tp_setattr */
     nullptr,                                      /* tp_reserved */
@@ -1471,7 +1469,7 @@ static PyTypeObject TFE_Py_ForwardAccumulator_Type = {
     sizeof(TFE_Py_ForwardAccumulator),                      /* tp_basicsize */
     0,                                                      /* tp_itemsize */
     &TFE_Py_ForwardAccumulatorDelete,                       /* tp_dealloc */
-    nullptr,                                                /* tp_print */
+    0,                                                      /* tp_print */
     nullptr,                                                /* tp_getattr */
     nullptr,                                                /* tp_setattr */
     nullptr,                                                /* tp_reserved */
@@ -2891,7 +2889,6 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentMean", {true, {}}},
           {"SparseSegmentSqrtN", {true, {}}},
           {"UnsortedSegmentSum", {true, {}}},
-          {"UnsortedSegmentMax", {true, {}}},
           {"Abs", {true, {}}},
           {"Neg", {true, {}}},
           {"ReciprocalGrad", {true, {}}},
@@ -3932,7 +3929,7 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   } else if (PyList_Check(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kList, kListEnd, include_tensor_ranks_only, result));
-  } else if (PyTuple_Check(arg)) {
+  } else if (tensorflow::swig::IsTuple(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
   } else if (tensorflow::swig::IsMapping(arg)) {

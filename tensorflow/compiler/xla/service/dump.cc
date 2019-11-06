@@ -284,12 +284,17 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   const string& dir = opts.dump_to;
   if (env->IsDirectory(dir).ok()) {
     string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    Status status;
     if (opts.dump_as_text) {
-      TF_CHECK_OK(tensorflow::WriteTextProto(
-          env, absl::StrCat(filename, ".txt"), execution_options));
+      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
+                                          execution_options);
     } else {
-      TF_CHECK_OK(tensorflow::WriteBinaryProto(
-          env, absl::StrCat(filename, ".pb"), execution_options));
+      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                            execution_options);
+    }
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
+                 << status;
     }
   }
 }

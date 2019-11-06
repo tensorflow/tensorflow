@@ -27,6 +27,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -51,37 +52,66 @@ namespace {
 class Parser;
 
 //===----------------------------------------------------------------------===//
-// ParserState
+// SymbolState
 //===----------------------------------------------------------------------===//
 
-/// This class refers to all of the state maintained globally by the parser,
-/// such as the current lexer position etc. The Parser base class provides
-/// methods to access this.
-class ParserState {
-public:
-  ParserState(const llvm::SourceMgr &sourceMgr, MLIRContext *ctx)
-      : context(ctx), lex(sourceMgr, ctx), curToken(lex.lexToken()) {}
-
+/// This class contains record of any parsed top-level symbols.
+struct SymbolState {
   // A map from attribute alias identifier to Attribute.
   llvm::StringMap<Attribute> attributeAliasDefinitions;
 
   // A map from type alias identifier to Type.
   llvm::StringMap<Type> typeAliasDefinitions;
 
-private:
+  /// A set of locations into the main parser memory buffer for each of the
+  /// active nested parsers. Given that some nested parsers, i.e. custom dialect
+  /// parsers, operate on a temporary memory buffer, this provides an anchor
+  /// point for emitting diagnostics.
+  SmallVector<llvm::SMLoc, 1> nestedParserLocs;
+
+  /// The top-level lexer that contains the original memory buffer provided by
+  /// the user. This is used by nested parsers to get a properly encoded source
+  /// location.
+  Lexer *topLevelLexer = nullptr;
+};
+
+//===----------------------------------------------------------------------===//
+// ParserState
+//===----------------------------------------------------------------------===//
+
+/// This class refers to all of the state maintained globally by the parser,
+/// such as the current lexer position etc.
+struct ParserState {
+  ParserState(const llvm::SourceMgr &sourceMgr, MLIRContext *ctx,
+              SymbolState &symbols)
+      : context(ctx), lex(sourceMgr, ctx), curToken(lex.lexToken()),
+        symbols(symbols), parserDepth(symbols.nestedParserLocs.size()) {
+    // Set the top level lexer for the symbol state if one doesn't exist.
+    if (!symbols.topLevelLexer)
+      symbols.topLevelLexer = &lex;
+  }
+  ~ParserState() {
+    // Reset the top level lexer if it refers the lexer in our state.
+    if (symbols.topLevelLexer == &lex)
+      symbols.topLevelLexer = nullptr;
+  }
   ParserState(const ParserState &) = delete;
   void operator=(const ParserState &) = delete;
 
-  friend class Parser;
-
-  // The context we're parsing into.
+  /// The context we're parsing into.
   MLIRContext *const context;
 
-  // The lexer for the source file we're parsing.
+  /// The lexer for the source file we're parsing.
   Lexer lex;
 
-  // This is the next token that hasn't been consumed yet.
+  /// This is the next token that hasn't been consumed yet.
   Token curToken;
+
+  /// The current state for symbol parsing.
+  SymbolState &symbols;
+
+  /// The depth of this parser in the nested parsing stack.
+  size_t parserDepth;
 };
 
 //===----------------------------------------------------------------------===//
@@ -133,7 +163,32 @@ public:
   /// Encode the specified source location information into an attribute for
   /// attachment to the IR.
   Location getEncodedSourceLocation(llvm::SMLoc loc) {
-    return state.lex.getEncodedSourceLocation(loc);
+    // If there are no active nested parsers, we can get the encoded source
+    // location directly.
+    if (state.parserDepth == 0)
+      return state.lex.getEncodedSourceLocation(loc);
+    // Otherwise, we need to re-encode it to point to the top level buffer.
+    return state.symbols.topLevelLexer->getEncodedSourceLocation(
+        remapLocationToTopLevelBuffer(loc));
+  }
+
+  /// Remaps the given SMLoc to the top level lexer of the parser. This is used
+  /// to adjust locations of potentially nested parsers to ensure that they can
+  /// be emitted properly as diagnostics.
+  llvm::SMLoc remapLocationToTopLevelBuffer(llvm::SMLoc loc) {
+    // If there are no active nested parsers, we can return location directly.
+    SymbolState &symbols = state.symbols;
+    if (state.parserDepth == 0)
+      return loc;
+    assert(symbols.topLevelLexer && "expected valid top-level lexer");
+
+    // Otherwise, we need to remap the location to the main parser. This is
+    // simply offseting the location onto the location of the last nested
+    // parser.
+    size_t offset = loc.getPointer() - state.lex.getBufferBegin();
+    auto *rawLoc =
+        symbols.nestedParserLocs[state.parserDepth - 1].getPointer() + offset;
+    return llvm::SMLoc::getFromPointer(rawLoc);
   }
 
   //===--------------------------------------------------------------------===//
@@ -271,8 +326,7 @@ public:
   ///
   ///   trailing-location     ::= location?
   ///
-  template <typename Owner>
-  ParseResult parseOptionalTrailingLocation(Owner *owner) {
+  ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
       return success();
@@ -281,7 +335,7 @@ public:
     LocationAttr directLoc;
     if (parseLocation(directLoc))
       return failure();
-    owner->setLoc(directLoc);
+    loc = directLoc;
     return success();
   }
 
@@ -349,8 +403,263 @@ ParseResult Parser::parseCommaSeparatedListUntil(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// DialectAsmParser
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class provides the main implementation of the DialectAsmParser that
+/// allows for dialects to parse attributes and types. This allows for dialect
+/// hooking into the main MLIR parsing logic.
+class CustomDialectAsmParser : public DialectAsmParser {
+public:
+  CustomDialectAsmParser(StringRef fullSpec, Parser &parser)
+      : fullSpec(fullSpec), nameLoc(parser.getToken().getLoc()),
+        parser(parser) {}
+  ~CustomDialectAsmParser() override {}
+
+  /// Emit a diagnostic at the specified location and return failure.
+  InFlightDiagnostic emitError(llvm::SMLoc loc, const Twine &message) override {
+    return parser.emitError(loc, message);
+  }
+
+  /// Return a builder which provides useful access to MLIRContext, global
+  /// objects like types and attributes.
+  Builder &getBuilder() const override { return parser.builder; }
+
+  /// Get the location of the next token and store it into the argument.  This
+  /// always succeeds.
+  llvm::SMLoc getCurrentLocation() override {
+    return parser.getToken().getLoc();
+  }
+
+  /// Return the location of the original name token.
+  llvm::SMLoc getNameLoc() const override { return nameLoc; }
+
+  /// Re-encode the given source location as an MLIR location and return it.
+  Location getEncodedSourceLoc(llvm::SMLoc loc) override {
+    return parser.getEncodedSourceLocation(loc);
+  }
+
+  /// Returns the full specification of the symbol being parsed. This allows
+  /// for using a separate parser if necessary.
+  StringRef getFullSymbolSpec() const override { return fullSpec; }
+
+  /// Parse a floating point value from the stream.
+  ParseResult parseFloat(double &result) override {
+    bool negative = parser.consumeIf(Token::minus);
+    Token curTok = parser.getToken();
+
+    // Check for a floating point value.
+    if (curTok.is(Token::floatliteral)) {
+      auto val = curTok.getFloatingPointValue();
+      if (!val.hasValue())
+        return emitError(curTok.getLoc(), "floating point value too large");
+      parser.consumeToken(Token::floatliteral);
+      result = negative ? -*val : *val;
+      return success();
+    }
+
+    // TODO(riverriddle) support hex floating point values.
+    return emitError(getCurrentLocation(), "expected floating point literal");
+  }
+
+  /// Parse an optional integer value from the stream.
+  OptionalParseResult parseOptionalInteger(uint64_t &result) override {
+    Token curToken = parser.getToken();
+    if (curToken.isNot(Token::integer, Token::minus))
+      return llvm::None;
+
+    bool negative = parser.consumeIf(Token::minus);
+    Token curTok = parser.getToken();
+    if (parser.parseToken(Token::integer, "expected integer value"))
+      return failure();
+
+    auto val = curTok.getUInt64IntegerValue();
+    if (!val)
+      return emitError(curTok.getLoc(), "integer value too large");
+    result = negative ? -*val : *val;
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Token Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a `->` token.
+  ParseResult parseArrow() override {
+    return parser.parseToken(Token::arrow, "expected '->'");
+  }
+
+  /// Parses a `->` if present.
+  ParseResult parseOptionalArrow() override {
+    return success(parser.consumeIf(Token::arrow));
+  }
+
+  /// Parse a '{' token.
+  ParseResult parseLBrace() override {
+    return parser.parseToken(Token::l_brace, "expected '{'");
+  }
+
+  /// Parse a `}` token.
+  ParseResult parseRBrace() override {
+    return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `:` token.
+  ParseResult parseColon() override {
+    return parser.parseToken(Token::colon, "expected ':'");
+  }
+
+  /// Parse a `:` token if present.
+  ParseResult parseOptionalColon() override {
+    return success(parser.consumeIf(Token::colon));
+  }
+
+  /// Parse a `,` token.
+  ParseResult parseComma() override {
+    return parser.parseToken(Token::comma, "expected ','");
+  }
+
+  /// Parse a `,` token if present.
+  ParseResult parseOptionalComma() override {
+    return success(parser.consumeIf(Token::comma));
+  }
+
+  /// Parses a `...` if present.
+  ParseResult parseOptionalEllipsis() override {
+    return success(parser.consumeIf(Token::ellipsis));
+  }
+
+  /// Parse a `=` token.
+  ParseResult parseEqual() override {
+    return parser.parseToken(Token::equal, "expected '='");
+  }
+
+  /// Parse a '<' token.
+  ParseResult parseLess() override {
+    return parser.parseToken(Token::less, "expected '<'");
+  }
+
+  /// Parse a `<` token if present.
+  ParseResult parseOptionalLess() override {
+    return success(parser.consumeIf(Token::less));
+  }
+
+  /// Parse a '>' token.
+  ParseResult parseGreater() override {
+    return parser.parseToken(Token::greater, "expected '>'");
+  }
+
+  /// Parse a `>` token if present.
+  ParseResult parseOptionalGreater() override {
+    return success(parser.consumeIf(Token::greater));
+  }
+
+  /// Parse a `(` token.
+  ParseResult parseLParen() override {
+    return parser.parseToken(Token::l_paren, "expected '('");
+  }
+
+  /// Parses a '(' if present.
+  ParseResult parseOptionalLParen() override {
+    return success(parser.consumeIf(Token::l_paren));
+  }
+
+  /// Parse a `)` token.
+  ParseResult parseRParen() override {
+    return parser.parseToken(Token::r_paren, "expected ')'");
+  }
+
+  /// Parses a ')' if present.
+  ParseResult parseOptionalRParen() override {
+    return success(parser.consumeIf(Token::r_paren));
+  }
+
+  /// Parse a `[` token.
+  ParseResult parseLSquare() override {
+    return parser.parseToken(Token::l_square, "expected '['");
+  }
+
+  /// Parses a '[' if present.
+  ParseResult parseOptionalLSquare() override {
+    return success(parser.consumeIf(Token::l_square));
+  }
+
+  /// Parse a `]` token.
+  ParseResult parseRSquare() override {
+    return parser.parseToken(Token::r_square, "expected ']'");
+  }
+
+  /// Parses a ']' if present.
+  ParseResult parseOptionalRSquare() override {
+    return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Returns if the current token corresponds to a keyword.
+  bool isCurrentTokenAKeyword() const {
+    return parser.getToken().is(Token::bare_identifier) ||
+           parser.getToken().isKeyword();
+  }
+
+  /// Parse the given keyword if present.
+  ParseResult parseOptionalKeyword(StringRef keyword) override {
+    // Check that the current token has the same spelling.
+    if (!isCurrentTokenAKeyword() || parser.getTokenSpelling() != keyword)
+      return failure();
+    parser.consumeToken();
+    return success();
+  }
+
+  /// Parse a keyword, if present, into 'keyword'.
+  ParseResult parseOptionalKeyword(StringRef *keyword) override {
+    // Check that the current token is a keyword.
+    if (!isCurrentTokenAKeyword())
+      return failure();
+
+    *keyword = parser.getTokenSpelling();
+    parser.consumeToken();
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an arbitrary attribute and return it in result.
+  ParseResult parseAttribute(Attribute &result, Type type) override {
+    result = parser.parseAttribute(type);
+    return success(static_cast<bool>(result));
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Type Parsing
+  //===--------------------------------------------------------------------===//
+
+  ParseResult parseType(Type &result) override {
+    result = parser.parseType();
+    return success(static_cast<bool>(result));
+  }
+
+  ParseResult parseDimensionList(SmallVectorImpl<int64_t> &dimensions,
+                                 bool allowDynamic) override {
+    return parser.parseDimensionListRanked(dimensions, allowDynamic);
+  }
+
+private:
+  /// The full symbol specification.
+  StringRef fullSpec;
+
+  /// The source location of the dialect symbol.
+  SMLoc nameLoc;
+
+  /// The main parser.
+  Parser &parser;
+};
+} // namespace
+
 /// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
-/// and may be recursive.  Return with the 'prettyName' StringRef encompasing
+/// and may be recursive.  Return with the 'prettyName' StringRef encompassing
 /// the entire pretty name.
 ///
 ///   pretty-dialect-sym-body ::= '<' pretty-dialect-sym-contents+ '>'
@@ -462,7 +771,7 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
       return (p.emitError("expected string literal data in dialect symbol"),
               nullptr);
     symbolData = p.getToken().getStringValue();
-    loc = p.getToken().getLoc();
+    loc = llvm::SMLoc::getFromPointer(p.getToken().getLoc().getPointer() + 1);
     p.consumeToken(Token::string);
 
     // Consume the '>'.
@@ -474,6 +783,7 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
     auto dotHalves = identifier.split('.');
     dialectName = dotHalves.first;
     auto prettyName = dotHalves.second;
+    loc = llvm::SMLoc::getFromPointer(prettyName.data());
 
     // If the dialect's symbol is followed immediately by a <, then lex the body
     // of it into prettyName.
@@ -486,9 +796,50 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
     symbolData = prettyName.str();
   }
 
+  // Record the name location of the type remapped to the top level buffer.
+  llvm::SMLoc locInTopLevelBuffer = p.remapLocationToTopLevelBuffer(loc);
+  p.getState().symbols.nestedParserLocs.push_back(locInTopLevelBuffer);
+
   // Call into the provided symbol construction function.
-  auto encodedLoc = p.getEncodedSourceLocation(loc);
-  return createSymbol(dialectName, symbolData, encodedLoc);
+  Symbol sym = createSymbol(dialectName, symbolData, loc);
+
+  // Pop the last parser location.
+  p.getState().symbols.nestedParserLocs.pop_back();
+  return sym;
+}
+
+/// Parses a symbol, of type 'T', and returns it if parsing was successful. If
+/// parsing failed, nullptr is returned. The number of bytes read from the input
+/// string is returned in 'numRead'.
+template <typename T, typename ParserFn>
+static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+                     SymbolState &symbolState, ParserFn &&parserFn,
+                     size_t *numRead = nullptr) {
+  SourceMgr sourceMgr;
+  auto memBuffer = MemoryBuffer::getMemBuffer(
+      inputStr, /*BufferName=*/"<mlir_parser_buffer>",
+      /*RequiresNullTerminator=*/false);
+  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
+  ParserState state(sourceMgr, context, symbolState);
+  Parser parser(state);
+
+  Token startTok = parser.getToken();
+  T symbol = parserFn(parser);
+  if (!symbol)
+    return T();
+
+  // If 'numRead' is valid, then provide the number of bytes that were read.
+  Token endTok = parser.getToken();
+  if (numRead) {
+    *numRead = static_cast<size_t>(endTok.getLoc().getPointer() -
+                                   startTok.getLoc().getPointer());
+
+    // Otherwise, ensure that all of the tokens were parsed.
+  } else if (startTok.getLoc() != endTok.getLoc() && endTok.isNot(Token::eof)) {
+    parser.emitError(endTok.getLoc(), "encountered unexpected token");
+    return T();
+  }
+  return symbol;
 }
 
 //===----------------------------------------------------------------------===//
@@ -496,13 +847,12 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
 //===----------------------------------------------------------------------===//
 
 InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
-  auto diag = mlir::emitError(getEncodedSourceLocation(loc), message);
-
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
-    diag.abandon();
-  return diag;
+    return InFlightDiagnostic();
+
+  return mlir::emitError(getEncodedSourceLocation(loc), message);
 }
 
 //===----------------------------------------------------------------------===//
@@ -612,16 +962,22 @@ Type Parser::parseComplexType() {
 ///
 Type Parser::parseExtendedType() {
   return parseExtendedSymbol<Type>(
-      *this, Token::exclamation_identifier, state.typeAliasDefinitions,
-      [&](StringRef dialectName, StringRef symbolData, Location loc) -> Type {
+      *this, Token::exclamation_identifier, state.symbols.typeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData,
+          llvm::SMLoc loc) -> Type {
         // If we found a registered dialect, then ask it to parse the type.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseType(symbolData, loc);
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName)) {
+          return parseSymbol<Type>(
+              symbolData, state.context, state.symbols, [&](Parser &parser) {
+                CustomDialectAsmParser customParser(symbolData, parser);
+                return dialect->parseType(customParser);
+              });
+        }
 
         // Otherwise, form a new opaque type.
         return OpaqueType::getChecked(
             Identifier::get(dialectName, state.context), symbolData,
-            state.context, loc);
+            state.context, getEncodedSourceLocation(loc));
       });
 }
 
@@ -1063,9 +1419,9 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseAffineMapOrIntegerSetReference(map, set))
       return nullptr;
     if (map)
-      return builder.getAffineMapAttr(map);
+      return AffineMapAttr::get(map);
     assert(set);
-    return builder.getIntegerSetAttr(set);
+    return IntegerSetAttr::get(set);
   }
 
   // Parse an array attribute.
@@ -1164,7 +1520,7 @@ Attribute Parser::parseAttribute(Type type) {
   default:
     // Parse a type attribute.
     if (Type type = parseType())
-      return builder.getTypeAttr(type);
+      return TypeAttr::get(type);
     return nullptr;
   }
 }
@@ -1177,7 +1533,7 @@ Attribute Parser::parseAttribute(Type type) {
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
-  if (!consumeIf(Token::l_brace))
+  if (parseToken(Token::l_brace, "expected '{' in attribute dictionary"))
     return failure();
 
   auto parseElt = [&]() -> ParseResult {
@@ -1218,22 +1574,28 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
 ///
 Attribute Parser::parseExtendedAttr(Type type) {
   Attribute attr = parseExtendedSymbol<Attribute>(
-      *this, Token::hash_identifier, state.attributeAliasDefinitions,
+      *this, Token::hash_identifier, state.symbols.attributeAliasDefinitions,
       [&](StringRef dialectName, StringRef symbolData,
-          Location loc) -> Attribute {
+          llvm::SMLoc loc) -> Attribute {
         // Parse an optional trailing colon type.
         Type attrType = type;
         if (consumeIf(Token::colon) && !(attrType = parseType()))
           return Attribute();
 
         // If we found a registered dialect, then ask it to parse the attribute.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseAttribute(symbolData, attrType, loc);
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName)) {
+          return parseSymbol<Attribute>(
+              symbolData, state.context, state.symbols, [&](Parser &parser) {
+                CustomDialectAsmParser customParser(symbolData, parser);
+                return dialect->parseAttribute(customParser, attrType);
+              });
+        }
 
         // Otherwise, form a new opaque attribute.
         return OpaqueAttr::getChecked(
             Identifier::get(dialectName, state.context), symbolData,
-            attrType ? attrType : NoneType::get(state.context), loc);
+            attrType ? attrType : NoneType::get(state.context),
+            getEncodedSourceLocation(loc));
       });
 
   // Ensure that the attribute has the same type as requested.
@@ -1381,7 +1743,7 @@ Attribute Parser::parseOpaqueElementsAttr() {
   if (!type)
     return nullptr;
 
-  return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
+  return OpaqueElementsAttr::get(dialect, type, llvm::fromHex(val));
 }
 
 namespace {
@@ -2496,8 +2858,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
   if (exprs.empty())
     map = AffineMap();
   else
-    map = builder.getAffineMap(numDimOperands,
-                               dimsAndSymbols.size() - numDimOperands, exprs);
+    map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
+                         exprs);
   return success();
 }
 
@@ -2525,7 +2887,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
     return AffineMap();
 
   // Parsed a valid affine map.
-  return builder.getAffineMap(numDims, numSymbols, exprs);
+  return AffineMap::get(numDims, numSymbols, exprs);
 }
 
 /// Parse an affine constraint.
@@ -2600,11 +2962,11 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   if (constraints.empty()) {
     /* 0 == 0 */
     auto zero = getAffineConstantExpr(0, getContext());
-    return builder.getIntegerSet(numDims, numSymbols, zero, true);
+    return IntegerSet::get(numDims, numSymbols, zero, true);
   }
 
   // Parsed a valid integer set.
-  return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
+  return IntegerSet::get(numDims, numSymbols, constraints, isEqs);
 }
 
 /// Parse an ambiguous reference to either and affine map or an integer set.
@@ -2815,7 +3177,7 @@ private:
 
   /// This keeps track of the block names as well as the location of the first
   /// reference for each nested name scope. This is used to diagnose invalid
-  /// block references and memoize them.
+  /// block references and memorize them.
   SmallVector<DenseMap<StringRef, std::pair<Block *, SMLoc>>, 2> blocksByName;
   SmallVector<DenseMap<Block *, SMLoc>, 2> forwardRef;
 
@@ -3115,43 +3477,40 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();
-  SmallVector<std::pair<StringRef, SMLoc>, 1> resultIDs;
-  size_t numExpectedResults;
+  SmallVector<std::tuple<StringRef, unsigned, SMLoc>, 1> resultIDs;
+  size_t numExpectedResults = 0;
   if (getToken().is(Token::percent_identifier)) {
-    // Parse the first result id.
-    resultIDs.emplace_back(getTokenSpelling(), loc);
-    consumeToken(Token::percent_identifier);
+    // Parse the group of result ids.
+    auto parseNextResult = [&]() -> ParseResult {
+      // Parse the next result id.
+      if (!getToken().is(Token::percent_identifier))
+        return emitError("expected valid ssa identifier");
 
-    // If the next token is a ':', we parse the expected result count.
-    if (consumeIf(Token::colon)) {
-      // Check that the next token is an integer.
-      if (!getToken().is(Token::integer))
-        return emitError("expected integer number of results");
+      Token nameTok = getToken();
+      consumeToken(Token::percent_identifier);
 
-      // Check that number of results is > 0.
-      auto val = getToken().getUInt64IntegerValue();
-      if (!val.hasValue() || val.getValue() < 1)
-        return emitError("expected named operation to have atleast 1 result");
-      consumeToken(Token::integer);
-      numExpectedResults = *val;
-    } else {
-      // Otherwise, this is a comma separated list of result ids.
-      if (consumeIf(Token::comma)) {
-        auto parseNextResult = [&]() -> ParseResult {
-          // Parse the next result id.
-          if (!getToken().is(Token::percent_identifier))
-            return emitError("expected valid ssa identifier");
+      // If the next token is a ':', we parse the expected result count.
+      size_t expectedSubResults = 1;
+      if (consumeIf(Token::colon)) {
+        // Check that the next token is an integer.
+        if (!getToken().is(Token::integer))
+          return emitError("expected integer number of results");
 
-          resultIDs.emplace_back(getTokenSpelling(), getToken().getLoc());
-          consumeToken(Token::percent_identifier);
-          return success();
-        };
-
-        if (parseCommaSeparatedList(parseNextResult))
-          return failure();
+        // Check that number of results is > 0.
+        auto val = getToken().getUInt64IntegerValue();
+        if (!val.hasValue() || val.getValue() < 1)
+          return emitError("expected named operation to have atleast 1 result");
+        consumeToken(Token::integer);
+        expectedSubResults = *val;
       }
-      numExpectedResults = resultIDs.size();
-    }
+
+      resultIDs.emplace_back(nameTok.getSpelling(), expectedSubResults,
+                             nameTok.getLoc());
+      numExpectedResults += expectedSubResults;
+      return success();
+    };
+    if (parseCommaSeparatedList(parseNextResult))
+      return failure();
 
     if (parseToken(Token::equal, "expected '=' after SSA name"))
       return failure();
@@ -3178,25 +3537,16 @@ ParseResult OperationParser::parseOperation() {
              << op->getNumResults() << " results but was provided "
              << numExpectedResults << " to bind";
 
-    // If the number of result names matches the number of operation results, we
-    // can directly use the provided names.
-    if (resultIDs.size() == op->getNumResults()) {
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
-                          op->getResult(i)))
+    // Add definitions for each of the result groups.
+    unsigned opResI = 0;
+    for (std::tuple<StringRef, unsigned, SMLoc> &resIt : resultIDs) {
+      for (unsigned subRes : llvm::seq<unsigned>(0, std::get<1>(resIt))) {
+        if (addDefinition({std::get<0>(resIt), subRes, std::get<2>(resIt)},
+                          op->getResult(opResI++)))
           return failure();
-    } else {
-      // Otherwise, we use the same name for all results.
-      StringRef name = resultIDs.front().first;
-      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-        if (addDefinition({name, i, loc}, op->getResult(i)))
-          return failure();
+      }
     }
   }
-
-  // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(op))
-    return failure();
 
   return success();
 }
@@ -3250,7 +3600,7 @@ ParseResult OperationParser::parseSuccessors(
 namespace {
 // RAII-style guard for cleaning up the regions in the operation state before
 // deleting them.  Within the parser, regions may get deleted if parsing failed,
-// and other errors may be present, in praticular undominated uses.  This makes
+// and other errors may be present, in particular undominated uses.  This makes
 // sure such uses are deleted.
 struct CleanupOpStateRegions {
   ~CleanupOpStateRegions() {
@@ -3352,12 +3702,16 @@ Operation *OperationParser::parseGenericOperation() {
       return nullptr;
   }
 
-  // Add the sucessors, and their operands after the proper operands.
+  // Add the successors, and their operands after the proper operands.
   for (const auto &succ : llvm::zip(successors, successorOperands)) {
     Block *successor = std::get<0>(succ);
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
     result.addSuccessor(successor, operands);
   }
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(result.location))
+    return nullptr;
 
   return opBuilder.createOperation(result);
 }
@@ -3514,8 +3868,17 @@ public:
 
   /// Parse a named dictionary into 'result' if it is present.
   ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
+      return success();
+    return parser.parseAttributeDict(result);
+  }
+
+  /// Parse a named dictionary into 'result' if the `attributes` keyword is
+  /// present.
+  ParseResult parseOptionalAttrDictWithKeyword(
+      SmallVectorImpl<NamedAttribute> &result) override {
+    if (failed(parseOptionalKeyword("attributes")))
       return success();
     return parser.parseAttributeDict(result);
   }
@@ -3715,7 +4078,7 @@ public:
       return failure();
     // Add AffineMap attribute.
     if (map) {
-      mapAttr = parser.builder.getAffineMapAttr(map);
+      mapAttr = AffineMapAttr::get(map);
       attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
     }
 
@@ -3730,7 +4093,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
-  /// effectively defines the SSA values of `arguments` and assignes their type.
+  /// effectively defines the SSA values of `arguments` and assigns their type.
   ParseResult parseRegion(Region &region, ArrayRef<OperandType> arguments,
                           ArrayRef<Type> argTypes,
                           bool enableNameShadowing) override {
@@ -3891,6 +4254,10 @@ Operation *OperationParser::parseCustomOperation() {
 
   // If it emitted an error, we failed.
   if (opAsmParser.didEmitError())
+    return nullptr;
+
+  // Parse a location if one is present.
+  if (parseOptionalTrailingLocation(opState.location))
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
@@ -4142,7 +4509,7 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
   StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().attributeAliasDefinitions.count(aliasName) > 0)
+  if (getState().symbols.attributeAliasDefinitions.count(aliasName) > 0)
     return emitError("redefinition of attribute alias id '" + aliasName + "'");
 
   // Make sure this isn't invading the dialect attribute namespace.
@@ -4161,7 +4528,7 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
   if (!attr)
     return failure();
 
-  getState().attributeAliasDefinitions[aliasName] = attr;
+  getState().symbols.attributeAliasDefinitions[aliasName] = attr;
   return success();
 }
 
@@ -4174,7 +4541,7 @@ ParseResult ModuleParser::parseTypeAliasDef() {
   StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().typeAliasDefinitions.count(aliasName) > 0)
+  if (getState().symbols.typeAliasDefinitions.count(aliasName) > 0)
     return emitError("redefinition of type alias id '" + aliasName + "'");
 
   // Make sure this isn't invading the dialect type namespace.
@@ -4195,7 +4562,7 @@ ParseResult ModuleParser::parseTypeAliasDef() {
     return failure();
 
   // Register this alias with the parser state.
-  getState().typeAliasDefinitions.try_emplace(aliasName, aliasedType);
+  getState().symbols.typeAliasDefinitions.try_emplace(aliasName, aliasedType);
   return success();
 }
 
@@ -4274,7 +4641,8 @@ OwningModuleRef mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
   OwningModuleRef module(ModuleOp::create(FileLineColLoc::get(
       sourceBuf->getBufferIdentifier(), /*line=*/0, /*column=*/0, context)));
 
-  ParserState state(sourceMgr, context);
+  SymbolState aliasState;
+  ParserState state(sourceMgr, context, aliasState);
   if (ModuleParser(state).parseModule(*module))
     return nullptr;
 
@@ -4333,28 +4701,53 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
   return parseSourceFile(sourceMgr, context);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
-                     size_t &numRead) {
-  SourceMgr sourceMgr;
-  auto memBuffer =
-      MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
-                                 /*RequiresNullTerminator=*/false);
-  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
-  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
-  ParserState state(sourceMgr, context);
-  Parser parser(state);
+/// Parses a symbol, of type 'T', and returns it if parsing was successful. If
+/// parsing failed, nullptr is returned. The number of bytes read from the input
+/// string is returned in 'numRead'.
+template <typename T, typename ParserFn>
+static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+                     size_t &numRead, ParserFn &&parserFn) {
+  SymbolState aliasState;
+  return parseSymbol<T>(
+      inputStr, context, aliasState,
+      [&](Parser &parser) {
+        SourceMgrDiagnosticHandler handler(
+            const_cast<llvm::SourceMgr &>(parser.getSourceMgr()),
+            parser.getContext());
+        return parserFn(parser);
+      },
+      &numRead);
+}
 
-  auto start = parser.getToken().getLoc();
-  auto ty = parser.parseType();
-  if (!ty)
-    return Type();
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, context, numRead);
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type) {
+  size_t numRead = 0;
+  return parseAttribute(attrStr, type, numRead);
+}
 
-  auto end = parser.getToken().getLoc();
-  numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
-  return ty;
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(attrStr, context, numRead, [](Parser &parser) {
+    return parser.parseAttribute();
+  });
+}
+Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type,
+                               size_t &numRead) {
+  return parseSymbol<Attribute>(
+      attrStr, type.getContext(), numRead,
+      [type](Parser &parser) { return parser.parseAttribute(type); });
 }
 
 Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseType(typeStr, context, numRead);
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
+                     size_t &numRead) {
+  return parseSymbol<Type>(typeStr, context, numRead,
+                           [](Parser &parser) { return parser.parseType(); });
 }

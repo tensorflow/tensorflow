@@ -127,7 +127,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       expected_shape = shape
     self.assertEqual(struct.shape.as_list(), expected_shape)
     self.assertLen(expected_shape, struct.rank)
-    self.assertEqual(struct.field_names(), tuple(fields.keys()))
+    self.assertCountEqual(struct.field_names(), tuple(fields.keys()))
     self.assertEqual(struct.ragged_rank, expected_ragged_rank)
     for field, value in fields.items():
       self.assertIsInstance(
@@ -202,7 +202,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     else:
       self.assertEqual(struct.shape.as_list(), expected_shape)
     self.assertEqual(struct.shape.rank, struct.rank)
-    self.assertEqual(struct.field_names(), tuple(fields.keys()))
+    self.assertCountEqual(struct.field_names(), tuple(fields.keys()))
     for field, value in fields.items():
       self.assertIsInstance(
           struct.field_value(field),

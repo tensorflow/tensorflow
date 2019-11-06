@@ -63,7 +63,7 @@ xla_proto_library(
     srcs = ["tf2xla.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -75,7 +75,7 @@ tf_portable_proto_library(
     portable_deps = ["//tensorflow/core:android_proto_lib"],
     proto_deps = [
         ":tf2xla_proto",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )
@@ -93,7 +93,7 @@ xla_proto_library(
     srcs = ["host_compute_metadata.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -706,6 +706,7 @@ tf_cc_test(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -713,10 +714,14 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:resource_variable_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

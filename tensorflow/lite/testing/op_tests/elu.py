@@ -38,7 +38,7 @@ def make_elu_tests(options):
   def build_graph(parameters):
     """Build the graph for the test case."""
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.nn.elu(input_tensor)
     return [input_tensor], [out]

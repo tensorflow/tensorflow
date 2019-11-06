@@ -36,9 +36,9 @@ def _make_logical_tests(op):
 
     def build_graph(parameters):
       """Build the logical testing graph."""
-      input_value1 = tf.placeholder(
+      input_value1 = tf.compat.v1.placeholder(
           dtype=tf.bool, name="input1", shape=parameters["input_shape_pair"][0])
-      input_value2 = tf.placeholder(
+      input_value2 = tf.compat.v1.placeholder(
           dtype=tf.bool, name="input2", shape=parameters["input_shape_pair"][1])
       out = op(input_value1, input_value2)
       return [input_value1, input_value2], [out]
@@ -76,4 +76,5 @@ def make_logical_and_tests(options):
 @register_make_test_function()
 def make_logical_xor_tests(options):
   """Make a set of tests to do logical_xor, test logical_not as well."""
-  return _make_logical_tests(tf.logical_xor)(options, expected_tf_failures=1)
+  return _make_logical_tests(tf.math.logical_xor)(
+      options, expected_tf_failures=1)

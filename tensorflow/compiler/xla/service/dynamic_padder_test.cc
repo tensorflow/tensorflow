@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -220,10 +219,8 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
     std::unique_ptr<HloModule> module =
-        ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
@@ -559,6 +556,30 @@ ENTRY main {
 
   // Only the first 6 elements will be reduced.
   Literal expected = LiteralUtil::CreateR0<int32>(18);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, SliceSingleElement) {
+  // Slicing out a single element is supported.
+  const string hlo_text = R"(
+HloModule Slicing
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  ROOT slice = s32[1]{0} slice(param_padded), slice={[0:1]}
+}
+)";
+
+  // The dynamic dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR1<int32>({0});
 
   EXPECT_EQ(result, expected);
 }

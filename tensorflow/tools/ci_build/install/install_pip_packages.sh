@@ -87,8 +87,9 @@ pip2 install pandas==0.19.2
 pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
-pip2 install psutil
-pip3 install psutil
+# 5.6.4 fails to pip2 install. TODO(b/143872855): remove pinning once fixed.
+pip2 install psutil==5.6.3
+pip3 install psutil==5.6.3
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
@@ -121,8 +122,8 @@ pip3 install --upgrade termcolor
 # Keras
 pip2 install keras_applications==1.0.8 --no-deps
 pip3 install keras_applications==1.0.8 --no-deps
-pip2 install keras_preprocessing==1.0.5 --no-deps
-pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install keras_preprocessing==1.1.0 --no-deps
+pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 

@@ -44,19 +44,21 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm) {
+  OpPassManager &func_pm = pm.nest<FuncOp>();
+
   // First operates on the executor dialect:
   // - eliminate trivial switch/merge
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
-  pm.addPass(tf_executor::CreateSwitchFoldPass());
-  pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  pm.addPass(CreateMaterializePassthroughOpPass());
+  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
+  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  func_pm.addPass(CreateMaterializePassthroughOpPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(CreateTFOptimizePass());
-  pm.addPass(createCSEPass());
+  func_pm.addPass(createCanonicalizerPass());
+  func_pm.addPass(CreateTFOptimizePass());
+  func_pm.addPass(createCSEPass());
 }
 
 }  // namespace

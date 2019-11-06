@@ -23,6 +23,170 @@ namespace {
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
 }  // namespace
 
+float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
+    const HloInstruction& instruction) const {
+  return std::max(
+      cost_analysis_.flop_count(instruction) /
+          cost_analysis_.per_second_rate(HloCostAnalysis::kFlopsKey),
+      cost_analysis_.transcendental_count(instruction) /
+          cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
+    const HloInstruction& instruction,
+    absl::optional<int64> operand_in_alternate_mem,
+    bool output_in_alternate_mem) const {
+  float bytes_accessed = cost_analysis_.bytes_accessed(instruction);
+  VLOG(4) << "  bytes_accessed = " << bytes_accessed;
+  float elapsed_due_to_bytes =
+      bytes_accessed /
+      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+  if (operand_in_alternate_mem) {
+    // Estimate the elapsed time due to the operand being in the alternate
+    // memory space.
+    float operand_bytes_accessed = cost_analysis_.operand_bytes_accessed(
+        instruction, *operand_in_alternate_mem);
+    float elapsed_due_to_operand_bytes =
+        operand_bytes_accessed / alternate_mem_bandwidth_bytes_per_second_;
+    bytes_accessed -= operand_bytes_accessed;
+    elapsed_due_to_bytes =
+        elapsed_due_to_operand_bytes +
+        bytes_accessed /
+            cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+  }
+  if (output_in_alternate_mem) {
+    // Estimate the elapsed time due to the output being in the alternate memory
+    // space.
+    float output_bytes_accessed =
+        cost_analysis_.output_bytes_accessed(instruction);
+    float elapsed_due_to_output_bytes =
+        output_bytes_accessed / alternate_mem_bandwidth_bytes_per_second_;
+    bytes_accessed -= output_bytes_accessed;
+    elapsed_due_to_bytes =
+        elapsed_due_to_output_bytes +
+        bytes_accessed /
+            cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+  }
+  return elapsed_due_to_bytes;
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
+    const HloInstruction& instruction,
+    absl::optional<int64> operand_in_alternate_mem,
+    bool output_in_alternate_mem) const {
+  return std::max(
+      GetInstructionElapsedDueToCompute(instruction),
+      GetInstructionElapsedDueToMemory(instruction, operand_in_alternate_mem,
+                                       output_in_alternate_mem));
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
+    const Shape& shape) const {
+  int64 size_in_bytes = cost_analysis_.GetShapeSize(shape);
+  return static_cast<float>(size_in_bytes) /
+         async_copy_bandwidth_bytes_per_second_;
+}
+
+bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
+    const Shape& shape, int64 start_time, int64 end_time) const {
+  return end_time - start_time <= max_overlap_count_;
+}
+
+void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
+                                                   int64 start_time,
+                                                   int64 end_time) {
+  end_time_ = end_time;
+  current_prefetch_time_ = std::max(start_time, end_time_ - max_overlap_count_);
+}
+
+int64 InstructionCountPrefetchIntervalPicker::Next() {
+  CHECK(!Done()) << "Prefetch interval picker's Next() is called even though "
+                    "Done() is false";
+  return current_prefetch_time_++;
+}
+
+bool InstructionCountPrefetchIntervalPicker::Done() const {
+  return end_time_ - current_prefetch_time_ <= min_overlap_count_;
+}
+
+void CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule(
+    const absl::flat_hash_map<const HloInstruction*, int64>&
+        instruction_schedule) {
+  // First create a vector of elapsed times of HLO instructions.
+  std::vector<float> instructions_elapsed_time(instruction_schedule.size(),
+                                               0.0);
+
+  for (const auto& instruction_and_logical_time : instruction_schedule) {
+    float elapsed_time = cost_analysis_.cost_analysis().optimal_seconds(
+        *instruction_and_logical_time.first);
+    int64 logical_time = instruction_and_logical_time.second;
+    if (logical_time >= instructions_elapsed_time.size()) {
+      instructions_elapsed_time.resize(logical_time + 1, 0.0);
+    }
+    instructions_elapsed_time[logical_time] = elapsed_time;
+    VLOG(4) << "Elapsed time in seconds [" << logical_time
+            << "] = " << elapsed_time;
+  }
+  // As an optimization, create a cumulative sum vector of elapsed time.
+  float cumsum = 0.0;
+  for (float elapsed_time : instructions_elapsed_time) {
+    cumsum += elapsed_time;
+    elapsed_time_cumsum_.push_back(cumsum);
+  }
+}
+
+bool CostAnalysisPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
+    const Shape& shape, int64 start_time, int64 end_time) const {
+  // Even though this method returns if we allow the buffer in alternate memory
+  // _without_ asynchronous copies, calculate how long it would have taken to
+  // copy it and compare it to the elapsed time in the logical interval.
+  float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
+  float logical_interval_elapsed =
+      GetLogicalIntervalElapsed(start_time, end_time);
+  return max_async_copy_to_overlap_ratio_ * async_copy_elapsed >
+         logical_interval_elapsed;
+}
+
+void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
+                                               int64 start_time,
+                                               int64 end_time) {
+  const Shape& shape = use.instruction->operand(use.operand_number)->shape();
+  // Find the earliest time that satisfies max_async_copy_to_overlap_ratio_.
+  async_copy_elapsed_ = cost_analysis_.GetAsyncCopyElapsed(shape);
+  // Estimate the time we would save by having this op in alternate memory.
+  float elapsed_time = cost_analysis_.GetInstructionElapsed(*use.instruction);
+  float elapsed_time_in_alternate_mem = cost_analysis_.GetInstructionElapsed(
+      *use.instruction, use.operand_number);
+  inst_elapsed_reduction_ = elapsed_time - elapsed_time_in_alternate_mem;
+  end_logical_time_ = end_time;
+  // Find the earliest time we're allowed to start prefetching.
+  for (current_logical_prefetch_time_ = start_time;
+       max_async_copy_to_overlap_ratio_ * async_copy_elapsed_ <
+       GetLogicalIntervalElapsed(current_logical_prefetch_time_,
+                                 end_logical_time_);
+       ++current_logical_prefetch_time_) {
+  }
+}
+
+int64 CostAnalysisPrefetchIntervalPicker::Next() {
+  CHECK(!Done()) << "Prefetch interval picker's Next() is called even though "
+                    "Done() is false";
+  return current_logical_prefetch_time_++;
+}
+
+bool CostAnalysisPrefetchIntervalPicker::Done() const {
+  float logical_interval_elapsed = GetLogicalIntervalElapsed(
+      current_logical_prefetch_time_, end_logical_time_);
+  return min_async_copy_to_overlap_ratio_ * async_copy_elapsed_ -
+             inst_elapsed_reduction_ >
+         logical_interval_elapsed;
+}
+
+float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
+    int64 start_time, int64 end_time) const {
+  return elapsed_time_cumsum_[end_time - 1] - elapsed_time_cumsum_[start_time];
+}
+
 std::vector<const GlobalDecreasingSizeBestFitHeap::BufferInterval*>
 AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
@@ -49,11 +213,11 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       GetSortedBufferIntervals();
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
-          << max_size_in_bytes_
-          << ", min prefetch interval = " << min_prefetch_interval_
-          << ", max prefetch interval = " << max_prefetch_interval_;
+          << max_size_in_bytes_;
 
   AddInputAndOutputRequiredAssignments();
+  prefetch_interval_picker_->SetInstructionSchedule(
+      hlo_live_range_.instruction_schedule());
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
@@ -244,8 +408,6 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = buffer;
   alternate_mem_interval.size = size;
-  alternate_mem_interval.start =
-      std::max(start_time, end_time - max_prefetch_interval_);
   alternate_mem_interval.end = end_time;
 
   VLOG(2) << "Finding allocation for " << buffer->ToShortString() << " ("
@@ -286,15 +448,10 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
   }
 
-  // First try keeping the allocation entirely in the alternate memory.
-  if (!definition_requires_buffer_in_default_mem &&
-      !use_requires_buffer_in_default_mem &&
-      TryAllocatingInAlternateMemoryNoCopy(
-          start_time, end_time, last_use_time, defining_position, use,
-          alternate_mem_interval, non_bitcast_operand, allocations)) {
-    return true;
-  }
-
+  // TODO(berkin): This is curently overly restrictive and will fail using
+  // alternate memory for any buffer that might leak into a different
+  // computation (e.g., while body). Enable more usage of alternate memory
+  // across computations.
   if (defining_position.instruction->parent() != use.instruction->parent() ||
       (!use.instruction->called_computations().empty() &&
        use.instruction->opcode() != HloOpcode::kFusion)) {
@@ -302,6 +459,15 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     // Fail because we do not allow asynchronous copies while in the bodies of
     // other computation.
     return false;
+  }
+
+  // First try keeping the allocation entirely in the alternate memory.
+  if (!definition_requires_buffer_in_default_mem &&
+      !use_requires_buffer_in_default_mem &&
+      TryAllocatingInAlternateMemoryNoCopy(
+          start_time, end_time, last_use_time, defining_position, use,
+          alternate_mem_interval, non_bitcast_operand, allocations)) {
+    return true;
   }
 
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
@@ -395,11 +561,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   //                                     ^      ^
   //                                   Copy    Copy
   //                                   Start   Done
-  for (alternate_mem_interval.start =
-           std::max(start_time, end_time - max_prefetch_interval_);
-       alternate_mem_interval.end - alternate_mem_interval.start >
-       min_prefetch_interval_;
-       ++alternate_mem_interval.start) {
+  prefetch_interval_picker_->Begin(use, start_time, end_time);
+  while (!prefetch_interval_picker_->Done()) {
+    alternate_mem_interval.start = prefetch_interval_picker_->Next();
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", "
             << alternate_mem_interval.end << ")";
@@ -499,9 +663,12 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     return false;
   }
 
-  if (alternate_mem_interval.start != start_time) {
+  if (!prefetch_interval_picker_->CanAllocateInAlternateMemoryNoCopy(
+          non_bitcast_operand->shape(), start_time, end_time)) {
     return false;
   }
+
+  alternate_mem_interval.start = start_time;
 
   // Prefer the offset that was previously used for the previous allocation.
   int64 preferred_offset = -1;
@@ -584,10 +751,72 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   return max_copies;
 }
 
+/*static*/ MemorySpaceAssignment::BufferIntervalCompare
+MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis) {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    // Returns a heuristic value that captures how much putting this tensor to
+    // the alternate memory would help if the op is memory bound, or otherwise
+    // how far off is the op to memory boundedness. The larger this number, the
+    // higher priority it will be placed in the alternate memory.
+    auto get_alternate_mem_benefit =
+        [&](const HloInstruction& instruction,
+            float elapsed_time_due_to_alternate_mem) {
+          float elapsed_time_due_to_compute =
+              cost_analysis.GetInstructionElapsedDueToCompute(instruction);
+          float elapsed_time_due_to_memory =
+              cost_analysis.GetInstructionElapsedDueToMemory(instruction);
+          if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
+            // Memory bound, return how much alternate memory is better.
+            return elapsed_time_due_to_memory -
+                   elapsed_time_due_to_alternate_mem;
+          } else {
+            // Compute bound, return how far off are we to memory boundedness.
+            return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
+          }
+        };
+
+    auto get_memory_boundedness = [&](const BufferInterval& interval) {
+      const HloInstruction& defining_instruction =
+          *interval.buffer->defining_instruction();
+      float alternate_mem_benefit = get_alternate_mem_benefit(
+          defining_instruction, cost_analysis.GetInstructionElapsedDueToMemory(
+                                    defining_instruction,
+                                    /*operand_in_alternate_mem=*/{},
+                                    /*output_in_alternate_mem=*/true));
+      for (const HloUse& use : interval.buffer->uses()) {
+        float use_alternate_mem_benefit = get_alternate_mem_benefit(
+            *use.instruction, cost_analysis.GetInstructionElapsedDueToMemory(
+                                  *use.instruction, use.operand_number));
+        // If the benefit is positive (memory bound), add it to this buffer's
+        // benefit. If the benefit is negative (compute bound), calculate the
+        // maximum.
+        if (alternate_mem_benefit > 0 && use_alternate_mem_benefit > 0) {
+          alternate_mem_benefit += use_alternate_mem_benefit;
+        } else {
+          alternate_mem_benefit =
+              std::max(alternate_mem_benefit, use_alternate_mem_benefit);
+        }
+      }
+      return alternate_mem_benefit;
+    };
+
+    float x_memory_boundedness = get_memory_boundedness(x);
+    float y_memory_boundedness = get_memory_boundedness(y);
+    if (x_memory_boundedness != y_memory_boundedness) {
+      return x_memory_boundedness > y_memory_boundedness;
+    }
+    // Tie-break if the memory boundedness is the same.
+    return GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare()(
+        x, y);
+  };
+}
+
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(
     HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-    int64 min_prefetch_interval, int64 max_prefetch_interval,
+    absl::optional<BufferIntervalCompare> buffer_interval_compare,
+    PrefetchIntervalPicker* prefetch_interval_picker,
     int64 alternate_memory_space_alignment_in_bytes,
     BufferValue::SizeFunction size_fn,
     AlternateMemoryBestFitHeap::IsAllowedInAlternateMemoryFunction
@@ -604,14 +833,12 @@ MemorySpaceAssignment::Run(
   TF_ASSIGN_OR_RETURN(memory_space_assignment.hlo_live_range_,
                       HloLiveRange::Run(module->schedule(), *alias_analysis,
                                         entry_computation));
-  // TODO(berkin): Explore heap algorithms other than kSpatial.
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_map_, max_size_in_bytes,
-      min_prefetch_interval, max_prefetch_interval, *alias_analysis,
+      buffer_interval_compare, prefetch_interval_picker, *alias_analysis,
       *memory_space_assignment.hlo_live_range_,
-      alternate_memory_space_alignment_in_bytes,
-      GlobalDecreasingSizeBestFitHeap::Type::kSpatial,
-      is_allowed_in_alternate_mem, max_outstanding_async_copies);
+      alternate_memory_space_alignment_in_bytes, is_allowed_in_alternate_mem,
+      max_outstanding_async_copies);
 
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
                                         module->schedule(),
@@ -635,6 +862,13 @@ MemorySpaceAssignment::Run(
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
+  // If the use is a tuple, look inside the tuple to find the actual use.
+  for (int64 index : use.operand_index) {
+    if (operand->opcode() != HloOpcode::kTuple) {
+      break;
+    }
+    operand = operand->mutable_operand(index);
+  }
   // When the operand of a use is a bitcast, we place the bitcast in a separate
   // data structure.
   if (operand->opcode() == HloOpcode::kBitcast) {

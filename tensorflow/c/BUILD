@@ -151,7 +151,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:op_gen_lib",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
@@ -165,6 +165,9 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -230,7 +233,7 @@ cc_library(
             ":tf_tensor_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
         ],
     }),
 )

@@ -482,6 +482,7 @@ cc_library(
         "reverse.cc",
         "reverse_sequence.cc",
         "round.cc",
+        "scatter_nd.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -596,6 +597,7 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
+        ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -1141,6 +1143,20 @@ cc_test(
     name = "gather_nd_test",
     size = "small",
     srcs = ["gather_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "scatter_nd_test",
+    size = "small",
+    srcs = ["scatter_nd_test.cc"],
     deps = [
         ":builtin_ops",
         ":test_main",

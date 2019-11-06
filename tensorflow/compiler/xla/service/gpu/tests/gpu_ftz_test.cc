@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 
 // Check that the ftz (flush denormals to zero) flag is reflected in PTX as
 // expected.
@@ -28,7 +31,7 @@ class GpuFtzTest : public GpuCodegenTest {
 
   // Creates an HLO module that performs the given binary operation on some
   // data.
-  std::unique_ptr<HloModule> CreateBinaryOpModule(HloOpcode op) {
+  std::unique_ptr<VerifiedHloModule> CreateBinaryOpModule(HloOpcode op) {
     HloComputation::Builder builder(TestName());
 
     Shape param_shape = ShapeUtil::MakeShapeWithLayout(
@@ -39,13 +42,13 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/1, param_shape, "y"));
     builder.AddInstruction(HloInstruction::CreateBinary(param_shape, op, x, y));
 
-    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewVerifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }
 
   // Creates an HLO module that performs the given unary operation on some data.
-  std::unique_ptr<HloModule> CreateUnaryOpModule(HloOpcode op) {
+  std::unique_ptr<VerifiedHloModule> CreateUnaryOpModule(HloOpcode op) {
     HloComputation::Builder builder(TestName());
 
     Shape param_shape = ShapeUtil::MakeShapeWithLayout(
@@ -54,7 +57,7 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/0, param_shape, "x"));
     builder.AddInstruction(HloInstruction::CreateUnary(param_shape, op, x));
 
-    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewVerifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }

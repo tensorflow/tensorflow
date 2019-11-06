@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
@@ -48,13 +49,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
-#include "tensorflow/compiler/mlir/op_name_mapper.h"
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -67,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
@@ -89,8 +93,8 @@ using mlir::TranslateFromMLIRRegistration;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
-using tensorflow::OpLocNameMapper;
-using tensorflow::OpNameMapper;
+using tensorflow::OpOrArgLocNameMapper;
+using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
 using tflite::flex::IsWhitelistedFlexOp;
 using xla::StatusOr;
@@ -159,11 +163,6 @@ ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
 // used by the TOCO export. (It does not explain rationale for this choice.)
 constexpr size_t kInitialBufferSize = 10240;
 
-// This can be included from c_api_internal.h but that is currently internal
-// visibility so repeating for now.
-// TODO(jpienaar): Remove duplication.
-constexpr int kOptionalTensor = -1;
-
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
 // Since tflite doesn't support unsigned for other types, returns error if
 // `isSigned` is set to false for other types.
@@ -183,10 +182,15 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT16;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::COMPLEX64:
-      return tflite::TensorType_COMPLEX64;
     case mlir::TF::TensorFlowTypes::UINT8:
       return tflite::TensorType_UINT8;
+    case mlir::StandardTypes::Complex: {
+      auto ftype = type.cast<mlir::ComplexType>().getElementType();
+      if (ftype && ftype.isF32()) {
+        return tflite::TensorType_COMPLEX64;
+      }
+      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+    }
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {
@@ -230,7 +234,8 @@ static bool IsConst(Operation* op) {
 static bool IsConstOrInput(Operation* op) { return IsConst(op) || IsInput(op); }
 
 template <typename T>
-static bool HasValidTFLiteType(Value* value, T& error_handler) {
+static bool HasValidTFLiteType(Value* value, T& error_handler,
+                               bool add_pseudo_input_nodes) {
   // None type is allowed to represent unspecified operands.
   if (value->getType().isa<NoneType>()) return true;
 
@@ -245,11 +250,13 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
     error_handler.emitError("expected tensor type, got ") << value->getType();
     return false;
   }
-  if (auto* inst = value->getDefiningOp()) {
-    if (IsInput(inst) && !type.hasStaticShape()) {
-      return error_handler.emitError("should have static shape, got ")
-                 << type.getShape(),
-             false;
+  if (add_pseudo_input_nodes) {
+    if (auto* inst = value->getDefiningOp()) {
+      if (IsInput(inst) && !type.hasStaticShape()) {
+        return error_handler.emitError("should have static shape, got ")
+                   << type.getShape(),
+               false;
+      }
     }
   }
 
@@ -269,7 +276,8 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
 // TODO(hinsu): Now that translation is done by making a single pass over the
 // MLIR module, consider inlining these validation checks at the place where
 // these invariants are assumed instead of checking upfront.
-static bool IsValidTFLiteMlirModule(ModuleOp module) {
+static bool IsValidTFLiteMlirModule(ModuleOp module,
+                                    bool add_pseudo_input_nodes) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
@@ -287,7 +295,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     auto& bb = fn.getBlocks().front();
 
     for (auto* arg : bb.getArguments()) {
-      if (!HasValidTFLiteType(arg, fn))
+      if (!HasValidTFLiteType(arg, fn, add_pseudo_input_nodes))
         return fn.emitError("invalid TFLite type: ") << arg->getType(), false;
     }
 
@@ -297,12 +305,14 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
       if (inst.isKnownTerminator()) break;
 
       for (auto* result : inst.getResults()) {
-        if (!HasValidTFLiteType(result, inst))
+        if (!HasValidTFLiteType(result, inst, add_pseudo_input_nodes))
           return fn.emitError("invalid TFLite type: ") << result->getType(),
                  false;
       }
     }
   }
+
+  if (!add_pseudo_input_nodes) return true;
 
   // Verify that main function's arguments have input op as the only user.
   // Arguments are first passed to a pseudo input operation so that they can
@@ -349,20 +359,21 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
-  static Optional<std::string> Translate(ModuleOp module,
-                                         bool emit_builtin_tflite_ops,
-                                         bool emit_select_tf_ops,
-                                         bool emit_custom_ops,
-                                         OpNameMapper* op_name_mapper);
+  static Optional<std::string> Translate(
+      ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+      bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper,
+      bool add_pseudo_input_nodes);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops,
-                      OpNameMapper* op_name_mapper)
+                      OpOrArgNameMapper* op_or_arg_name_mapper,
+                      bool add_pseudo_input_nodes)
       : module_(module),
-        name_mapper_(*op_name_mapper),
-        builder_(kInitialBufferSize) {
+        name_mapper_(*op_or_arg_name_mapper),
+        builder_(kInitialBufferSize),
+        add_pseudo_input_nodes_(add_pseudo_input_nodes) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -435,7 +446,7 @@ class Translator {
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
-  void InitializeNamesFromAttribute(FuncOp fn);
+  void InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr);
 
   // Determines if the specified operation op's operand at operand_index
   // is marked as a stateful operand.
@@ -446,7 +457,7 @@ class Translator {
 
   ModuleOp module_;
 
-  tensorflow::OpNameMapper& name_mapper_;
+  tensorflow::OpOrArgNameMapper& name_mapper_;
 
   flatbuffers::FlatBufferBuilder builder_;
   BufferOffset<tflite::Buffer> empty_buffer_;
@@ -466,6 +477,12 @@ class Translator {
   // dialect is not registered.
   const Dialect* tf_dialect_;
   const Dialect* tfl_dialect_;
+
+  // The failed ops during legalization.
+  std::vector<std::string> failed_flex_ops_;
+  std::vector<std::string> failed_custom_ops_;
+
+  bool add_pseudo_input_nodes_ = false;
 };
 
 std::string Translator::UniqueName(mlir::Operation* op) {
@@ -496,6 +513,24 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
               status.ToString()));
     return llvm::None;
   }
+
+  // TensorFlow and TensorFlow Lite use different string encoding formats.
+  // Convert to TensorFlow Lite format is it's a constant string tensor.
+  if (tensor.dtype() == tensorflow::DT_STRING) {
+    ::tflite::DynamicBuffer dynamic_buffer;
+    auto flat = tensor.flat<::tensorflow::tstring>();
+    for (int i = 0; i < flat.size(); ++i) {
+      const auto& str = flat(i);
+      dynamic_buffer.AddString(str.c_str(), str.length());
+    }
+    char* tensor_buffer;
+    int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
+    auto buffer_data =
+        builder_.CreateVector(reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
+    free(tensor_buffer);
+    return tflite::CreateBuffer(builder_, buffer_data);
+  }
+
   absl::string_view tensor_data = tensor.tensor_data();
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(tensor_data.data()), tensor_data.size());
@@ -508,27 +543,36 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   // TFLite requires tensor shape only for the inputs and constants.
   // However, we output all known shapes for better round-tripping
-  std::vector<int32_t> shape;
-  if (auto* inst = value->getDefiningOp()) {
-    if (type.hasStaticShape() || IsConst(inst)) {
-      // Const op can have a result of dynamic shaped type (e.g. due to constant
-      // folding), but we can still derive the shape of a constant tensor
-      // for its attribute type.
-      llvm::ArrayRef<int64_t> shape_ref;
-      if (type.hasStaticShape()) {
-        shape_ref = type.getShape();
-      } else {
-        mlir::Attribute tensor_attr = inst->getAttr("value");
-        shape_ref = tensor_attr.getType().cast<TensorType>().getShape();
-      }
+  auto check_shape =
+      [&](llvm::ArrayRef<int64_t> shape_ref) -> mlir::LogicalResult {
+    auto is_out_of_range = [](int64_t dim) {
+      return dim > std::numeric_limits<int32_t>::max();
+    };
 
-      auto is_out_of_range = [](int64_t dim) {
-        return dim > std::numeric_limits<int32_t>::max();
-      };
-      if (std::any_of(shape_ref.begin(), shape_ref.end(), is_out_of_range)) {
-        inst->emitError("result shape dimensions out of 32 bit int type range");
-        return llvm::None;
-      }
+    if (std::any_of(shape_ref.begin(), shape_ref.end(), is_out_of_range))
+      return mlir::emitError(
+          value->getLoc(),
+          "result shape dimensions out of 32 bit int type range");
+
+    return mlir::success();
+  };
+
+  std::vector<int32_t> shape;
+  if (type.hasStaticShape()) {
+    llvm::ArrayRef<int64_t> shape_ref = type.getShape();
+    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+
+    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+  } else if (auto* inst = value->getDefiningOp()) {
+    if (IsConst(inst)) {
+      // Const op can have a result of dynamic shaped type (e.g. due to constant
+      // folding), but we can still derive the shape of a constant tensor for
+      // its attribute type.
+      mlir::Attribute tensor_attr = inst->getAttr("value");
+      llvm::ArrayRef<int64_t> shape_ref =
+          tensor_attr.getType().cast<TensorType>().getShape();
+      if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+
       shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
     }
   }
@@ -800,6 +844,12 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         return llvm::None;
       }
     } else {
+      // Insert failed op to `flex_ops` or `custom_ops`.
+      if (IsWhitelistedFlexOp(node_def->op())) {
+        failed_flex_ops_.push_back(node_def->op());
+      } else {
+        failed_custom_ops_.push_back(node_def->op());
+      }
       return inst->emitOpError("is neither a custom op nor a flex op"),
              llvm::None;
     }
@@ -823,7 +873,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
          llvm::None;
 }
 
-void Translator::InitializeNamesFromAttribute(FuncOp fn) {
+void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
   auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
@@ -837,9 +887,14 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       return;
     }
     for (auto it : llvm::enumerate(fn.getArguments())) {
-      name_mapper_.InitOpName(*it.value()->user_begin(),
-                              input_names[it.index()].trim());
+      if (add_pseudo_input_nodes_) {
+        name_mapper_.InitOpName(*it.value()->user_begin(),
+                                input_names[it.index()].trim());
+      } else {
+        name_mapper_.InitOpName(it.value(), input_names[it.index()].trim());
+      }
     }
+    *has_input_attr = true;
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
@@ -880,7 +935,8 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
-  InitializeNamesFromAttribute(fn);
+  bool has_input_attr = false;
+  InitializeNamesFromAttribute(fn, &has_input_attr);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
   bool is_main_fn = fn.getName() == "main";
@@ -918,13 +974,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // Main function's arguments are first passed to `input` op so they don't
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
   // other functions.
-  if (!is_main_fn) {
+  if (!is_main_fn || !add_pseudo_input_nodes_) {
     for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
-      std::string name = absl::StrCat("arg", i);
+      mlir::BlockArgument* arg = bb.getArgument(i);
+      std::string name;
+      if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
+      if (name.empty()) name = absl::StrCat("arg", i);
       if (!build_tensor_and_buffer(bb.getArgument(i), name)) return llvm::None;
     }
   }
 
+  bool failed_once = false;
   for (auto& inst : bb) {
     if (inst.isKnownTerminator()) break;
 
@@ -961,8 +1021,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     if (auto tfl_operator = BuildOperator(&inst, operands, results))
       operators.push_back(*tfl_operator);
     else
-      return llvm::None;
+      failed_once = true;
   }
+
+  if (failed_once) return llvm::None;
 
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
@@ -970,7 +1032,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     // Arguments of the main function are first passed to a pseudo input
     // operation unlike arguments of other functions that are directly used by
     // the actual ops.
-    if (is_main_fn) {
+    if (is_main_fn && add_pseudo_input_nodes_) {
       inputs.push_back(tensor_index_map[arg->user_begin()->getResult(0)]);
     } else {
       inputs.push_back(tensor_index_map[arg]);
@@ -1016,14 +1078,15 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
-Optional<std::string> Translator::Translate(ModuleOp module,
-                                            bool emit_builtin_tflite_ops,
-                                            bool emit_select_tf_ops,
-                                            bool emit_custom_ops,
-                                            OpNameMapper* op_name_mapper) {
-  if (!IsValidTFLiteMlirModule(module)) return llvm::None;
+Optional<std::string> Translator::Translate(
+    ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+    bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper,
+    bool add_pseudo_input_nodes) {
+  if (!IsValidTFLiteMlirModule(module, add_pseudo_input_nodes))
+    return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, op_name_mapper);
+                        emit_custom_ops, op_or_arg_name_mapper,
+                        add_pseudo_input_nodes);
   return translator.TranslateInternal();
 }
 
@@ -1048,13 +1111,39 @@ Optional<std::string> Translator::TranslateInternal() {
   // Build subgraph for each of the functions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
   subgraphs.reserve(functions.size());
-  for (auto fn : functions) {
-    auto subgraph_or = BuildSubGraph(fn);
-    if (!subgraph_or)
-      return fn.emitError("failed while converting: '") << fn.getName() << '\'',
-             llvm::None;
+  int first_failed_func = -1;
+  for (int i = 0; i < functions.size(); ++i) {
+    auto subgraph_or = BuildSubGraph(functions[i]);
+    if (!subgraph_or) {
+      if (first_failed_func == -1)
+        // Record the index of the first function that cannot be converted.
+        // Keep looping through all subgraphs in the module to make sure that
+        // we collect the list of missing ops from the entire module.
+        first_failed_func = i;
+    } else {
+      subgraphs.push_back(*subgraph_or);
+    }
+  }
 
-    subgraphs.push_back(*subgraph_or);
+  if (first_failed_func != -1) {
+    std::string failed_flex_ops_list = absl::StrJoin(failed_flex_ops_, ",");
+    std::string failed_custom_ops_list = absl::StrJoin(failed_custom_ops_, ",");
+    std::string err;
+    if (!failed_flex_ops_list.empty())
+      err +=
+          "Ops that can be supported by the flex runtime (enabled via setting "
+          "the -emit-select-tf-ops flag): " +
+          failed_flex_ops_list + ".";
+    if (!failed_custom_ops_list.empty())
+      err +=
+          "Ops that need custom implementation (enabled via setting the "
+          "-emit-custom-ops flag): " +
+          failed_custom_ops_list;
+
+    return functions[first_failed_func].emitError("failed while converting: '")
+               << functions[first_failed_func].getName() << "\'\n"
+               << err,
+           llvm::None;
   }
 
   std::string model_description;
@@ -1096,10 +1185,10 @@ Optional<std::string> Translator::TranslateInternal() {
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    OpNameMapper* op_name_mapper) {
-  auto maybe_translated =
-      Translator::Translate(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                            emit_custom_ops, op_name_mapper);
+    OpOrArgNameMapper* op_or_arg_name_mapper, bool add_pseudo_input_nodes) {
+  auto maybe_translated = Translator::Translate(
+      module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
+      op_or_arg_name_mapper, add_pseudo_input_nodes);
   if (!maybe_translated) return true;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return false;
@@ -1107,26 +1196,29 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops) {
-  OpLocNameMapper op_name_mapper;
+    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    bool add_pseudo_input_nodes) {
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, &op_name_mapper);
+      emit_select_tf_ops, emit_custom_ops, &op_or_arg_name_mapper,
+      add_pseudo_input_nodes);
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
   std::string serialized_flatbuffer;
-  std::unique_ptr<OpNameMapper> op_name_mapper;
+  std::unique_ptr<OpOrArgNameMapper> op_or_arg_name_mapper;
   if (strip_debug_info) {
-    op_name_mapper = std::make_unique<tensorflow::OpStripNameMapper>();
+    op_or_arg_name_mapper =
+        std::make_unique<tensorflow::OpOrArgStripNameMapper>();
   } else {
-    op_name_mapper = std::make_unique<OpLocNameMapper>();
+    op_or_arg_name_mapper = std::make_unique<OpOrArgLocNameMapper>();
   }
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops, op_name_mapper.get()))
+          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get(),
+          /*add_pseudo_input_nodes=*/false))
     return mlir::failure();
 
   output << serialized_flatbuffer;

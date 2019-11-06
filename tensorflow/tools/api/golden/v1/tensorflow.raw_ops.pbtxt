@@ -258,7 +258,7 @@ tf_module {
   }
   member_method {
     name: "AutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "AvgPool"
@@ -730,7 +730,7 @@ tf_module {
   }
   member_method {
     name: "ConfigureDistributedTPU"
-    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'enable_whole_mesh_compilations\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'enable_whole_mesh_compilations\', \'compilation_failure_closes_chips\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "ConfigureTPUEmbedding"
@@ -913,6 +913,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "DatasetToGraphV2"
+    argspec: "args=[\'input_dataset\', \'external_state_policy\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "DatasetToSingleElement"
     argspec: "args=[\'dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -943,6 +947,10 @@ tf_module {
   member_method {
     name: "DebugNumericSummary"
     argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'lower_bound\', \'upper_bound\', \'mute_if_healthy\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'-inf\', \'inf\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "DebugNumericSummaryV2"
+    argspec: "args=[\'input\', \'tensor_debug_mode\', \'tensor_id\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "DecodeAndCropJpeg"
@@ -1238,7 +1246,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalAutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "ExperimentalBytesProducedStatsDataset"
@@ -2698,7 +2706,7 @@ tf_module {
   }
   member_method {
     name: "QuantizeV2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'narrow_range\', \'axis\', \'ensure_minimum_range\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'-1\', \'0.01\', \'None\'], "
   }
   member_method {
     name: "QuantizedAdd"

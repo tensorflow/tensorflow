@@ -3122,11 +3122,11 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
   one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
 
   Usage:
-  >>> logits = [[0.6, 0.2, 0.2], [0.0, 0.9, 0.1]]
-  >>> labels = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
-  >>> tf.nn.softmax_cross_entropy_with_logits(labels, logits)
+  >>> logits = [[4.0, 2.0, 1.0], [0.0, 5.0, 1.0]]
+  >>> labels = [[1.0, 0.0, 0.0], [0.0, 0.8, 0.2]]
+  >>> tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
   <tf.Tensor: shape=(2,), dtype=float32,
-  numpy=array([0.8504244, 0.6183691], dtype=float32)>
+  numpy=array([0.16984604, 0.82474494], dtype=float32)>
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the

@@ -27,8 +27,7 @@ limitations under the License.
 //
 // Ops in this file are sorted alphabetically.
 
-#ifdef TF_OP_BASE
-#else
+#ifndef TF_OP_BASE
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 #endif // TF_OP_BASE
 
@@ -480,6 +479,10 @@ the feature dimension is the third-to-last.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -552,6 +555,28 @@ endian orderings will give different results.
   TF_DerivedResultTypeAttr type = TF_DerivedResultTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
+  let summary = [{
+Return the reduction indices for computing gradients of s0 op s1 with broadcast.
+  }];
+
+  let description = [{
+This is typically used by gradient computations for a broadcasting operation.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$s0,
+    TF_I32OrI64Tensor:$s1
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$r0,
+    TF_I32OrI64Tensor:$r1
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
@@ -655,6 +680,61 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ComplexOp : TF_Op<"Complex", [Broadcastable, NoSideEffect]> {
+  let summary = "Converts two real numbers to a complex number.";
+
+  let description = [{
+Given a tensor `real` representing the real part of a complex number, and a
+tensor `imag` representing the imaginary part of a complex number, this
+operation returns complex numbers elementwise of the form \\(a + bj\\), where
+*a* represents the `real` part and *b* represents the `imag` part.
+
+The input tensors `real` and `imag` must have the same shape.
+
+For example:
+
+```
+# tensor 'real' is [2.25, 3.25]
+# tensor `imag` is [4.75, 5.75]
+tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+```
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$real,
+    TF_F32OrF64Tensor:$imag
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_ComplexAbsOp : TF_Op<"ComplexAbs", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Computes the complex absolute value of a tensor.";
+
+  let description = [{
+Given a tensor `x` of complex numbers, this operation returns a tensor of type
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 
@@ -704,7 +784,7 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   }];
 }
 
-def TF_ConjOp : TF_Op<"Conj", [NoSideEffect]> {
+def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
@@ -766,8 +846,8 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 
   let arguments = (ins
-    TF_FpTensor:$input,
-    TF_FpTensor:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
 
     I64ArrayAttr:$strides,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
@@ -778,7 +858,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -788,17 +868,17 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 }
 
-def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect]> {
   let summary = [{
-Computes the gradients of convolution with respect to the input.
+Computes the gradients of convolution with respect to the filter.
   }];
 
   let description = [{
   }];
 
   let arguments = (ins
-    I32Tensor:$input_sizes,
-    TF_FpTensor:$filter,
+    TF_FpTensor:$input,
+    I32Tensor:$filter_sizes,
     TF_FpTensor:$out_backprop,
 
     I64ArrayAttr:$strides,
@@ -813,7 +893,39 @@ Computes the gradients of convolution with respect to the input.
     TF_FpTensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the input.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$input_sizes,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$filter,
+    TensorOf<[BF16, F16, F32, F64, I32]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32]>:$output
+  );
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {
@@ -871,6 +983,30 @@ Given an input tensor, this function computes cosine of every
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [AllTypesMatch<["input", "output"]>, NoSideEffect]> {
+  let summary = "An Op to sum inputs across replicated TPU instances.";
+
+  let description = [{
+Each instance supplies its own input.
+
+For example, suppose there are 8 TPU instances: `[A, B, C, D, E, F, G, H]`.
+Passing group_assignment=`[[0,2,4,6],[1,3,5,7]]` sets `A, C, E, G` as group 0,
+and `B, D, F, H` as group 1. Thus we get the outputs:
+`[A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H]`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F32, I32, TF_Uint32]>:$input,
+    I32Tensor:$group_assignment
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F32, I32, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1833,6 +1969,35 @@ def ApplyG(op, dy, _):
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
+def TF_ImagOp : TF_Op<"Imag", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns the imaginary part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.imag(input) ==> [4.75, 5.75]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
@@ -2040,7 +2205,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -2325,6 +2490,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
@@ -2849,12 +3019,12 @@ output =
     TF_Tensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
+
   let verifier = [{
     return Verify(*this);
   }];
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
@@ -3242,13 +3412,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F32, F64, I32, I64]>:$start,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$limit,
-    TensorOf<[BF16, F32, F64, I32, I64]>:$delta
+    TF_FpOrI32OrI64Tensor:$start,
+    TF_FpOrI32OrI64Tensor:$limit,
+    TF_FpOrI32OrI64Tensor:$delta
   );
 
   let results = (outs
-    TensorOf<[BF16, F32, F64, I32, I64]>:$output
+    TF_FpOrI32OrI64Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -3314,6 +3484,35 @@ operation.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RealOp : TF_Op<"Real", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns the real part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.real(input) ==> [-2.25, 3.25]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_RealDivOp : TF_Op<"RealDiv", [Broadcastable, NoSideEffect]>,
@@ -3864,6 +4063,8 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3879,6 +4080,30 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SignOp : TF_Op<"Sign", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns an element-wise indication of the sign of a number.";
+
+  let description = [{
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+
+Example usage:
+>>> tf.math.sign([0., 2., -3.])
+<tf.Tensor: shape=(3,), dtype=float32, numpy=array([ 0.,  1., -1.], dtype=float32)>
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3956,7 +4181,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
@@ -3971,6 +4196,32 @@ For each batch `i` and class `j` we have
 
   let results = (outs
     TF_FpTensor:$softmax
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_SoftmaxCrossEntropyWithLogitsOp : TF_Op<"SoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_FpTensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4494,6 +4745,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
@@ -4799,6 +5055,8 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Broadcastable, NoSideEffect]>,
@@ -4834,19 +5092,26 @@ def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
 
   let description = [{
 This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. In other words:
+sorted in the same order that they occur in `x`; `x` does not need to be sorted.
+This operation also returns a tensor `idx` the same size as `x` that contains 
+the index of each value of `x` in the unique output `y`. In other words:
 
 `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
 
-For example:
+Examples:
 
 ```
 # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 y, idx = unique(x)
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+
+```
+# tensor 'x' is [4, 5, 1, 2, 3, 3, 4, 5]
+y, idx = unique(x)
+y ==> [4, 5, 1, 2, 3]
+idx ==> [0, 1, 2, 3, 4, 4, 0, 1]
 ```
   }];
 
@@ -4895,6 +5160,35 @@ This is the opposite of `pack`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_VariableShapeOp : TF_Op<"VariableShape", []> {
+  let summary = "Returns the shape of the variable pointed to by `resource`.";
+
+  let description = [{
+This operation returns a 1-D integer tensor representing the shape of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+shape(t) ==> [2, 2, 3]
+```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$input
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {

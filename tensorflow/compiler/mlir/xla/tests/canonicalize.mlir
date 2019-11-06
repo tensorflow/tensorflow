@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -canonicalize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input-on-failure
 
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
   // CHECK: "xla_hlo.dynamic-slice"

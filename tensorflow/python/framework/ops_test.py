@@ -29,7 +29,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -310,15 +309,21 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     del x
     self.assertIsNotNone(x_ref.deref())
 
+@test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testToTensor(self):
     values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
     indices = constant_op.constant([0, 2])
+    x = ops.IndexedSlices(values, indices)
+    with self.assertRaises(ValueError):
+      tensor = ops.convert_to_tensor(x, name="tensor")
+    self.assertEqual(tensor_shape.TensorShape(None), x.shape)
+
     dense_shape = constant_op.constant([3, 2])
-    x = ops.IndexedSlices(values, indices, dense_shape)
-    tensor = ops.convert_to_tensor(x, name="tensor")
+    y = ops.IndexedSlices(values, indices, dense_shape)
+    tensor = ops.convert_to_tensor(y, name="tensor")
+    self.assertAllEqual(tensor.shape, y.shape)
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
 
   @test_util.run_gpu_only
@@ -333,23 +338,19 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
       values = g.values if isinstance(g, ops.IndexedSlices) else g
       self.assertAllEqual(values.get_shape(), [4, 1])
 
-  @test_util.run_deprecated_v1
   def testNegation(self):
-    with self.cached_session():
-      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
-      indices = constant_op.constant([0, 2])
-      x = -ops.IndexedSlices(values, indices)
-      self.assertAllEqual(x.values.eval(), [[-2, -3], [-5, -7]])
-      self.assertAllEqual(x.indices.eval(), [0, 2])
+    values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+    indices = constant_op.constant([0, 2])
+    x = -ops.IndexedSlices(values, indices)
+    self.assertAllEqual(x.values, [[-2, -3], [-5, -7]])
+    self.assertAllEqual(x.indices, [0, 2])
 
-  @test_util.run_deprecated_v1
   def testScalarMul(self):
-    with self.cached_session():
-      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
-      indices = constant_op.constant([0, 2])
-      x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
-      self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
-      self.assertAllEqual(x.indices.eval(), [0, 2])
+    values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+    indices = constant_op.constant([0, 2])
+    x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
+    self.assertAllEqual(x.values, [[-4, -6], [-10, -14]])
+    self.assertAllEqual(x.indices, [0, 2])
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -909,32 +910,31 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.enable_control_flow_v2
   @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
-    if forward_compat.forward_compatible(2019, 8, 23):
-      @eager_function.defun
-      def test():
-        output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
-                                             [1])
-        while_op = output.op
-        self.assertEqual(while_op.type, "StatelessWhile")
-        orig_num_inputs = len(while_op.inputs)
 
-        # Make sure we can handle the while op having a control input.
-        while_op._add_control_input(constant_op.constant(0).op)
+    @eager_function.defun
+    def test():
+      output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
+                                           [1])
+      while_op = output.op
+      self.assertEqual(while_op.type, "StatelessWhile")
+      orig_num_inputs = len(while_op.inputs)
 
-        new_input1 = constant_op.constant(1.0)
-        new_input2 = constant_op.constant(True)
+      # Make sure we can handle the while op having a control input.
+      while_op._add_control_input(constant_op.constant(0).op)
 
-        # Clear output shapes to bypass shape checking.
-        while_op._set_shape_list_attr("output_shapes", [])
-        while_op._set_type_list_attr("T",
-                                     [t.dtype for t in while_op.inputs] +
-                                     [new_input1.dtype, new_input2.dtype])
+      new_input1 = constant_op.constant(1.0)
+      new_input2 = constant_op.constant(True)
 
-        while_op._add_while_inputs([new_input1, new_input2])
-        # Can't add an edge beyond what's specified by "T"
-        with self.assertRaises(errors.OutOfRangeError):
-          while_op._add_while_inputs([new_input2])
-        self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
+      while_op._set_type_list_attr("T", [t.dtype for t in while_op.inputs] +
+                                   [new_input1.dtype, new_input2.dtype])
+
+      while_op._add_while_inputs([new_input1, new_input2])
+      # Can't add an edge beyond what's specified by "T"
+      with self.assertRaises(errors.OutOfRangeError):
+        while_op._add_while_inputs([new_input2])
+      self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
 
       test()
 

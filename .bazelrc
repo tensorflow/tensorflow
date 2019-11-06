@@ -137,6 +137,9 @@ build --announce_rc
 # Other build flags.
 build --define=grpc_no_ares=true
 
+# Prevent regression of https://github.com/bazelbuild/bazel/issues/7362
+build --incompatible_remove_legacy_whole_archive
+
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
@@ -166,19 +169,19 @@ build:rbe --remote_cache=remotebuildexecution.googleapis.com
 build:rbe --remote_executor=remotebuildexecution.googleapis.com
 build:rbe --remote_local_fallback=false
 build:rbe --remote_timeout=600
-build:rbe --spawn_strategy=remote
-build:rbe --strategy=Genrule=remote
-build:rbe --strategy=Closure=remote
-build:rbe --strategy=Javac=remote
-build:rbe --strategy=TestRunner=remote
+build:rbe --spawn_strategy=remote,worker,sandboxed,local
+build:rbe --strategy=Genrule=remote,worker,sandboxed,local
+build:rbe --strategy=Closure=remote,worker,sandboxed,local
+build:rbe --strategy=Javac=remote,worker,sandboxed,local
+build:rbe --strategy=TestRunner=remote,worker,sandboxed,local
 build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
 
 # Options to build TensorFlow 1.x or 2.x.
 build:v1 --define=tf_api_version=1
 build:v2 --define=tf_api_version=2
-test:v1 --action_env=TF2_BEHAVIOR=0
-test:v2 --action_env=TF2_BEHAVIOR=1
+build:v1 --action_env=TF2_BEHAVIOR=0
+build:v2 --action_env=TF2_BEHAVIOR=1
 build --config=v2
 test --config=v2
 

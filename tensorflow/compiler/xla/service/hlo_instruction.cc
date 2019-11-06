@@ -542,9 +542,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kGather: {
       TF_RET_CHECK(proto.has_gather_dimension_numbers())
           << "Gather instruction should have GatherDimensionNumbers set.";
-      std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
-          absl::make_unique<GatherDimensionNumbers>(
-              proto.gather_dimension_numbers());
+      auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
+          proto.gather_dimension_numbers());
       std::vector<int64> gather_slice_sizes;
       for (int64 bound : proto.gather_slice_sizes()) {
         gather_slice_sizes.push_back(bound);
@@ -2675,6 +2674,13 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kConditional:
     case HloOpcode::kCall:
       return false;
+    // Fusions are always fusible.
+    case HloOpcode::kFusion:
+    // Side effecting reduce and reduce window would be invalid HLO.
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
     // Side effecting instrutions cannot be fused.
     default:
       return !HasSideEffect();
@@ -2895,7 +2901,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
-      break;
+      return Status::OK();
   }
   return InternalError(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
@@ -3056,9 +3062,9 @@ Status HloInstruction::AcceptWithOperandOrder(
 
 const Shape& HloInstruction::shape() const { return shape_; }
 
-std::vector<int64> HloInstruction::OperandIndices(
+absl::InlinedVector<int64, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
-  std::vector<int64> result;
+  absl::InlinedVector<int64, 4> result;
   for (int64 i = 0; i < operand_count(); ++i) {
     if (this->operand(i) == operand) {
       result.push_back(i);

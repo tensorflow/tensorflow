@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
@@ -318,13 +318,10 @@ tf_xla_py_test(
     srcs = ["matrix_solve_op_test.py"],
     deps = [
         ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1025,9 +1022,11 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1035,7 +1034,10 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
-    tags = ["nomsan"],  # b/142562986
+    tags = [
+        "noasan",  # b/143400367
+        "nomsan",  # b/142562986
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1425,9 +1427,33 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+    ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "determinant_ops_test",
+    size = "medium",
+    srcs = ["determinant_ops_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",

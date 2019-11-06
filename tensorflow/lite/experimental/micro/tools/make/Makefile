@@ -184,6 +184,12 @@ KEIL_PROJECT_FILES := \
 ARDUINO_PROJECT_FILES := \
   library.properties
 
+ESP_PROJECT_FILES := \
+  README_ESP.md \
+  CMakeLists.txt \
+  main/CMakeLists.txt \
+  components/tfmicro/CMakeLists.txt
+
 ALL_PROJECT_TARGETS :=
 
 ARDUINO_LIBRARY_TARGETS :=
@@ -240,17 +246,17 @@ MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
 $(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc third_party_downloads
+$(OBJDIR)%.o: %.cc $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow C source files.
-$(OBJDIR)%.o: %.c third_party_downloads
+$(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow ASM source files.
-$(OBJDIR)%.o: %.S third_party_downloads
+$(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 

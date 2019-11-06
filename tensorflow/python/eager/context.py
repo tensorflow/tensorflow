@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+from absl import logging
 import numpy as np
 import six
 
@@ -233,14 +234,15 @@ class _ContextSwitchStack(threading.local):
     self.stack.pop()
 
 
+@tf_export("config.LogicalDevice")
 class LogicalDevice(
     collections.namedtuple("LogicalDevice", ["name", "device_type"])):
-  """Abstraction for a device initialized by the runtime.
+  """Abstraction for a logical device initialized by the runtime.
 
-  A LogicalDevice corresponds to a initialized instance on a PhysicalDevice or a
-  remote device available in the cluster. Tensors and operations can be placed
-  on a specific LogicalDevice by calling `tf.device()` with the `name` of the
-  LogicalDevice.
+  A `tf.config.LogicalDevice` corresponds to an initialized logical device on a
+  `tf.config.PhysicalDevice` or a remote device visible to the cluster. Tensors
+  and operations can be placed on a specific logical device by calling
+  `tf.device` with a specified `tf.config.LogicalDevice`.
 
   Fields:
     name: The fully qualified name of the device. Can be used for Op or function
@@ -250,16 +252,18 @@ class LogicalDevice(
   pass
 
 
-@tf_export("config.experimental.VirtualDeviceConfiguration")
-class VirtualDeviceConfiguration(
-    collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for a `LogicalDevice`.
+@tf_export("config.LogicalDeviceConfiguration",
+           "config.experimental.VirtualDeviceConfiguration")
+class LogicalDeviceConfiguration(
+    collections.namedtuple("LogicalDeviceConfiguration", ["memory_limit"])):
+  """Configuration class for a logical devices.
 
-  The class specifies the parameters for a `LogicalDevice` used during runtime
+  The class specifies the parameters to configure a `tf.config.PhysicalDevice`
+  as it is initialized to a `tf.config.LogicalDevice` during runtime
   initialization. Not all fields are valid for all device types.
 
-  See `tf.config.experimental.get_virtual_device_configuration` and
-  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
+  See `tf.config.get_logical_device_configuration` and
+  `tf.config.set_logical_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
@@ -267,9 +271,10 @@ class VirtualDeviceConfiguration(
   """
 
   def __new__(cls, memory_limit=None):
-    return super(VirtualDeviceConfiguration, cls).__new__(cls, memory_limit)
+    return super(LogicalDeviceConfiguration, cls).__new__(cls, memory_limit)
 
 
+@tf_export("config.PhysicalDevice")
 class PhysicalDevice(
     collections.namedtuple("PhysicalDevice", ["name", "device_type"])):
   """Abstraction for a locally visible physical device.
@@ -279,10 +284,13 @@ class PhysicalDevice(
   customize certain properties of the device such as it's visibility or memory
   configuration.
 
-  Once a PhysicalDevice is initialized one or many LogicalDevice objects are
-  created. Use tf.config.set_virtual_device_configuration() to create multiple
-  LogicalDevice objects for a PhysicalDevice. This is useful when separation
-  between models is needed.
+  Once a visible `tf.config.PhysicalDevice` is initialized one or more
+  `tf.config.LogicalDevice` objects are created. Use
+  `tf.config.set_visible_devices` to configure the visibility of a physical
+  device and `tf.config.set_logical_device_configuration` to configure multiple
+  `tf.config.LogicalDevice` objects for a `tf.config.PhysicalDevice`. This is
+  useful when separation between models is needed or to simulate a multi-device
+  environment.
 
   Fields:
     name: Unique identifier for device.
@@ -512,6 +520,9 @@ class Context(object):
     self.zeros_cache().flush()
     pywrap_tensorflow.TFE_ClearScalarCache()
 
+  def get_server_def(self):
+    return self._server_def
+
   def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
 
@@ -588,8 +599,11 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    # TODO(b/129298253): Allow creating datasets/tensors before enabling
+    # collective ops.
     if self._context_handle is not None:
-      raise RuntimeError("Collective ops must be enabled at program startup")
+      logging.warning("Enabling collective ops after program startup may cause "
+                      "error when accessing previously created tensors.")
 
     self._collective_ops_server_def = server_def
 
@@ -1107,8 +1121,8 @@ class Context(object):
       if num_cpus == 0:
         self.set_visible_devices([], "CPU")
       elif num_cpus > 1:
-        self.set_virtual_device_configuration(
-            cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
+        self.set_logical_device_configuration(
+            cpus[0], [LogicalDeviceConfiguration() for _ in range(num_cpus)])
 
     # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
@@ -1217,7 +1231,7 @@ class Context(object):
 
     self._memory_growth_map[dev] = enable
 
-  def get_virtual_device_configuration(self, dev):
+  def get_logical_device_configuration(self, dev):
     """Get the virtual device configuration for a PhysicalDevice."""
     self._initialize_physical_devices()
 
@@ -1226,7 +1240,7 @@ class Context(object):
 
     return self._virtual_device_map.get(dev)
 
-  def set_virtual_device_configuration(self, dev, virtual_devices):
+  def set_logical_device_configuration(self, dev, virtual_devices):
     """Set the virtual device configuration for a PhysicalDevice."""
     self._initialize_physical_devices()
 
@@ -1560,6 +1574,18 @@ def _create_context():
       _set_context_locked(ctx)
 
 
+def _reset_context():
+  """Clears and re-initializes the singleton context.
+
+  Should only be used for testing.
+  """
+  global _context
+  with _context_lock:
+    if _context is not None:
+      _context = None
+  _create_context()
+
+
 def context():
   """Returns a singleton context object."""
   if _context is None:
@@ -1782,17 +1808,6 @@ def device(name):
   return context().device(name)
 
 
-@tf_export("config.experimental_list_devices")
-def list_devices():
-  """List the names of the available devices.
-
-  Returns:
-    Names of the available devices, as a `list`.
-  """
-  ensure_initialized()
-  return context().devices()
-
-
 @tf_export("debugging.get_log_device_placement")
 def get_log_device_placement():
   """Get if device placements are logged.
@@ -1963,6 +1978,10 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def get_server_def():
+  return context().get_server_def()
 
 
 def set_server_def(server_def):

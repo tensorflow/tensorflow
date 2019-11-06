@@ -24,16 +24,18 @@ limitations under the License.
 // all ops whose definitions are generated from TensorFlow codebase.
 // Changes made there are not respected.
 
-#ifdef TF_OPS
-#else
+#ifndef TF_OPS
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
 #endif // MLIR_CALLINTERFACES
+
+// A derived attribute that returns the shape of the first result type.
+def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -281,6 +283,24 @@ Inserts a placeholder for a tensor that will be always fed.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
+  let summary = "Placeholder op";
+  let description = [{
+    A placeholder op that passes through input when its output is not fed.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+  DerivedAttr shape = TF_DerivedResultShapeAttr;
 }
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",

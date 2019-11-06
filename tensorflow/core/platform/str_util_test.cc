@@ -222,6 +222,15 @@ TEST(ConsumePrefix, Basic) {
   EXPECT_EQ(input, "f");
 }
 
+TEST(StripPrefix, Basic) {
+  EXPECT_EQ(str_util::StripPrefix("abcdef", "abcdefg"), "abcdef");
+  EXPECT_EQ(str_util::StripPrefix("abcdef", "abce"), "abcdef");
+  EXPECT_EQ(str_util::StripPrefix("abcdef", ""), "abcdef");
+  EXPECT_EQ(str_util::StripPrefix("abcdef", "abcdeg"), "abcdef");
+  EXPECT_EQ(str_util::StripPrefix("abcdef", "abcdef"), "");
+  EXPECT_EQ(str_util::StripPrefix("abcdef", "abcde"), "f");
+}
+
 TEST(JoinStrings, Basic) {
   std::vector<string> s;
   s = {"hi"};

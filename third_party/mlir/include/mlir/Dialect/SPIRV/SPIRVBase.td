@@ -21,12 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -117,6 +115,13 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpConvertFToU            : I32EnumAttrCase<"OpConvertFToU", 109>;
+def SPV_OC_OpConvertFToS            : I32EnumAttrCase<"OpConvertFToS", 110>;
+def SPV_OC_OpConvertSToF            : I32EnumAttrCase<"OpConvertSToF", 111>;
+def SPV_OC_OpConvertUToF            : I32EnumAttrCase<"OpConvertUToF", 112>;
+def SPV_OC_OpUConvert               : I32EnumAttrCase<"OpUConvert", 113>;
+def SPV_OC_OpSConvert               : I32EnumAttrCase<"OpSConvert", 114>;
+def SPV_OC_OpFConvert               : I32EnumAttrCase<"OpFConvert", 115>;
 def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
 def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
@@ -166,6 +171,7 @@ def SPV_OC_OpBitwiseXor             : I32EnumAttrCase<"OpBitwiseXor", 198>;
 def SPV_OC_OpBitwiseAnd             : I32EnumAttrCase<"OpBitwiseAnd", 199>;
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
+def SPV_OC_OpPhi                    : I32EnumAttrCase<"OpPhi", 245>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
 def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
@@ -173,6 +179,7 @@ def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpUnreachable            : I32EnumAttrCase<"OpUnreachable", 255>;
 def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
@@ -190,7 +197,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpConvertFToU,
+      SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF, SPV_OC_OpConvertUToF,
+      SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert, SPV_OC_OpBitcast,
       SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
       SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
       SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
@@ -205,10 +214,10 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
       SPV_OC_OpBitwiseOr, SPV_OC_OpBitwiseXor, SPV_OC_OpBitwiseAnd,
-      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
-      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpPhi,
+      SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
       SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
-      SPV_OC_OpModuleProcessed
+      SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -264,49 +273,6 @@ class SPV_Optional<Type type> : Variadic<type>;
 
 // TODO(ravishankarm): From 1.4, this should also include Composite type.
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
-
-//===----------------------------------------------------------------------===//
-// SPIR-V BitEnum definition
-//===----------------------------------------------------------------------===//
-
-// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
-// ordinal number of the bit that is set. It is the 32-bit integer with only
-// one bit set.
-class BitEnumAttrCase<string sym, int val> :
-    EnumAttrCaseInfo<sym, val>,
-    IntegerAttrBase<I32, "case " # sym> {
-  let predicate = CPred<
-    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
-}
-
-// A bit enum stored with 32-bit IntegerAttr.
-//
-// Op attributes of this kind are stored as IntegerAttr. Extra verification will
-// be generated on the integer to make sure only allowed bit are set.
-class BitEnumAttr<string name, string description,
-                  list<BitEnumAttrCase> cases> :
-    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
-  let predicate = And<[
-    IntegerAttrBase<I32, "">.predicate,
-    // Make sure we don't have unknown bit set.
-    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
-          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
-          ")))">
-  ]>;
-
-  let underlyingType = "uint32_t";
-
-  // We need to return a string because we may concatenate symbols for multiple
-  // bits together.
-  let symbolToStringFnRetType = "std::string";
-
-  // The string used to separate bit enum cases in strings.
-  string separator = "|";
-
-  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
-  // we will use our own autogen logic.
-  let skipAutoGen = 1;
-}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
@@ -792,9 +758,9 @@ def SPV_DecorationAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_D_1D          : I32EnumAttrCase<"1D", 0>;
-def SPV_D_2D          : I32EnumAttrCase<"2D", 1>;
-def SPV_D_3D          : I32EnumAttrCase<"3D", 2>;
+def SPV_D_1D          : I32EnumAttrCase<"Dim1D", 0>;
+def SPV_D_2D          : I32EnumAttrCase<"Dim2D", 1>;
+def SPV_D_3D          : I32EnumAttrCase<"Dim3D", 2>;
 def SPV_D_Cube        : I32EnumAttrCase<"Cube", 3>;
 def SPV_D_Rect        : I32EnumAttrCase<"Rect", 4>;
 def SPV_D_Buffer      : I32EnumAttrCase<"Buffer", 5>;

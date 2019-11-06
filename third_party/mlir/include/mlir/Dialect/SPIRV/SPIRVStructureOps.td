@@ -21,12 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_STRUCTURE_OPS
-#else
+#ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
@@ -191,7 +189,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 }
 
 
-def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let summary = [{
     Allocate an object in memory at module scope. The object is
     referenced using a symbol name.
@@ -408,7 +406,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   let autogenSerialization = 0;
 }
 
-def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
+def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
   let summary = "The op that declares a SPIR-V specialization constant";
 
   let description = [{

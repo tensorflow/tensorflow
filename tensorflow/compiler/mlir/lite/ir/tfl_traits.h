@@ -44,6 +44,22 @@ class StatefulOperands {
   };
 };
 
+// The trait to specify the channel dimension index of the input (first operand)
+// of an affine TFL op (Conv2D, DepthwiseConv2D, FullyConnected).
+//
+//   class Conv2DOp
+//       : public Op<Conv2DOp, OpTrait::TFL::ChannelDimIndex<0>::Impl> {
+//
+template <int Index>
+class ChannelDimIndex {
+ public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, ChannelDimIndex<Index>::Impl> {
+   public:
+    static int GetChannelDimIndex() { return Index; }
+  };
+};
+
 }  // namespace TFL
 }  // namespace OpTrait
 }  // namespace mlir

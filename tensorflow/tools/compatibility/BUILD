@@ -138,6 +138,7 @@ py_library(
     srcs = ["tf_upgrade_v2_safety.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":all_renames_v2",
         ":ast_edits",
         ":module_deprecations_v2",
     ],

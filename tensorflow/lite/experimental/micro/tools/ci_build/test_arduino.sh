@@ -22,22 +22,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
-pwd
 
-python -m pip install six
+source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
-  clean clean_downloads
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
+# TODO(b/143715361): parallel builds do not work with generated files right now.
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   TARGET="arduino" \
   TAGS="portable_optimized" \
   generate_arduino_zip
 
-tensorflow/lite/experimental/micro/tools/ci_build/install_arduino_cli.sh
+readable_run tensorflow/lite/experimental/micro/tools/ci_build/install_arduino_cli.sh
 
-tensorflow/lite/experimental/micro/tools/ci_build/test_arduino_library.sh \
+readable_run tensorflow/lite/experimental/micro/tools/ci_build/test_arduino_library.sh \
   tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip
-
-# Needed to solve CI build bug triggered by files added to source tree.
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

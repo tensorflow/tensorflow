@@ -298,9 +298,9 @@ void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
   if (auto shaped_type = result_type.dyn_cast<RankedTensorType>()) {
     auto result_shape = shaped_type.getShape();
     result.types.push_back(
-        builder->getTensorType(result_shape, builder->getI1Type()));
+        RankedTensorType::get(result_shape, builder->getI1Type()));
   } else {
-    result.types.push_back(builder->getTensorType(builder->getI1Type()));
+    result.types.push_back(UnrankedTensorType::get(builder->getI1Type()));
   }
 }
 
@@ -600,7 +600,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   // If params/indices is unranked, then output is unranked.
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
-        builder, result, builder->getTensorType(params_type.getElementType()),
+        builder, result, UnrankedTensorType::get(params_type.getElementType()),
         params, indices, axis);
 
   int64_t params_rank = params_type.getRank();
@@ -646,7 +646,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
 
   TFL::GatherOp::build(
       builder, result,
-      builder->getTensorType(shape, params_type.getElementType()), params,
+      RankedTensorType::get(shape, params_type.getElementType()), params,
       indices, axis);
 }
 
@@ -982,15 +982,15 @@ static void BuildTopKOp(Builder *builder, OperationState &result, Value *input,
   // If value is unranked, then so is results.
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
-        builder, result, builder->getTensorType(val_type.getElementType()),
-        builder->getTensorType(builder->getIntegerType(32)), input, k);
+        builder, result, UnrankedTensorType::get(val_type.getElementType()),
+        UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      builder, result, builder->getTensorType(shape, val_type.getElementType()),
-      builder->getTensorType(shape, builder->getIntegerType(32)), input, k);
+      builder, result, RankedTensorType::get(shape, val_type.getElementType()),
+      RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1057,11 +1057,12 @@ static LogicalResult Verify(UnpackOp op) {
 //===----------------------------------------------------------------------===//
 
 // Extracts and returns the signed integer constant in a 0-rank integer tensor
-// if 'value' is a constant.
+// or 1-element 1-rank integer tensor if 'value' is a constant.
 static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
   ElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) return {};
-  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  if (attr.getNumElements() != 1) return {};
+  IntegerAttr int_attr = *attr.getValues<IntegerAttr>().begin();
   return int_attr.getValue().getSExtValue();
 }
 

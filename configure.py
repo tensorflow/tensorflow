@@ -35,7 +35,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '10'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_TENSORRT_VERSION = '5'
+_DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _TF_OPENCL_VERSION = '1.2'
@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '0.24.1'
-_TF_MAX_BAZEL_VERSION = '0.26.1'
+_TF_MIN_BAZEL_VERSION = '0.27.1'
+_TF_MAX_BAZEL_VERSION = '0.29.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -627,6 +627,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                                  check_success,
                                  error_msg,
                                  suppress_default_error=False,
+                                 resolve_symlinks=False,
                                  n_ask_attempts=_DEFAULT_PROMPT_ASK_ATTEMPTS):
   """Loop over user prompts for an ENV param until receiving a valid response.
 
@@ -647,6 +648,7 @@ def prompt_loop_or_load_from_env(environ_cp,
       invalid response upon check_success(input) failure.
     suppress_default_error: (Bool) Suppress the above error message in favor of
       one from the check_success function.
+    resolve_symlinks: (Bool) Translate symbolic links into the real filepath.
     n_ask_attempts: (Integer) Number of times to query for valid input before
       raising an error and quitting.
 
@@ -678,6 +680,8 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
+  if resolve_symlinks and os.path.islink(val):
+    val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
 
@@ -837,6 +841,7 @@ def set_gcc_host_compiler_path(environ_cp):
       var_default=default_gcc_host_compiler_path,
       ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
       check_success=os.path.exists,
+      resolve_symlinks=True,
       error_msg='Invalid gcc path. %s cannot be found.',
   )
 
@@ -940,7 +945,7 @@ def set_tf_tensorrt_version(environ_cp):
 
   ask_tensorrt_version = (
       'Please specify the TensorRT version you want to use. '
-      '[Leave empty to  default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
+      '[Leave empty to default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
   tf_tensorrt_version = get_from_env_or_user_or_default(
       environ_cp, 'TF_TENSORRT_VERSION', ask_tensorrt_version,
       _DEFAULT_TENSORRT_VERSION)
@@ -1348,13 +1353,6 @@ def main():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
-
-  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
-  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
-  # runtime to allow the Tensorflow testcases which compare numpy
-  # results to Tensorflow results to succeed.
-  if is_ppc64le():
-    write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
   xla_enabled_by_default = is_linux() or is_macos()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',

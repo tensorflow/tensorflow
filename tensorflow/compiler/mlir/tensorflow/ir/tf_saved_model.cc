@@ -63,6 +63,27 @@ TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
       >();
 }
 
+static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
+  auto attr = named_attr.second.dyn_cast<ArrayAttr>();
+  if (!attr) {
+    return op->emitError()
+           << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
+  }
+  for (auto element : attr) {
+    if (element.isa<StringAttr>()) {
+      continue;
+    }
+    if (auto integer = element.dyn_cast<IntegerAttr>()) {
+      if (integer.getValue().getBitWidth() == 64) {
+        continue;
+      }
+    }
+    return op->emitError() << "'tf_saved_model.index_path' elements should "
+                              "be strings or 64-bit integers";
+  }
+  return mlir::success();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
@@ -83,27 +104,21 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     return success();
   }
   if (named_attr.first == "tf_saved_model.index_path") {
-    auto attr = named_attr.second.dyn_cast<ArrayAttr>();
-    if (!attr) {
-      return op->emitError()
-             << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
-    }
-    for (auto element : attr) {
-      if (element.isa<StringAttr>()) {
-        continue;
-      }
-      if (auto integer = element.dyn_cast<IntegerAttr>()) {
-        if (integer.getValue().getBitWidth() == 64) {
-          continue;
-        }
-      }
-      return op->emitError() << "'tf_saved_model.index_path' elements should "
-                                "be strings or 64-bit integers";
-    }
-    return mlir::success();
+    return VerifyIndexPath(op, named_attr);
   }
 
   return op->emitError() << "unknown tf_saved_model dialect arg attribute '"
+                         << named_attr.first << "'";
+}
+
+LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
+    Operation *op, unsigned region_index, unsigned result_index,
+    NamedAttribute named_attr) {
+  if (named_attr.first == "tf_saved_model.index_path") {
+    return VerifyIndexPath(op, named_attr);
+  }
+
+  return op->emitError() << "unknown tf_saved_model dialect result attribute '"
                          << named_attr.first << "'";
 }
 
@@ -132,6 +147,18 @@ static LogicalResult VerifySavedModelModule(
             .attachNote(p.first->getSecond()->getLoc())
             .append("previously seen here");
       }
+    }
+  }
+  SymbolTable symbol_table(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  for (auto symbol_use : *symbol_uses) {
+    auto func =
+        symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());
+    if (func && !GetExportedNames(func).empty()) {
+      return symbol_use.getUser()
+          ->emitError("exported function cannot be internally referenced")
+          .attachNote(func.getLoc())
+          .append("references this exported function");
     }
   }
   return success();
@@ -172,6 +199,12 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
         return op->emitError()
                << "all arguments should have 'tf_saved_model.index_path' or "
                   "'tf_saved_model.bound_input' attributes";
+      }
+      for (int i = 0, e = func.getNumResults(); i < e; i++) {
+        if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
+          return op->emitError() << "all results should have "
+                                    "'tf_saved_model.index_path' attributes";
+        }
       }
     }
     return success();

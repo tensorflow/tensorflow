@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include <memory>
+
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -190,7 +192,9 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
 
-  return pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_);
+  TF_RETURN_IF_ERROR(
+      pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
+  return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
 Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
@@ -199,21 +203,21 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
-Status KernelAndDeviceOp::Run(const EagerKernelArgs& inputs,
-                              std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager,
-                              const absl::optional<int64>& op_id) {
+Status KernelAndDeviceOp::Run(
+    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
   return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   op_id);
+                   remote_func_params);
 }
 
-Status KernelAndDeviceFunc::Run(const EagerKernelArgs& inputs,
-                                std::vector<Tensor>* outputs,
-                                CancellationManager* cancellation_manager,
-                                const absl::optional<int64>& op_id) {
+Status KernelAndDeviceFunc::Run(
+    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
   ScopedStepContainer step_container(0, [&devices](const string& name) {
     for (Device* device : devices) {
@@ -221,7 +225,7 @@ Status KernelAndDeviceFunc::Run(const EagerKernelArgs& inputs,
     }
   });
   return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   op_id);
+                   remote_func_params);
 }
 
 namespace {
@@ -235,11 +239,10 @@ struct OpExecutionState : public core::RefCounted {
 };
 }  // anonymous namespace
 
-Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
-                              const EagerKernelArgs& inputs,
-                              std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager,
-                              const absl::optional<int64>& op_id) {
+Status KernelAndDeviceOp::Run(
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -249,15 +252,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   for (size_t i = 0; i < out_attrs.size(); ++i) {
     out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
                              tensorflow::HOST_MEMORY);
-  }
-
-  gtl::InlinedVector<DeviceContext*, 4> input_device_contexts;
-  for (int i = 0; i < inputs.GetTensorValues()->size(); i++) {
-    DeviceContext* device_context = nullptr;
-    if (device_->tensorflow_gpu_device_info() != nullptr) {
-      device_context = device_->tensorflow_gpu_device_info()->default_context;
-    }
-    input_device_contexts.push_back(device_context);
   }
 
   OpKernelContext::Params params;
@@ -296,7 +290,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.step_container = step_container;
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
-  params.input_device_contexts = &input_device_contexts;
 
   OpKernelContext context(&params);
 
@@ -336,34 +329,52 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::Run(ScopedStepContainer* step_container,
-                                const EagerKernelArgs& inputs,
-                                std::vector<Tensor>* outputs,
-                                CancellationManager* cancellation_manager,
-                                const absl::optional<int64>& op_id) {
-  FunctionLibraryRuntime::Options opts;
+Status KernelAndDeviceFunc::Run(
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  std::unique_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
+  if (remote_func_params.has_value()) {
+    const EagerRemoteFunctionParams& params = remote_func_params.value();
+    if (params.step_id.has_value()) {
+      // If the function is a remote component of a cross-process function,
+      // re-use the step id as its parent function's.
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>(
+          params.step_id.value());
+    } else {
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    }
+    // Reuse the op id if it exists.
+    opts->op_id = params.op_id;
+  } else {
+    opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    if (get_op_id_ && is_cross_process_) {
+      // If the function is a cross-process function and the remote excution
+      // goes through eager service, create an eager op id for the function.
+      opts->op_id = get_op_id_();
+    }
+  }
 
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = rendezvous_creator_(opts.step_id);
-  opts.rendezvous = rendezvous;
-  opts.create_rendezvous = false;
+  Rendezvous* rendezvous = rendezvous_creator_(opts->step_id);
+  opts->rendezvous = rendezvous;
+  opts->create_rendezvous = false;
 
   CancellationManager cm;
   if (cancellation_manager) {
-    opts.cancellation_manager = cancellation_manager;
+    opts->cancellation_manager = cancellation_manager;
   } else {
-    opts.cancellation_manager = &cm;
+    opts->cancellation_manager = &cm;
   }
-  opts.allow_dead_tensors = true;
-  opts.step_container = step_container;
-  opts.collective_executor =
+  opts->allow_dead_tensors = true;
+  opts->step_container = step_container;
+  opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
-  opts.stats_collector = nullptr;
-  opts.runner = get_runner();
-  opts.op_id = op_id;
+  opts->stats_collector = nullptr;
+  opts->runner = get_runner();
 
   Notification done;
   Status status;
@@ -372,11 +383,11 @@ Status KernelAndDeviceFunc::Run(ScopedStepContainer* step_container,
   {
     profiler::TraceMe activity(
         [&] {
-          return absl::StrCat("FunctionRun#name=", name(), ",id=", opts.step_id,
-                              "#");
+          return absl::StrCat("FunctionRun#name=", name(),
+                              ",id=", opts->step_id, "#");
         },
         profiler::TraceMeLevel::kInfo);
-    pflr_->Run(opts, handle_, inputs, outputs,
+    pflr_->Run(*opts, handle_, inputs, outputs,
                [&status, &done](const Status& s) {
                  status = s;
                  done.Notify();

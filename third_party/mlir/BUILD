@@ -23,6 +23,7 @@ package_group(
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
         "//tensorflow/core/tfrt_delegate/...",
+        "//tensorflow/lite/experimental/tf_runtime/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
@@ -89,6 +90,7 @@ cc_library(
         "include/mlir/IR/Diagnostics.h",
         "include/mlir/IR/Dialect.h",
         "include/mlir/IR/DialectHooks.h",
+        "include/mlir/IR/DialectImplementation.h",
         "include/mlir/IR/DialectInterface.h",
         "include/mlir/IR/Function.h",
         "include/mlir/IR/FunctionSupport.h",
@@ -611,12 +613,34 @@ filegroup(
 
 cc_library(
     name = "GPUCommonTransforms",
-    hdrs = ["lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h"],
+    hdrs = [
+        "lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h",
+        "lib/Conversion/GPUCommon/OpToFuncCallLowering.h",
+    ],
     deps = [
         ":GPUDialect",
+        ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":StandardOps",
         "@llvm//:support",
+    ],
+)
+
+gentbl(
+    name = "GPUToNVVMGen",
+    strip_include_prefix = "lib/Conversion/GPUToNVVM",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToNVVM/GPUToNVVM.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToNVVM/GPUToNVVM.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":NVVMOpsTdFiles",
     ],
 )
 
@@ -630,6 +654,7 @@ cc_library(
     deps = [
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUToNVVMGen",
         ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
@@ -882,6 +907,7 @@ filegroup(
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",
@@ -909,11 +935,11 @@ gentbl(
         ),
         (
             "-gen-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVEnums.h.inc",
         ),
         (
             "-gen-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -937,26 +963,6 @@ gentbl(
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "SPIRVBitEnumIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-spirv-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc",
-        ),
-        (
-            "-gen-spirv-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
-    td_srcs = [
-        ":SPIRVOpsTdFiles",
     ],
 )
 
@@ -1011,7 +1017,6 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
-        ":SPIRVBitEnumIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1253,6 +1258,8 @@ cc_library(
         ":LoopOps",
         ":LoopsToGPU",
         ":Pass",
+        ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
     alwayslink = 1,
@@ -1434,6 +1441,7 @@ cc_library(
 cc_library(
     name = "TargetLLVMIR",
     srcs = [
+        "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
         "lib/Target/LLVMIR/ConvertToLLVMIR.cpp",
     ],
     hdrs = [
@@ -1441,9 +1449,12 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":Support",
         ":Translation",
+        "//third_party/llvm/llvm-project/llvm:ir_reader",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -1502,11 +1513,9 @@ cc_library(
     name = "ExecutionEngine",
     srcs = [
         "lib/ExecutionEngine/ExecutionEngine.cpp",
-        "lib/ExecutionEngine/MemRefUtils.cpp",
     ],
     hdrs = [
         "include/mlir/ExecutionEngine/ExecutionEngine.h",
-        "include/mlir/ExecutionEngine/MemRefUtils.h",
     ],
     includes = ["include"],
     deps = [
@@ -1827,7 +1836,6 @@ cc_binary(
     srcs = [
         "tools/mlir-tblgen/DocGenUtilities.h",
         "tools/mlir-tblgen/EnumsGen.cpp",
-        "tools/mlir-tblgen/EnumsGen.h",
         "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
         "tools/mlir-tblgen/OpDefinitionsGen.cpp",
         "tools/mlir-tblgen/OpDocGen.cpp",
@@ -2070,6 +2078,23 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "LinalgTransformPatterns",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
+    td_srcs = [
+        "include/mlir/IR/OpBase.td",
+        ":LinalgOpsTdFiles",
+        ":LinalgLibraryOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "Linalg",
     srcs = [
@@ -2077,6 +2102,7 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
@@ -2089,6 +2115,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
         "include/mlir/Dialect/Linalg/Passes.h",
+        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],

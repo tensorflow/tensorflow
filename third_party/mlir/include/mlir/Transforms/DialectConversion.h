@@ -26,6 +26,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace mlir {
 
@@ -351,6 +352,10 @@ public:
   /// PatternRewriter hook for splitting a block into two parts.
   Block *splitBlock(Block *block, Block::iterator before) override;
 
+  /// PatternRewriter hook for merging a block into another.
+  void mergeBlocks(Block *source, Block *dest,
+                   ArrayRef<Value *> argValues) override;
+
   /// PatternRewriter hook for moving blocks out of a region.
   void inlineRegionBefore(Region &region, Region &parent,
                           Region::iterator before) override;
@@ -399,8 +404,14 @@ public:
     Illegal,
   };
 
-  /// The type used to store operation legality information.
-  using LegalityMapTy = llvm::MapVector<OperationName, LegalizationAction>;
+  /// A structure containing additional information describing a specific legal
+  /// operation instance.
+  struct LegalOpDetails {
+    /// A flag that indicates if this operation is 'recursively' legal. This
+    /// means that if an operation is legal, either statically or dynamically,
+    /// all of the operations nested within are also considered legal.
+    bool isRecursivelyLegal = false;
+  };
 
   /// The signature of the callback used to determine if an operation is
   /// dynamically legal on the target.
@@ -469,6 +480,28 @@ public:
     addIllegalOp<OpT2, OpTs...>();
   }
 
+  /// Mark an operation, that *must* have either been set as `Legal` or
+  /// `DynamicallyLegal`, as being recursively legal. This means that in
+  /// addition to the operation itself, all of the operations nested within are
+  /// also considered legal. An optional dynamic legality callback may be
+  /// provided to mark subsets of legal instances as recursively legal.
+  template <typename OpT>
+  void markOpRecursivelyLegal(const DynamicLegalityCallbackFn &callback = {}) {
+    OperationName opName(OpT::getOperationName(), &ctx);
+    markOpRecursivelyLegal(opName, callback);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs>
+  void markOpRecursivelyLegal(const DynamicLegalityCallbackFn &callback = {}) {
+    markOpRecursivelyLegal<OpT>(callback);
+    markOpRecursivelyLegal<OpT2, OpTs...>(callback);
+  }
+  template <typename OpT, class Callable>
+  typename std::enable_if<!is_invocable<Callable, Operation *>::value>::type
+  markOpRecursivelyLegal(Callable &&callback) {
+    markOpRecursivelyLegal<OpT>(
+        [=](Operation *op) { return callback(cast<OpT>(op)); });
+  }
+
   /// Register a legality action for the given dialects.
   void setDialectAction(ArrayRef<StringRef> dialectNames,
                         LegalizationAction action);
@@ -493,7 +526,7 @@ public:
   }
   template <typename... Args>
   void addDynamicallyLegalDialect(
-      llvm::Optional<DynamicLegalityCallbackFn> callback = llvm::None) {
+      Optional<DynamicLegalityCallbackFn> callback = llvm::None) {
     SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
     setDialectAction(dialectNames, LegalizationAction::Dynamic);
     if (callback)
@@ -517,10 +550,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Get the legality action for the given operation.
-  llvm::Optional<LegalizationAction> getOpAction(OperationName op) const;
+  Optional<LegalizationAction> getOpAction(OperationName op) const;
 
-  /// Return true if the given operation instance is legal on this target.
-  bool isLegal(Operation *op) const;
+  /// If the given operation instance is legal on this target, a structure
+  /// containing legality information is returned. If the operation is not
+  /// legal, None is returned.
+  Optional<LegalOpDetails> isLegal(Operation *op) const;
 
 protected:
   /// Runs a custom legalization query for the given operation. This should
@@ -539,12 +574,33 @@ private:
   void setLegalityCallback(ArrayRef<StringRef> dialects,
                            const DynamicLegalityCallbackFn &callback);
 
-  /// A deterministic mapping of operation name to the specific legality action
-  /// to take.
-  LegalityMapTy legalOperations;
+  /// Set the recursive legality callback for the given operation and mark the
+  /// operation as recursively legal.
+  void markOpRecursivelyLegal(OperationName name,
+                              const DynamicLegalityCallbackFn &callback);
+
+  /// The set of information that configures the legalization of an operation.
+  struct LegalizationInfo {
+    /// The legality action this operation was given.
+    LegalizationAction action;
+
+    /// If some legal instances of this operation may also be recursively legal.
+    bool isRecursivelyLegal;
+  };
+
+  /// Get the legalization information for the given operation.
+  Optional<LegalizationInfo> getOpInfo(OperationName op) const;
+
+  /// A deterministic mapping of operation name and its respective legality
+  /// information.
+  llvm::MapVector<OperationName, LegalizationInfo> legalOperations;
 
   /// A set of dynamic legality callbacks for given operation names.
   DenseMap<OperationName, DynamicLegalityCallbackFn> opLegalityFns;
+
+  /// A set of legality callbacks for given operation names that are used to
+  /// check if an operation instance is recursively legal.
+  DenseMap<OperationName, DynamicLegalityCallbackFn> opRecursiveLegalityFns;
 
   /// A deterministic mapping of dialect name to the specific legality action to
   /// take.

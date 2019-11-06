@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the SPIR-V binary to MLIR SPIR-V module deseralization.
+// This file defines the SPIR-V binary to MLIR SPIR-V module deserialization.
 //
 //===----------------------------------------------------------------------===//
 
@@ -41,8 +41,8 @@ using namespace mlir;
 
 #define DEBUG_TYPE "spirv-deserialization"
 
-// Decodes a string literal in `words` starting at `wordIndex`. Update the
-// latter to point to the position in words after the string literal.
+/// Decodes a string literal in `words` starting at `wordIndex`. Update the
+/// latter to point to the position in words after the string literal.
 static inline StringRef decodeStringLiteral(ArrayRef<uint32_t> words,
                                             unsigned &wordIndex) {
   StringRef str(reinterpret_cast<const char *>(words.data() + wordIndex));
@@ -50,9 +50,14 @@ static inline StringRef decodeStringLiteral(ArrayRef<uint32_t> words,
   return str;
 }
 
-// Extracts the opcode from the given first word of a SPIR-V instruction.
+/// Extracts the opcode from the given first word of a SPIR-V instruction.
 static inline spirv::Opcode extractOpcode(uint32_t word) {
   return static_cast<spirv::Opcode>(word & 0xffff);
+}
+
+/// Returns true if the given `block` is a function entry block.
+static inline bool isFnEntryBlock(Block *block) {
+  return block->isEntryBlock() && isa_and_nonnull<FuncOp>(block->getParentOp());
 }
 
 namespace {
@@ -92,7 +97,7 @@ private:
   /// in the deserializer.
   LogicalResult processCapability(ArrayRef<uint32_t> operands);
 
-  /// Attaches all collected capabilites to `module` as an attribute.
+  /// Attaches all collected capabilities to `module` as an attribute.
   void attachCapabilities();
 
   /// Processes the SPIR-V OpExtension with `operands` and updates bookkeeping
@@ -130,12 +135,15 @@ private:
   /// them to their handler method accordingly.
   LogicalResult processFunction(ArrayRef<uint32_t> operands);
 
+  /// Processes OpFunctionEnd and finalizes function. This wires up block
+  /// argument created from OpPhi instructions and also structurizes control
+  /// flow.
   LogicalResult processFunctionEnd(ArrayRef<uint32_t> operands);
 
   /// Gets the constant's attribute and type associated with the given <id>.
   Optional<std::pair<Attribute, Type>> getConstant(uint32_t id);
 
-  /// Gets the constants's integer attribute with the given <id>. Returns a null
+  /// Gets the constant's integer attribute with the given <id>. Returns a null
   /// IntegerAttr if the given is not registered or does not correspond to an
   /// integer constant.
   IntegerAttr getConstantInt(uint32_t id);
@@ -220,6 +228,9 @@ private:
   // Control flow
   //===--------------------------------------------------------------------===//
 
+  /// Returns the block for the given label <id>.
+  Block *getBlock(uint32_t id) const { return blockMap.lookup(id); }
+
   // In SPIR-V, structured control flow is explicitly declared using merge
   // instructions (OpSelectionMerge and OpLoopMerge). In the SPIR-V dialect,
   // we use spv.selection and spv.loop to group structured control flow.
@@ -242,9 +253,6 @@ private:
   //    block and redirect all branches to the old header block to the old
   //    merge block (which contains the spv.selection/spv.loop op now).
 
-  /// Returns the block for the given label <id>.
-  Block *getBlock(uint32_t id) const { return blockMap.lookup(id); }
-
   /// A struct for containing a header block's merge and continue targets.
   struct BlockMergeInfo {
     Block *mergeBlock;
@@ -255,11 +263,24 @@ private:
         : mergeBlock(m), continueBlock(c) {}
   };
 
-  /// Returns the merge and continue target info for the given `block` if it is
-  /// a header block.
-  BlockMergeInfo getBlockMergeInfo(Block *block) const {
-    return blockMergeInfo.lookup(block);
-  }
+  /// For OpPhi instructions, we use block arguments to represent them. OpPhi
+  /// encodes a list of (value, predecessor) pairs. At the time of handling the
+  /// block containing an OpPhi instruction, the predecessor block might not be
+  /// processed yet, also the value sent by it. So we need to defer handling
+  /// the block argument from the predecessors. We use the following approach:
+  ///
+  /// 1. For each OpPhi instruction, add a block argument to the current block
+  ///    in construction. Record the block argment in `valueMap` so its uses
+  ///    can be resolved. For the list of (value, predecessor) pairs, update
+  ///    `blockPhiInfo` for bookkeeping.
+  /// 2. After processing all blocks, loop over `blockPhiInfo` to fix up each
+  ///    block recorded there to create the proper block arguments on their
+  ///    terminators.
+
+  /// A data structure for containing a SPIR-V block's phi info. It will be
+  /// represented as block argument in SPIR-V dialect.
+  using BlockPhiInfo =
+      SmallVector<uint32_t, 2>; // The result <id> of the values sent
 
   /// Gets or creates the block corresponding to the given label <id>. The newly
   /// created block will always be placed at the end of the current function.
@@ -277,6 +298,13 @@ private:
 
   /// Processes a SPIR-V OpLoopMerge instruction with the given `operands`.
   LogicalResult processLoopMerge(ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpPhi instruction with the given `operands`.
+  LogicalResult processPhi(ArrayRef<uint32_t> operands);
+
+  /// Creates block arguments on predecessors previously recorded when handling
+  /// OpPhi instructions.
+  LogicalResult wireUpBlockArgument();
 
   /// Extracts blocks belonging to a structured selection/loop into a
   /// spv.selection/spv.loop op. This method iterates until all blocks
@@ -306,7 +334,7 @@ private:
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
   /// Processing of Some instructions (like OpEntryPoint and OpExecutionMode)
-  /// might need to be defered, since they contain forward references to <id>s
+  /// might need to be deferred, since they contain forward references to <id>s
   /// in the deserialized binary, but module in SPIR-V dialect expects these to
   /// be ssa-uses.
   LogicalResult processInstruction(spirv::Opcode opcode,
@@ -407,6 +435,9 @@ private:
   // Header block to its merge (and continue) target mapping.
   DenseMap<Block *, BlockMergeInfo> blockMergeInfo;
 
+  // Block to its phi (block argument) mapping.
+  DenseMap<Block *, BlockPhiInfo> blockPhiInfo;
+
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
 
@@ -436,7 +467,7 @@ private:
   // Result <id> to extended instruction set name.
   DenseMap<uint32_t, StringRef> extendedInstSets;
 
-  // List of instructions that are processed in a defered fashion (after an
+  // List of instructions that are processed in a deferred fashion (after an
   // initial processing of the entire binary). Some operations like
   // OpEntryPoint, and OpExecutionMode use forward references to function
   // <id>s. In SPIR-V dialect the corresponding operations (spv.EntryPoint and
@@ -444,7 +475,7 @@ private:
   // are deserialized and stored for processing once the entire binary is
   // processed.
   SmallVector<std::pair<spirv::Opcode, ArrayRef<uint32_t>>, 4>
-      deferedInstructions;
+      deferredInstructions;
 };
 } // namespace
 
@@ -453,7 +484,8 @@ Deserializer::Deserializer(ArrayRef<uint32_t> binary, MLIRContext *context)
       module(createModuleOp()), opBuilder(module->body()) {}
 
 LogicalResult Deserializer::deserialize() {
-  LLVM_DEBUG(llvm::dbgs() << "++ deserialization started\n");
+  LLVM_DEBUG(llvm::dbgs() << "+++ starting deserialization +++\n");
+
   if (failed(processHeader()))
     return failure();
 
@@ -462,7 +494,7 @@ LogicalResult Deserializer::deserialize() {
   auto binarySize = binary.size();
   while (curOffset < binarySize) {
     // Slice the next instruction out and populate `opcode` and `operands`.
-    // Interally this also updates `curOffset`.
+    // Internally this also updates `curOffset`.
     if (failed(sliceInstruction(opcode, operands)))
       return failure();
 
@@ -473,8 +505,8 @@ LogicalResult Deserializer::deserialize() {
   assert(curOffset == binarySize &&
          "deserializer should never index beyond the binary end");
 
-  for (auto &defered : deferedInstructions) {
-    if (failed(processInstruction(defered.first, defered.second, false))) {
+  for (auto &deferred : deferredInstructions) {
+    if (failed(processInstruction(deferred.first, deferred.second, false))) {
       return failure();
     }
   }
@@ -483,7 +515,7 @@ LogicalResult Deserializer::deserialize() {
   attachCapabilities();
   attachExtensions();
 
-  LLVM_DEBUG(llvm::dbgs() << "++ deserialization succeeded\n");
+  LLVM_DEBUG(llvm::dbgs() << "+++ completed deserialization +++\n");
   return success();
 }
 
@@ -564,7 +596,7 @@ LogicalResult Deserializer::processExtInstImport(ArrayRef<uint32_t> words) {
   if (words.size() < 2) {
     return emitError(unknownLoc,
                      "OpExtInstImport must have a result <id> and a literal "
-                     "string for the extensed instruction set name");
+                     "string for the extended instruction set name");
   }
 
   unsigned wordIndex = 1;
@@ -748,10 +780,10 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   auto funcOp = opBuilder.create<FuncOp>(unknownLoc, fnName, functionType,
                                          ArrayRef<NamedAttribute>());
   curFunction = funcMap[operands[1]] = funcOp;
-  LLVM_DEBUG(llvm::dbgs() << "[fn] processing function " << fnName << " (type="
-                          << fnType << ", id=" << operands[1] << ")\n");
+  LLVM_DEBUG(llvm::dbgs() << "-- start function " << fnName << " (type = "
+                          << fnType << ", id = " << operands[1] << ") --\n");
   auto *entryBlock = funcOp.addEntryBlock();
-  LLVM_DEBUG(llvm::dbgs() << "[block] created entry block @ " << entryBlock
+  LLVM_DEBUG(llvm::dbgs() << "[block] created entry block " << entryBlock
                           << "\n");
 
   // Parse the op argument instructions
@@ -810,8 +842,8 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   }
   if (opcode == spirv::Opcode::OpFunctionEnd) {
     LLVM_DEBUG(llvm::dbgs()
-               << "[fn] completed function '" << fnName << "' (type=" << fnType
-               << ", id=" << operands[1] << ")\n");
+               << "-- completed function '" << fnName << "' (type = " << fnType
+               << ", id = " << operands[1] << ") --\n");
     return processFunctionEnd(instOperands);
   }
   if (opcode != spirv::Opcode::OpLabel) {
@@ -838,8 +870,8 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function '" << fnName << "' (type="
-                          << fnType << ", id=" << operands[1] << ")\n");
+  LLVM_DEBUG(llvm::dbgs() << "-- completed function '" << fnName << "' (type = "
+                          << fnType << ", id = " << operands[1] << ") --\n");
   return processFunctionEnd(instOperands);
 }
 
@@ -849,8 +881,9 @@ LogicalResult Deserializer::processFunctionEnd(ArrayRef<uint32_t> operands) {
     return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
   }
 
+  // Wire up block arguments from OpPhi instructions.
   // Put all structured control flow in spv.selection/spv.loop ops.
-  if (failed(structurizeControlFlow())) {
+  if (failed(wireUpBlockArgument()) || failed(structurizeControlFlow())) {
     return failure();
   }
 
@@ -954,8 +987,8 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
            << wordIndex << " of " << operands.size() << " processed";
   }
   auto varOp = opBuilder.create<spirv::GlobalVariableOp>(
-      unknownLoc, opBuilder.getTypeAttr(type),
-      opBuilder.getStringAttr(variableName), initializer);
+      unknownLoc, TypeAttr::get(type), opBuilder.getStringAttr(variableName),
+      initializer);
 
   // Decorations.
   if (decorations.count(variableID)) {
@@ -1049,7 +1082,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       floatTy = opBuilder.getF64Type();
       break;
     default:
-      return emitError(unknownLoc, "unsupported OpTypeFloat bitwdith: ")
+      return emitError(unknownLoc, "unsupported OpTypeFloat bitwidth: ")
              << operands[1];
     }
     typeMap[operands[0]] = floatTy;
@@ -1065,7 +1098,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(unknownLoc, "OpTypeVector references undefined <id> ")
              << operands[1];
     }
-    typeMap[operands[0]] = opBuilder.getVectorType({operands[2]}, elementTy);
+    typeMap[operands[0]] = VectorType::get({operands[2]}, elementTy);
   } break;
   case spirv::Opcode::OpTypePointer: {
     if (operands.size() != 3) {
@@ -1391,7 +1424,7 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
 
   auto resultID = operands[1];
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
-    auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
+    auto attr = DenseElementsAttr::get(vectorType, elements);
     // For normal constants, we just record the attribute (and its type) for
     // later materialization at use sites.
     constantMap.try_emplace(resultID, attr, resultType);
@@ -1438,7 +1471,7 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
 
 Block *Deserializer::getOrCreateBlock(uint32_t id) {
   if (auto *block = getBlock(id)) {
-    LLVM_DEBUG(llvm::dbgs() << "[block] got exiting block for id=" << id
+    LLVM_DEBUG(llvm::dbgs() << "[block] got exiting block for id = " << id
                             << " @ " << block << "\n");
     return block;
   }
@@ -1447,7 +1480,7 @@ Block *Deserializer::getOrCreateBlock(uint32_t id) {
   // or spv.loop or function). Create it into the function for now and sort
   // out the proper place later.
   auto *block = curFunction->addBlock();
-  LLVM_DEBUG(llvm::dbgs() << "[block] created block for id=" << id << " @ "
+  LLVM_DEBUG(llvm::dbgs() << "[block] created block for id = " << id << " @ "
                           << block << "\n");
   return blockMap[id] = block;
 }
@@ -1489,8 +1522,10 @@ Deserializer::processBranchConditional(ArrayRef<uint32_t> operands) {
     weights = std::make_pair(operands[3], operands[4]);
   }
 
-  opBuilder.create<spirv::BranchConditionalOp>(unknownLoc, condition, trueBlock,
-                                               falseBlock, weights);
+  opBuilder.create<spirv::BranchConditionalOp>(
+      unknownLoc, condition, trueBlock,
+      /*trueArguments=*/ArrayRef<Value *>(), falseBlock,
+      /*falseArguments=*/ArrayRef<Value *>(), weights);
 
   return success();
 }
@@ -1507,7 +1542,7 @@ LogicalResult Deserializer::processLabel(ArrayRef<uint32_t> operands) {
   auto labelID = operands[0];
   // We may have forward declared this block.
   auto *block = getOrCreateBlock(labelID);
-  LLVM_DEBUG(llvm::dbgs() << "[block] populating block @ " << block << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "[block] populating block " << block << "\n");
   // If we have seen this block, make sure it was just a forward declaration.
   assert(block->empty() && "re-deserialize the same block!");
 
@@ -1567,6 +1602,37 @@ LogicalResult Deserializer::processLoopMerge(ArrayRef<uint32_t> operands) {
     return emitError(
         unknownLoc,
         "a block cannot have more than one OpLoopMerge instruction");
+  }
+
+  return success();
+}
+
+LogicalResult Deserializer::processPhi(ArrayRef<uint32_t> operands) {
+  if (!curBlock) {
+    return emitError(unknownLoc, "OpPhi must appear in a block");
+  }
+
+  if (operands.size() < 4) {
+    return emitError(unknownLoc, "OpPhi must specify result type, result <id>, "
+                                 "and variable-parent pairs");
+  }
+
+  // Create a block argument for this OpPhi instruction.
+  Type blockArgType = getType(operands[0]);
+  BlockArgument *blockArg = curBlock->addArgument(blockArgType);
+  valueMap[operands[1]] = blockArg;
+  LLVM_DEBUG(llvm::dbgs() << "[phi] created block argument " << blockArg
+                          << " id = " << operands[1] << " of type "
+                          << blockArgType << '\n');
+
+  // For each (value, predecessor) pair, insert the value to the predecessor's
+  // blockPhiInfo entry so later we can fix the block argument there.
+  for (unsigned i = 2, e = operands.size(); i < e; i += 2) {
+    uint32_t value = operands[i];
+    Block *predecessor = getOrCreateBlock(operands[i + 1]);
+    blockPhiInfo[predecessor].push_back(value);
+    LLVM_DEBUG(llvm::dbgs() << "[phi] predecessor @ " << predecessor
+                            << " with arg id = " << value << '\n');
   }
 
   return success();
@@ -1709,6 +1775,14 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
     mapper.map(block, newBlock);
     LLVM_DEBUG(llvm::dbgs() << "[cf] cloned block " << newBlock
                             << " from block " << block << "\n");
+    if (!isFnEntryBlock(block)) {
+      for (BlockArgument *blockArg : block->getArguments()) {
+        auto *newArg = newBlock->addArgument(blockArg->getType());
+        mapper.map(blockArg, newArg);
+        LLVM_DEBUG(llvm::dbgs() << "[cf] remapped block argument " << blockArg
+                                << " to " << newArg);
+      }
+    }
 
     for (auto &op : *block)
       newBlock->push_back(op.clone(mapper));
@@ -1756,7 +1830,7 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
     // If the function's header block is also part of the structured control
     // flow, we cannot just simply erase it because it may contain arguments
     // matching the function signature and used by the cloned blocks.
-    if (block->isEntryBlock() && isa<FuncOp>(block->getParentOp())) {
+    if (isFnEntryBlock(block)) {
       LLVM_DEBUG(llvm::dbgs() << "[cf] changing entry block " << block
                               << " to only contain a spv.Branch op\n");
       // Still keep the function entry block for the potential block arguments,
@@ -1773,29 +1847,77 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   return success();
 }
 
+LogicalResult Deserializer::wireUpBlockArgument() {
+  LLVM_DEBUG(llvm::dbgs() << "[phi] start wiring up block arguments\n");
+
+  OpBuilder::InsertionGuard guard(opBuilder);
+
+  for (const auto &info : blockPhiInfo) {
+    Block *block = info.first;
+    const BlockPhiInfo &phiInfo = info.second;
+    LLVM_DEBUG(llvm::dbgs() << "[phi] block " << block << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "[phi] before creating block argument:\n");
+    LLVM_DEBUG(block->getParentOp()->print(llvm::dbgs()));
+    LLVM_DEBUG(llvm::dbgs() << '\n');
+
+    // Set insertion point to before this block's terminator early because we
+    // may materialize ops via getValue() call.
+    auto *op = block->getTerminator();
+    opBuilder.setInsertionPoint(op);
+
+    SmallVector<Value *, 4> blockArgs;
+    blockArgs.reserve(phiInfo.size());
+    for (uint32_t valueId : phiInfo) {
+      if (Value *value = getValue(valueId)) {
+        blockArgs.push_back(value);
+        LLVM_DEBUG(llvm::dbgs() << "[phi] block argument " << value
+                                << " id = " << valueId << '\n');
+      } else {
+        return emitError(unknownLoc, "OpPhi references undefined value!");
+      }
+    }
+
+    if (auto branchOp = dyn_cast<spirv::BranchOp>(op)) {
+      // Replace the previous branch op with a new one with block arguments.
+      opBuilder.create<spirv::BranchOp>(branchOp.getLoc(), branchOp.getTarget(),
+                                        blockArgs);
+      branchOp.erase();
+    } else {
+      return emitError(unknownLoc, "unimplemented terminator for Phi creation");
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "[phi] after creating block argument:\n");
+    LLVM_DEBUG(block->getParentOp()->print(llvm::dbgs()));
+    LLVM_DEBUG(llvm::dbgs() << '\n');
+  }
+  blockPhiInfo.clear();
+
+  LLVM_DEBUG(llvm::dbgs() << "[phi] completed wiring up block arguments\n");
+  return success();
+}
+
 LogicalResult Deserializer::structurizeControlFlow() {
   LLVM_DEBUG(llvm::dbgs() << "[cf] start structurizing control flow\n");
 
-  while (!blockMergeInfo.empty()) {
-    auto *headerBlock = blockMergeInfo.begin()->first;
-    LLVM_DEBUG(llvm::dbgs() << "[cf] header block @ " << headerBlock << "\n");
+  for (const auto &info : blockMergeInfo) {
+    auto *headerBlock = info.first;
+    LLVM_DEBUG(llvm::dbgs() << "[cf] header block " << headerBlock << "\n");
 
-    const auto &mergeInfo = blockMergeInfo.begin()->second;
+    const auto &mergeInfo = info.second;
     auto *mergeBlock = mergeInfo.mergeBlock;
     auto *continueBlock = mergeInfo.continueBlock;
     assert(mergeBlock && "merge block cannot be nullptr");
-    LLVM_DEBUG(llvm::dbgs() << "[cf] merge block @ " << mergeBlock << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "[cf] merge block " << mergeBlock << "\n");
     if (continueBlock) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "[cf] continue block @ " << continueBlock << "\n");
+                 << "[cf] continue block " << continueBlock << "\n");
     }
 
     if (failed(ControlFlowStructurizer::structurize(unknownLoc, headerBlock,
                                                     mergeBlock, continueBlock)))
       return failure();
-
-    blockMergeInfo.erase(headerBlock);
   }
+  blockMergeInfo.clear();
 
   LLVM_DEBUG(llvm::dbgs() << "[cf] completed structurizing control flow\n");
   return success();
@@ -1885,7 +2007,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpEntryPoint:
   case spirv::Opcode::OpExecutionMode:
     if (deferInstructions) {
-      deferedInstructions.emplace_back(opcode, operands);
+      deferredInstructions.emplace_back(opcode, operands);
       return success();
     }
     break;
@@ -1947,6 +2069,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processSelectionMerge(operands);
   case spirv::Opcode::OpLoopMerge:
     return processLoopMerge(operands);
+  case spirv::Opcode::OpPhi:
+    return processPhi(operands);
   case spirv::Opcode::OpUndef:
     return processUndef(operands);
   default:

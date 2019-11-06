@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 #include <cstdint>
+#include <limits>
+#include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
@@ -36,8 +39,8 @@ namespace TFL {
 // input_type/min/max/storag_type_width/narrow_range.
 static Type GetQuantizedType(Builder builder, Type input_type,
                              ArrayRef<double> min, ArrayRef<double> max,
-                             int storage_type_width, bool narrow_range,
-                             bool is_signed) {
+                             int quant_dim, int storage_type_width,
+                             bool narrow_range, bool is_signed) {
   auto converter =
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
@@ -48,21 +51,22 @@ static Type GetQuantizedType(Builder builder, Type input_type,
         narrow_range, converter.expressedType, is_signed);
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
-    if (!shape || min.size() != shape.getDimSize(shape.getRank() - 1)) {
+    if (!shape || min.size() != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
     quantizedEleType = quant::fakeQuantAttrsToType(
-        builder.getUnknownLoc(), storage_type_width, shape.getRank() - 1, min,
-        max, narrow_range, converter.expressedType, is_signed);
+        builder.getUnknownLoc(), storage_type_width, quant_dim, min, max,
+        narrow_range, converter.expressedType, is_signed);
   }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
-                              Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range, bool is_signed) {
+                              Attribute max, int quant_dim,
+                              IntegerAttr num_bits, BoolAttr narrow_range,
+                              bool is_signed) {
   SmallVector<double, 4> min_value, max_value;
   auto mins = min.dyn_cast<DenseFPElementsAttr>();
   auto maxs = max.dyn_cast<DenseFPElementsAttr>();
@@ -86,9 +90,24 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
     }
   }
   Type final_type =
-      GetQuantizedType(builder, input_type, min_value, max_value,
+      GetQuantizedType(builder, input_type, min_value, max_value, quant_dim,
                        num_bits.getInt(), narrow_range.getValue(), is_signed);
-  return builder.getTypeAttr(final_type);
+  return TypeAttr::get(final_type);
+}
+
+// TODO(fengliuai): expose the `quant_dim` argument.
+TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
+                              Attribute max, IntegerAttr num_bits,
+                              BoolAttr narrow_range, bool is_signed) {
+  // When input_type isn't a ranked shaped type, it shouldn't be per-axis
+  // quantizatied, and `quant_dim` shouldn't be used, otherwise, set it to the
+  // last dimension.
+  int quant_dim = 0;
+  if (auto shape = input_type.dyn_cast<RankedTensorType>()) {
+    quant_dim = shape.getRank() - 1;
+  }
+  return GetQuantizedTypeAttr(builder, input_type, min, max, quant_dim,
+                              num_bits, narrow_range, is_signed);
 }
 
 // Changes the axis of the input per-channel quantized type to match the
@@ -151,15 +170,14 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
       }
       Type final_type = quantized_type.castFromExpressedType(target);
       if (!final_type) return {};
-      return builder.getTypeAttr(final_type);
+      return TypeAttr::get(final_type);
     }
   }
   return {};
 }
 
-Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
-                                            unsigned storage_type_width,
-                                            bool is_signed, bool narrow_range) {
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
+                                      bool is_signed, bool narrow_range) {
   Builder builder(attr.getContext());
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
@@ -189,8 +207,76 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
       max = std::max(max, ele_value);
     }
   }
-  auto type = GetQuantizedType(builder, attr.getType(), min, max,
-                               storage_type_width, narrow_range, is_signed);
+  auto type =
+      GetQuantizedType(builder, attr.getType(), min, max, /*quant_dim=*/0,
+                       num_bits, narrow_range, is_signed);
+  if (auto ele_type = type.dyn_cast_or_null<TensorType>())
+    return ele_type.getElementType();
+
+  return {};
+}
+
+Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
+                                             bool symmetric, unsigned num_bits,
+                                             bool is_signed,
+                                             bool narrow_range) {
+  Builder builder(attr.getContext());
+  auto shape = attr.getType().cast<ShapedType>().getShape();
+  if (shape.size() <= quant_dim) return {};
+  // `symmetric` can only be used when it is `signed` and `narrow_range`.
+  if (symmetric && (!is_signed || !narrow_range)) return {};
+
+  int dim_size = shape[quant_dim];
+  int slice_size = std::accumulate(std::next(shape.begin(), quant_dim + 1),
+                                   shape.end(), 1, std::multiplies<int64_t>());
+  SmallVector<double, 4> min(dim_size, std::numeric_limits<double>::max());
+  SmallVector<double, 4> max(dim_size, std::numeric_limits<double>::min());
+  auto fp = attr.dyn_cast<DenseFPElementsAttr>();
+  if (!fp) return {};
+
+  // If all the element values are same we don't need to scan the content.
+  if (fp.isSplat()) {
+    double single_value =
+        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
+    // When the single value isn't 0.0, we expand it to a range to include
+    // this single value and 0.0. This will give us a scale and zero point
+    // works for both this value and 0.0.
+    if (single_value < 0.0) {
+      min[0] = single_value;
+      max[0] = symmetric ? -single_value : 0.0;
+    } else if (single_value > 0.0) {
+      min[0] = symmetric ? -single_value : 0.0;
+      max[0] = single_value;
+    } else {
+      // If the tensor contents are all 0.0f, a fixed range is used to avoid
+      // INF error.
+      min[0] = -1.0;
+      max[0] = 1.0;
+    }
+    for (int i = 1; i < dim_size; ++i) {
+      min[i] = min[0];
+      max[i] = max[0];
+    }
+  } else {
+    int64_t flatten_index = 0;
+    for (auto it = fp.begin(), e = fp.end(); it != e; ++it, ++flatten_index) {
+      double ele_value = FloatAttr::getValueAsDouble(*it);
+      int slice_index = flatten_index / slice_size;
+      int channel_index = slice_index % dim_size;
+      min[channel_index] = std::min(min[channel_index], ele_value);
+      max[channel_index] = std::max(max[channel_index], ele_value);
+    }
+    if (symmetric) {
+      for (int i = 0; i < dim_size; ++i) {
+        max[i] = std::max(std::abs(min[i]), std::abs(max[i]));
+        // In case the scale is extremely small, a fixed scale is used.
+        if (max[i] < 1.0e-6) max[i] = 1.0;
+        min[i] = -max[i];
+      }
+    }
+  }
+  auto type = GetQuantizedType(builder, attr.getType(), min, max, quant_dim,
+                               num_bits, narrow_range, is_signed);
   if (auto ele_type = type.dyn_cast_or_null<TensorType>())
     return ele_type.getElementType();
 
@@ -276,5 +362,109 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
   return {};
 }
 
+// A heuristic to determine whether the scales needs to be from operands or
+// from results for the ops with the `SameOperandsAndResultsScale` property.
+// The current implementation is based on the number of operands.
+static bool PreferResultScale(Operation* op) {
+  int float_operands = 0;
+  for (auto operand : op->getOperands()) {
+    if (auto operand_type = operand->getType().dyn_cast<ShapedType>()) {
+      if (operand_type.getElementType().isa<FloatType>()) {
+        if (float_operands++ > 1) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// The stats op of some of the ops can be redundant. The current implementation
+// only considers the ops with restricted output params.
+static bool IsStatsRedundant(Operation* op,
+                             OpQuantSpecGetter op_quant_spec_getter) {
+  return !op_quant_spec_getter(op)->restricted_output_params.empty();
+}
+
+bool RemoveRedundantStatsOps(mlir::FuncOp func,
+                             OpQuantSpecGetter op_quant_spec_getter) {
+  llvm::SmallVector<quant::StatisticsOp, 16> all_stats_ops;
+  llvm::DenseSet<Operation*> redundant_stats_ops;
+
+  // Step 1: forward pass: propagate any value scales which are not produces
+  // by `SameOperandsAndResultsScale`. Additionally, remove the value scales
+  // which are produced by the `restricted_output_params`.
+  // Note that we don't propagate across the multiple-operands
+  // `SameOperandsAndResultsScale` ops like `concatenation`.
+  func.walk(
+      [&](quant::StatisticsOp stats_op) { all_stats_ops.push_back(stats_op); });
+
+  while (!all_stats_ops.empty()) {
+    quant::StatisticsOp stats_op = all_stats_ops.back();
+    all_stats_ops.pop_back();
+
+    if (auto def = stats_op.arg()->getDefiningOp()) {
+      if (IsStatsRedundant(def, op_quant_spec_getter)) {
+        redundant_stats_ops.insert(stats_op);
+      }
+    }
+
+    for (auto user : stats_op.getResult()->getUsers()) {
+      // We don't propagate this parameter down if it has multiple operands.
+      // We want to use the result parameter scales instead.
+
+      if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
+          !PreferResultScale(user)) {
+        for (Value* res : user->getResults()) {
+          if (res->hasOneUse()) {
+            if (auto next_stats = llvm::dyn_cast<quant::StatisticsOp>(
+                    *res->getUsers().begin())) {
+              // quantization parameters can be propgated to next_stats
+              redundant_stats_ops.insert(next_stats);
+              // add next_stats to the work list so propagation can
+              // continue.
+              all_stats_ops.push_back(next_stats);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Step 2: backward pass: For the ops skiped in the forward pass, propagate
+  // its results scale backwards.
+  func.walk([&](quant::StatisticsOp stats_op) {
+    if (redundant_stats_ops.find(stats_op) == redundant_stats_ops.end()) {
+      all_stats_ops.push_back(stats_op);
+    }
+  });
+
+  while (!all_stats_ops.empty()) {
+    quant::StatisticsOp stats_op = all_stats_ops.back();
+    all_stats_ops.pop_back();
+
+    if (auto def = stats_op.arg()->getDefiningOp()) {
+      if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
+          PreferResultScale(def)) {
+        for (auto input : def->getOperands()) {
+          if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
+                  input->getDefiningOp())) {
+            redundant_stats_ops.insert(next_stats);
+            all_stats_ops.push_back(next_stats);
+          }
+        }
+      }
+    }
+  }
+
+  // Step3: Remove all the redundant stats ops
+  for (auto it : redundant_stats_ops) {
+    if (!llvm::isa<quant::StatisticsOp>(it)) return true;
+    auto stats_op = llvm::cast<quant::StatisticsOp>(it);
+    stats_op.getResult()->replaceAllUsesWith(stats_op.arg());
+    stats_op.erase();
+  }
+
+  // Returns false if the steps finish without errors.
+  return false;
+}
 }  // namespace TFL
 }  // namespace mlir

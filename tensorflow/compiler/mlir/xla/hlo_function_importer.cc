@@ -43,6 +43,7 @@ using mlir::DenseIntElementsAttr;
 using mlir::FuncOp;
 using mlir::NamedAttribute;
 using mlir::Operation;
+using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using mlir::Value;
@@ -439,19 +440,28 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kClamp, ClampOp);
+      NoAttributeCase(kComplex, ComplexOp);
+      NoAttributeCase(kCos, CosOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kFloor, FloorOp);
+      NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
+      NoAttributeCase(kNegate, NegOp);
+      NoAttributeCase(kOr, OrOp);
+      NoAttributeCase(kPower, PowOp);
+      NoAttributeCase(kReal, RealOp);
+      NoAttributeCase(kRemainder, RemOp);
       // The dimensions attribute is not present on the HLO Reshape instruction.
       // If dimensions are non-default, the XLA builder implements it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
+      NoAttributeCase(kSin, SinOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);
@@ -508,32 +518,32 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
 
   switch (type) {
     case PrimitiveType::PRED:
-      return builder_->getTensorType(array, builder_->getI1Type());
+      return mlir::RankedTensorType::get(array, builder_->getI1Type());
     case PrimitiveType::F16:
-      return builder_->getTensorType(array, builder_->getF16Type());
+      return mlir::RankedTensorType::get(array, builder_->getF16Type());
     case PrimitiveType::F32:
-      return builder_->getTensorType(array, builder_->getF32Type());
+      return mlir::RankedTensorType::get(array, builder_->getF32Type());
     case PrimitiveType::F64:
-      return builder_->getTensorType(array, builder_->getF64Type());
+      return mlir::RankedTensorType::get(array, builder_->getF64Type());
     case PrimitiveType::S8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::S16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::S32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::S64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
     // TODO(b/130356985): Update once MLIR supports unsigned integers.
     case PrimitiveType::U8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::U16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::U32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::U64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
     case PrimitiveType::C64:
-      return builder_->getTensorType(
+      return mlir::RankedTensorType::get(
           array, mlir::ComplexType::get(builder_->getF32Type()));
     default:
       return tensorflow::errors::Internal(
@@ -607,28 +617,27 @@ mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
 
   return DenseIntElementsAttr::get(
-             builder_->getTensorType(dimensions.size(),
-                                     builder_->getIntegerType(64)),
+             RankedTensorType::get(dimensions.size(),
+                                   builder_->getIntegerType(64)),
              dimensions)
       .cast<DenseIntElementsAttr>();
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<int64_t> op_dimensions) {
-  return builder_
-      ->getDenseIntElementsAttr(
-          builder_->getTensorType(op_dimensions.size(),
-                                  builder_->getIntegerType(64)),
-          op_dimensions)
+  return DenseIntElementsAttr::get(
+             RankedTensorType::get(op_dimensions.size(),
+                                   builder_->getIntegerType(64)),
+             op_dimensions)
       .cast<DenseIntElementsAttr>();
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
-      builder_->getTensorType({2, static_cast<int64_t>(padding.size()) / 2},
-                              builder_->getIntegerType(64));
-  auto attr = builder_->getDenseIntElementsAttr(ty, padding);
+      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+                                  builder_->getIntegerType(64));
+  auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);
 }
 

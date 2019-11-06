@@ -198,7 +198,7 @@ void AffineApplyOp::build(Builder *builder, OperationState &result,
                           AffineMap map, ArrayRef<Value *> operands) {
   result.addOperands(operands);
   result.types.append(map.getNumResults(), builder->getIndexType());
-  result.addAttribute("map", builder->getAffineMapAttr(map));
+  result.addAttribute("map", AffineMapAttr::get(map));
 }
 
 ParseResult AffineApplyOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -209,7 +209,7 @@ ParseResult AffineApplyOp::parse(OpAsmParser &parser, OperationState &result) {
   unsigned numDims;
   if (parser.parseAttribute(mapAttr, "map", result.attributes) ||
       parseDimAndSymbolList(parser, result.operands, numDims) ||
-      parser.parseOptionalAttributeDict(result.attributes))
+      parser.parseOptionalAttrDict(result.attributes))
     return failure();
   auto map = mapAttr.getValue();
 
@@ -817,13 +817,13 @@ void AffineDmaStartOp::build(Builder *builder, OperationState &result,
                              ArrayRef<Value *> tagIndices, Value *numElements,
                              Value *stride, Value *elementsPerStride) {
   result.addOperands(srcMemRef);
-  result.addAttribute(getSrcMapAttrName(), builder->getAffineMapAttr(srcMap));
+  result.addAttribute(getSrcMapAttrName(), AffineMapAttr::get(srcMap));
   result.addOperands(srcIndices);
   result.addOperands(destMemRef);
-  result.addAttribute(getDstMapAttrName(), builder->getAffineMapAttr(dstMap));
+  result.addAttribute(getDstMapAttrName(), AffineMapAttr::get(dstMap));
   result.addOperands(destIndices);
   result.addOperands(tagMemRef);
-  result.addAttribute(getTagMapAttrName(), builder->getAffineMapAttr(tagMap));
+  result.addAttribute(getTagMapAttrName(), AffineMapAttr::get(tagMap));
   result.addOperands(tagIndices);
   result.addOperands(numElements);
   if (stride) {
@@ -985,7 +985,7 @@ void AffineDmaWaitOp::build(Builder *builder, OperationState &result,
                             Value *tagMemRef, AffineMap tagMap,
                             ArrayRef<Value *> tagIndices, Value *numElements) {
   result.addOperands(tagMemRef);
-  result.addAttribute(getTagMapAttrName(), builder->getAffineMapAttr(tagMap));
+  result.addAttribute(getTagMapAttrName(), AffineMapAttr::get(tagMap));
   result.addOperands(tagIndices);
   result.addOperands(numElements);
 }
@@ -1073,13 +1073,11 @@ void AffineForOp::build(Builder *builder, OperationState &result,
                       builder->getIntegerAttr(builder->getIndexType(), step));
 
   // Add the lower bound.
-  result.addAttribute(getLowerBoundAttrName(),
-                      builder->getAffineMapAttr(lbMap));
+  result.addAttribute(getLowerBoundAttrName(), AffineMapAttr::get(lbMap));
   result.addOperands(lbOperands);
 
   // Add the upper bound.
-  result.addAttribute(getUpperBoundAttrName(),
-                      builder->getAffineMapAttr(ubMap));
+  result.addAttribute(getUpperBoundAttrName(), AffineMapAttr::get(ubMap));
   result.addOperands(ubOperands);
 
   // Create a region and a block for the body.  The argument of the region is
@@ -1164,7 +1162,7 @@ static ParseResult parseBound(bool isLower, OperationState &result,
     // for storage. Analysis passes may expand it into a multi-dimensional map
     // if desired.
     AffineMap map = builder.getSymbolIdentityMap();
-    result.addAttribute(boundAttrName, builder.getAffineMapAttr(map));
+    result.addAttribute(boundAttrName, AffineMapAttr::get(map));
     return success();
   }
 
@@ -1213,8 +1211,8 @@ static ParseResult parseBound(bool isLower, OperationState &result,
   if (auto integerAttr = boundAttr.dyn_cast<IntegerAttr>()) {
     result.attributes.pop_back();
     result.addAttribute(
-        boundAttrName, builder.getAffineMapAttr(
-                           builder.getConstantAffineMap(integerAttr.getInt())));
+        boundAttrName,
+        AffineMapAttr::get(builder.getConstantAffineMap(integerAttr.getInt())));
     return success();
   }
 
@@ -1263,7 +1261,7 @@ ParseResult parseAffineForOp(OpAsmParser &parser, OperationState &result) {
   AffineForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Set the operands list as resizable so that we can freely modify the bounds.
@@ -1339,10 +1337,9 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
   PatternMatchResult matchAndRewrite(AffineForOp forOp,
                                      PatternRewriter &rewriter) const override {
     // Check that the body only contains a terminator.
-    auto *body = forOp.getBody();
-    if (std::next(body->begin()) != body->end())
+    if (!has_single_element(*forOp.getBody()))
       return matchFailure();
-    rewriter.replaceOp(forOp, llvm::None);
+    rewriter.eraseOp(forOp);
     return matchSuccess();
   }
 };
@@ -1657,7 +1654,7 @@ ParseResult parseAffineIfOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();
@@ -1752,7 +1749,7 @@ void AffineLoadOp::build(Builder *builder, OperationState &result,
   assert(operands.size() == 1 + map.getNumInputs() && "inconsistent operands");
   result.addOperands(operands);
   if (map)
-    result.addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+    result.addAttribute(getMapAttrName(), AffineMapAttr::get(map));
   auto memrefType = operands[0]->getType().cast<MemRefType>();
   result.types.push_back(memrefType.getElementType());
 }
@@ -1764,7 +1761,7 @@ void AffineLoadOp::build(Builder *builder, OperationState &result,
   result.addOperands(memref);
   result.addOperands(mapOperands);
   auto memrefType = memref->getType().cast<MemRefType>();
-  result.addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  result.addAttribute(getMapAttrName(), AffineMapAttr::get(map));
   result.types.push_back(memrefType.getElementType());
 }
 
@@ -1791,7 +1788,7 @@ ParseResult AffineLoadOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOperand(memrefInfo) ||
       parser.parseAffineMapOfSSAIds(mapOperands, mapAttr, getMapAttrName(),
                                     result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
       parser.resolveOperands(mapOperands, indexTy, result.operands) ||
@@ -1855,7 +1852,7 @@ void AffineStoreOp::build(Builder *builder, OperationState &result,
   result.addOperands(valueToStore);
   result.addOperands(memref);
   result.addOperands(mapOperands);
-  result.addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  result.addAttribute(getMapAttrName(), AffineMapAttr::get(map));
 }
 
 // Use identity map.
@@ -1884,7 +1881,7 @@ ParseResult AffineStoreOp::parse(OpAsmParser &parser, OperationState &result) {
                  parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
                                                getMapAttrName(),
                                                result.attributes) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(storeValueInfo, type.getElementType(),
                                        result.operands) ||

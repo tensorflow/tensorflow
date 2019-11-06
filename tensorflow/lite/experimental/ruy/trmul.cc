@@ -261,8 +261,10 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
 LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
                                int depth,
                                int cache_friendly_traversal_threshold) {
-  if (tentative_thread_count == 1 &&
-      (rows + cols) * depth < cache_friendly_traversal_threshold) {
+  if (cols == 1) {  // Use a simple loop for the GEMV case.
+    return LoopStructure::kSimple;
+  } else if (tentative_thread_count == 1 &&
+             (rows + cols) * depth < cache_friendly_traversal_threshold) {
     return LoopStructure::kSimple;
   }
   return LoopStructure::kGeneral;

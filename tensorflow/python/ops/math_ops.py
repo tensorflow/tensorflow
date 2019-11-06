@@ -1469,11 +1469,11 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     if isinstance(x, ops.Tensor):
       rank = x.shape.rank
       if rank is not None:
-        return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+        return constant_op.constant(np.arange(rank, dtype=np.int32))
     elif (isinstance(x, sparse_tensor.SparseTensor) and
           x.dense_shape.shape.is_fully_defined()):
       rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
-      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+      return constant_op.constant(np.arange(rank, dtype=np.int32))
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.
     return range(0, array_ops.rank(x))
@@ -2564,8 +2564,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             keepdims=keepdims,
             dims=reduce_dim))
     if not keepdims:
-      my_max = array_ops.reshape(my_max,
-                                 result._maybe_constant_shape(gen_array_ops))  # pylint: disable=protected-access
+      my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
     result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
@@ -2809,7 +2808,8 @@ def matvec(a,
   """Multiplies matrix `a` by vector `b`, producing `a` * `b`.
 
   The matrix `a` must, following any transpositions, be a tensor of rank >= 2,
-  and we must have `shape(b) = shape(a)[:-2] + [shape(a)[-1]]`.
+  with `shape(a)[-1] == shape(b)[-1]`, and `shape(a)[:-2]` able to broadcast
+  with `shape(b)[:-1]`.
 
   Both `a` and `b` must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2864,7 +2864,7 @@ def matvec(a,
   Args:
     a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
       `complex128` and rank > 1.
-    b: `Tensor` with same type and rank = `rank(a) - 1`.
+    b: `Tensor` with same type as `a` and compatible dimensions.
     transpose_a: If `True`, `a` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
       multiplication.
@@ -3528,15 +3528,20 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
   Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
+  num_segments = ops.convert_to_tensor(num_segments)
   # bincount doesn't support negative indices so we use unsorted_segment_sum
   segment_ids_shape = array_ops.shape_internal(segment_ids)
   ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
-  N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+  n = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
-  ndims_output = data.shape.ndims - segment_ids.shape.ndims
-  broadcast_shape = [num_segments] + [1] * ndims_output
-  N = array_ops.reshape(N, broadcast_shape)
-  return gen_math_ops.maximum(N, 1)
+  broadcastable_shape = array_ops.concat(
+      [num_segments[array_ops.newaxis],
+       array_ops.ones([array_ops.rank(data)
+                       - array_ops.rank(segment_ids)],
+                      dtype=num_segments.dtype)],
+      axis=0)
+  n = array_ops.reshape(n, broadcastable_shape)
+  return gen_math_ops.maximum(n, 1)
 
 
 @tf_export(

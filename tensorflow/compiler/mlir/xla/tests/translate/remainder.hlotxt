@@ -1,0 +1,14 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule main.5
+
+// CHECK-LABEL:  func @main
+// CHECK-SAME:   ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>)
+ENTRY %foo (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = f32[4] parameter(1)
+// CHECK:  [[VAL_2:%.*]] = xla_hlo.remainder [[VAL_0]], [[VAL_1]]
+// CHECK:  return [[VAL_2]] : tensor<4xf32>
+  ROOT %remainder.3 = f32[4] remainder(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
+}
+

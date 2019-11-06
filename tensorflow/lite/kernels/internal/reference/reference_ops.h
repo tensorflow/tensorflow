@@ -214,6 +214,24 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
 }
 
 template <typename T>
+inline void ReluX(const tflite::ReluParams& params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 val = static_cast<int32_t>(input_data[i]);
+    int32 clamped = params.output_offset +
+                    MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                  params.output_multiplier,
+                                                  params.output_shift);
+    clamped = std::max(params.quantized_activation_min, clamped);
+    clamped = std::min(params.quantized_activation_max, clamped);
+    output_data[i] = static_cast<T>(clamped);
+  }
+}
+
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
@@ -2169,6 +2187,48 @@ inline void GatherNd(const RuntimeShape& params_shape,
   }
 }
 
+template <typename IndicesT, typename UpdatesT>
+inline void ScatterNd(const RuntimeShape& indices_shape,
+                      const IndicesT* indices_data,
+                      const RuntimeShape& updates_shape,
+                      const UpdatesT* updates_data,
+                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ScatterNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int outer_dims = indices_shape.DimensionsCount() - 1;
+  const int indices_nd = indices_shape.Dims(outer_dims);
+  const int updates_dims = updates_shape.DimensionsCount();
+  for (int i = 0; i < outer_dims; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = outer_dims; i < updates_dims; ++i) {
+    slice_size *= updates_shape.Dims(i);
+  }
+
+  int output_flat_size = output_shape.FlatSize();
+  int remain_flat_size = output_flat_size;
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / output_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
+  for (int i = 0; i < n_slices; ++i) {
+    int to_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      IndicesT idx = indices_data[i * indices_nd + j];
+      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
+      to_pos += idx * dims_to_count[j];
+    }
+    for (int j = 0; j < slice_size; j++) {
+      output_data[to_pos + j] += updates_data[i * slice_size + j];
+    }
+  }
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
@@ -2751,11 +2811,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
@@ -2795,11 +2855,11 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   const bool ordinary_mean =
       (input_zero_point == output_zero_point && input_scale == output_scale);
@@ -2906,11 +2966,12 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         float float_mean = static_cast<float>(temp_sum[idx]) /
                            static_cast<float>(num_elements_in_axis);
-
-        // Convert to float value.
-        output_data[idx] =
-            static_cast<T>(std::round(float_mean * scale + bias)) +
-            output_zero_point;
+        float result =
+            std::min(std::round(float_mean * scale + bias) + output_zero_point,
+                     static_cast<float>(std::numeric_limits<T>::max()));
+        result =
+            std::max(result, static_cast<float>(std::numeric_limits<T>::min()));
+        output_data[idx] = static_cast<T>(result);
       }
     }
   }

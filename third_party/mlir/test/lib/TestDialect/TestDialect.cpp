@@ -16,6 +16,8 @@
 // =============================================================================
 
 #include "TestDialect.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -114,6 +116,24 @@ TestDialect::TestDialect(MLIRContext *context)
   allowUnknownOperations();
 }
 
+LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
+                                                    unsigned regionIndex,
+                                                    unsigned argIndex,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
+LogicalResult
+TestDialect::verifyRegionResultAttribute(Operation *op, unsigned regionIndex,
+                                         unsigned resultIndex,
+                                         NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Test IsolatedRegionOp - parse passthrough region arguments.
 //===----------------------------------------------------------------------===//
@@ -179,12 +199,16 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
   SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
   OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
-  builder.create<TestReturnOp>(result.location, return_operands);
+  builder.create<TestReturnOp>(wrapped_op->getLoc(), return_operands);
 
   // Get the results type for the wrapping op from the terminator operands.
   Operation &return_op = body.back().back();
   result.types.append(return_op.operand_type_begin(),
                       return_op.operand_type_end());
+
+  // Use the location of the wrapped op for the "test.wrapping_region" op.
+  result.location = wrapped_op->getLoc();
+
   return success();
 }
 

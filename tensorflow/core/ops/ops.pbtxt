@@ -2744,6 +2744,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "auto_shard_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
@@ -7464,6 +7471,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "compilation_failure_closes_chips"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7580,6 +7594,7 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
       }
     }
   }
@@ -7752,6 +7767,7 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
       }
     }
   }
@@ -10281,6 +10297,31 @@ op {
   }
 }
 op {
+  name: "DatasetToGraphV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "strip_device_assignment"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "DatasetToSingleElement"
   input_arg {
     name: "dataset"
@@ -10561,6 +10602,35 @@ op {
     }
   }
   allows_uninitialized_input: true
+}
+op {
+  name: "DebugNumericSummaryV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "DecodeAndCropJpeg"
@@ -13102,6 +13172,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "auto_shard_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
   }
   attr {
     name: "output_types"
@@ -19286,6 +19363,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -27607,6 +27685,13 @@ op {
       i: -1
     }
   }
+  attr {
+    name: "ensure_minimum_range"
+    type: "float"
+    default_value {
+      f: 0.01
+    }
+  }
 }
 op {
   name: "QuantizedAdd"
@@ -32352,6 +32437,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32

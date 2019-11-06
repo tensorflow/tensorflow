@@ -135,7 +135,8 @@ int main(int argc, char **argv) {
           input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,
           output_arrays,
-          /*prune_unused_nodes=*/true, &source_mgr, &context);
+          /*prune_unused_nodes=*/true, &source_mgr, &context,
+          /*add_pseudo_input_nodes=*/false);
 
   // If errors occur, the library call in the above already logged the error
   // message. So we can just return here.
@@ -161,6 +162,9 @@ int main(int argc, char **argv) {
       return kTrFailure;
     }
   }
+  if (!emit_quant_adaptor_ops) {
+    quant_specs.inference_input_type = quant_specs.inference_type;
+  }
 
   if (!quant_stats_file_name.empty()) {
     std::string error_message;
@@ -175,7 +179,6 @@ int main(int argc, char **argv) {
 
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
@@ -184,7 +187,8 @@ int main(int argc, char **argv) {
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, quant_specs, &result, &pm);
+      lower_tensor_list_ops, quant_specs, &result, &pm,
+      /*add_pseudo_input_nodes=*/false);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

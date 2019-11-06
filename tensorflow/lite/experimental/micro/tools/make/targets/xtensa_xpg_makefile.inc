@@ -1,10 +1,12 @@
 # Settings for Xtensa XPG toolchain.
+# REQUIRED:
+#   - XTENSA_CORE: The name of the core to use, will cause a compiler exception
+#                  without providing a core.
 ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
-  # TODO(kreeger): Enable the ability to pass a different core:
   PLATFORM_ARGS = \
-    --xtensa-core=hifi3_bd5 \
+    --xtensa-core=$(XTENSA_CORE) \
     -g -O2 \
     -fmessage-length=0 \
     -clang

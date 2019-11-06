@@ -38,7 +38,8 @@ LoadFromGraphdefOrMlirSource(
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, bool prune_unused_nodes,
-    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
+    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context,
+    bool add_pseudo_input_nodes = true);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
@@ -52,7 +53,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, const mlir::TFL::QuantizationSpecs& quant_specs,
-    std::string* result, mlir::PassManager* pass_manager);
+    std::string* result, mlir::PassManager* pass_manager,
+    bool add_pseudo_input_nodes = true);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

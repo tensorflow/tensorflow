@@ -24,6 +24,7 @@ import re
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -35,7 +36,6 @@ _RETRY_TIMES = 12 * 24  # 1 day
 _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS = 300 * 1000  # 5 mins
 
 _TPU_DEVICE_REG = re.compile(r'.*task:(\d+)/.*device:TPU:(\d+)$')
-_DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
 
 _DEFAULT_JOB_NAME = 'tpu_worker'
 _DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
@@ -60,16 +60,12 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
   device_dict = collections.defaultdict(list)
 
   if context.executing_eagerly():
-    device_names = context.list_devices()
+    logical_devices = config.list_logical_devices()
     devices = []
 
     # We want the output type to match in both eager and session mode
-    for name in device_names:
-      device_match = _DEVICE_TYPE_REGEX.match(name)
-      device_type = 'CPU'
-      if device_match:
-        device_type = device_match.group(1)
-      devices.append(session_lib._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
+    for d in logical_devices:
+      devices.append(session_lib._DeviceAttributes(d.name, d.device_type, 0, 0))  # pylint: disable=protected-access
   else:
     # TODO(b/120564445): Replace with standard library for retries.
     retry_count = 1
@@ -179,9 +175,9 @@ def _obtain_topology(master_address, cluster_def):
 
 def get_session_config_with_timeout(timeout_in_secs, cluster_def):
   """Returns a session given a timeout and a cluster configuration."""
-  config = config_pb2.ConfigProto(
+  config_proto = config_pb2.ConfigProto(
       operation_timeout_in_ms=timeout_in_secs, cluster_def=cluster_def)
-  return config
+  return config_proto
 
 
 def master_job(master, cluster_def):

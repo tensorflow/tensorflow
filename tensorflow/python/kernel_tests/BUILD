@@ -3411,6 +3411,7 @@ tf_py_test(
     tags = [
         "no_rocm",  # flaky test
         "no_windows",
+        "nomsan",  # TODO(b/143081496)
     ],
     # b/127344411: xla_enable_strict_auto_jit = True,
 )

@@ -927,7 +927,7 @@ ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
   return failure(parser.parseOperandList(ops) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -966,7 +966,7 @@ ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser.parseOperand(srcInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(srcType) ||
                  parser.resolveOperand(srcInfo, srcType, result.operands) ||
                  parser.parseKeywordType("to", dstType) ||

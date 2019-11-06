@@ -22,6 +22,17 @@ namespace tflite {
 namespace optimize {
 namespace operator_property {
 
+// The scales of a certain tensor can be derived from the multiplications of all
+// the scales. For example, for bias in conv, derived_scale = {{0, 1}, {}, {}}
+// and for lstm gate bias, the derived scale is {{}, {0}, {2^-10}}
+struct DerivedScale {
+  std::vector<int> input_tensors = {};
+  std::vector<int> intermediate_tensors = {};
+  // This is a list of extra factors that are not associated with any other
+  // tensor.
+  std::vector<float> factors = {};
+};
+
 struct TensorProperty {
   // per_axis also implies symmetric currently.
   bool per_axis = false;
@@ -50,14 +61,18 @@ struct OperatorProperty {
   // Bias indexes.
   std::vector<int> biases = {};
 
-  // Constraints.
+  // Intermediate indexes -> intermediate tensor property.
+  std::vector<std::pair<int, TensorProperty>> intermediates = {};
+
+  // Force output to reuse the same scale and zero point of input.
   bool restrict_same_input_output_scale = false;
 
   // Op version.
   int version = 1;
 };
 
-OperatorProperty GetOperatorProperty(const BuiltinOperator& op);
+OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
+                                     int op_index);
 
 }  // namespace operator_property
 }  // namespace optimize

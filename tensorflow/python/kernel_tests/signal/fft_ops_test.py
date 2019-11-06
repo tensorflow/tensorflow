@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import itertools
 
 from absl.testing import parameterized
@@ -26,7 +25,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -39,16 +37,6 @@ from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 
 VALID_FFT_RANKS = (1, 2, 3)
-
-
-def _forward_compat_context(np_dtype):
-  @contextlib.contextmanager
-  def null_context():
-    yield
-  if np_dtype in (np.float64, np.complex128):
-    return compat.forward_compatibility_horizon(2019, 10, 13)
-  else:
-    return null_context()
 
 
 # TODO(rjryan): Investigate precision issues. We should be able to achieve
@@ -101,9 +89,8 @@ class BaseFFTOpsTest(test.TestCase):
         loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
         return loss
 
-      with _forward_compat_context(x.dtype):
-        ((x_jacob_t, y_jacob_t), (x_jacob_n, y_jacob_n)) = (
-            gradient_checker_v2.compute_gradient(f, [x, y], delta=1e-2))
+      ((x_jacob_t, y_jacob_t), (x_jacob_n, y_jacob_n)) = (
+          gradient_checker_v2.compute_gradient(f, [x, y], delta=1e-2))
 
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=rtol, atol=atol)
@@ -117,9 +104,8 @@ class BaseFFTOpsTest(test.TestCase):
       loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
       return loss
 
-    with _forward_compat_context(x.dtype):
-      (x_jacob_t,), (x_jacob_n,) = gradient_checker_v2.compute_gradient(
-          f, [x], delta=1e-2)
+    (x_jacob_t,), (x_jacob_n,) = gradient_checker_v2.compute_gradient(
+        f, [x], delta=1e-2)
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
 
 
@@ -301,14 +287,12 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
-    with _forward_compat_context(x.dtype), self.cached_session(
-        use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       return sess.run(
           self._tf_fft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tf_ifft(self, x, rank, fft_length=None, feed_dict=None):
-    with _forward_compat_context(x.dtype), self.cached_session(
-        use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       return sess.run(
           self._tf_ifft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 

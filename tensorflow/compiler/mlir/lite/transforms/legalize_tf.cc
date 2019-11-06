@@ -170,7 +170,7 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
   if (!shape_type.getElementType().isInteger(32)) {
     auto new_shape = shape_type.getShape();
     IntegerType new_ele_type = rewriter.getIntegerType(32);
-    ShapedType new_type = rewriter.getTensorType(new_shape, new_ele_type);
+    ShapedType new_type = RankedTensorType::get(new_shape, new_ele_type);
     // Uses TF::CastOp to be folded if the shape input is a constant.
     shape = rewriter
                 .create<TF::CastOp>(op->getLoc(), new_type, shape,
@@ -237,7 +237,7 @@ Value* PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
     if (mask) *mask |= 1 << i;
   }
   auto type =
-      rewriter.getTensorType({full_dim_count}, rewriter.getIntegerType(32));
+      RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
   auto attr = DenseElementsAttr::get<int32_t>(type, padded_val);
   return rewriter.create<ConstantOp>(op->getLoc(), type, attr);
 }

@@ -21,6 +21,7 @@ tensorflow::swig::RegisterType
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
@@ -69,6 +70,7 @@ tensorflow::Status::ok()
 tensorflow::Device::attributes
 tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
 [protos_all]  # device_lib
 tensorflow::ConfigProto::ConfigProto
@@ -78,3 +80,30 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
+
+[python_scoped_annotation] # scoped_annotation
+tensorflow::profiler::PythonScopedAnnotation::Init
+tensorflow::profiler::PythonScopedAnnotation::Enter
+tensorflow::profiler::PythonScopedAnnotation::Exit
+tensorflow::profiler::PythonScopedAnnotation::IsEnabled
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+
+[transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
+[python_traceme] # traceme
+tensorflow::profiler::PythonTraceMe::Init
+tensorflow::profiler::PythonTraceMe::Enter
+tensorflow::profiler::PythonTraceMe::Exit
+tensorflow::profiler::PythonTraceMe::IsEnabled
+
+[traceme_recorder] # traceme
+tensorflow::profiler::internal::g_trace_level
+

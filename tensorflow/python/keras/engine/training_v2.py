@@ -250,12 +250,15 @@ class Loop(training_utils.TrainingLoop):
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
+      inferred_steps = training_utils.infer_steps_for_dataset(
           model,
           training_dataset,
           steps_per_epoch,
           steps_name='steps_per_epoch',
           epochs=0)
+
+      steps_per_epoch = (
+          inferred_steps if steps_per_epoch is None else steps_per_epoch)
 
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
@@ -390,9 +393,6 @@ class Loop(training_utils.TrainingLoop):
                       total_epochs=1)
                   cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TEST,
                                  prefix='val_')
-                if (validation_steps is None
-                    and eval_context.progbar.progbar.target is not None):
-                  validation_steps = eval_context.progbar.progbar.target
 
     return model.history
 
@@ -448,7 +448,7 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=1,
           steps_per_epoch=steps,
-          samples=use_sample,
+          samples=total_samples,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=mode)
@@ -591,7 +591,7 @@ def _process_training_inputs(model,
     if validation_data:
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
-           validation_data)
+           validation_data, raise_if_ambiguous=False)
       # For eval data, we use a representative batch size of the
       # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy

@@ -53,7 +53,8 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -66,6 +67,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+        "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
@@ -226,7 +228,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:protos_all",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

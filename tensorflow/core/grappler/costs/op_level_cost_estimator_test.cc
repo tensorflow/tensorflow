@@ -484,6 +484,26 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
+  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    OpLevelCostEstimator::BatchMatMulDimensions batch_mat_mul;
+
+    batch_mat_mul.matmul_dims.n = 0;
+    batch_mat_mul.matmul_dims.m = 0;
+    batch_mat_mul.matmul_dims.k = 0;
+
+    estimator_.CountBatchMatMulOperations(op_info, &batch_mat_mul,
+                                          found_unknown_shapes);
+    int dimension_product = 1;
+    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
+
+    dimension_product *= batch_mat_mul.matmul_dims.n;
+    dimension_product *= batch_mat_mul.matmul_dims.m;
+    dimension_product *= batch_mat_mul.matmul_dims.k;
+
+    return dimension_product;
+  }
+
   void SetComputeMemoryOverlap(bool value) {
     estimator_.compute_memory_overlap_ = value;
   }
@@ -939,6 +959,32 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                 DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+
+  // Test the count to make sure that they extracted the dimensions correctly
+  int prod = CountBatchMatMulDimProduct(
+      DescribeBatchMatMul({2, 4}, {1, 3, 4, 2}).op_info,
+      &batch_matmul_inaccurate);
+  EXPECT_EQ(prod, 16);
+  EXPECT_FALSE(batch_matmul_inaccurate);
+
+  // Exercise the bad cases of a batchMatMul.
+  OpContext bad_batch = DescribeBatchMatMul({2, 4}, {4, 2});
+  bad_batch.op_info.set_op("notBatchMatMul");
+  prod =
+      CountBatchMatMulDimProduct(bad_batch.op_info, &batch_matmul_inaccurate);
+
+  EXPECT_EQ(prod, 0);
+  EXPECT_TRUE(batch_matmul_inaccurate);
+
+  // Exercise a transpose case of a batchMatMul
+  OpContext transpose_batch = DescribeBatchMatMul({2, 4, 3, 1}, {4, 2});
+  auto attr = transpose_batch.op_info.mutable_attr();
+  (*attr)["adj_x"].set_b(true);
+  (*attr)["adj_y"].set_b(true);
+
+  prod = CountBatchMatMulDimProduct(transpose_batch.op_info,
+                                    &batch_matmul_inaccurate);
+  EXPECT_EQ(prod, 12);
 }
 
 TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {

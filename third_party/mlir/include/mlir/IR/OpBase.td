@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
@@ -453,6 +452,10 @@ class TensorOf<list<Type> allowedTypes> :
 
 def AnyTensor : TensorOf<[AnyType]>;
 
+def AnyRankedTensor :
+  ShapedContainerType<[AnyType], And<[IsTensorTypePred, HasRankPred]>,
+  "ranked tensor">;
+
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
 class StaticShapeTensorOf<list<Type> allowedTypes>
     : Type<And<[TensorOf<allowedTypes>.predicate, HasStaticShapePred]>,
@@ -833,6 +836,16 @@ class IntEnumAttrCaseBase<I intType, string sym, int val> :
 class I32EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I32, sym, val>;
 class I64EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I64, sym, val>;
 
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getZExtValue() & " # val # "u">;
+}
+
 // Additional information for an enum attribute.
 class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // The C++ enum class name
@@ -840,10 +853,6 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
 
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
-
-  // Whether to skip automatically generating C++ enum class and utility
-  // functions for this enum attribute with EnumsGen.
-  bit skipAutoGen = 0;
 
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
@@ -937,6 +946,33 @@ class I64EnumAttr<string name, string description,
   let underlyingType = "uint64_t";
 }
 
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set. Besides,
+// helper methods are generated to parse a string separated with a specified
+// delimiter to a symbol and vice versa.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let underlyingType = "uint32_t";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The delimiter used to separate bit enum cases in strings.
+  string separator = "|";
+}
+
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
@@ -970,7 +1006,7 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "RankedTensorType::get({}, $_builder.getIntegerType(" # width # ")), "
     "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
   let convertFromStorage = "$_self";
 }
@@ -989,7 +1025,7 @@ class FloatElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getF" # width # "Type()),"
+    "RankedTensorType::get({}, $_builder.getF" # width # "Type()),"
     "llvm::makeArrayRef($0))";
   let convertFromStorage = "$_self";
 }
@@ -1013,7 +1049,7 @@ class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
   let returnType = [{ DenseFPElementsAttr }];
 
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "RankedTensorType::get({" # StrJoinInt<dims>.result #
     "}, $_builder.getF" # width # "Type()), "
     "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
   let convertFromStorage = "$_self";
@@ -1205,6 +1241,14 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
 def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
 
+// An attribute constraint on SymbolRefAttr that requires the SymbolRefAttr
+// pointing to an op of `opClass` within the closest parent with a symbol table.
+class ReferToOp<string opClass> : AttrConstraint<
+    CPred<"isa_and_nonnull<" # opClass # ">("
+            "::mlir::SymbolTable::lookupNearestSymbolFrom("
+              "&$_op, $_self.cast<SymbolRefAttr>().getValue()))">,
+    "referencing to a '" # opClass # "' symbol">;
+
 //===----------------------------------------------------------------------===//
 // Region definitions
 //===----------------------------------------------------------------------===//
@@ -1279,6 +1323,10 @@ def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
+// Op is a symbol.
+def Symbol : NativeOpTrait<"Symbol">;
+// Op defines a symbol table.
+def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <numeric>
 
@@ -232,7 +233,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
                                                      original_shape.end());
       normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(rewriter.getTensorType(
+      auto new_cst = cst.reshape(RankedTensorType::get(
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
       if (!IsBroadcastableElementsAttrAndType(new_type, filter->getType())) {
@@ -318,12 +319,11 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // so we have to update the bias.
       if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
 
-      auto bias_and_slice =
-          ConcreteType::GetBiasDimAndSliceSize(filter_type.getShape());
+      auto bias_and_slice = GetBiasDimAndSliceSize(filter_type.getShape());
       int64_t bias_size = bias_and_slice.first;
       int64_t slice_size = bias_and_slice.second;
       ShapedType new_bias_type =
-          rewriter.getTensorType({bias_size}, filter_type.getElementType());
+          RankedTensorType::get({bias_size}, filter_type.getElementType());
 
       // The new bias should be a 1-D tensor with length equals to the bias
       // dimension of the weight.
@@ -383,6 +383,24 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     }
     return this->matchSuccess();
   }
+
+ private:
+  // Returns the dimension length of the channel dimension and also the slide
+  // size by each position in the channel dimension accordingly. tfl.conv2d and
+  // tfl.fully_connected has heading channel dimension, but tfl.depthwise_conv2d
+  // has tailing channel dimension. This function is to provide a utility to
+  // create the above information from the op property.
+  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
+      ArrayRef<int64_t> filter_shape) {
+    // Channel dimension index is specified as op property
+    auto channel_index_iter = filter_shape.begin();
+    std::advance(channel_index_iter, AffineOpType::GetChannelDimIndex());
+    // The slide size is the size of the data in higher dimensions.
+    int64_t slice_size =
+        std::accumulate(std::next(channel_index_iter), filter_shape.end(), 1,
+                        std::multiplies<int64_t>());
+    return {*channel_index_iter, slice_size};
+  }
 };
 
 class FuseBinaryOpToFollowingFullyConnected
@@ -394,17 +412,6 @@ class FuseBinaryOpToFollowingFullyConnected
                                       FullyConnectedOp>;
   explicit FuseBinaryOpToFollowingFullyConnected(MLIRContext *context)
       : BaseType(context) {}
-
-  // The first dimension of the fully-connected weight needs to match the last
-  // dimension of the op result and also the (broadcasted) size of bias. Then
-  // the size of higher-dimensions is considered as the slice size.
-  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
-    int64_t depth =
-        std::accumulate(std::next(filter_shape.begin()), filter_shape.end(), 1,
-                        std::multiplies<int64_t>());
-    return {filter_shape.front(), depth};
-  }
 };
 
 class FuseBinaryOpToFollowingDepthwiseConv2D
@@ -416,14 +423,6 @@ class FuseBinaryOpToFollowingDepthwiseConv2D
                                       DepthwiseConv2DOp>;
   explicit FuseBinaryOpToFollowingDepthwiseConv2D(MLIRContext *context)
       : BaseType(context) {}
-
-  // The last dimension of the depthwise conv 2d weight needs to match the last
-  // dimension of the op result and also the (broadcasted) size of bias. Then
-  // slice number is just 1.
-  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
-    return {filter_shape.back(), 1};
-  }
 };
 
 class FuseBinaryOpToFollowingConv2D
@@ -434,17 +433,6 @@ class FuseBinaryOpToFollowingConv2D
       FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D, Conv2DOp>;
   explicit FuseBinaryOpToFollowingConv2D(MLIRContext *context)
       : BaseType(context) {}
-
-  // The first dimension of the conv 2d weight needs to match the last
-  // dimension of the op result and also the (broadcasted) size of bias. Then
-  // the size of higher-dimensions is considered as the slice size.
-  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
-    int64_t depth =
-        std::accumulate(std::next(filter_shape.begin()), filter_shape.end(), 1,
-                        std::multiplies<int64_t>());
-    return {filter_shape.front(), depth};
-  }
 };
 
 void Optimize::runOnFunction() {

@@ -80,7 +80,7 @@ tf_generate_proto_text_sources(
     srcs = ["test.proto"],
     srcs_relative_dir = "tensorflow/tools/proto_text/",
     deps = [
-        ":test_proto_cc",
+        ":test_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -95,7 +95,7 @@ tf_cc_test(
     ],
     deps = [
         ":gen_proto_text_functions_lib",
-        ":test_proto_cc",
+        ":test_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

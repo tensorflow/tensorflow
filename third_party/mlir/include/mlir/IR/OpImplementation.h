@@ -78,6 +78,12 @@ public:
   virtual void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                                      ArrayRef<StringRef> elidedAttrs = {}) = 0;
 
+  /// If the specified operation has attributes, print out an attribute
+  /// dictionary prefixed with 'attributes'.
+  virtual void
+  printOptionalAttrDictWithKeyword(ArrayRef<NamedAttribute> attrs,
+                                   ArrayRef<StringRef> elidedAttrs = {}) = 0;
+
   /// Print the entire operation with the default generic assembly form.
   virtual void printGenericOp(Operation *op) = 0;
 
@@ -340,7 +346,12 @@ public:
 
   /// Parse a named dictionary into 'result' if it is present.
   virtual ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+
+  /// Parse a named dictionary into 'result' if the `attributes` keyword is
+  /// present.
+  virtual ParseResult
+  parseOptionalAttrDictWithKeyword(SmallVectorImpl<NamedAttribute> &result) = 0;
 
   //===--------------------------------------------------------------------===//
   // Identifier Parsing

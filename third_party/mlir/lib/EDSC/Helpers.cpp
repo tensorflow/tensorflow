@@ -24,11 +24,8 @@ using namespace mlir::edsc;
 
 static SmallVector<ValueHandle, 8> getMemRefSizes(Value *memRef) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
+  assert(isStrided(memRefType) && "Expected strided MemRef type");
 
-  auto maps = memRefType.getAffineMaps();
-  (void)maps;
-  assert((maps.empty() || (maps.size() == 1 && maps[0].isIdentity())) &&
-         "Layout maps not supported");
   SmallVector<ValueHandle, 8> res;
   res.reserve(memRefType.getShape().size());
   const auto &shape = memRefType.getShape();

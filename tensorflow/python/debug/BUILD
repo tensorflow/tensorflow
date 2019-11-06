@@ -32,6 +32,7 @@ py_library(
         ":debug_graphs",
         ":debug_utils",
         ":dumping_callback",
+        ":dumping_callback_test_lib",
         ":grpc_debug_server",
         ":grpc_debug_test_server",
         ":hooks",
@@ -82,9 +83,6 @@ py_library(
     name = "dumping_callback",
     srcs = ["lib/dumping_callback.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-    ],
     deps = [
         ":debug_events_writer",
         ":op_callbacks_common",
@@ -92,6 +90,18 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "dumping_callback_test_lib",
+    srcs = ["lib/dumping_callback_test_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":check_numerics_callback",
+        ":debug_events_reader",
+        ":dumping_callback",
         "//third_party/py/numpy",
     ],
 )
@@ -641,6 +651,7 @@ py_test(
         "no_windows",  # b/142475891
     ],
     deps = [
+        ":debug_events_reader",
         ":debug_events_writer",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -700,6 +711,7 @@ cuda_py_test(
         ":debug_events_reader",
         ":debug_events_writer",
         ":dumping_callback",
+        ":dumping_callback_test_lib",
         "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -707,8 +719,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
     ],
-    shard_count = 4,
-    tags = ["notap"],  # TODO(b/142890611)
+    shard_count = 6,
+    tags = [
+        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+    ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
@@ -1363,6 +1377,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )

@@ -398,6 +398,18 @@ string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a bfloat.
+string RoundTripFpToString(tensorflow::bfloat16 value);
+
+// Returns a string which can losslessly round trip to a fp16.
+string RoundTripFpToString(Eigen::half value);
+
+// Returns a string which can losslessly round trip to a float.
+string RoundTripFpToString(float value);
+
+// Returns a string which can losslessly round trip to a double.
+string RoundTripFpToString(double value);
+
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
@@ -484,8 +496,8 @@ int64 Product(absl::Span<const int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b);
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
@@ -535,6 +547,16 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return Status::OK();
 }
+
+// Utility function which splits a double-precision float (F64) into a pair of
+// single-precision floating point numbers. The most significant 49 bits (out of
+// the total 53 available) in the mantissa of the F64 is represented as the
+// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
+// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
+// sign bit and its mantissa.
+// Note: The resulting representation can still only represent 8-bit exponent
+// range that is available in F32s (out of a total of 11 exponent bits in F64s).
+std::pair<float, float> SplitF64ToF32(double x);
 
 // MakeCleanup(f) returns an RAII cleanup object that calls 'f' in its
 // destructor. The easiest way to use MakeCleanup is with a lambda argument,

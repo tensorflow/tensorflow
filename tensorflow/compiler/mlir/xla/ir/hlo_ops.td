@@ -15,17 +15,14 @@ limitations under the License.
 
 // This is the operation definition file for XLA.
 
-#ifdef HLO_OPS
-#else
+#ifndef HLO_OPS
 #define HLO_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 #endif
 
@@ -60,6 +57,8 @@ def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
 def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
+
+def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -109,39 +108,96 @@ def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
     HLO_Op<mnemonic, traits> {
 
-    let arguments = (ins HLO_Tensor);
+    let arguments = (ins HLO_Tensor:$operand);
     let results = (outs HLO_Tensor);
 }
 
-def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AbsOp;
+// Abs supports complex to real, so element type is not guaranteed to match.
+def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
+    [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_AbsOp {
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *operand"
+  >];
+}
 
 def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CeilOp;
 
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<
       "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *operand, "
+    "Type result_element_ty"
+  >];
+
   let hasFolder = 1;
 
-  // TODO(b/130357376) Convert has a special constructor. Use a custom
-  // HLO converter until we have a method to call the special constructor.
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_CosOp: HLO_UnaryElementwiseOp<"cos", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
+def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
 
-def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
+def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 
-def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
+def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
 
-def HLO_LogOp: HLO_UnaryElementwiseOp<"log", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
+def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
 
-def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
+def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
 
-def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
+def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
-def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
+
+def HLO_SinOp: HLO_UnaryElementwiseOp<"sin",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SinOp;
+
+def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SqrtOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
+    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>,
+    BASE_HLO_TanhOp;
+
+//===----------------------------------------------------------------------===//
+// XLA complex unary elementwise op definitions.
+//===----------------------------------------------------------------------===//
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
+
+def HLO_ComplexOp: HLO_Op<"complex",
+    [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
+    BASE_HLO_ComplexOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *lhs, Value *rhs">];
+
+  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let results = (outs HLO_ComplexTensor);
+}
+
+def HLO_ImagOp: HLO_Op<
+    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
+}
+
+def HLO_RealOp: HLO_Op<
+    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
+  let builders = [OpBuilder<
+    "Builder *, OperationState &tblgen_state, Value *val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
+}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
@@ -180,6 +236,9 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
+
+def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PowOp;
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
@@ -242,6 +301,11 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   );
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
+    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+  >];
 
   let hasFolder = 1;
 
@@ -440,6 +504,17 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups
+  );
+
+  let results = (outs HLO_Tensor);
+}
+
 // TODO(hinsu): Make this struct dialect independent so that it can be shared
 // between HLO and LHLO dialect.
 def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
@@ -561,9 +636,6 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
 
-  // TODO(b/129422361) One of the required arguments comes from the new shape,
-  // which isn't handled by the codegen. The optional argument (dimensions)
-  // needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
@@ -644,7 +716,6 @@ def HLO_TransposeOp: HLO_Op<"transpose",
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       NoSideEffect,
-      SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceWindowOp {
 
@@ -652,8 +723,8 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   // attributes are 1-d. Attributes' leading dimension should match rank of the
   // inputs.
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands,
-    Variadic<HLO_TensorOrTuple>:$init_values,
+    HLO_Tensor:$operand,
+    HLO_Tensor:$init_value,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -664,13 +735,12 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
     OptionalAttr<I64ElementsAttr>:$padding
   );
 
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs HLO_Tensor);
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  // TODO(b/129422361): ReduceWindowOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 
   // TODO(hinsu): Implement custom printer and parser.
@@ -704,9 +774,6 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
 
   let results = (outs HLO_Tensor);
 
-  // TODO(bgogul): Disable conversion operator for `RngUniform` as
-  // the default constructor for `xla::RngUniform` takes `Shape` as
-  // the last argument and the default converter does not deal with it.
   let hasCustomHLOConverter = 1;
 }
 

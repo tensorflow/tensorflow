@@ -19,11 +19,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef DIALECT_QUANTOPS_QUANT_OPS_
-#else
+#ifndef DIALECT_QUANTOPS_QUANT_OPS_
 #define DIALECT_QUANTOPS_QUANT_OPS_
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
 #endif // OP_BASE

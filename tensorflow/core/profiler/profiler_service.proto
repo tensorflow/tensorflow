@@ -130,8 +130,17 @@ message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
 
-  // A collection of monitoring results for each field show in data.
-  ProfilerServiceMonitorResult monitor_result = 2;
+  reserved 2;  // was double device_idle_time_percent
+  reserved 3;  // was double matrix_unit_utilization_percent
+  reserved 4;  // was double step_time_ms_avg
+  reserved 5;  // was double step_time_ms_min
+  reserved 6;  // was double step_time_ms_max
+  reserved 7;  // was double infeed_percent_avg
+  reserved 8;  // was double infeed_percent_min
+  reserved 9;  // was double infeed_percent_max
 
-  // next-field: 3
+  // A collection of monitoring results for each field show in data.
+  ProfilerServiceMonitorResult monitor_result = 10;
+
+  // next-field: 11
 }

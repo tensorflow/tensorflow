@@ -229,6 +229,7 @@ cc_library(
         ":round",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
@@ -271,6 +272,7 @@ cc_library(
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         ":types",
         ":legacy_types",
         ":legacy_reference_base",
@@ -346,6 +348,28 @@ cc_test(
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "transpose_utils",
+    srcs = [
+        "transpose_utils.cc",
+    ],
+    hdrs = [
+        "transpose_utils.h",
+    ],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_test(
+    name = "transpose_utils_test",
+    srcs = ["transpose_utils_test.cc"],
+    deps = [
+        ":transpose_utils",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -527,6 +551,7 @@ cc_library(
         ":types",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
     ],
 )
@@ -549,9 +574,11 @@ cc_library(
         ":round",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:detect_arm",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
         "@gemmlowp//:fixedpoint",
@@ -708,6 +735,7 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:test_util",

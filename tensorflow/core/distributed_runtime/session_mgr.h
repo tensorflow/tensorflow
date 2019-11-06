@@ -53,6 +53,8 @@ class SessionMgr {
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state);
 
+  // Updates state (worker cache, devices) of worker session identified by
+  // session name (`session`) based on a new server_def and set of devices.
   Status UpdateSession(const string& session, const ServerDef& server_def,
                        const protobuf::RepeatedPtrField<DeviceAttributes>&
                            cluster_device_attributes,

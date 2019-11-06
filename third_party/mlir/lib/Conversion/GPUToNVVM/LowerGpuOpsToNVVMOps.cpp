@@ -30,6 +30,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "../GPUCommon/IndexIntrinsicsOpLowering.h"
+#include "../GPUCommon/OpToFuncCallLowering.h"
 
 using namespace mlir;
 
@@ -41,7 +42,7 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
       Location, Value *, Value *, ConversionPatternRewriter &)>;
 
   explicit GPUAllReduceOpLowering(LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(gpu::AllReduce::getOperationName(),
+      : LLVMOpLowering(gpu::AllReduceOp::getOperationName(),
                        lowering_.getDialect()->getContext(), lowering_),
         int32Type(LLVM::LLVMType::getInt32Ty(lowering_.getDialect())) {}
 
@@ -55,7 +56,8 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
     assert(op->getOperand(0)->getType().isIntOrFloat());
 
     // Create the reduction using an accumulator factory.
-    AccumulatorFactory factory = getFactory(cast<gpu::AllReduce>(op), operand);
+    AccumulatorFactory factory =
+        getFactory(cast<gpu::AllReduceOp>(op), operand);
     assert(factory && "failed to create accumulator factory");
     Value *result = createBlockReduce(loc, operand, factory, rewriter);
 
@@ -66,7 +68,7 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
 private:
   /// Returns an accumulator factory using either the op attribute or the body
   /// region.
-  AccumulatorFactory getFactory(gpu::AllReduce allReduce,
+  AccumulatorFactory getFactory(gpu::AllReduceOp allReduce,
                                 Value *operand) const {
     if (!allReduce.body().empty()) {
       return getFactory(allReduce.body());
@@ -103,7 +105,7 @@ private:
       // Replace all gpu.yield ops with branch out of body.
       for (; block != split; block = block->getNextNode()) {
         Operation *terminator = block->getTerminator();
-        if (!llvm::isa<gpu::Yield>(terminator))
+        if (!llvm::isa<gpu::YieldOp>(terminator))
           continue;
         rewriter.setInsertionPointToEnd(block);
         rewriter.replaceOpWithNewOp<LLVM::BrOp>(
@@ -309,7 +311,7 @@ private:
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize - 1));
     Value *isPartialWarp = rewriter.create<LLVM::ICmpOp>(
         loc, LLVM::ICmpPredicate::slt, activeWidth, warpSize);
-    auto type = operand->getType();
+    auto type = operand->getType().cast<LLVM::LLVMType>();
 
     createIf(
         loc, rewriter, isPartialWarp,
@@ -323,30 +325,31 @@ private:
               loc, int32Type,
               rewriter.create<LLVM::ShlOp>(loc, int32Type, one, activeWidth),
               one);
-          // Bound of offsets which read from a lane within the active range.
-          Value *offsetBound =
-              rewriter.create<LLVM::SubOp>(loc, activeWidth, laneId);
+          auto dialect = lowering.getDialect();
+          auto predTy = LLVM::LLVMType::getInt1Ty(dialect);
+          auto shflTy = LLVM::LLVMType::getStructTy(dialect, {type, predTy});
+          auto returnValueAndIsValidAttr = rewriter.getUnitAttr();
 
-          // Repeatedly shuffle value from 'laneId + i' and accumulate if source
-          // lane is within the active range. The first lane contains the final
-          // result, all other lanes contain some undefined partial result.
+          // Repeatedly shuffle value from 'laneId ^ i' and accumulate if source
+          // lane is within the active range. All lanes contain the final
+          // result, but only the first lane's result is used.
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            // ShflDownOp instead of ShflBflyOp would produce a scan. ShflBflyOp
-            // also produces the correct reduction on lane 0 though.
             Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
-                loc, type, activeMask, value, offset, maskAndClamp);
-            // TODO(csigg): use the second result from the shuffle op instead.
-            Value *isActiveSrcLane = rewriter.create<LLVM::ICmpOp>(
-                loc, LLVM::ICmpPredicate::slt, offset, offsetBound);
+                loc, shflTy, activeMask, value, offset, maskAndClamp,
+                returnValueAndIsValidAttr);
+            Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
+                loc, predTy, shfl, rewriter.getIndexArrayAttr(1));
             // Skip the accumulation if the shuffle op read from a lane outside
             // of the active range.
             createIf(
                 loc, rewriter, isActiveSrcLane,
                 [&] {
+                  Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
+                      loc, type, shfl, rewriter.getIndexArrayAttr(0));
                   return llvm::SmallVector<Value *, 1>{
-                      accumFactory(loc, value, shfl, rewriter)};
+                      accumFactory(loc, value, shflValue, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
@@ -362,9 +365,10 @@ private:
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
-                loc, type, activeMask, value, offset, maskAndClamp);
-            value = accumFactory(loc, value, shfl, rewriter);
+            Value *shflValue = rewriter.create<NVVM::ShflBflyOp>(
+                loc, type, activeMask, value, offset, maskAndClamp,
+                /*return_value_and_is_valid=*/UnitAttr());
+            value = accumFactory(loc, value, shflValue, rewriter);
           }
           return llvm::SmallVector<Value *, 1>{value};
         });
@@ -447,6 +451,9 @@ private:
   static constexpr int kWarpSize = 32;
 };
 
+/// Import the GPU Ops to NVVM Patterns.
+#include "GPUToNVVM.cpp.inc"
+
 /// A pass that replaces all occurrences of GPU device operations with their
 /// corresponding NVVM equivalent.
 ///
@@ -462,23 +469,26 @@ public:
     OwningRewritePatternList patterns;
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
+    populateWithGenerated(&getContext(), &patterns);
     patterns.insert<
-        GPUIndexIntrinsicOpLowering<gpu::ThreadId, NVVM::ThreadIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::ThreadIdOp, NVVM::ThreadIdXOp,
                                     NVVM::ThreadIdYOp, NVVM::ThreadIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockDim, NVVM::BlockDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockDimOp, NVVM::BlockDimXOp,
                                     NVVM::BlockDimYOp, NVVM::BlockDimZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::BlockId, NVVM::BlockIdXOp,
+        GPUIndexIntrinsicOpLowering<gpu::BlockIdOp, NVVM::BlockIdXOp,
                                     NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
-        GPUIndexIntrinsicOpLowering<gpu::GridDim, NVVM::GridDimXOp,
+        GPUIndexIntrinsicOpLowering<gpu::GridDimOp, NVVM::GridDimXOp,
                                     NVVM::GridDimYOp, NVVM::GridDimZOp>,
         GPUAllReduceOpLowering>(converter);
-
+    patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__nv_expf",
+                                                 "__nv_exp");
     ConversionTarget target(getContext());
     target.addIllegalDialect<gpu::GPUDialect>();
+    target.addIllegalOp<LLVM::ExpOp>();
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalDialect<NVVM::NVVMDialect>();
     // TODO(csigg): Remove once we support replacing non-root ops.
-    target.addLegalOp<gpu::Yield>();
+    target.addLegalOp<gpu::YieldOp>();
     if (failed(applyPartialConversion(m, target, patterns, &converter)))
       signalPassFailure();
   }

@@ -53,11 +53,13 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* instr) override;
-
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleBroadcast(HloInstruction* broadcast) override;
   Status HandleCompare(HloInstruction* compare) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleIota(HloInstruction* iota) override;
+  Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleReduce(HloInstruction* reduce) override;
 
   Status FinishVisit(HloInstruction* root) override;
 

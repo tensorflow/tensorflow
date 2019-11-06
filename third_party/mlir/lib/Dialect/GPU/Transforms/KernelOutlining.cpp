@@ -1,4 +1,4 @@
-//===- KernelOutlining.cpp - Implementation of GPU kernel outling ---------===//
+//===- KernelOutlining.cpp - Implementation of GPU kernel outlining -------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -43,10 +43,10 @@ static void createForAllDimensions(OpBuilder &builder, Location loc,
 static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   OpBuilder OpBuilder(kernelFunc.getBody());
   SmallVector<Value *, 12> indexOps;
-  createForAllDimensions<gpu::BlockId>(OpBuilder, loc, indexOps);
-  createForAllDimensions<gpu::ThreadId>(OpBuilder, loc, indexOps);
-  createForAllDimensions<gpu::GridDim>(OpBuilder, loc, indexOps);
-  createForAllDimensions<gpu::BlockDim>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::BlockIdOp>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::ThreadIdOp>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::GridDimOp>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::BlockDimOp>(OpBuilder, loc, indexOps);
   // Replace the leading 12 function args with the respective thread/block index
   // operations. Iterate backwards since args are erased and indices change.
   for (int i = 11; i >= 0; --i) {
@@ -107,7 +107,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk([](gpu::Return op) {
+  outlinedFunc.walk([](gpu::ReturnOp op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();

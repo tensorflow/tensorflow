@@ -102,6 +102,8 @@ class QuantizeV2Op : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("ensure_minimum_range", &ensure_minimum_range_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -180,8 +182,8 @@ class QuantizeV2Op : public OpKernel {
     // intermediate bit depth, since that's a common requirement.
     float min_range = std::min(0.0f, input_min_range);
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),
-                                                  fabsf(input_max_range))) /
-                          100.0f;
+                                                  fabsf(input_max_range))) *
+                          ensure_minimum_range_;
     float max_range =
         std::max(0.0f, std::max(input_max_range, min_range + epsilon));
 
@@ -217,8 +219,8 @@ class QuantizeV2Op : public OpKernel {
                     "input_max_range must be larger than input_min_range."));
     float min_range = std::min(0.0f, input_min_range);
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),
-                                                  fabsf(input_max_range))) /
-                          100.0f;
+                                                  fabsf(input_max_range))) *
+                          ensure_minimum_range_;
     float max_range =
         std::max(0.0f, std::max(input_max_range, min_range + epsilon));
 
@@ -294,6 +296,7 @@ class QuantizeV2Op : public OpKernel {
 
  private:
   float half_range_;
+  float ensure_minimum_range_;
   int mode_;
   int round_mode_;
   int axis_;

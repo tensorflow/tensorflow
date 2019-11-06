@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#ifdef TEST_OPS
-#else
+#ifndef TEST_OPS
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
@@ -72,10 +71,24 @@ def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   );
 }
 
+def RankedTensorOp : TEST_Op<"ranked_tensor_op"> {
+  let arguments = (ins AnyRankedTensor:$input);
+}
+
 def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
   let arguments = (ins
     TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
+}
+
+//===----------------------------------------------------------------------===//
+// Test Operands
+//===----------------------------------------------------------------------===//
+
+def SymbolScopeOp : TEST_Op<"symbol_scope",
+    [SymbolTable, SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let summary =  "operation which defines a new symbol table";
+  let regions = (region SizedRegion<1>:$region);
 }
 
 //===----------------------------------------------------------------------===//
@@ -186,6 +199,16 @@ def UpdateFloatElementsAttr : Pat<
   (FloatElementsAttrOp
     ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
     $f64attr)>;
+
+//===----------------------------------------------------------------------===//
+// Test Attribute Constraints
+//===----------------------------------------------------------------------===//
+
+def SymbolRefOp : TEST_Op<"symbol_ref_attr"> {
+  let arguments = (ins
+    Confined<SymbolRefAttr, [ReferToOp<"FuncOp">]>:$symbol
+  );
+}
 
 //===----------------------------------------------------------------------===//
 // Test Regions
@@ -426,6 +449,28 @@ def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32)>;
 def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32)>;
 def : Pat<(OpJ), (OpK)>;
 
+def OpInterleavedOperandAttribute1 : TEST_Op<"interleaved_operand_attr1"> {
+  let arguments = (ins
+    I32:$input1,
+    I64Attr:$attr1,
+    I32:$input2,
+    I64Attr:$attr2
+  );
+}
+
+def OpInterleavedOperandAttribute2 : TEST_Op<"interleaved_operand_attr2"> {
+  let arguments = (ins
+    I32:$input1,
+    I64Attr:$attr1,
+    I32:$input2,
+    I64Attr:$attr2
+  );
+}
+
+// Test that we can capture and reference interleaved operands and attributes.
+def : Pat<(OpInterleavedOperandAttribute1 $input1, $attr1, $input2, $attr2),
+          (OpInterleavedOperandAttribute2 $input1, $attr1, $input2, $attr2)>;
+
 // Test NativeCodeCall.
 def OpNativeCodeCall1 : TEST_Op<"native_code_call1"> {
   let arguments = (ins
@@ -442,14 +487,14 @@ def OpNativeCodeCall2 : TEST_Op<"native_code_call2"> {
 // Native code call to invoke a C++ function
 def CreateOperand: NativeCodeCall<"chooseOperand($0, $1, $2)">;
 // Native code call to invoke a C++ expression
-def CreateArraryAttr: NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
+def CreateArrayAttr: NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 // Test that we can use NativeCodeCall to create operand and attribute.
 // This pattern chooses between $input1 and $input2 according to $choice and
 // it combines $attr1 and $attr2 into an array attribute.
 def : Pat<(OpNativeCodeCall1 $input1, $input2,
                              ConstBoolAttrTrue:$choice, $attr1, $attr2),
           (OpNativeCodeCall2 (CreateOperand $input1, $input2, $choice),
-                             (CreateArraryAttr $attr1, $attr2))>;
+                             (CreateArrayAttr $attr1, $attr2))>;
 // Note: the following is just for testing purpose.
 // Should use the replaceWithValue directive instead.
 def UseOpResult: NativeCodeCall<"$0">;
@@ -719,7 +764,7 @@ def OneVResOneVOperandOp2 : TEST_Op<"one_variadic_out_one_variadic_in2"> {
 }
 
 // Rewrite an op with one variadic operand and one variadic result to
-// another similiar op.
+// another similar op.
 def : Pat<(OneVResOneVOperandOp1 $inputs), (OneVResOneVOperandOp2 $inputs)>;
 
 def MixedVOperandOp1 : TEST_Op<"mixed_variadic_in1",

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -100,6 +101,23 @@ class TfLiteConvertV1Test(TestModels):
     self._run(flags_str, should_succeed=True)
     os.remove(graph_def_file)
 
+  def testFrozenGraphDefNonPlaceholder(self):
+    with ops.Graph().as_default():
+      in_tensor = random_ops.random_normal(shape=[1, 16, 16, 3], name='random')
+      _ = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = self._getFilepath('model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    flags_str = ('--graph_def_file={0} --input_arrays={1} '
+                 '--output_arrays={2}'.format(graph_def_file,
+                                              'random', 'add'))
+    self._run(flags_str, should_succeed=True)
+    os.remove(graph_def_file)
+
   def testSavedModel(self):
     saved_model_dir = self._getFilepath('model')
     with ops.Graph().as_default():
@@ -128,6 +146,30 @@ class TfLiteConvertV1Test(TestModels):
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
+
+  def testConversionSummary(self):
+    keras_file = self._getKerasModelFile()
+    log_dir = self.get_temp_dir()
+
+    flags_str = ('--keras_model_file={} --experimental_new_converter  '
+                 '--conversion_summary_dir={}'.format(keras_file, log_dir))
+    self._run(flags_str, should_succeed=True)
+    os.remove(keras_file)
+
+    num_items_conversion_summary = len(os.listdir(log_dir))
+    self.assertTrue(num_items_conversion_summary)
+
+  def testConversionSummaryWithOldConverter(self):
+    keras_file = self._getKerasModelFile()
+    log_dir = self.get_temp_dir()
+
+    flags_str = ('--keras_model_file={} '
+                 '--conversion_summary_dir={}'.format(keras_file, log_dir))
+    self._run(flags_str, should_succeed=True)
+    os.remove(keras_file)
+
+    num_items_conversion_summary = len(os.listdir(log_dir))
+    self.assertEqual(num_items_conversion_summary, 0)
 
 
 class TfLiteConvertV2Test(TestModels):

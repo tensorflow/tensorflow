@@ -125,6 +125,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
+  ::tensorflow::Status Finalize() override;
+
   const SessionOptions& options() const { return options_; }
 
  private:
@@ -328,6 +330,7 @@ class DirectSession : public Session {
   string session_handle_;
   mutex graph_state_lock_;
   bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
+  bool finalized_ GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.

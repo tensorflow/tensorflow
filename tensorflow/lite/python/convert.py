@@ -230,7 +230,8 @@ def build_toco_convert_protos(input_tensors,
                               dump_graphviz_video=False,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
-                              debug_info=None):
+                              debug_info=None,
+                              conversion_summary_dir=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -294,6 +295,7 @@ def build_toco_convert_protos(input_tensors,
       or are unused in the final graph. (default False)
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
+    conversion_summary_dir: A string, the path to the generated conversion logs.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -326,6 +328,8 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
+  if conversion_summary_dir:
+    toco.conversion_summary_dir = conversion_summary_dir
   if target_ops:
     if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
       toco.enable_select_tf_ops = True

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -129,7 +130,6 @@ class GrpcServer : public ServerInterface {
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
 
-
  private:
   Env* env_;
 
@@ -162,6 +162,7 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 
   // TensorFlow Eager implementation, and RPC polling thread.
   AsyncServiceInterface* eager_service_ = nullptr;

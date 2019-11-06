@@ -629,7 +629,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:blas",
@@ -662,7 +661,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
@@ -739,6 +737,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_conv_rewriter",
         ":ir_emission_utils",
@@ -1132,7 +1131,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
@@ -1606,7 +1604,7 @@ xla_proto_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:autotuning_proto",
     ],
 )
 

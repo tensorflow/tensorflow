@@ -40,7 +40,7 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
+Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
     if (generated_value_cache_[hlo].contains(index.multidim())) {
@@ -79,7 +79,7 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
   unsigned global_address_space =
       llvm_ir::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
@@ -109,7 +109,7 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status FusedIrEmitter::HandleGetTupleElement(
-    HloInstruction* get_tuple_element) {
+    const HloInstruction* get_tuple_element) {
   auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
     const HloInstruction* tuple_operand = get_tuple_element->operand(0);
     llvm::Value* tuple_ptr;
@@ -148,7 +148,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
+Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
   indexed_generators_[parameter] =
       [=](const IrArray::Index& index) -> llvm::Value* {
     int64 param_num = parameter->parameter_number();
@@ -171,7 +171,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
+Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
   absl::Span<HloInstruction* const> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
@@ -192,7 +192,7 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
+Status FusedIrEmitter::FinishVisit(const HloInstruction* root) {
   fused_root_ = root;
   return Status::OK();
 }

@@ -221,7 +221,7 @@ cc_library(
 )
 
 cc_library(
-    name = "statetul_ops_utils",
+    name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
     ],
@@ -275,7 +275,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -398,20 +398,21 @@ tf_native_cc_binary(
     ],
 )
 
-genrule(
+gentbl(
     name = "operator_converter_inc",
-    srcs = [
-        "ir/tfl_ops.td",
+    tbl_outs = [
+        (
+            "",  # This driver has no options.
+            "operator_converters.inc",
+        ),
+    ],
+    tblgen = ":operator-converter-gen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
-    outs = [
-        "operator_converters.inc",
-    ],
-    cmd = ("$(location :operator-converter-gen) " +
-           "-I external/local_config_mlir/include " +
-           "-I external/org_tensorflow " +
-           "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = [":operator-converter-gen"],
+    test = 1,
 )
 
 cc_library(
@@ -473,10 +474,10 @@ cc_library(
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
-        ":statetul_ops_utils",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
-        "//tensorflow/compiler/mlir:op_name_mapper",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
@@ -489,6 +490,7 @@ cc_library(
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning:op_version",

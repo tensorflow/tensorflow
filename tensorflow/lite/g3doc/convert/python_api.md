@@ -1,15 +1,19 @@
 # Converter Python API guide
 
 This page provides examples on how to use the
-[TensorFlow Lite converter](index.md) using the Python API in TensorFlow 2.0.
+[TensorFlow Lite converter](index.md) using the Python API.
+
+Note: This only contains documentation on the Python API in TensorFlow 2.
+Documentation on using the Python API in TensorFlow 1 is available on
+[GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/python_api.md).
 
 [TOC]
 
 ## Python API
 
-The Python API for converting TensorFlow models to TensorFlow Lite in TensorFlow
-2.0 is `tf.lite.TFLiteConverter`. `TFLiteConverter` provides the following
-classmethods to convert a model based on the original model format:
+The Python API for converting TensorFlow models to TensorFlow Lite is
+`tf.lite.TFLiteConverter`. `TFLiteConverter` provides the following classmethods
+to convert a model based on the original model format:
 
 *   `TFLiteConverter.from_saved_model()`: Converts
     [SavedModel directories](https://www.tensorflow.org/guide/saved_model).
@@ -18,14 +22,8 @@ classmethods to convert a model based on the original model format:
 *   `TFLiteConverter.from_concrete_functions()`: Converts
     [concrete functions](concrete_function.md).
 
-Note: TensorFlow Lite 2.0 had a different version of the
-`TFLiteConverter` API which only contained the classmethod
-[`from_concrete_function`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter#from_concrete_function).
-The API detailed in this document can be installed using the
-[`tf-nightly-2.0-preview`](#installing_the_tensorflow_20_nightly_) pip install.
-
 This document contains [example usages](#examples) of the API, a detailed list
-of [changes in the API between 1.X and 2.0](#differences), and
+of [changes in the API between Tensorflow 1 and TensorFlow 2](#differences), and
 [instructions](#versioning) on running the different versions of TensorFlow.
 
 ## Examples <a name="examples"></a>
@@ -256,23 +254,12 @@ been removed due to this issue.
 
 ## Installing TensorFlow <a name="versioning"></a>
 
-### Installing the TensorFlow 2.0 nightly <a name="2.0-nightly"></a>
+### Installing the TensorFlow nightly <a name="2.0-nightly"></a>
 
-The TensorFlow 2.0 nightly can be installed using the following command:
+The TensorFlow nightly can be installed using the following command:
 
 ```
-pip install tf-nightly-2.0-preview
-```
-
-### Using TensorFlow 2.0 from a 1.X installation <a name="use-2.0-from-1.X"></a>
-
-TensorFlow 2.0 can be enabled from recent 1.X installations using the following
-code snippet.
-
-```python
-import tensorflow.compat.v2 as tf
-
-tf.enable_v2_behavior()
+pip install tf-nightly
 ```
 
 ### Build from source code <a name="latest_package"></a>

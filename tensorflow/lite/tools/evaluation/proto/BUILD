@@ -14,15 +14,14 @@
 # ==============================================================================
 
 # Placeholder for Google-internal load statements.
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load(
-    "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_proto_library_py",
 )
 
 proto_library(

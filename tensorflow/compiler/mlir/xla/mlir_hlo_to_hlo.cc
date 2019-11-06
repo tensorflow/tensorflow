@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -53,6 +54,12 @@ static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   return {values.begin(), values.end()};
 }
 
+static std::vector<int64> ConvertDenseIntAttr(
+    llvm::Optional<mlir::DenseIntElementsAttr> attr) {
+  if (!attr) return {};
+  return ConvertDenseIntAttr(*attr);
+}
+
 // Converts the broadcast_dimensions attribute into a vector of dimension
 // numbers (empty if the attribute is absent).
 static std::vector<int64> Convert_broadcast_dimensions(
@@ -62,10 +69,46 @@ static std::vector<int64> Convert_broadcast_dimensions(
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
+// Convert a nx2 dense attribute to a list of tuples. This is the way padding
+// is defined in hlo.
+static std::vector<std::pair<int64, int64>> Convert_padding(
+    llvm::Optional<mlir::DenseIntElementsAttr> padding_optional) {
+  if (!padding_optional.hasValue()) return {};
+  mlir::DenseIntElementsAttr padding = *padding_optional;
+  auto it = padding.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(padding.getNumElements() / 2);
+  for (auto& item : out) {
+    int64 left_pad = *it;
+    ++it;
+    int64 right_pad = *it;
+    ++it;
+    item = {left_pad, right_pad};
+  }
+
+  return out;
+}
+
 // Converts the broadcast_sizes attribute into a vector of dimension sizes.
 static std::vector<int64> Convert_broadcast_sizes(
     mlir::DenseIntElementsAttr broadcast_sizes) {
   return ConvertDenseIntAttr(broadcast_sizes);
+}
+
+static std::vector<xla::ReplicaGroup> Convert_replica_groups(
+    mlir::DenseIntElementsAttr groups) {
+  int64_t num_groups = groups.getType().getDimSize(0);
+  int64_t group_size = groups.getType().getDimSize(1);
+
+  std::vector<xla::ReplicaGroup> result;
+  result.reserve(num_groups);
+  for (uint64_t i = 0; i < num_groups; ++i) {
+    xla::ReplicaGroup group;
+    for (uint64_t j = 0; j < group_size; ++j) {
+      group.add_replica_ids(groups.getValue<int64_t>({i, j}));
+    }
+    result.push_back(group);
+  }
+  return result;
 }
 
 static std::vector<int64> Convert_permutation(
@@ -137,6 +180,40 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
+static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
+    mlir::xla_hlo::ConvDimensionNumbers input) {
+  xla::ConvolutionDimensionNumbers output;
+
+  output.set_input_batch_dimension(
+      input.input_batch_dimension().getValue().getSExtValue());
+  output.set_input_feature_dimension(
+      input.input_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.input_spatial_dimensions().getValues<int64>()) {
+    output.add_input_spatial_dimensions(v);
+  }
+
+  output.set_kernel_input_feature_dimension(
+      input.kernel_input_feature_dimension().getValue().getSExtValue());
+  output.set_kernel_output_feature_dimension(
+      input.kernel_output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.kernel_spatial_dimensions().getValues<int64>()) {
+    output.add_kernel_spatial_dimensions(v);
+  }
+
+  output.set_output_batch_dimension(
+      input.output_batch_dimension().getValue().getSExtValue());
+  output.set_output_feature_dimension(
+      input.output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.output_spatial_dimensions().getValues<int64>()) {
+    output.add_output_spatial_dimensions(v);
+  }
+
+  return output;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -190,6 +267,8 @@ class ConvertToHloModule {
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
+  //
+  // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
@@ -276,7 +355,10 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
+                                   op.dimension().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
@@ -284,11 +366,26 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConvGeneralDilated(
+      value_map[op.lhs()], value_map[op.rhs()],
+      Convert_broadcast_dimensions(op.window_strides()),
+      Convert_padding(op.padding()),
+      Convert_broadcast_dimensions(op.lhs_dilation()),
+      Convert_broadcast_dimensions(op.rhs_dilation()),
+      Convert_convolution_dimension_numbers(op.dimension_numbers()),
+      op.feature_group_count().getSExtValue(),
+      op.batch_group_count().getSExtValue(),
+      Convert_precision_config(op.precision_config()).get());
+  return success();
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConvertElementType(
+      value_map[op.operand()],
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
 }
 
 LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
@@ -310,11 +407,17 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
+                                       op.index().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
+                            op.iota_dimension().getSExtValue());
+  return success();
 }
 
 LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) { return failure(); }
@@ -340,11 +443,27 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
+    return failure();
+  }
+  value_map[op] = xla::ReduceWindowWithGeneralPadding(
+      value_map[op.operand()], value_map[op.init_value()], body,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()),
+      ConvertDenseIntAttr(op.base_dilations()),
+      ConvertDenseIntAttr(op.window_dilations()),
+      Convert_padding(op.padding()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Reshape(value_map[op.operand()],
+                               xla::TypeToShape(op.getType()).dimensions());
+
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
@@ -354,15 +473,34 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Rev(value_map[op.operand()],
+                           Convert_broadcast_dimensions(op.dimensions()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::RngUniform(value_map[op.a()], value_map[op.b()],
+                                  xla::TypeToShape(op.getType()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.select(), &select)) ||
+      failed(
+          ctx.converter->LowerRegionAsComputation(&op.scatter(), &scatter))) {
+    return failure();
+  }
+  value_map[op] = xla::SelectAndScatterWithGeneralPadding(
+      value_map[op.operand()], select,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()), Convert_padding(op.padding()),
+      value_map[op.source()], value_map[op.init_value()], scatter);
+  return success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
@@ -370,7 +508,9 @@ LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Tuple(ctx.builder, GetTuple(op.val(), ctx));
+  return success();
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {

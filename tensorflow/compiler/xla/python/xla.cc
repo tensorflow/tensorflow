@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -133,6 +133,10 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
+
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
@@ -154,6 +158,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TUPLE", TUPLE)
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
+
+  m.def("bfloat16_dtype", Bfloat16Dtype);
 
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
@@ -654,6 +660,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
+  ops.def("NextAfter", &NextAfter);
   ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
           py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
@@ -819,8 +826,6 @@ PYBIND11_MODULE(xla_extension, m) {
 
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
-
-  tensorflow::AddXrtSubmodule(&m);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

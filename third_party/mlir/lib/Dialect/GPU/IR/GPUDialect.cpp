@@ -137,15 +137,10 @@ template <typename T> static LogicalResult verifyIndexOp(T op) {
   return success();
 }
 
-static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
+static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   if (allReduce.body().empty() != allReduce.op().hasValue())
     return allReduce.emitError(
         "expected either an op attribute or a non-empty body");
-  if (allReduce.op()) {
-    SmallVector<StringRef, 2> supportedOps{"add", "mul"};
-    if (!llvm::is_contained(supportedOps, *allReduce.op()))
-      return allReduce.emitError("op \"") << *allReduce.op() << "\" is invalid";
-  }
   if (!allReduce.body().empty()) {
     if (allReduce.body().front().getNumArguments() != 2)
       return allReduce.emitError("expected two region arguments");
@@ -155,7 +150,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
     }
     unsigned yieldCount = 0;
     for (Block &block : allReduce.body()) {
-      if (auto yield = dyn_cast<gpu::Yield>(block.getTerminator())) {
+      if (auto yield = dyn_cast<gpu::YieldOp>(block.getTerminator())) {
         if (yield.getNumOperands() != 1)
           return allReduce.emitError("expected one gpu.yield operand");
         if (yield.getOperand(0)->getType() != allReduce.getType())
@@ -169,8 +164,13 @@ static LogicalResult verifyAllReduce(gpu::AllReduce allReduce) {
   return success();
 }
 
+// Namespace avoids ambiguous ReturnOpOperandAdaptor.
+namespace mlir {
+namespace gpu {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
+} // namespace gpu
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // LaunchOp
@@ -268,7 +268,7 @@ LogicalResult LaunchOp::verify() {
       continue;
     if (block.back().getNumSuccessors() != 0)
       continue;
-    if (!isa<gpu::Return>(&block.back())) {
+    if (!isa<gpu::ReturnOp>(&block.back())) {
       return block.back()
                  .emitError("expected 'gpu.terminator' or a terminator with "
                             "successors")
@@ -435,7 +435,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
   Region *body = result.addRegion();
   return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
-                 parser.parseOptionalAttributeDict(result.attributes));
+                 parser.parseOptionalAttrDict(result.attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {

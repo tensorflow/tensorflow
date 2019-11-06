@@ -320,7 +320,6 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
     d = getAffineSymbolExpr(numSymbols++, context);
     resultVal = val;
   } else {
-    assert(isValidDim(val) && "Must be a valid Dim");
     d = getAffineDimExpr(numDims++, context);
     resultVal = val;
   }

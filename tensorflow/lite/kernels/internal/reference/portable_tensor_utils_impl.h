@@ -20,6 +20,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -43,6 +44,10 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float min_value,
                                      float max_value, float* scaling_factor);
 
+void PortableAsymmetricQuantizeFloats(const float* values, const int size,
+                                      int8_t* quantized_values,
+                                      float* scaling_factor, int32_t* offset);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
@@ -55,6 +60,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset);
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
@@ -100,13 +111,13 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output);
+    int32_t* scratch, int16_t* output, CpuBackendContext* context);
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output);
+    int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
 void PortableMatrixScalarMultiplyAccumulate(const int8_t* matrix,
                                             int32_t scalar, int32_t n_row,

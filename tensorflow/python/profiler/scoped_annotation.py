@@ -25,7 +25,7 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.pywrap_tensorflow import PythonScopedAnnotation
+from tensorflow.python._pywrap_scoped_annotation import PythonScopedAnnotation
 
 
 class ScopedAnnotation(object):
