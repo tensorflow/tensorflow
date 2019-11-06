@@ -92,7 +92,8 @@ struct EngineInfo {
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
         precision_mode(TrtPrecisionMode::FP32),
-        use_calibration(true) {}
+        use_calibration(true),
+        allow_build_at_runtime(true) {}
 
   string engine_name;
   string device;
@@ -109,6 +110,7 @@ struct EngineInfo {
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
+  bool allow_build_at_runtime;
 };
 
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
