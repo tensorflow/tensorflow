@@ -30,7 +30,7 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:framework",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -188,7 +188,7 @@ cc_library(
             "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:framework",
         ],
     }),

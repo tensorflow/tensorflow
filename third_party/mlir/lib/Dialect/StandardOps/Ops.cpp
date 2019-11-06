@@ -1070,27 +1070,20 @@ struct SimplifyConstCondBranchPred : public OpRewritePattern<CondBranchOp> {
 
   PatternMatchResult matchAndRewrite(CondBranchOp condbr,
                                      PatternRewriter &rewriter) const override {
-    // Check that the condition is a constant.
-    if (!matchPattern(condbr.getCondition(), m_Op<ConstantOp>()))
-      return matchFailure();
-
-    Block *foldedDest;
-    SmallVector<Value *, 4> branchArgs;
-
-    // If the condition is known to evaluate to false we fold to a branch to the
-    // false destination. Otherwise, we fold to a branch to the true
-    // destination.
-    if (matchPattern(condbr.getCondition(), m_Zero())) {
-      foldedDest = condbr.getFalseDest();
-      branchArgs.assign(condbr.false_operand_begin(),
-                        condbr.false_operand_end());
-    } else {
-      foldedDest = condbr.getTrueDest();
-      branchArgs.assign(condbr.true_operand_begin(), condbr.true_operand_end());
+    if (matchPattern(condbr.getCondition(), m_NonZero())) {
+      // True branch taken.
+      rewriter.replaceOpWithNewOp<BranchOp>(
+          condbr, condbr.getTrueDest(),
+          llvm::to_vector<4>(condbr.getTrueOperands()));
+      return matchSuccess();
+    } else if (matchPattern(condbr.getCondition(), m_Zero())) {
+      // False branch taken.
+      rewriter.replaceOpWithNewOp<BranchOp>(
+          condbr, condbr.getFalseDest(),
+          llvm::to_vector<4>(condbr.getFalseOperands()));
+      return matchSuccess();
     }
-
-    rewriter.replaceOpWithNewOp<BranchOp>(condbr, foldedDest, branchArgs);
-    return matchSuccess();
+    return matchFailure();
   }
 };
 } // end anonymous namespace.
@@ -2336,6 +2329,91 @@ static LogicalResult verify(TruncateIOp op) {
       dstType.cast<IntegerType>().getWidth())
     return op.emitError("operand type ")
            << srcType << " must be wider than result type " << dstType;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ViewOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType srcInfo;
+  SmallVector<OpAsmParser::OperandType, 1> offsetInfo;
+  SmallVector<OpAsmParser::OperandType, 4> sizesInfo;
+  auto indexType = parser.getBuilder().getIndexType();
+  Type srcType, dstType;
+  return failure(
+      parser.parseOperand(srcInfo) ||
+      parser.parseOperandList(sizesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(offsetInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) ||
+      parser.resolveOperand(srcInfo, srcType, result.operands) ||
+      parser.resolveOperands(sizesInfo, indexType, result.operands) ||
+      parser.resolveOperands(offsetInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", dstType) ||
+      parser.addTypeToList(dstType, result.types));
+}
+
+static void print(OpAsmPrinter &p, ViewOp op) {
+  p << op.getOperationName() << ' ' << *op.getOperand(0) << '[';
+  p.printOperands(op.getDynamicSizes());
+  p << "][";
+  auto *dynamicOffset = op.getDynamicOffset();
+  if (dynamicOffset != nullptr)
+    p.printOperand(dynamicOffset);
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getOperand(0)->getType() << " to " << op.getType();
+}
+
+static LogicalResult verify(ViewOp op) {
+  auto baseType = op.getOperand(0)->getType().cast<MemRefType>();
+  auto viewType = op.getResult()->getType().cast<MemRefType>();
+
+  // The base memref should have identity layout map (or none).
+  if (baseType.getAffineMaps().size() > 1 ||
+      (baseType.getAffineMaps().size() == 1 &&
+       !baseType.getAffineMaps()[0].isIdentity()))
+    return op.emitError("unsupported map for base memref type ") << baseType;
+
+  // The base memref and the view memref should be in the same memory space.
+  if (baseType.getMemorySpace() != viewType.getMemorySpace())
+    return op.emitError("different memory spaces specified for base memref "
+                        "type ")
+           << baseType << " and view memref type " << viewType;
+
+  // Verify that the result memref type has a strided layout map. is strided
+  int64_t offset;
+  llvm::SmallVector<int64_t, 4> strides;
+  if (failed(getStridesAndOffset(viewType, strides, offset)))
+    return op.emitError("result type ") << viewType << " is not strided";
+
+  // Verify that we have the correct number of operands for the result type.
+  unsigned memrefOperandCount = 1;
+  unsigned numDynamicDims = viewType.getNumDynamicDims();
+  unsigned dynamicOffsetCount =
+      offset == MemRefType::getDynamicStrideOrOffset() ? 1 : 0;
+  if (op.getNumOperands() !=
+      memrefOperandCount + numDynamicDims + dynamicOffsetCount)
+    return op.emitError("incorrect number of operands for type ") << viewType;
+
+  // Verify dynamic strides symbols were added to correct dimensions based
+  // on dynamic sizes.
+  ArrayRef<int64_t> viewShape = viewType.getShape();
+  unsigned viewRank = viewType.getRank();
+  assert(viewRank == strides.size());
+  bool dynamicStrides = false;
+  for (int i = viewRank - 2; i >= 0; --i) {
+    // If size at dim 'i + 1' is dynamic, set the 'dynamicStrides' flag.
+    if (ShapedType::isDynamic(viewShape[i + 1]))
+      dynamicStrides = true;
+    // If stride at dim 'i' is not dynamic, return error.
+    if (dynamicStrides && strides[i] != MemRefType::getDynamicStrideOrOffset())
+      return op.emitError("incorrect dynamic strides in view memref type ")
+             << viewType;
+  }
 
   return success();
 }

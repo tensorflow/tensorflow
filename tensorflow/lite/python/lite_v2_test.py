@@ -266,6 +266,32 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  @test_util.run_v2_only
+  def testNewQuantizer(self):
+    """Test the model quantized by the new converter."""
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+
+    # default quantizer
+    quantized_converter.experimental_new_quantizer = False
+    old_tflite = quantized_converter.convert()
+
+    # new quantizer
+    quantized_converter.experimental_new_quantizer = True
+    new_tflite = quantized_converter.convert()
+
+    for _ in range(5):
+      input_data = constant_op.constant(
+          np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
+      old_value = self._evaluateTFLiteModel(old_tflite, [input_data])
+      new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
+      np.testing.assert_almost_equal(old_value, new_value, 1)
+
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir

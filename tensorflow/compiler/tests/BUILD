@@ -1250,7 +1250,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",

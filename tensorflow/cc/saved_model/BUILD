@@ -48,7 +48,7 @@ cc_library(
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ]) + if_mobile([
         # Mobile-friendly SavedModel proto. See go/portable-proto for more info.
         "//tensorflow/core:saved_model_portable_proto",
@@ -88,7 +88,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ]) + if_android([
         "//tensorflow/core:android_tensorflow_lib",
     ]),
@@ -102,7 +102,7 @@ cc_library(
     ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         # mobile not supported yet
     ]),
 )
@@ -119,7 +119,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
     ]),
@@ -139,7 +139,7 @@ tf_cc_test(
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -160,7 +160,7 @@ tf_cc_test(
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

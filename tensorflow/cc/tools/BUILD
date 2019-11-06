@@ -21,7 +21,7 @@ cc_library(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -34,7 +34,7 @@ tf_cc_test(
         "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

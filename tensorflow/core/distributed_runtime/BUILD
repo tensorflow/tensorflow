@@ -61,7 +61,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -72,7 +72,7 @@ tf_cc_test(
     srcs = ["message_wrappers_test.cc"],
     deps = [
         ":message_wrappers",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -97,7 +97,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -132,7 +132,7 @@ cc_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:worker_proto_cc",
     ],
@@ -146,7 +146,7 @@ tf_cc_test(
         ":session_mgr",
         ":worker_env",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -170,7 +170,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -252,7 +252,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -266,7 +266,7 @@ cc_library(
     deps = [
         ":worker_interface",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
@@ -321,7 +321,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -345,7 +345,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
     ],
 )
@@ -408,7 +408,7 @@ cc_library(
     hdrs = ["master_env.h"],
     deps = [
         ":worker_cache",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
     ],
 )
@@ -426,7 +426,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
         "//tensorflow/core/profiler/lib:traceme",
@@ -454,7 +454,7 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -465,7 +465,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -505,7 +505,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -524,7 +524,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",  # protobuf::Any
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -541,7 +541,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -558,7 +558,7 @@ cc_library(
         ":device_resolver_distributed",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -587,7 +587,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:no_op_op_lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -604,7 +604,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -619,7 +619,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -653,7 +653,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -693,7 +693,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -720,7 +720,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

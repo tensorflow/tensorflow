@@ -53,7 +53,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, bool prune_unused_nodes,
-    llvm::SourceMgr* source_mgr, MLIRContext* context) {
+    llvm::SourceMgr* source_mgr, MLIRContext* context,
+    bool add_pseudo_input_nodes) {
   // Set up the input file.
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
@@ -89,20 +90,21 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         input_shapes, output_arrays, prune_unused_nodes,
         /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, /*upgrade_legacy=*/true,
-        /*add_pseudo_input_nodes=*/true, context);
+        add_pseudo_input_nodes, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       std::move(file), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, prune_unused_nodes,
       /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false,
-      /*upgrade_legacy=*/true, /*add_pseudo_input_nodes=*/true, context);
+      /*upgrade_legacy=*/true, add_pseudo_input_nodes, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, const mlir::TFL::QuantizationSpecs& quant_specs,
-    std::string* result, mlir::PassManager* pass_manager) {
+    std::string* result, mlir::PassManager* pass_manager,
+    bool add_pseudo_input_nodes) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
   if (failed(pass_manager->run(module))) {
@@ -119,7 +121,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (!quant_specs.RunWeightQuantization()) {
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops)) {
+            emit_custom_ops, add_pseudo_input_nodes)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
@@ -128,7 +130,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::string pre_quantized_result;
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops)) {
+            emit_select_tf_ops, emit_custom_ops, add_pseudo_input_nodes)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);

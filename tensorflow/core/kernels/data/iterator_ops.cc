@@ -402,10 +402,12 @@ Status AnonymousIteratorHandleOp::CreateResource(
 
 void MakeIteratorOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   DatasetBase* dataset;
-  OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+  OP_REQUIRES_OK_ASYNC(
+      ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+  OP_REQUIRES_OK_ASYNC(
+      ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource),
+      done);
   background_worker_.Schedule(std::bind(
       [ctx, iterator_resource, dataset](DoneCallback done) {
         Status s = iterator_resource->SetIteratorFromDataset(ctx, dataset);

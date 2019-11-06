@@ -1379,7 +1379,7 @@ def split_compile_and_shard(computation,
   ... = shard(computation, ...)
 
   If `outputs_from_all_shards` is true, the outputs from all shards of
-  `computation` are concatenated back together along their `output_shards_axes`.
+  `computation` are concatenated back together along their `output_shard_axes`.
   Otherwise, each output is taken from an arbitrary shard.
 
   Inputs and outputs of the computation must be at least rank-1 Tensors.
@@ -1533,7 +1533,7 @@ def shard(computation,
   as inputs.
 
   If `outputs_from_all_shards` is true, the outputs from all shards of
-  `computation` are concatenated back together along their `output_shards_axes`.
+  `computation` are concatenated back together along their `output_shard_axes`.
   Otherwise, each output is taken from an arbitrary shard.
 
   Inputs and outputs of the computation must be at least rank-1 Tensors.

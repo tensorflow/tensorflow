@@ -119,7 +119,8 @@ def op_priority(op_type):
     # Operations without numerical effects.
     # They will be only if trace_level>=6
     return 6
-  if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile'):
+  if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile',
+                 'CollectivePermute', 'SplitV'):
     # Operations that merge or slice an input, will be traced if trace_level>=5
     return 5
   if op_type in ('Pad', 'RandomUniformInt', 'GreaterEqual'):

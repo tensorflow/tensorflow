@@ -108,7 +108,7 @@ def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
     HLO_Op<mnemonic, traits> {
 
-    let arguments = (ins HLO_Tensor);
+    let arguments = (ins HLO_Tensor:$operand);
     let results = (outs HLO_Tensor);
 }
 
@@ -132,8 +132,6 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
 
   let hasFolder = 1;
 
-  // TODO(b/130357376) Convert has a special constructor. Use a custom
-  // HLO converter until we have a method to call the special constructor.
   let hasCustomHLOConverter = 1;
 }
 
@@ -515,9 +513,6 @@ def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 // TODO(hinsu): Make this struct dialect independent so that it can be shared
@@ -641,9 +636,6 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
 
-  // TODO(b/129422361) One of the required arguments comes from the new shape,
-  // which isn't handled by the codegen. The optional argument (dimensions)
-  // needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
@@ -724,7 +716,6 @@ def HLO_TransposeOp: HLO_Op<"transpose",
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       NoSideEffect,
-      SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceWindowOp {
 
@@ -732,8 +723,8 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   // attributes are 1-d. Attributes' leading dimension should match rank of the
   // inputs.
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands,
-    Variadic<HLO_TensorOrTuple>:$init_values,
+    HLO_Tensor:$operand,
+    HLO_Tensor:$init_value,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -744,13 +735,12 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
     OptionalAttr<I64ElementsAttr>:$padding
   );
 
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs HLO_Tensor);
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  // TODO(b/129422361): ReduceWindowOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 
   // TODO(hinsu): Implement custom printer and parser.
@@ -784,9 +774,6 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
 
   let results = (outs HLO_Tensor);
 
-  // TODO(bgogul): Disable conversion operator for `RngUniform` as
-  // the default constructor for `xla::RngUniform` takes `Shape` as
-  // the last argument and the default converter does not deal with it.
   let hasCustomHLOConverter = 1;
 }
 

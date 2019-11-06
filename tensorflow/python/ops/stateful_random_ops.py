@@ -205,15 +205,19 @@ class Generator(tracking.AutoTrackable):
       assert (alg or state) is None
       self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE,
                                            trainable=False)
-      self._alg_var = copy_from.algorithm
+      self._alg = copy_from.algorithm
 
     else:
       assert alg is not None and state is not None
-      state = _convert_to_state_tensor(state)
-      state.shape.assert_is_compatible_with([_get_state_size(alg)])
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE,
-                                           trainable=False)
-      self._alg_var = alg
+      if isinstance(state, variables.Variable):
+        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        self._state_var = state
+      else:
+        state = _convert_to_state_tensor(state)
+        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        self._state_var = variables.Variable(state, dtype=STATE_TYPE,
+                                             trainable=False)
+      self._alg = alg
 
   @classmethod
   def from_state(cls, state, alg):
@@ -349,7 +353,7 @@ class Generator(tracking.AutoTrackable):
   @property
   def algorithm(self):
     """The RNG algorithm."""
-    return self._alg_var
+    return self._alg
 
   def _standard_normal(self, shape, dtype):
     return gen_stateful_random_ops.stateful_standard_normal_v2(

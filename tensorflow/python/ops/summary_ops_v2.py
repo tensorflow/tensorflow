@@ -664,12 +664,11 @@ def write(tag, tensor, step=None, metadata=None, name=None):
         with ops.control_dependencies([write_summary_op]):
           return constant_op.constant(True)
 
-    with ops.device("cpu:0"):
-      op = smart_cond.smart_cond(
-          _should_record_summaries_v2(), record, _nothing, name="summary_cond")
-      if not context.executing_eagerly():
-        ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
-      return op
+    op = smart_cond.smart_cond(
+        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+    return op
 
 
 @tf_export("summary.experimental.write_raw_pb", v1=[])

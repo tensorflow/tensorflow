@@ -719,7 +719,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
         /*paddings=*/DenseIntElementsAttr());
     BuildReduceBody<xla_hlo::MaxOp>(element_type, &reduce.body(), &rewriter);
 
-    rewriter.replaceOp(op, reduce.getResult(0));
+    rewriter.replaceOp(op, reduce.getResult());
     return matchSuccess();
   }
 };

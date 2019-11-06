@@ -164,6 +164,7 @@ from tensorflow.python.ops import rnn_cell
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.ops import gen_debug_ops
 
 # XLA JIT compiler APIs.

@@ -86,13 +86,13 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output);
+    int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output);
+    int32_t* scratch, int16_t* output, CpuBackendContext* context);
 
 void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                         int32_t n_row, int32_t n_col,
@@ -172,7 +172,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 // Asymmetric quantizer.
 void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
-                                  float scaling_factor, int32_t offset);
+                                  float* scaling_factor, int32_t* offset);
 
 // Shift left a vector in place with v_size size.
 void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);

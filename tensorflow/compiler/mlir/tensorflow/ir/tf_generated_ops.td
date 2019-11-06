@@ -2381,7 +2381,7 @@ When `k` is scalar or `k[0] == k[1]`, `M` is part of the batch size
 ```
 output[i, j, ..., l, m, n]
   = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
-    output[i, j, ..., l, m, n]                ; otherwise
+    padding_value                             ; otherwise
 ```
 
 Otherwise, `M` is treated as the number of diagonals for the matrix in the
@@ -2389,10 +2389,10 @@ same batch (`M = k[1]-k[0]+1`), and the output tensor is:
 
 ```
 output[i, j, ..., l, m, n]
-  = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
-    input[i, j, ..., l, m, n]                   ; otherwise
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    padding_value                                     ; otherwise
 ```
-where `d = n - m`
+where `d = n - m`, `diag_index = k[1] - d`, and `index_in_diag = n - max(d, 0)`.
 
 For example:
 
@@ -2442,8 +2442,8 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
        [1, 0, 0, 0],
        [0, 2, 0, 0]]
 
-# Rectangular matrix with inferred num_cols and padding = 9.
-tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
+# Rectangular matrix with inferred num_cols and padding_value = 9.
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
   ==> [[9, 9],  # Output shape: (3, 2)
        [1, 9],
        [9, 2]]
@@ -3746,6 +3746,25 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []> {
+  let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$delta,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {

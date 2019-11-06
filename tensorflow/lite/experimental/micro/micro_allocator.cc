@@ -233,6 +233,13 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
       current->runtime_tensor->data.uint8 = aligned_arena + offset;
       ++planner_index;
     }
+  }
+
+  // Copy default value for variable tensors. Note that this will overwrite
+  // the arena planner data so GetOffsetForBuffer will return wrong
+  // result.
+  for (size_t i = 0; i < tensors_->size(); ++i) {
+    TensorInfo* current = &tensor_info[i];
     // Set default value for variable tensors:
     if (current->flatbuffer_tensor->is_variable()) {
       if (current->runtime_tensor->data.uint8 == nullptr) {

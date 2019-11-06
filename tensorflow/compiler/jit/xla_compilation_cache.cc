@@ -259,7 +259,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 

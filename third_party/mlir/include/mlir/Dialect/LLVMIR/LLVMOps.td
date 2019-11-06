@@ -132,6 +132,15 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
   let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
   let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
 }
+class LLVM_UnaryArithmeticOp<string mnemonic, string builderFunc,
+                        list<OpTrait> traits = []> :
+    LLVM_OneResultOp<mnemonic,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$operand)>,
+    LLVM_Builder<"$res = builder." # builderFunc # "($operand);"> {
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
+}
 
 // Integer binary operations.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", "CreateAdd", [Commutative]>;
@@ -247,6 +256,7 @@ def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub", "CreateFSub">;
 def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul", "CreateFMul">;
 def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
+def LLVM_FNegOp : LLVM_UnaryArithmeticOp<"fneg", "CreateFNeg">;
 
 // Memory-related operations.
 def LLVM_AllocaOp :
@@ -495,10 +505,28 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"mlir.global", [Symbol]>,
+    : LLVM_ZeroResultOp<"mlir.global",
+                        [IsolatedFromAbove,
+                         SingleBlockImplicitTerminator<"ReturnOp">, Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
+  let summary = "LLVM dialect global.";
+  let description = [{
+    Can contain an optional initializer region or attribute for simple
+    initializers.
+
+    Examples:
+      // Initialized using an attribute.
+      llvm.mlir.global @a("abc") : !llvm<"[3 x i8]">
+      // Initialized using a region.
+      llvm.mlir.global constant @b() : !llvm<"i32*"> {
+        %0 = llvm.constant(0 : i32) : !llvm.i32
+        %1 = llvm.inttoptr %0 : !llvm.i32 to !llvm<"i32*">
+        llvm.return %1 : !llvm<"i32*">
+      }
+  }];
+  let regions = (region AnyRegion:$initializer);
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType type, "
@@ -511,9 +539,21 @@ def LLVM_GlobalOp
     LLVMType getType() {
       return type().cast<LLVMType>();
     }
-    /// Return the value attribute if it exists, or a null attribute.
+    /// Return the initializer attribute if it exists, or a null attribute.
     Attribute getValueOrNull() {
       return value().getValueOr(Attribute());
+    }
+    /// Return the initializer region. This may be empty, but if it is not it
+    /// terminates in an `llvm.return` op with the initializer value.
+    Region &getInitializerRegion() {
+      return getOperation()->getRegion(0);
+    }
+    /// Return the initializer block. If the initializer region is empty this
+    /// is nullptr. If it is not nullptr, it terminates with an `llvm.return`
+    /// op with the initializer value.
+    Block *getInitializerBlock() {
+      return getInitializerRegion().empty() ?
+        nullptr : &getInitializerRegion().front();
     }
   }];
 

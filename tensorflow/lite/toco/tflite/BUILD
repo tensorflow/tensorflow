@@ -26,7 +26,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
@@ -46,7 +46,7 @@ tf_cc_test(
     deps = [
         ":operator",
         "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:tooling_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

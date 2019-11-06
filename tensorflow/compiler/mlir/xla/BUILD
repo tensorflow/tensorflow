@@ -354,7 +354,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/core:test_main",
         "@local_config_mlir//:IR",
     ],

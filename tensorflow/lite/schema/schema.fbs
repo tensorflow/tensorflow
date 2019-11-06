@@ -373,6 +373,9 @@ table DepthwiseConv2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  // See comments in lite/c/builtin_op_data.h for more details.
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
   // Parameters for DepthwiseConv version 2 or above.

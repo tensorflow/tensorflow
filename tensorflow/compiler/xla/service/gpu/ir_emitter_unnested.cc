@@ -410,17 +410,21 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             absl::make_unique<SequentialThunk>(std::move(thunks), fusion));
         return Status::OK();
       }
-      case HloOpcode::kTuple:
+      case HloOpcode::kTuple: {
+        CHECK_GE(root->operand_count(), 1);
+        return EmitReductionFromOrToContiguousDimensions(fusion,
+                                                         root->operands());
+      }
       case HloOpcode::kReduce: {
         // HandleFusion specializes reduction from a multi-dimensional array to
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
-        if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
+        if (root->shape().IsTuple()) {
           // TODO(b/129089333): Support tiled vectorized variadic reduce.
           return Unimplemented(
               "Vectorized variadic reduce is not supported on GPU");
         }
-        return EmitReductionFromOrToContiguousDimensions(fusion);
+        return EmitReductionFromOrToContiguousDimensions(fusion, {root});
       }
       default:
         LOG(FATAL) << "Bad opcode for input fusion: "
@@ -514,7 +518,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   if (IsReductionFromOrToContiguousDimensions(*reduce) &&
       reduce->shape().IsArray()) {
-    return EmitReductionFromOrToContiguousDimensions(reduce);
+    return EmitReductionFromOrToContiguousDimensions(reduce, {reduce});
   }
 
   return IrEmitter::HandleReduce(reduce);
@@ -2033,18 +2037,16 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
 
   // Initialize the partial result with the initial value of the reduction.
   llvm::Value* init_ir_value;
+  const HloInstruction* init_value = reduce_inst->operand(1);
   if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    HloInstruction* init_value_operand = reduce_inst->mutable_operand(1);
     FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(unnested_hlo),
                                  elemental_emitter);
 
-    TF_CHECK_OK(init_value_operand->Accept(&fused_emitter));
+    TF_CHECK_OK(init_value->Accept(&fused_emitter));
     init_ir_value =
-        fused_emitter
-            .GetGenerator(init_value_operand)(IrArray::Index(b_.getInt32Ty()))
+        fused_emitter.GetGenerator(init_value)(IrArray::Index(b_.getInt32Ty()))
             .ValueOrDie();
   } else {
-    const HloInstruction* init_value = unnested_hlo->operand(1);
     init_ir_value =
         GetIrArray(*init_value, *unnested_hlo)
             .EmitReadArrayElement(IrArray::Index(b_.getInt32Ty()), &b_);
@@ -2238,11 +2240,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     const ReductionCodegenInfo& reduction_info,
     absl::Span<HloComputation* const> reducers, int64 x_iter_num) {
   VLOG(10) << "Emit tile element for reduce " << unnested_hlo->ToString();
-  const KernelMappingScheme& kernel_mapping_scheme =
-      reduction_info.GetKernelMappingScheme();
-  HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
-                                        ? unnested_hlo->fused_expression_root()
-                                        : unnested_hlo;
+  bool returns_tuple = output_instructions.size() > 1;
   // Record the untransposed output linear address for the reduction.
   int partial_result_index = reduction_info.IsRowReduction() ? 0 : x_iter_num;
   b_.CreateStore(
@@ -2271,15 +2269,12 @@ void IrEmitterUnnested::EmitTileElementForReduction(
 
     for (int i = 0, e = output_instructions.size(); i != e; ++i) {
       const HloInstruction* inst = output_instructions[i];
-      ShapeIndex output_shape_index;
-      if (reduce_or_tuple->opcode() == HloOpcode::kTuple) {
-        output_shape_index = {i};
-      }
+      ShapeIndex idx = returns_tuple ? ShapeIndex({i}) : ShapeIndex({});
       if (IsReductionFromOrToContiguousDimensions(*inst)) {
         input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
       } else {
         extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
-                                       std::move(output_shape_index));
+                                       std::move(idx));
       }
     }
   } else {
@@ -2289,8 +2284,9 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     });
   }
 
-  IrArray::Index input_index = GetUnnormalizedIndex(
-      index, reduction_operand_shape, &b_, kernel_mapping_scheme);
+  IrArray::Index input_index =
+      GetUnnormalizedIndex(index, reduction_operand_shape, &b_,
+                           reduction_info.GetKernelMappingScheme());
   // Clear the linear index field of the IrArray::Index to enable the use of
   // GetElementPointer with array types. This enables the vectorization of
   // the computation for different partial results. Use this index if
@@ -2989,60 +2985,37 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 }
 
 Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
-    HloInstruction* unnested_hlo) {
+    HloInstruction* unnested_hlo,
+    absl::Span<HloInstruction* const> output_instructions) {
+  bool returns_tuple = output_instructions.size() > 1;
   VLOG(10) << "Emitting reduction to vector " << unnested_hlo->ToString();
-
-  HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
-                                        ? unnested_hlo->fused_expression_root()
-                                        : unnested_hlo;
-  // A group of instructions that generate the output for the kernel
-  // containing the given HLO instruction. The result may be an unnested kReduce
-  // HLO, a nested kReduce HLO of a kInput fusion, or the operands of the tuple
-  // for a multiple output fusion.
-  bool returns_tuple = false;
-  auto output_instructions = ([&]() -> absl::Span<HloInstruction* const> {
-    if (reduce_or_tuple->opcode() == HloOpcode::kReduce) {
-      return absl::Span<HloInstruction* const>(&reduce_or_tuple, 1);
-    }
-    CHECK(reduce_or_tuple->opcode() == HloOpcode::kTuple);
-    returns_tuple = true;
-    return reduce_or_tuple->operands();
-  })();
 
   std::vector<HloInstruction*> reduce_instructions;
   InlinedVector<ShapeIndex, 1> reduction_output_shape_indices;
   InlinedVector<HloComputation*, 1> reducers;
-  for (int i = 0; i < output_instructions.size(); i++) {
-    HloInstruction* output_instruction = output_instructions[i];
-    if (IsReductionFromOrToContiguousDimensions(*output_instruction)) {
-      reduce_instructions.push_back(output_instruction);
-      ShapeIndex idx;
-      if (returns_tuple) {
-        idx = {i};
-      }
-      reduction_output_shape_indices.push_back(idx);
-      reducers.push_back(output_instruction->to_apply());
+
+  // Build an initializer thunk to initialize each reduction output.
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  for (int i = 0; i < output_instructions.size(); ++i) {
+    if (!IsReductionFromOrToContiguousDimensions(*output_instructions[i])) {
+      continue;
     }
+
+    HloInstruction* output_instruction = output_instructions[i];
+    reduce_instructions.push_back(output_instruction);
+    ShapeIndex idx = returns_tuple ? ShapeIndex({i}) : ShapeIndex({});
+    reduction_output_shape_indices.push_back(idx);
+    reducers.push_back(output_instruction->to_apply());
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
+                        BuildInitializerThunk(unnested_hlo, idx));
+    thunks.push_back(std::move(initializer_thunk));
   }
+
   const HloInstruction* first_reduce = reduce_instructions.at(0);
   if (output_instructions.size() > 1) {
     TF_RETURN_IF_ERROR(
         AreFusedReductionOutputsConsistent(output_instructions, first_reduce));
-  }
-
-  // Build an initializer thunk to initialize each reduction output.
-  std::vector<std::unique_ptr<Thunk>> thunks;
-  for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (!IsReductionFromOrToContiguousDimensions(*output_instructions[i])) {
-      continue;
-    }
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> initializer_thunk,
-        BuildInitializerThunk(unnested_hlo,
-                              (output_instructions[i] == reduce_or_tuple)
-                                  ? ShapeIndex()
-                                  : ShapeIndex({i})));
-    thunks.push_back(std::move(initializer_thunk));
   }
 
   // Build a kernel thunk to compute all the outputs.

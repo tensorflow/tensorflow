@@ -261,21 +261,38 @@ typedef struct {
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
 
-// A union of pointers that points to memory for a given tensor.
+/* Note: can't use TFLITE_DEPRECATED from compatibility.h, it needs C++. */
+#if defined(__clang__) && __cplusplus >= 201103L
+#define DEPRECATED_PTRUNION_MEMBER                                             \
+  __attribute__(                                                               \
+      (deprecated("Do not use this field. Use GetTensorData<TYPE>(tensor) or " \
+                  "cast .raw to the appropriate type.")))
+#elif defined(__GNUC__) || defined(__clang__)
+#define DEPRECATED_PTRUNION_MEMBER __attribute__((deprecated))
+#else
+#define DEPRECATED_PTRUNION_MEMBER
+#endif
+
+/* A union of pointers that points to memory for a given tensor.
+ * Do not access these members directly, if possible, use GetTensorData instead.
+ * When accessing directly, only do .data, as other members are deprecated. */
 typedef union {
-  int32_t* i32;
-  int64_t* i64;
-  float* f;
-  // Placeholder for 16b float type. Use uint16* in the pointer union for now.
-  TfLiteFloat16* f16;
-  char* raw;
-  const char* raw_const;
-  uint8_t* uint8;
-  bool* b;
-  int16_t* i16;
-  TfLiteComplex64* c64;
-  int8_t* int8;
+  int32_t* i32 DEPRECATED_PTRUNION_MEMBER;
+  int64_t* i64 DEPRECATED_PTRUNION_MEMBER;
+  float* f DEPRECATED_PTRUNION_MEMBER;
+  TfLiteFloat16* f16 DEPRECATED_PTRUNION_MEMBER;
+  char* raw DEPRECATED_PTRUNION_MEMBER;
+  const char* raw_const DEPRECATED_PTRUNION_MEMBER;
+  uint8_t* uint8 DEPRECATED_PTRUNION_MEMBER;
+  bool* b DEPRECATED_PTRUNION_MEMBER;
+  int16_t* i16 DEPRECATED_PTRUNION_MEMBER;
+  TfLiteComplex64* c64 DEPRECATED_PTRUNION_MEMBER;
+  int8_t* int8 DEPRECATED_PTRUNION_MEMBER;
+  /* Only use this member. */
+  void* data;
 } TfLitePtrUnion;
+
+#undef DEPRECATED_PTRUNION_MEMBER
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
 // data (or data externally allocated). kTfLiteArenaRw is arena allocated

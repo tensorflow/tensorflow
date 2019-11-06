@@ -401,11 +401,16 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAllToAll: {
+      absl::optional<int64> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
       instruction = CreateAllToAll(
           shape, all_operands(),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
-                                    proto.replica_groups().end()));
+                                    proto.replica_groups().end()),
+          /*channel_id=*/channel_id);
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -900,9 +905,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups) {
+    const std::vector<ReplicaGroup>& replica_groups,
+    const absl::optional<int64>& channel_id) {
   return absl::make_unique<HloAllToAllInstruction>(shape, operands,
-                                                   replica_groups);
+                                                   replica_groups, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>

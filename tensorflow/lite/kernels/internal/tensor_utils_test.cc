@@ -139,9 +139,15 @@ TEST(uKernels, AsymmetricQuantizeFloatsTest) {
   double max = 1000.0;
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
+  float scale = quantization_params.scale;
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  // EQ won't work due to fpoint.
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {-128, -127, -126, -26, -28, -29, -30, -28, 127}));
 }
@@ -150,7 +156,12 @@ TEST(uKernels, AsymmetricQuantizeFloatsAllZerosTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   int8_t output[kVectorSize];
-  AsymmetricQuantizeFloats(input, kVectorSize, output, 0, 0);
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_EQ(test_scale, 0);
+  EXPECT_EQ(test_offset, 0);
   EXPECT_THAT(output, testing::ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
 
@@ -164,8 +175,13 @@ TEST(uKernels, AsymmetricQuantizeFloatsZeroRangeTest) {
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float scale = quantization_params.scale;
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {127, 127, 127, 127, 127, 127, 127, 127, 127}));
 }
@@ -180,8 +196,13 @@ TEST(uKernels, AsymmetricQuantizeFloatsAllAlmostZeroTest) {
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float scale = quantization_params.scale;
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {-58, -23, -55, -128, -48, -14, -41, 127, -49}));
 }
@@ -214,6 +235,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
 
 // Quantized matmul with 2 * 30 input and 9 * 30 matrix.
 TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
+  CpuBackendContext context;
   const std::vector<int8_t> input = {
       4,   -41, 5,   -41, 22,  17, -30, 24,  13,  -47, 18, 9,   -11, -30, 16,
       -47, 12,  36,  -20, 27,  -3, 0,   -51, -31, 3,   -8, -38, 43,  23,  12,
@@ -253,7 +275,7 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
-      scrach.data(), output.data());
+      scrach.data(), output.data(), &context);
   const std::vector<int16_t> expected_output = {
       -210, 331,  153, 139, -570, -657, 258, 515,  -495,
       91,   -243, -73, 603, -744, -269, 169, -748, -174,
@@ -264,6 +286,7 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
 
 // Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
 TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
+  CpuBackendContext context;
   const std::vector<int8_t> input = {
       4,   -41, 5,   -41, 22,  17, -30, 24,  13,  -47, 18, 9,   -11, -30, 16,
       -47, 12,  36,  -20, 27,  -3, 0,   -51, -31, 3,   -8, -38, 43,  23,  12,
@@ -304,7 +327,7 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scrach.data(),
-      output.data());
+      output.data(), &context);
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,
       -19, 2,  11, -5,  9,  -2,  10,  -38, -22,

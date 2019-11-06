@@ -148,6 +148,7 @@ class LinearOperator(module.Module):
     way.
   """
 
+  # TODO(b/143910018) Remove graph_parents in V3.
   @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
                                " no longer be used.", "graph_parents")
   def __init__(self,
@@ -201,13 +202,11 @@ class LinearOperator(module.Module):
 
     self._is_square_set_or_implied_by_hints = is_square
 
-    graph_parents = [] if graph_parents is None else graph_parents
-    for i, t in enumerate(graph_parents):
-      if t is None or not (linear_operator_util.is_ref(t) or
-                           tensor_util.is_tensor(t)):
-        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if graph_parents is not None:
+      self._set_graph_parents(graph_parents)
+    else:
+      self._graph_parents = []
     self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
-    self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
@@ -1076,6 +1075,24 @@ class LinearOperator(module.Module):
 
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
+
+  def _set_graph_parents(self, graph_parents):
+    """Set self._graph_parents.  Called during derived class init.
+
+    This method allows derived classes to set graph_parents, without triggering
+    a deprecation warning (which is invoked if `graph_parents` is passed during
+    `__init__`.
+
+    Args:
+      graph_parents: Iterable over Tensors.
+    """
+    # TODO(b/143910018) Remove this function in V3.
+    graph_parents = [] if graph_parents is None else graph_parents
+    for i, t in enumerate(graph_parents):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    self._graph_parents = graph_parents
 
 
 # Overrides for tf.linalg functions. This allows a LinearOperator to be used in

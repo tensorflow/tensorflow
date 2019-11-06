@@ -635,14 +635,9 @@ if [[ $(echo "${WHL_PATH}" | wc -w) -ne 1 ]]; then
 fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
-WHL_BASE_NAME=$(basename "${WHL_PATH}")
-AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
 
 # Print the size of the wheel file.
 echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
-
-# Run tests (if any is specified).
-run_all_tests
 
 # Build the other GPU package.
 if [ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]; then
@@ -664,6 +659,9 @@ if [ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]; then
   ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
 fi
 
+# Run tests (if any is specified).
+run_all_tests
+
 for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
   if [[ ${OS_TYPE} == "ubuntu" ]]; then
     # Avoid Python3.6 abnormality by installing auditwheel here.
@@ -679,6 +677,8 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
     echo "auditwheel repairing ${WHL_PATH}"
     auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
+    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
     if [[ -f ${AUDITED_WHL_NAME} ]]; then
       WHL_PATH=${AUDITED_WHL_NAME}
       echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"

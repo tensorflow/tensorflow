@@ -457,7 +457,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     remote_device_mgr = new_remote_device_mgr.get();
   } else {
     ctx->context->ClearCaches();
-    grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
+    // TODO(b/143914772): Potential memory leak if rendezvous has pending
+    // tensors for removed / replaced workers.
 
     remote_device_mgr = ctx->context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
@@ -552,43 +553,52 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
-
   auto session_name = tensorflow::strings::StrCat("eager_", context_id);
-  TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
-      session_name, server_def, base_request.cluster_device_attributes(),
-      true));
-
-  std::shared_ptr<tensorflow::WorkerSession> worker_session;
-  TF_RETURN_IF_ERROR(
-      grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
-          session_name, &worker_session));
-
-  // Initialize remote tensor communication based on worker session.
-  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
-
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
-      tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
-                                          worker_session.get());
-  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
-      /*is_master=*/true, ctx->context);
+  std::shared_ptr<tensorflow::WorkerSession> worker_session;
 
   if (reset_context) {
+    TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
+        session_name, server_def, base_request.cluster_device_attributes(),
+        true));
+    TF_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+            session_name, &worker_session));
+
+    // Initialize remote tensor communication based on worker session.
+    TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
+    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
+        tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
+                                            worker_session.get());
+    auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+        /*is_master=*/true, ctx->context);
+
     LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
         std::move(new_server), grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
         remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
         std::move(remote_mgr)));
-  } else {
-    LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
-        grpc_server->worker_env(), worker_session,
-        std::move(remote_eager_workers), added_workers, removed_workers,
-        context_id, r, device_mgr, keep_alive_secs, cluster_flr));
-  }
 
-  // NOTE: We start the server after all other initialization, because the
-  // GrpcServer cannot be destroyed after it is started.
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+    // NOTE: We start the server after all other initialization, because the
+    // GrpcServer cannot be destroyed after it is started.
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+  } else {
+    LOG_AND_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->UpdateSession(
+            session_name, server_def, base_request.cluster_device_attributes(),
+            true));
+    TF_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+            session_name, &worker_session));
+    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
+        tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
+                                            worker_session.get());
+    LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
+        grpc_server->worker_env(), std::move(remote_eager_workers),
+        added_workers, removed_workers, context_id, r, device_mgr,
+        keep_alive_secs, cluster_flr));
+  }
 #undef LOG_AND_RETURN_IF_ERROR
 
   return tensorflow::Status::OK();
