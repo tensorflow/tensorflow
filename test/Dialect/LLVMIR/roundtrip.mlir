@@ -94,6 +94,9 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
   %27 = llvm.fpext %arg1 : !llvm.float to !llvm.x86_fp80
   %28 = llvm.fpext %arg1 : !llvm.float to !llvm.fp128
 
+// CHECK:  %29 = llvm.fneg %arg1 : !llvm.float
+  %29 = llvm.fneg %arg1 : !llvm.float
+
 // CHECK:  llvm.return
   llvm.return
 }

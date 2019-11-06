@@ -811,6 +811,9 @@ llvm.func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: 
 // CHECK-NEXT: %22 = ashr i32 %2, %3
   %18 = llvm.ashr %arg2, %arg3 : !llvm.i32
 
+// CHECK-NEXT: fneg float %0
+  %19 = llvm.fneg %arg0 : !llvm.float
+
   llvm.return %10 : !llvm<"{ float, i32 }">
 }
 
