@@ -424,6 +424,142 @@ func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
 }
 ```
 
+#### 'affine.load' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `affine.load` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]` `:` memref-type
+```
+The `affine.load` op reads an element from a memref, where the index
+for each memref dimension is an affine expression of loop induction
+variables and symbols. The output of 'affine.load' is a new value with the
+same type as the elements of the memref. An affine expression of loop IVs
+and symbols must be specified for each dimension of the memref. The keyword
+'symbol' can be used to indicate SSA identifiers which are symbolic.
+
+Example:
+
+```mlir {.mlir}
+
+  Example 1:
+
+    %1 = affine.load %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
+
+  Example 2: Uses 'symbol' keyword for symbols '%n' and '%m'.
+
+    %1 = affine.load %0[%i0 + symbol(%n), %i1 + symbol(%m)]
+      : memref<100x100xf32>
+
+```
+
+#### 'affine.store' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `affine.store` ssa-use, ssa-use `[` multi-dim-affine-map-of-ssa-ids `]` `:` memref-type
+```
+The `affine.store` op writes an element to a memref, where the index
+for each memref dimension is an affine expression of loop induction
+variables and symbols. The 'affine.store' op stores a new value which is the
+same type as the elements of the memref. An affine expression of loop IVs
+and symbols must be specified for each dimension of the memref. The keyword
+'symbol' can be used to indicate SSA identifiers which are symbolic.
+
+Example:
+
+```mlir {.mlir}
+
+    Example 1:
+
+      affine.store %v0, %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
+
+    Example 2: Uses 'symbol' keyword for symbols '%n' and '%m'.
+
+      affine.store %v0, %0[%i0 + symbol(%n), %i1 + symbol(%m)]
+        : memref<100x100xf32>
+
+```
+
+#### 'affine.dma_start' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `affine.dma_Start` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, ssa-use `:` memref-type
+```
+
+The `affine.dma_start` op starts a non-blocking DMA operation that transfers
+data from a source memref to a destination memref. The source and destination
+memref need not be of the same dimensionality, but need to have the same
+elemental type. The operands include the source and destination memref's
+each followed by its indices, size of the data transfer in terms of the
+number of elements (of the elemental type of the memref), a tag memref with
+its indices, and optionally at the end, a stride and a
+number_of_elements_per_stride arguments. The tag location is used by an
+AffineDmaWaitOp to check for completion. The indices of the source memref,
+destination memref, and the tag memref have the same restrictions as any
+affine.load/store. In particular, index for each memref dimension must be an
+affine expression of loop induction variables and symbols.
+The optional stride arguments should be of 'index' type, and specify a
+stride for the slower memory space (memory space with a lower memory space
+id), transferring chunks of number_of_elements_per_stride every stride until
+%num_elements are transferred. Either both or no stride arguments should be
+specified. The value of 'num_elements' must be a multiple of
+'number_of_elements_per_stride'.
+
+
+Example:
+
+```mlir {.mlir}
+
+For example, a DmaStartOp operation that transfers 256 elements of a memref
+'%src' in memory space 0 at indices [%i + 3, %j] to memref '%dst' in memory
+space 1 at indices [%k + 7, %l], would be specified as follows:
+
+  %num_elements = constant 256
+  %idx = constant 0 : index
+  %tag = alloc() : memref<1xi32, 4>
+  affine.dma_start %src[%i + 3, %j], %dst[%k + 7, %l], %tag[%idx],
+    %num_elements :
+      memref<40x128xf32, 0>, memref<2x1024xf32, 1>, memref<1xi32, 2>
+
+  If %stride and %num_elt_per_stride are specified, the DMA is expected to
+  transfer %num_elt_per_stride elements every %stride elements apart from
+  memory space 0 until %num_elements are transferred.
+
+  affine.dma_start %src[%i, %j], %dst[%k, %l], %tag[%idx], %num_elements,
+    %stride, %num_elt_per_stride : ...
+
+```
+#### 'affine.dma_wait' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `affine.dma_Start` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, ssa-use `:` memref-type
+```
+
+The `affine.dma_start` op blocks until the completion of a DMA operation
+associated with the tag element '%tag[%index]'. %tag is a memref, and %index
+has to be an index with the same restrictions as any load/store index.
+In particular, index for each memref dimension must be an affine expression of
+loop induction variables and symbols. %num_elements is the number of elements
+associated with the DMA operation. For example:
+
+Example:
+
+```mlir {.mlir}
+
+  affine.dma_start %src[%i, %j], %dst[%k, %l], %tag[%index], %num_elements :
+    memref<2048xf32, 0>, memref<256xf32, 1>, memref<1xi32, 2>
+  ...
+  ...
+  affine.dma_wait %tag[%index], %num_elements : memref<1xi32, 2>
+
+```
+
 #### `affine.terminator` operation
 
 Syntax:
