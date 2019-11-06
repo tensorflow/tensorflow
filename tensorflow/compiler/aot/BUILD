@@ -51,7 +51,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -70,7 +70,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
@@ -101,7 +101,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm//:aarch64_code_gen",  # fixdeps: keep
         "@llvm//:arm_code_gen",  # fixdeps: keep

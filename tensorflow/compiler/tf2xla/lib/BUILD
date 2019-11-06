@@ -43,7 +43,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

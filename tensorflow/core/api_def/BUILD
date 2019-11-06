@@ -62,7 +62,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -72,7 +72,7 @@ tf_cc_test(
     deps = [
         ":update_api_def_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -110,7 +110,7 @@ tf_cc_test(
         "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
