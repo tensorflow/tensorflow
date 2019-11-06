@@ -279,6 +279,20 @@ class PyBuiltinsTest(test.TestCase):
     tc = TestSubclass()
     self.assertEqual(tc.test_method(), 21)
 
+  def test_filter(self):
+    self.assertListEqual(
+        list(py_builtins.filter_(lambda x: x == 'b', ['a', 'b', 'c'])), ['b'])
+    self.assertListEqual(
+        list(py_builtins.filter_(lambda x: x < 3, [3, 2, 1])), [2, 1])
+
+  def test_filter_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+    dataset = py_builtins.filter_(lambda x: x < 3, dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 1)
+
 
 if __name__ == '__main__':
   test.main()
