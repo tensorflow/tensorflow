@@ -52,8 +52,8 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              float max_value, float* scaling_factor);
 
 void AsymmetricQuantizeFloats(const float* values, const int size,
-                              int8_t* quantized_values, float scaling_factor,
-                              int32_t offset);
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result

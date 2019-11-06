@@ -54,8 +54,8 @@ void SymmetricQuantizeFloats(const float* values, const int size,
 }
 
 void AsymmetricQuantizeFloats(const float* values, const int size,
-                              int8_t* quantized_values, float scaling_factor,
-                              int32_t offset) {
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset) {
   return PortableAsymmetricQuantizeFloats(values, size, quantized_values,
                                           scaling_factor, offset);
 }

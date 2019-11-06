@@ -96,14 +96,46 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 
 void PortableAsymmetricQuantizeFloats(const float* values, const int size,
                                       int8_t* quantized_values,
-                                      float scaling_factor, int32_t offset) {
+                                      float* scaling_factor, int32_t* offset) {
   const int32_t kMinScale = -128;
   const int32_t kMaxScale = 127;
+  const double qmin_double = kMinScale;
+  const double qmax_double = kMaxScale;
+  float rmin = 0.0, rmax = 0.0;
+  const auto minmax = std::minmax_element(values, values + size);
+  rmin = rmin < *minmax.first ? rmin : *minmax.first;
+  rmax = rmax > *minmax.second ? rmax : *minmax.second;
+  if (rmin == rmax) {
+    *scaling_factor = 0;
+    *offset = 0;
+  } else {
+    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    const double zero_point_from_min = qmin_double - rmin / scale;
+    const double zero_point_from_max = qmax_double - rmax / scale;
+    const double zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(rmin / scale);
+    const double zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(rmax / scale);
+    const double zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+    int8 nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = kMinScale;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = kMaxScale;
+    } else {
+      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+    }
+    *scaling_factor = scale;
+    *offset = nudged_zero_point;
+  }
   const float scaling_factor_inv =
-      scaling_factor == 0 ? 0 : 1.0 / scaling_factor;
+      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value = static_cast<int32_t>(
-        TfLiteRound(offset + values[i] * scaling_factor_inv));
+        TfLiteRound(*offset + values[i] * scaling_factor_inv));
     quantized_values[i] =
         std::min(kMaxScale, std::max(kMinScale, quantized_value));
   }

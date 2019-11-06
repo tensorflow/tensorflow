@@ -1966,6 +1966,41 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
 #endif
 }
 
+inline void NeonMinMax(const float* values, const int size, float* min,
+                       float* max) {
+  const int postamble_start = RoundDownVectors<kFloatValuesPerNeonVector>(size);
+  double rmin = 0.0, rmax = 0.0;
+  int i = 0;
+  if (postamble_start) {
+    float32x4_t min_f32x4 = vld1q_f32(values);
+    float32x4_t max_f32x4 = min_f32x4;
+    for (i = kFloatValuesPerNeonVector; i < postamble_start;
+         i += kFloatValuesPerNeonVector) {
+      const float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
+      min_f32x4 = vminq_f32(min_f32x4, value0_f32x4);
+      max_f32x4 = vmaxq_f32(max_f32x4, value0_f32x4);
+    }
+    float32x2_t min_f32x2 =
+        vmin_f32(vget_low_f32(min_f32x4), vget_high_f32(min_f32x4));
+    float32x2_t max_f32x2 =
+        vmax_f32(vget_low_f32(max_f32x4), vget_high_f32(max_f32x4));
+    min_f32x2 = vpmin_f32(min_f32x2, min_f32x2);
+    const float fmin = vget_lane_f32(min_f32x2, 0);
+    rmin = rmin < fmin ? rmin : fmin;
+    max_f32x2 = vpmax_f32(max_f32x2, max_f32x2);
+    const float fmax = vget_lane_f32(max_f32x2, 0);
+    rmax = rmax > fmax ? rmax : fmax;
+    *min = rmin;
+    *max = rmax;
+  }
+  if (i < size) {
+    const auto minmax =
+        std::minmax_element(values + postamble_start, values + size);
+    *min = rmin < *minmax.first ? rmin : *minmax.first;
+    *max = rmax > *minmax.second ? rmax : *minmax.second;
+  }
+}
+
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor) {
@@ -2036,16 +2071,48 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 
 void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
-                                  float scaling_factor, int32_t offset) {
+                                  float* scaling_factor, int32_t* offset) {
+  float rmin = 0.0, rmax = 0.0;
+  NeonMinMax(values, size, &rmin, &rmax);
+
   const int32_t kMinScale = -128;
   const int32_t kMaxScale = 127;
-  const float scaling_factor_inv =
-      scaling_factor == 0 ? 0 : 1.0 / scaling_factor;
+  const double qmin_double = kMinScale;
+  const double qmax_double = kMaxScale;
+  if (rmin == rmax) {
+    *scaling_factor = 0;
+    *offset = 0;
+  } else {
+    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    const double zero_point_from_min = qmin_double - rmin / scale;
+    const double zero_point_from_max = qmax_double - rmax / scale;
+    const double zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(rmin / scale);
+    const double zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(rmax / scale);
+    const double zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+    int8 nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = kMinScale;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = kMaxScale;
+    } else {
+      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+    }
+    *scaling_factor = scale;
+    *offset = nudged_zero_point;
+  }
+
   const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const float scaling_factor_inv =
+      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
   const int32x4_t scale_i32x4 = vmovq_n_s32(kMaxScale);
   const int32x4_t neg_scale_i32x4 = vmovq_n_s32(kMinScale);
-  const int32x4_t offset_i32x4 = vmovq_n_s32(offset);
+  const int32x4_t offset_i32x4 = vmovq_n_s32(*offset);
 
   int i = 0;
   for (; i < postamble_start; i += 2 * kFloatValuesPerNeonVector) {
@@ -2077,7 +2144,7 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
 
   for (; i < size; ++i) {
     const int32 quantized_value = static_cast<int32>(
-        offset + TfLiteRound(scaling_factor_inv * values[i]));
+        *offset + TfLiteRound(scaling_factor_inv * values[i]));
     quantized_values[i] =
         std::min(kMaxScale, std::max(kMinScale, quantized_value));
   }

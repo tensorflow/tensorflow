@@ -139,9 +139,15 @@ TEST(uKernels, AsymmetricQuantizeFloatsTest) {
   double max = 1000.0;
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
+  float scale = quantization_params.scale;
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  // EQ won't work due to fpoint.
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {-128, -127, -126, -26, -28, -29, -30, -28, 127}));
 }
@@ -150,7 +156,12 @@ TEST(uKernels, AsymmetricQuantizeFloatsAllZerosTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   int8_t output[kVectorSize];
-  AsymmetricQuantizeFloats(input, kVectorSize, output, 0, 0);
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_EQ(test_scale, 0);
+  EXPECT_EQ(test_offset, 0);
   EXPECT_THAT(output, testing::ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
 
@@ -164,8 +175,13 @@ TEST(uKernels, AsymmetricQuantizeFloatsZeroRangeTest) {
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float scale = quantization_params.scale;
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {127, 127, 127, 127, 127, 127, 127, 127, 127}));
 }
@@ -180,8 +196,13 @@ TEST(uKernels, AsymmetricQuantizeFloatsAllAlmostZeroTest) {
   QuantizationParams quantization_params =
       ChooseQuantizationParams<int8_t>(min, max);
   int32_t offset = quantization_params.zero_point;
-  AsymmetricQuantizeFloats(input, kVectorSize, output,
-                           quantization_params.scale, offset);
+  float scale = quantization_params.scale;
+  float test_scale;
+  int32_t test_offset;
+  AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
+                           &test_offset);
+  EXPECT_NEAR(test_scale, scale, 1e-6);
+  EXPECT_EQ(test_offset, offset);
   EXPECT_THAT(output, testing::ElementsAreArray(
                           {-58, -23, -55, -128, -48, -14, -41, 127, -49}));
 }
