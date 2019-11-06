@@ -220,7 +220,7 @@ ITERATOR_PREFIX_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
 std::vector<IteratorSaveAndRestoreTestCase<RandomDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/FortyTwo(), /*breakpoints=*/{2, 5, 8},
-           /*expected_outputs=*/GenerateExpectedData(42, 42, kCount)}};
+           /*expected_outputs=*/GenerateExpectedData(42, 42, 9 /* 8 + 1 */)}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
