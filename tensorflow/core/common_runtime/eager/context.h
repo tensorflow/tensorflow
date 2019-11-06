@@ -210,7 +210,6 @@ class EagerContext : public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
-  void ResetRendezvous(Rendezvous* r) { rendezvous_ = r; }
   Rendezvous* CreateRendezvous(const int64 step_id) const {
     if (rendezvous_creator_ != nullptr) {
       return rendezvous_creator_(step_id);
@@ -305,7 +304,7 @@ class EagerContext : public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   Status UpdateRemoteMaster(
-      WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
+      WorkerEnv* worker_env,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
       const std::vector<string>& remove_remote_contexts, uint64 context_id,

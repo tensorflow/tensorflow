@@ -235,14 +235,9 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
         " but received update request at view #", request->context_view_id(),
         ". View id should only be continuously incremented.");
   }
-
-  // Remove then recreate rendezvous. Necessary because rondezvous does not
-  // allow double initialization.
-  // NOTE: safe to clean up rendezvous on worker assuming the remote client
-  // calls to WaitForAllPendingNodes on all executors (for example, through
-  // `ClearCaches()`) before issuing requests to update contexts.
-  env_->rendezvous_mgr->Cleanup(request->context_id());
-  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  ctx->ClearCaches();
+  // TODO(b/143914772): Potential memory leak if rendezvous has pending
+  // tensors for removed / replaced workers.
 
   std::vector<DeviceAttributes> cluster_device_attributes;
   cluster_device_attributes.reserve(
@@ -261,10 +256,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
       session_name, &worker_session));
 
   tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
-
-  // Initialize remote tensor communication based on worker session.
-  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
-  ctx->ResetRendezvous(r);
 
   std::vector<string> remote_workers;
   worker_session->worker_cache()->ListWorkers(&remote_workers);
