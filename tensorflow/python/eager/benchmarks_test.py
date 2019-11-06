@@ -1203,6 +1203,14 @@ class MicroBenchmarks(test.Benchmark):
     xs = [np.array([0] * 2, dtype=np.int32)] * 40
     self._run(lambda: constant_op.constant(xs), 1000)
 
+  def benchmark_constant_20x20x20_double_list_to_float32_tensor(self):
+    xs = [[[np.linspace(0, 1, 21).tolist()] * 20] * 20]
+    self._run(lambda: constant_op.constant(xs, dtype=dtypes.float32), 10000)
+
+  def benchmark_constant_20x20x20_double_list_to_float64_tensor(self):
+    xs = [[[np.linspace(0, 1, 21).tolist()] * 20] * 20]
+    self._run(lambda: constant_op.constant(xs, dtype=dtypes.float64), 10000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):

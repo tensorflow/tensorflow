@@ -381,21 +381,13 @@ const char* ConvertOneFloat(PyObject* v, T* out) {
     return nullptr;
   }
   if (TF_PREDICT_TRUE(PyFloat_Check(v))) {
-    double as_double = PyFloat_AsDouble(v);
-    // Handle infinity.
-    if (as_double == std::numeric_limits<double>::infinity()) {
-      *out = std::numeric_limits<T>::infinity();
-      return nullptr;
-    } else if (as_double == -1 * std::numeric_limits<double>::infinity()) {
-      *out = -1 * std::numeric_limits<T>::infinity();
-      return nullptr;
-    }
-    // Check for overflow.
-    if (as_double > std::numeric_limits<T>::max() ||
-        as_double < std::numeric_limits<T>::lowest()) {
+    const double as_double = PyFloat_AS_DOUBLE(v);
+    *out = static_cast<T>(as_double);
+    // Check for overflow
+    if (TF_PREDICT_FALSE(sizeof(T) < sizeof(double) && std::isinf(*out) &&
+                         std::isfinite(as_double))) {
       return ErrorOutOfRangeDouble;
     }
-    *out = static_cast<T>(as_double);
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
