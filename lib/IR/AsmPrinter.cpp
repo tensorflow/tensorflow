@@ -1346,7 +1346,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
 
   // Print the 'attributes' keyword if necessary.
   if (withKeyword)
-    os << " attributes ";
+    os << " attributes";
 
   // Otherwise, print them all out in braces.
   os << " {";
