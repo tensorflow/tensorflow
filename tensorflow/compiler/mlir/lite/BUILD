@@ -477,7 +477,7 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
-        "//tensorflow/compiler/mlir:op_name_mapper",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",

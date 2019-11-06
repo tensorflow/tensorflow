@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/op_name_mapper.h"
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+
+#include <string>
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
 
 namespace tensorflow {
 
-using llvm::StringRef;
-using mlir::Operation;
+OpOrArgNameMapper::~OpOrArgNameMapper() {}
 
-OpNameMapper::~OpNameMapper() {}
-
-std::string OpNameMapper::GetUniqueName(llvm::StringRef prefix) {
+std::string OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
   std::string name = prefix;
   if (IsUnique(name)) {
     ++name_to_count_[name];
@@ -49,40 +53,56 @@ std::string OpNameMapper::GetUniqueName(llvm::StringRef prefix) {
   return name;
 }
 
-const std::string& OpNameMapper::GetUniqueName(Operation* op) {
-  auto& name = op_to_name_[op];
+const std::string& OpOrArgNameMapper::GetUniqueName(OpOrArg op_or_arg) {
+  auto& name = op_or_arg_to_name_[op_or_arg];
   if (!name.empty()) return name;
   // Update the value in the map with unique name.
-  name = GetUniqueName(GetName(op));
+  name = GetUniqueName(GetName(op_or_arg));
   return name;
 }
 
-int OpNameMapper::InitOpName(mlir::Operation* op, llvm::StringRef name) {
-  op_to_name_[op] = name;
+int OpOrArgNameMapper::InitOpName(OpOrArg op_or_arg, llvm::StringRef name) {
+  op_or_arg_to_name_[op_or_arg] = name;
   return name_to_count_[name]++;
 }
 
-bool OpNameMapper::IsUnique(llvm::StringRef name) {
+bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) {
   return name_to_count_.count(name) == 0;
 }
 
-std::string OpLocNameMapper::GetName(Operation* op) {
-  if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().str();
+namespace {
+// Derives name from location.
+llvm::StringRef GetNameFromLoc(mlir::Location loc) {
+  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>())
+    return name_loc.getName().strref();
 
-  if (auto call_loc = op->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+  if (auto call_loc = loc.dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().str();
+      return name_loc.getName().strref();
   }
 
-  // If the location is none of the expected types, then simply use name
-  // generated using the op type.
-  return op->getName().getStringRef();
+  return llvm::StringRef();
+}
+}  // anonymous namespace
+
+std::string OpOrArgLocNameMapper::GetName(OpOrArg op_or_arg) {
+  if (auto* op = op_or_arg.dyn_cast<mlir::Operation*>()) {
+    auto name_from_loc = GetNameFromLoc(op->getLoc());
+    if (!name_from_loc.empty()) return name_from_loc;
+    // If the location is none of the expected types, then simply use name
+    // generated using the op type.
+    return op->getName().getStringRef();
+  }
+
+  if (auto* arg = op_or_arg.dyn_cast<mlir::BlockArgument*>())
+    return GetNameFromLoc(arg->getLoc());
+
+  return "";
 }
 
-std::string OpStripNameMapper::GetName(Operation* op) {
+std::string OpOrArgStripNameMapper::GetName(OpOrArg op_or_arg) {
   return llvm::APInt(32, count_++)
       .toString(/*Radix=*/36,
                 /*Signed=*/false);

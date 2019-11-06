@@ -56,7 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
-#include "tensorflow/compiler/mlir/op_name_mapper.h"
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -92,8 +92,8 @@ using mlir::TranslateFromMLIRRegistration;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
-using tensorflow::OpLocNameMapper;
-using tensorflow::OpNameMapper;
+using tensorflow::OpOrArgLocNameMapper;
+using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
 using tflite::flex::IsWhitelistedFlexOp;
 using xla::StatusOr;
@@ -352,19 +352,17 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
-  static Optional<std::string> Translate(ModuleOp module,
-                                         bool emit_builtin_tflite_ops,
-                                         bool emit_select_tf_ops,
-                                         bool emit_custom_ops,
-                                         OpNameMapper* op_name_mapper);
+  static Optional<std::string> Translate(
+      ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+      bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops,
-                      OpNameMapper* op_name_mapper)
+                      OpOrArgNameMapper* op_or_arg_name_mapper)
       : module_(module),
-        name_mapper_(*op_name_mapper),
+        name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
@@ -449,7 +447,7 @@ class Translator {
 
   ModuleOp module_;
 
-  tensorflow::OpNameMapper& name_mapper_;
+  tensorflow::OpOrArgNameMapper& name_mapper_;
 
   flatbuffers::FlatBufferBuilder builder_;
   BufferOffset<tflite::Buffer> empty_buffer_;
@@ -1050,14 +1048,12 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
-Optional<std::string> Translator::Translate(ModuleOp module,
-                                            bool emit_builtin_tflite_ops,
-                                            bool emit_select_tf_ops,
-                                            bool emit_custom_ops,
-                                            OpNameMapper* op_name_mapper) {
+Optional<std::string> Translator::Translate(
+    ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+    bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper) {
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, op_name_mapper);
+                        emit_custom_ops, op_or_arg_name_mapper);
   return translator.TranslateInternal();
 }
 
@@ -1156,10 +1152,10 @@ Optional<std::string> Translator::TranslateInternal() {
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    OpNameMapper* op_name_mapper) {
+    OpOrArgNameMapper* op_or_arg_name_mapper) {
   auto maybe_translated =
       Translator::Translate(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                            emit_custom_ops, op_name_mapper);
+                            emit_custom_ops, op_or_arg_name_mapper);
   if (!maybe_translated) return true;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return false;
@@ -1169,24 +1165,25 @@ bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
     bool emit_custom_ops) {
-  OpLocNameMapper op_name_mapper;
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, &op_name_mapper);
+      emit_select_tf_ops, emit_custom_ops, &op_or_arg_name_mapper);
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
   std::string serialized_flatbuffer;
-  std::unique_ptr<OpNameMapper> op_name_mapper;
+  std::unique_ptr<OpOrArgNameMapper> op_or_arg_name_mapper;
   if (strip_debug_info) {
-    op_name_mapper = std::make_unique<tensorflow::OpStripNameMapper>();
+    op_or_arg_name_mapper =
+        std::make_unique<tensorflow::OpOrArgStripNameMapper>();
   } else {
-    op_name_mapper = std::make_unique<OpLocNameMapper>();
+    op_or_arg_name_mapper = std::make_unique<OpOrArgLocNameMapper>();
   }
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops, op_name_mapper.get()))
+          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get()))
     return mlir::failure();
 
   output << serialized_flatbuffer;

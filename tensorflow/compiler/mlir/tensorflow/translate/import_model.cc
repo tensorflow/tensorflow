@@ -46,7 +46,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
-#include "tensorflow/compiler/mlir/op_name_mapper.h"
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -104,17 +104,17 @@ namespace {
 // function names unchanged in an MLIR roundtrip causes test failures.
 // TODO(b/142268695) Re-evaluate whether we need this class v.s. directly using
 // and TF function name as MLIR function name after b/142268695 is root caused.
-class NameUniquifier : public OpNameMapper {
+class NameUniquifier : public OpOrArgNameMapper {
  public:
   explicit NameUniquifier(const FunctionLibraryDefinition& flib)
       : flib_(flib) {}
 
  private:
   bool IsUnique(llvm::StringRef name) override {
-    return OpNameMapper::IsUnique(name) && !flib_.Contains(name);
+    return OpOrArgNameMapper::IsUnique(name) && !flib_.Contains(name);
   }
 
-  std::string GetName(mlir::Operation* op) override {
+  std::string GetName(OpOrArg op_or_arg) override {
     DCHECK(false) << "Unimplemented";
     return "";
   }
