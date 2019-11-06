@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -51,6 +52,12 @@ using ::tensorflow::uint8;
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   auto values = attr.getValues<int64>();
   return {values.begin(), values.end()};
+}
+
+static std::vector<int64> ConvertDenseIntAttr(
+    llvm::Optional<mlir::DenseIntElementsAttr> attr) {
+  if (!attr) return {};
+  return ConvertDenseIntAttr(*attr);
 }
 
 // Converts the broadcast_dimensions attribute into a vector of dimension
@@ -85,6 +92,23 @@ static std::vector<std::pair<int64, int64>> Convert_padding(
 static std::vector<int64> Convert_broadcast_sizes(
     mlir::DenseIntElementsAttr broadcast_sizes) {
   return ConvertDenseIntAttr(broadcast_sizes);
+}
+
+static std::vector<xla::ReplicaGroup> Convert_replica_groups(
+    mlir::DenseIntElementsAttr groups) {
+  int64_t num_groups = groups.getType().getDimSize(0);
+  int64_t group_size = groups.getType().getDimSize(1);
+
+  std::vector<xla::ReplicaGroup> result;
+  result.reserve(num_groups);
+  for (uint64_t i = 0; i < num_groups; ++i) {
+    xla::ReplicaGroup group;
+    for (uint64_t j = 0; j < group_size; ++j) {
+      group.add_replica_ids(groups.getValue<int64_t>({i, j}));
+    }
+    result.push_back(group);
+  }
+  return result;
 }
 
 static std::vector<int64> Convert_permutation(
@@ -243,6 +267,8 @@ class ConvertToHloModule {
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
+  //
+  // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
@@ -355,14 +381,14 @@ LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConvertElementType(
+      value_map[op.operand()],
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
 }
 
 LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(CrossReplicaSumOp op, OpLoweringContext ctx) {
   return failure();
 }
 
@@ -417,11 +443,27 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
+    return failure();
+  }
+  value_map[op] = xla::ReduceWindowWithGeneralPadding(
+      value_map[op.operand()], value_map[op.init_value()], body,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()),
+      ConvertDenseIntAttr(op.base_dilations()),
+      ConvertDenseIntAttr(op.window_dilations()),
+      Convert_padding(op.padding()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Reshape(value_map[op.operand()],
+                               xla::TypeToShape(op.getType()).dimensions());
+
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
@@ -438,11 +480,27 @@ LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::RngUniform(value_map[op.a()], value_map[op.b()],
+                                  xla::TypeToShape(op.getType()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.select(), &select)) ||
+      failed(
+          ctx.converter->LowerRegionAsComputation(&op.scatter(), &scatter))) {
+    return failure();
+  }
+  value_map[op] = xla::SelectAndScatterWithGeneralPadding(
+      value_map[op.operand()], select,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()), Convert_padding(op.padding()),
+      value_map[op.source()], value_map[op.init_value()], scatter);
+  return success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
