@@ -395,7 +395,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     Tensor dev_boxes_keep_flags;  // bitmask for keeping the boxes or rejecting
                                   // from output
     const int nboxes_to_generate = std::min(conv_layer_nboxes, pre_nms_topn);
-    size_t cub_temp_storage_bytes=max(cub_sort_temp_storage_bytes,cub_select_temp_storage_bytes);
+    size_t cub_temp_storage_bytes=std::max(cub_sort_temp_storage_bytes,cub_select_temp_storage_bytes);
     OP_REQUIRES_OK(
         context,
         AllocateGenerationTempTensors(
