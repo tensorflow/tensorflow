@@ -113,28 +113,75 @@ class ExternalStatePolicy(enum.Enum):
 class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
-  A `Dataset` can be used to represent an input pipeline as a
-  collection of elements and a "logical plan" of transformations that act on
-  those elements.
+  The `tf.data.Dataset` API supports writing descriptive and efficient input
+  pipelines. `Dataset` usage follows a common pattern:
 
-  A dataset contains elements that each have the same (nested) structure and the
-  individual components of the structure can be of any type representable by
-  `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
-  `tf.RaggedTensor`, or `tf.TensorArray`.
+  1. Create a source dataset from your input data.
+  2. Apply dataset transformations to preprocess the data.
+  3. Iterate over the dataset and process the elements.
 
-  Example elements:
-  ```python
-  # Integer element
-  a = 1
-  # Float element
-  b = 2.0
-  # Tuple element with 2 components
-  c = (1, 2)
-  # Dict element with 3 components
-  d = {"a": (2, 2), "b": 3}
-  # Element containing a dataset
-  e = tf.data.Dataset.from_tensors(10)
-  ```
+  Iteration happens in a streaming fashion, so the full dataset does not need to
+  fit into memory.
+
+  # Source Datasets
+
+  The simplest way to create a dataset is to create it from a python `list`:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> for element in dataset:
+  ...   print(element)
+  tf.Tensor(1, shape=(), dtype=int32)
+  tf.Tensor(2, shape=(), dtype=int32)
+  tf.Tensor(3, shape=(), dtype=int32)
+
+  To process lines from files, use `tf.data.TextLineDataset`:
+
+  >>> dataset = tf.data.TextLineDataset(["file1.txt", "file2.txt"])
+
+  To process records written in the `TFRecord` format, use `TFRecordDataset`:
+
+  >>> dataset = tf.data.TFRecordDataset(["file1.tfrecords", "file2.tfrecords"])
+
+  To create a dataset of all files matching a pattern, use
+  `tf.data.Dataset.list_files`:
+
+  >>> dataset = tf.data.dataset.list_files("/path/*.txt")  # doctest: +SKIP
+
+  See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
+  for more ways to create datasets.
+
+  # Transformations
+
+  Once you have a dataset, you can apply transformations to prepare the data for
+  your model:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> dataset = dataset.map(lambda x: x*2)
+  >>> list(dataset.as_numpy_iterator())
+  [2, 4, 6]
+
+  # Common Terms
+
+  **Element**: A single output from calling `next()` on a dataset iterator.
+    Elements may be nested structures containing multiple components. For
+    example, the element `(1, (3, "apple"))` has one tuple nested in another
+    tuple. The components are `1`, `3`, and `"apple"`.
+  **Component**: The leaf in the nested structure of an element.
+
+  # Supported types
+
+  Elements can be nested structures of tuples, named tuples, and dictionaries.
+  Element components can be of any type representable by `tf.TypeSpec`,
+  including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  `tf.RaggedTensor`, and `tf.TensorArray`.
+
+  >>> a = 1 # Integer element
+  >>> b = 2.0 # Float element
+  >>> c = (1, 2) # Tuple element with 2 components
+  >>> d = {"a": (2, 2), "b": 3} # Dict element with 3 components
+  >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
+  >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
+  >>> f = tf.data.Dataset.range(10) # Dataset element
   """
 
   def __init__(self, variant_tensor):
@@ -377,6 +424,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def element_spec(self):
     """The type specification of an element of this dataset.
 
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3]).element_spec
+    TensorSpec(shape=(), dtype=tf.int32, name=None)
+
     Returns:
       A nested structure of `tf.TypeSpec` objects matching the structure of an
       element of this dataset and specifying the type of individual components.
@@ -424,8 +474,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     >>> dataset = tf.data.Dataset.from_tensor_slices({'a': ([1, 2], [3, 4]),
     ...                                               'b': [5, 6]})
-    >>> print(list(dataset.as_numpy_iterator()) == [{'a': (1, 3), 'b': 5},
-    ...                                             {'a': (2, 4), 'b': 6}])
+    >>> list(dataset.as_numpy_iterator()) == [{'a': (1, 3), 'b': 5},
+    ...                                       {'a': (2, 4), 'b': 6}]
     True
 
     Returns:
@@ -492,6 +542,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensors(tensors):
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
+    >>> dataset = tf.data.Dataset.from_tensors([1, 2, 3])
+    >>> list(dataset.as_numpy_iterator())
+    [array([1, 2, 3], dtype=int32)]
+    >>> dataset = tf.data.Dataset.from_tensors(([1, 2, 3], 'A'))
+    >>> list(dataset.as_numpy_iterator())
+    [(array([1, 2, 3], dtype=int32), b'A')]
+
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
@@ -517,44 +574,57 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     of each tensor and using it as the dataset dimension. All input tensors
     must have the same size in their first dimensions.
 
-    ```python
-    # Slicing a 1D tensor produces scalar tensor elements.
-    Dataset.from_tensor_slices([1, 2, 3])  # ==> [ 1, 2, 3 ]
+    >>> # Slicing a 1D tensor produces scalar tensor elements.
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> list(dataset.as_numpy_iterator())
+    [1, 2, 3]
 
-    # Slicing a 2D tensor produces 1D tensor elements.
-    Dataset.from_tensor_slices([[1, 2], [3, 4], [5, 6]])
-    # ==> [ [1, 2], [3, 4], [5, 6] ]
+    >>> # Slicing a 2D tensor produces 1D tensor elements.
+    >>> dataset = tf.data.Dataset.from_tensor_slices([[1, 2], [3, 4]])
+    >>> list(dataset.as_numpy_iterator())
+    [array([1, 2], dtype=int32), array([3, 4], dtype=int32)]
 
-    # Slicing a tuple of 1D tensors produces tuple elements containing scalar
-    tensors.
-    Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
-    # ==> [ (1, 3, 5), (2, 4, 6) ]
+    >>> # Slicing a tuple of 1D tensors produces tuple elements containing
+    >>> # scalar tensors.
+    >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
+    >>> list(dataset.as_numpy_iterator())
+    [(1, 3, 5), (2, 4, 6)]
 
-    # Dictionary structure is also preserved.
-    Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
-    # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
+    >>> # Dictionary structure is also preserved.
+    >>> dataset = tf.data.Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4]})
+    >>> list(dataset.as_numpy_iterator()) == [{'a': 1, 'b': 3},
+    ...                                       {'a': 2, 'b': 4}]
+    True
 
-    # Two tensors can be combined into one Dataset object.
-    features = tf.constant([[1, 3], [2, 1], [3, 3]]) # ==> 3x2 tensor
-    labels = tf.constant(['A', 'B', 'A']) # ==> 3x1 tensor
-    dataset = Dataset.from_tensor_slices((features, labels))
-
-    # Both the features and the labels tensors can be converted
-    # to a Dataset object separately and combined after.
-    features_dataset = Dataset.from_tensor_slices(features)
-    labels_dataset = Dataset.from_tensor_slices(labels)
-    dataset = Dataset.zip((features_dataset, labels_dataset))
-
-    # A batched feature and label set can be converted to a Dataset
-    # in similar fashion.
-    batched_features = tf.constant([[[1, 3], [2, 3]],
-                                    [[2, 1], [1, 2]],
-                                    [[3, 3], [3, 2]]], shape=(3, 2, 2))
-    batched_labels = tf.constant([['A', 'A'],
-                                  ['B', 'B'],
-                                  ['A', 'B']], shape=(3, 2, 1))
-    dataset = Dataset.from_tensor_slices((batched_features, batched_labels))
-    ```
+    >>> # Two tensors can be combined into one Dataset object.
+    >>> features = tf.constant([[1, 3], [2, 1], [3, 3]]) # ==> 3x2 tensor
+    >>> labels = tf.constant(['A', 'B', 'A']) # ==> 3x1 tensor
+    >>> dataset = Dataset.from_tensor_slices((features, labels))
+    >>> # Both the features and the labels tensors can be converted
+    >>> # to a Dataset object separately and combined after.
+    >>> features_dataset = Dataset.from_tensor_slices(features)
+    >>> labels_dataset = Dataset.from_tensor_slices(labels)
+    >>> dataset = Dataset.zip((features_dataset, labels_dataset))
+    >>> # A batched feature and label set can be converted to a Dataset
+    >>> # in similar fashion.
+    >>> batched_features = tf.constant([[[1, 3], [2, 3]],
+    ...                                 [[2, 1], [1, 2]],
+    ...                                 [[3, 3], [3, 2]]], shape=(3, 2, 2))
+    >>> batched_labels = tf.constant([['A', 'A'],
+    ...                               ['B', 'B'],
+    ...                               ['A', 'B']], shape=(3, 2, 1))
+    >>> dataset = Dataset.from_tensor_slices((batched_features, batched_labels))
+    >>> for element in dataset.as_numpy_iterator():
+    ...   print(element)
+    (array([[1, 3],
+           [2, 3]], dtype=int32), array([[b'A'],
+           [b'A']], dtype=object))
+    (array([[2, 1],
+           [1, 2]], dtype=int32), array([[b'B'],
+           [b'B']], dtype=object))
+    (array([[3, 3],
+           [3, 2]], dtype=int32), array([[b'A'],
+           [b'B']], dtype=object))
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
@@ -618,24 +688,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     The elements generated by `generator` must be compatible with the given
     `output_types` and (optional) `output_shapes` arguments.
 
-    For example:
-
-    ```python
-    import itertools
-    tf.compat.v1.enable_eager_execution()
-
-    def gen():
-      for i in itertools.count(1):
-        yield (i, [1] * i)
-
-    ds = tf.data.Dataset.from_generator(
-        gen, (tf.int64, tf.int64), (tf.TensorShape([]), tf.TensorShape([None])))
-
-    for value in ds.take(2):
-      print value
-    # (1, array([1]))
-    # (2, array([1, 1]))
-    ```
+    >>> import itertools
+    >>>
+    >>> def gen():
+    ...   for i in itertools.count(1):
+    ...     yield (i, [1] * i)
+    >>>
+    >>> dataset = tf.data.Dataset.from_generator(
+    ...      gen,
+    ...      (tf.int64, tf.int64),
+    ...      (tf.TensorShape([]), tf.TensorShape([None])))
+    >>>
+    >>> list(dataset.take(3).as_numpy_iterator())
+    [(1, array([1])), (2, array([1, 1])), (3, array([1, 1, 1]))]
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
@@ -818,16 +883,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def range(*args):
     """Creates a `Dataset` of a step-separated range of values.
 
-    For example:
-
-    ```python
-    Dataset.range(5) == [0, 1, 2, 3, 4]
-    Dataset.range(2, 5) == [2, 3, 4]
-    Dataset.range(1, 5, 2) == [1, 3]
-    Dataset.range(1, 5, -2) == []
-    Dataset.range(5, 1) == []
-    Dataset.range(5, 1, -2) == [5, 3]
-    ```
+    >>> list(Dataset.range(5).as_numpy_iterator())
+    [0, 1, 2, 3, 4]
+    >>> list(Dataset.range(2, 5).as_numpy_iterator())
+    [2, 3, 4]
+    >>> list(Dataset.range(1, 5, 2).as_numpy_iterator())
+    [1, 3]
+    >>> list(Dataset.range(1, 5, -2).as_numpy_iterator())
+    []
+    >>> list(Dataset.range(5, 1).as_numpy_iterator())
+    []
+    >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
+    [5, 3]
 
     Args:
       *args: follows the same semantics as python's xrange.
@@ -850,29 +917,35 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     This method has similar semantics to the built-in `zip()` function
     in Python, with the main difference being that the `datasets`
     argument can be an arbitrary nested structure of `Dataset` objects.
-    For example:
 
-    ```python
-    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
-    b = Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
-    c = Dataset.range(7, 13).batch(2)  # ==> [ [7, 8], [9, 10], [11, 12] ]
-    d = Dataset.range(13, 15)  # ==> [ 13, 14 ]
-
-    # The nested structure of the `datasets` argument determines the
-    # structure of elements in the resulting dataset.
-    Dataset.zip((a, b))  # ==> [ (1, 4), (2, 5), (3, 6) ]
-    Dataset.zip((b, a))  # ==> [ (4, 1), (5, 2), (6, 3) ]
-
-    # The `datasets` argument may contain an arbitrary number of
-    # datasets.
-    Dataset.zip((a, b, c))  # ==> [ (1, 4, [7, 8]),
-                            #       (2, 5, [9, 10]),
-                            #       (3, 6, [11, 12]) ]
-
-    # The number of elements in the resulting dataset is the same as
-    # the size of the smallest dataset in `datasets`.
-    Dataset.zip((a, d))  # ==> [ (1, 13), (2, 14) ]
-    ```
+    >>> # The nested structure of the `datasets` argument determines the
+    >>> # structure of elements in the resulting dataset.
+    >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
+    >>> ds = tf.data.Dataset.zip((a, b))
+    >>> list(ds.as_numpy_iterator())
+    [(1, 4), (2, 5), (3, 6)]
+    >>> ds = tf.data.Dataset.zip((b, a))
+    >>> list(ds.as_numpy_iterator())
+    [(4, 1), (5, 2), (6, 3)]
+    >>>
+    >>> # The `datasets` argument may contain an arbitrary number of datasets.
+    >>> c = tf.data.Dataset.range(7, 13).batch(2)  # ==> [ [7, 8],
+    ...                                            #       [9, 10],
+    ...                                            #       [11, 12] ]
+    >>> ds = tf.data.Dataset.zip((a, b, c))
+    >>> for element in ds.as_numpy_iterator():
+    ...   print(element)
+    (1, 4, array([7, 8]))
+    (2, 5, array([ 9, 10]))
+    (3, 6, array([11, 12]))
+    >>>
+    >>> # The number of elements in the resulting dataset is the same as
+    >>> # the size of the smallest dataset in `datasets`.
+    >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
+    >>> ds = tf.data.Dataset.zip((a, d))
+    >>> list(ds.as_numpy_iterator())
+    [(1, 13), (2, 14)]
 
     Args:
       datasets: A nested structure of datasets.
@@ -885,18 +958,23 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def concatenate(self, dataset):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
 
-    ```python
-    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
-    b = Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
-
-    # The input dataset and dataset to be concatenated should have the same
-    # nested structures and output types.
-    # c = Dataset.range(8, 14).batch(2)  # ==> [ [8, 9], [10, 11], [12, 13] ]
-    # d = Dataset.from_tensor_slices([14.0, 15.0, 16.0])
-    # a.concatenate(c) and a.concatenate(d) would result in error.
-
-    a.concatenate(b)  # ==> [ 1, 2, 3, 4, 5, 6, 7 ]
-    ```
+    >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    >>> b = tf.data.Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
+    >>> ds = a.concatenate(b)
+    >>> list(ds.as_numpy_iterator())
+    [1, 2, 3, 4, 5, 6, 7]
+    >>> # The input dataset and dataset to be concatenated should have the same
+    >>> # nested structures and output types.
+    >>> c = tf.data.Dataset.zip((a, b))
+    >>> a.concatenate(c)
+    Traceback (most recent call last):
+    TypeError: Two datasets to concatenate have different types
+    <dtype: 'int64'> and (tf.int64, tf.int64)
+    >>> d = tf.data.Dataset.from_tensor_slices(["a", "b", "c"])
+    >>> a.concatenate(d)
+    Traceback (most recent call last):
+    TypeError: Two datasets to concatenate have different types
+    <dtype: 'int64'> and <dtype: 'string'>
 
     Args:
       dataset: `Dataset` to be concatenated.
@@ -909,11 +987,21 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
+    Most dataset input pipelines should end with a call to `prefetch`. This
+    allows later elements to be prepared while the current element is being
+    processed. This often improves latency and throughput, at the cost of
+    using additional memory to store prefetched elements.
+
     Note: Like other `Dataset` methods, prefetch operates on the
     elements of the input dataset. It has no concept of examples vs. batches.
     `examples.prefetch(2)` will prefetch two elements (2 examples),
     while `examples.batch(20).prefetch(2)` will prefetch 2 elements
     (2 batches, of 20 examples each).
+
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> dataset = dataset.prefetch(2)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2]
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
@@ -993,12 +1081,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def repeat(self, count=None):
     """Repeats this dataset so each original value is seen `count` times.
 
-    For example, the following code will evaluate to [0, 1, 0, 1]:
-
-    ```python
-    dataset = tf.data.Dataset.range(2)
-    [int(x.numpy()) for x in dataset.repeat(2)]
-    ```
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> dataset = dataset.repeat(3)
+    >>> list(dataset.as_numpy_iterator())
+    [1, 2, 3, 1, 2, 3, 1, 2, 3]
 
     NOTE: If this dataset is a function of global state (e.g. a random number
     generator), then different repetitions may produce different elements.
@@ -1018,19 +1104,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     It is similar to python's `enumerate`.
 
-    For example:
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> dataset = dataset.enumerate(start=5)
+    >>> for element in dataset.as_numpy_iterator():
+    ...   print(element)
+    (5, 1)
+    (6, 2)
+    (7, 3)
 
-    ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { (7, 8), (9, 10) }
-
-    # The nested structure of the `datasets` argument determines the
-    # structure of elements in the resulting dataset.
-    a.enumerate(start=5)) == { (5, 1), (6, 2), (7, 3) }
-    b.enumerate() == { (0, (7, 8)), (1, (9, 10)) }
-    ```
+    >>> # The nested structure of the input dataset determines the structure of
+    >>> # elements in the resulting dataset.
+    >>> dataset = tf.data.Dataset.from_tensor_slices([(7, 8), (9, 10)])
+    >>> dataset = dataset.enumerate()
+    >>> for element in dataset.as_numpy_iterator():
+    ...   print(element)
+    (0, array([7, 8], dtype=int32))
+    (1, array([ 9, 10], dtype=int32))
 
     Args:
       start: A `tf.int64` scalar `tf.Tensor`, representing the start value for
@@ -1061,33 +1150,32 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     different for each epoch. In TF 1.X, the idiomatic way to create epochs
     was through the `repeat` transformation:
 
-    ```python
-    d = tf.data.Dataset.range(3)
-    d = d.shuffle(3, reshuffle_each_iteration=True)
-    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 2, 0 ]
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
+    [1, 0, 2, 1, 2, 0]
 
-    d = tf.data.Dataset.range(3)
-    d = d.shuffle(3, reshuffle_each_iteration=False)
-    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 0, 2 ]
-    ```
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
+    [1, 0, 2, 1, 0, 2]
 
-    In TF 2.0, tf.data.Dataset objects are Python iterables which makes it
+    In TF 2.0, `tf.data.Dataset` objects are Python iterables which makes it
     possible to also create epochs through Python iteration:
 
-    ```python
-    d = tf.data.Dataset.range(3)
-    d = d.shuffle(3, reshuffle_each_iteration=True)
-    for elem in d:
-      # ==> [ 1, 0, 2 ]
-    for elem in d:
-      # ==> [ 1, 2, 0 ]
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [1, 0, 2]
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [1, 2, 0]
 
-    d = tf.data.Dataset.range(3)
-    d = d.shuffle(3, reshuffle_each_iteration=False)
-    for elem in d:
-      # ==> [ 1, 0, 2 ]
-    for elem in d:
-      # ==> [ 1, 0, 2 ]
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [1, 0, 2]
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [1, 0, 2]
     ```
 
     Args:
@@ -1108,6 +1196,43 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def cache(self, filename=""):
     """Caches the elements in this dataset.
 
+    The first time the dataset is iterated over, its elements will be cached
+    either in the specified file or in memory. Subsequent iterations will
+    use the cached data.
+
+    Note: For the cache to be finalized, the input dataset must be iterated
+    through in its entirety. Otherwise, subsequent iterations will not use
+    cached data.
+
+    >>> dataset = tf.data.Dataset.range(5)
+    >>> dataset = dataset.map(lambda x: x**2)
+    >>> dataset = dataset.cache()
+    >>> # The first time reading through the data will generate the data using
+    >>> # `range` and `map`.
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 4, 9, 16]
+    >>> # Subsequent iterations read from the cache.
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 4, 9, 16]
+
+    When caching to a file, the cached data will persist across runs. Even the
+    first iteration through the data will read from the cache file. Changing
+    the input pipeline before the call to `.cache()` will have no effect until
+    the cache file is removed or the filename is changed.
+
+    >>> dataset = tf.data.Dataset.range(5)
+    >>> dataset = dataset.cache("/path/to/file)  # doctest: +SKIP
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [0, 1, 2, 3, 4]
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.cache("/path/to/file")  # Same file! # doctest: +SKIP
+    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
+    [0, 1, 2, 3, 4]
+
+    Note: `cache` will produce exactly the same elements during each iteration
+    through the dataset. If you wish to randomize the iteration order, make sure
+    to call `shuffle` *after* calling `cache`.
+
     Args:
       filename: A `tf.string` scalar `tf.Tensor`, representing the name of a
         directory on the filesystem to use for caching elements in this Dataset.
@@ -1120,6 +1245,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def take(self, count):
     """Creates a `Dataset` with at most `count` elements from this dataset.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.take(3)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2]
 
     Args:
       count: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1135,6 +1265,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def skip(self, count):
     """Creates a `Dataset` that skips `count` elements from this dataset.
 
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.skip(7)
+    >>> list(dataset.as_numpy_iterator())
+    [7, 8, 9]
+
     Args:
       count: A `tf.int64` scalar `tf.Tensor`, representing the number of
         elements of this dataset that should be skipped to form the new dataset.
@@ -1149,25 +1284,24 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def shard(self, num_shards, index):
     """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
 
-    `shard` is a deterministic operator; the Dataset produced by
-    `A.shard(n, i)` will contain all elements of A whose index mod n = i.
+    `shard` is deterministic. The Dataset produced by `A.shard(n, i)` will
+    contain all elements of A whose index mod n = i.
 
-    ```python
-    # Create a Dataset with 60 elements.
-    A = tf.data.Dataset.range(60) # ==> [0, 1, 2, 3, ..., 57, 58, 59]
-
-    # Create 3 Datasets, each with 20 elements from Dataset A.
-    B = A.shard(num_shards=3, index=0) # ==> [0, 3, 6, 9, ..., 51, 54, 57]
-    C = A.shard(num_shards=3, index=1) # ==> [1, 4, 7, 10, ..., 52, 55, 58]
-    D = A.shard(num_shards=3, index=2) # ==> [2, 5, 8, 11, ..., 53, 56, 59]
-
-    # There is no overlap between Datasets B, C and D.
-    ```
+    >>> A = tf.data.Dataset.range(10)
+    >>> B = A.shard(num_shards=3, index=0)
+    >>> list(B.as_numpy_iterator())
+    [0, 3, 6, 9]
+    >>> C = A.shard(num_shards=3, index=1)
+    >>> list(C.as_numpy_iterator())
+    [1, 4, 7]
+    >>> D = A.shard(num_shards=3, index=2)
+    >>> list(D.as_numpy_iterator())
+    [2, 5, 8]
 
     This dataset operator is very useful when running distributed training, as
     it allows each worker to read a unique subset.
 
-    When reading a single input file, you can skip elements as follows:
+    When reading a single input file, you can shard elements as follows:
 
     ```python
     d = tf.data.TFRecordDataset(input_file)
@@ -1217,6 +1351,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def batch(self, batch_size, drop_remainder=False):
     """Combines consecutive elements of this dataset into batches.
 
+    >>> dataset = tf.data.Dataset.range(8)
+    >>> dataset = dataset.batch(3)
+    >>> list(dataset.as_numpy_iterator())
+    [array([0, 1, 2]), array([3, 4, 5]), array([6, 7])]
+
+    >>> dataset = tf.data.Dataset.range(8)
+    >>> dataset = dataset.batch(3, drop_remainder=True)
+    >>> list(dataset.as_numpy_iterator())
+    [array([0, 1, 2]), array([3, 4, 5])]
+
     The components of the resulting element will have an additional outer
     dimension, which will be `batch_size` (or `N % batch_size` for the last
     element if `batch_size` does not divide the number of input elements `N`
@@ -1262,12 +1406,54 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     output element:
 
     * If the dimension is a constant (e.g. `tf.compat.v1.Dimension(37)`), the
-    component
-      will be padded out to that length in that dimension.
+    component will be padded out to that length in that dimension.
     * If the dimension is unknown (e.g. `tf.compat.v1.Dimension(None)`), the
-    component
-      will be padded out to the maximum length of all elements in that
-      dimension.
+    component will be padded out to the maximum length of all elements in that
+    dimension.
+
+    >>> elements = [[1, 2],
+    ...             [3, 4, 5],
+    ...             [6, 7],
+    ...             [8]]
+    >>> A = tf.data.Dataset.from_generator(lambda: iter(elements), tf.int32)
+    >>> # Pad to the smallest per-batch size that fits all elements.
+    >>> B = A.padded_batch(2, padded_shapes=[None])
+    >>> for element in B.as_numpy_iterator():
+    ...   print(element)
+    [[1 2 0]
+     [3 4 5]]
+    [[6 7]
+     [8 0]]
+    >>> # Pad to a fixed size.
+    >>> C = A.padded_batch(2, padded_shapes=3)
+    >>> for element in C.as_numpy_iterator():
+    ...   print(element)
+    [[1 2 0]
+     [3 4 5]]
+    [[6 7 0]
+     [8 0 0]]
+    >>> # Pad with a custom value.
+    >>> D = A.padded_batch(2, padded_shapes=3, padding_values=-1)
+    >>> for element in D.as_numpy_iterator():
+    ...   print(element)
+    [[ 1  2 -1]
+     [ 3  4  5]]
+    [[ 6  7 -1]
+     [ 8 -1 -1]]
+    >>> # Components of nested elements can be padded independently.
+    >>> elements = [{'v1': [1, 2, 3], 'v2': [10]},
+    ...             {'v1': [4, 5], 'v2': [11, 12]}]
+    >>> dataset = tf.data.Dataset.from_generator(
+    ...     lambda: iter(elements), {'v1': tf.int32, 'v2': tf.int32})
+    >>> # Pad 'val1' to length 4, and 'val2' to the smallest size that fits.
+    >>> dataset = dataset.padded_batch(2,
+    ...     padded_shapes={'v1': [4], 'v2': [None]},
+    ...     padding_values={'v1': -1, 'v2': 100})
+    >>> list(dataset.as_numpy_iterator())
+    [{'v1': array([[ 1,  2,  3, -1],
+           [ 4,  5, -1, -1]], dtype=int32), 'v2': array([[ 10, 100],
+           [ 11,  12]], dtype=int32)}]
+
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.SparseTensor`.
@@ -1301,76 +1487,68 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     This transformation applies `map_func` to each element of this dataset, and
     returns a new dataset containing the transformed elements, in the same
-    order as they appeared in the input.
+    order as they appeared in the input. `map_func` can be used to change both
+    the values and the structure of a dataset's elements. For example, adding 1
+    to each element, or projecting a subset of element components.
 
-    For example:
-
-    ```python
-    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
-
-    a.map(lambda x: x + 1)  # ==> [ 2, 3, 4, 5, 6 ]
-    ```
+    >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
+    >>> dataset = dataset.map(lambda x: x + 1)
+    >>> list(dataset.as_numpy_iterator())
+    [2, 3, 4, 5, 6]
 
     The input signature of `map_func` is determined by the structure of each
-    element in this dataset. For example:
+    element in this dataset.
 
-    ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    # Each element is a `tf.Tensor` object.
-    a = { 1, 2, 3, 4, 5 }
-    # `map_func` takes a single argument of type `tf.Tensor` with the same
-    # shape and dtype.
-    result = a.map(lambda x: ...)
+    >>> dataset = Dataset.range(5)
+    >>> # `map_func` takes a single argument of type `tf.Tensor` with the same
+    >>> # shape and dtype.
+    >>> result = dataset.map(lambda x: x + 1)
 
-    # Each element is a tuple containing two `tf.Tensor` objects.
-    b = { (1, "foo"), (2, "bar"), (3, "baz") }
-    # `map_func` takes two arguments of type `tf.Tensor`.
-    result = b.map(lambda x_int, y_str: ...)
+    >>> # Each element is a tuple containing two `tf.Tensor` objects.
+    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz)")]
+    >>> dataset = tf.data.Dataset.from_generator(
+    ...     lambda: elements, (tf.int32, tf.string))
+    >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
+    >>> # projects out just the first component.
+    >>> result = dataset.map(lambda x_int, y_str: x_int)
+    >>> list(result.as_numpy_iterator())
+    [1, 2, 3]
 
-    # Each element is a dictionary mapping strings to `tf.Tensor` objects.
-    c = { {"a": 1, "b": "foo"}, {"a": 2, "b": "bar"}, {"a": 3, "b": "baz"} }
-    # `map_func` takes a single argument of type `dict` with the same keys as
-    # the elements.
-    result = c.map(lambda d: ...)
-    ```
+    >>> # Each element is a dictionary mapping strings to `tf.Tensor` objects.
+    >>> elements =  ([{"a": 1, "b": "foo"},
+    ...               {"a": 2, "b": "bar"},
+    ...               {"a": 3, "b": "baz"}])
+    >>> dataset = tf.data.Dataset.from_generator(
+    ...     lambda: elements, {"a": tf.int32, "b": tf.string})
+    >>> # `map_func` takes a single argument of type `dict` with the same keys
+    >>> # as the elements.
+    >>> result = dataset.map(lambda d: str(d["a"]) + d["b"])
 
     The value or values returned by `map_func` determine the structure of each
     element in the returned dataset.
 
-    ```python
-    # `map_func` returns a scalar `tf.Tensor` of type `tf.float32`.
-    def f(...):
-      return tf.constant(37.0)
-    result = dataset.map(f)
-    result.output_classes == tf.Tensor
-    result.output_types == tf.float32
-    result.output_shapes == []  # scalar
-
-    # `map_func` returns two `tf.Tensor` objects.
-    def g(...):
-      return tf.constant(37.0), tf.constant(["Foo", "Bar", "Baz"])
-    result = dataset.map(g)
-    result.output_classes == (tf.Tensor, tf.Tensor)
-    result.output_types == (tf.float32, tf.string)
-    result.output_shapes == ([], [3])
-
-    # Python primitives, lists, and NumPy arrays are implicitly converted to
-    # `tf.Tensor`.
-    def h(...):
-      return 37.0, ["Foo", "Bar", "Baz"], np.array([1.0, 2.0] dtype=np.float64)
-    result = dataset.map(h)
-    result.output_classes == (tf.Tensor, tf.Tensor, tf.Tensor)
-    result.output_types == (tf.float32, tf.string, tf.float64)
-    result.output_shapes == ([], [3], [2])
-
-    # `map_func` can return nested structures.
-    def i(...):
-      return {"a": 37.0, "b": [42, 16]}, "foo"
-    result.output_classes == ({"a": tf.Tensor, "b": tf.Tensor}, tf.Tensor)
-    result.output_types == ({"a": tf.float32, "b": tf.int32}, tf.string)
-    result.output_shapes == ({"a": [], "b": [2]}, [])
-    ```
+    >>> dataset = tf.data.Dataset.range(3)
+    >>> # `map_func` returns two `tf.Tensor` objects.
+    >>> def g(x):
+    ...   return tf.constant(37.0), tf.constant(["Foo", "Bar", "Baz"])
+    >>> result = dataset.map(g)
+    >>> result
+    <MapDataset shapes: ((), (3,)), types: (tf.float32, tf.string)>
+    >>> # Python primitives, lists, and NumPy arrays are implicitly converted to
+    >>> # `tf.Tensor`.
+    >>> def h(x):
+    ...   return 37.0, ["Foo", "Bar"], np.array([1.0, 2.0], dtype=np.float64)
+    >>> result = dataset.map(h)
+    >>> result
+    <MapDataset shapes: ((), (2,), (2,)), \
+types: (tf.float32, tf.string, tf.float64)>
+    >>> # `map_func` can return nested structures.
+    >>> def i(x):
+    ...   return {"a": 37.0, "b": [42, 16]}, "foo"
+    >>> result = dataset.map(i)
+    >>> result
+    <MapDataset shapes: ({a: (), b: (2,)}, ()), \
+types: ({a: tf.float32, b: tf.int32}, tf.string)>
 
     `map_func` can accept as arguments and return any type of dataset element.
 
@@ -1385,16 +1563,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     2) Use `tf.py_function`, which allows you to write arbitrary Python code but
     will generally result in worse performance than 1). For example:
 
-    ```python
-    d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
-
-    # transform a string tensor to upper case string using a Python function
-    def upper_case_fn(t: tf.Tensor) -> str:
-        return t.numpy().decode('utf-8').upper()
-
-    d.map(lambda x: tf.py_function(func=upper_case_fn,
-          inp=[x], Tout=tf.string))  # ==> [ "HELLO", "WORLD" ]
-    ```
+    >>> d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+    >>> # transform a string tensor to upper case string using a Python function
+    >>> def upper_case_fn(t: tf.Tensor):
+    ...   return t.numpy().decode('utf-8').upper()
+    >>> d = d.map(lambda x: tf.py_function(func=upper_case_fn,
+    ...           inp=[x], Tout=tf.string))
+    >>> list(d.as_numpy_iterator())
+    [b'HELLO', b'WORLD']
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
@@ -1420,12 +1596,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
 
-    ```python
-    a = Dataset.from_tensor_slices([ [1, 2, 3], [4, 5, 6], [7, 8, 9] ])
-
-    a.flat_map(lambda x: Dataset.from_tensor_slices(x + 1)) # ==>
-    #  [ 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
-    ```
+    >>> dataset = Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> dataset = dataset.flat_map(lambda x: Dataset.from_tensor_slices(x))
+    >>> list(dataset.as_numpy_iterator())
+    [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
     `flat_map` produces the same output as
@@ -1449,15 +1623,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     For example, you can use `Dataset.interleave()` to process many input files
     concurrently:
 
-    ```python
-    # Preprocess 4 files concurrently, and interleave blocks of 16 records from
-    # each file.
-    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ...]
-    dataset = (Dataset.from_tensor_slices(filenames)
-               .interleave(lambda x:
-                   TextLineDataset(x).map(parse_fn, num_parallel_calls=1),
-                   cycle_length=4, block_length=16))
-    ```
+    >>> # Preprocess 4 files concurrently, and interleave blocks of 16 records
+    >>> # from each file.
+    >>> filenames = ["/var/data/file1.txt", "/var/data/file2.txt",
+    ...              "/var/data/file3.txt", "/var/data/file4.txt"]
+    >>> dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    >>> def parse_fn(filename):
+    ...   return tf.data.Dataset.range(10)
+    >>> dataset = dataset.interleave(lambda x:
+    ...     tf.data.TextLineDataset(x).map(parse_fn, num_parallel_calls=1),
+    ...     cycle_length=4, block_length=16)
 
     The `cycle_length` and `block_length` arguments control the order in which
     elements are produced. `cycle_length` controls the number of input elements
@@ -1472,22 +1647,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     For example:
 
-    ```python
-    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
-
-    # NOTE: New lines indicate "block" boundaries.
-    a.interleave(lambda x: Dataset.from_tensors(x).repeat(6),
-                cycle_length=2, block_length=4)  # ==> [1, 1, 1, 1,
-                                                 #      2, 2, 2, 2,
-                                                 #      1, 1,
-                                                 #      2, 2,
-                                                 #      3, 3, 3, 3,
-                                                 #      4, 4, 4, 4,
-                                                 #      3, 3,
-                                                 #      4, 4,
-                                                 #      5, 5, 5, 5,
-                                                 #      5, 5]
-    ```
+    >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
+    >>> # NOTE: New lines indicate "block" boundaries.
+    >>> dataset = dataset.interleave(
+    ...     lambda x: Dataset.from_tensors(x).repeat(6),
+    ...     cycle_length=2, block_length=4)
+    >>> list(dataset.as_numpy_iterator())
+    [1, 1, 1, 1, \
+2, 2, 2, 2, \
+1, 1, \
+2, 2, \
+3, 3, 3, 3, \
+4, 4, 4, 4, \
+3, 3, \
+4, 4, \
+5, 5, 5, 5, \
+5, 5]
 
     NOTE: The order of elements yielded by this transformation is
     deterministic, as long as `map_func` is a pure function. If
@@ -1522,17 +1697,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
 
-    ```python
-    d = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-
-    d = d.filter(lambda x: x < 3)  # ==> [1, 2]
-
-    # `tf.math.equal(x, y)` is required for equality comparison
-    def filter_fn(x):
-      return tf.math.equal(x, 1)
-
-    d = d.filter(filter_fn)  # ==> [1]
-    ```
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> dataset = dataset.filter(lambda x: x < 3)
+    >>> list(dataset.as_numpy_iterator())
+    [1, 2]
+    >>> # `tf.math.equal(x, y)` is required for equality comparison
+    >>> def filter_fn(x):
+    ...   return tf.math.equal(x, 1)
+    >>> dataset = dataset.filter(filter_fn)
+    >>> list(dataset.as_numpy_iterator())
+    [1]
 
     Args:
       predicate: A function mapping a dataset element to a boolean.
@@ -1550,13 +1724,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     represented as functions that take one `Dataset` argument and return a
     transformed `Dataset`.
 
-    For example:
-
-    ```
-    dataset = (dataset.map(lambda x: x ** 2)
-               .apply(group_by_window(key_func, reduce_func, window_size))
-               .map(lambda x: x ** 3))
-    ```
+    >>> dataset = tf.data.Dataset.range(100)
+    >>> def dataset_fn(ds):
+    ...   return ds.filter(lambda x: x < 5)
+    >>> dataset = dataset.apply(dataset_fn)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2, 3, 4]
 
     Args:
       transformation_func: A function that takes one `Dataset` argument and
@@ -1584,24 +1757,46 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     The `stride` argument determines the stride of the input elements, and the
     `shift` argument determines the shift of the window.
 
-    For example, letting {...} to represent a Dataset:
-
-    - `tf.data.Dataset.range(7).window(2)` produces
-      `{{0, 1}, {2, 3}, {4, 5}, {6}}`
-    - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
-      `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
-    - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
-      `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+    >>> dataset = tf.data.Dataset.range(7).window(2)
+    >>> for window in dataset:
+    ...   print(list(window.as_numpy_iterator()))
+    [0, 1]
+    [2, 3]
+    [4, 5]
+    [6]
+    >>> dataset = tf.data.Dataset.range(7).window(3, 2, 1, True)
+    >>> for window in dataset:
+    ...   print(list(window.as_numpy_iterator()))
+    [0, 1, 2]
+    [2, 3, 4]
+    [4, 5, 6]
+    >>> dataset = tf.data.Dataset.range(7).window(3, 1, 2, True)
+    >>> for window in dataset:
+    ...   print(list(window.as_numpy_iterator()))
+    [0, 2, 4]
+    [1, 3, 5]
+    [2, 4, 6]
 
     Note that when the `window` transformation is applied to a dataset of
     nested elements, it produces a dataset of nested windows.
 
-    For example:
+    >>> nested = ([1, 2, 3, 4], [5, 6, 7, 8])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(nested).window(2)
+    >>> for window in dataset:
+    ...   def to_numpy(ds):
+    ...     return list(ds.as_numpy_iterator())
+    ...   print(tuple(to_numpy(component) for component in window))
+    ([1, 2], [5, 6])
+    ([3, 4], [7, 8])
 
-    - `tf.data.Dataset.from_tensor_slices((range(4), range(4))).window(2)`
-      produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
-    - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
-      produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
+    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3, 4]})
+    >>> dataset = dataset.window(2)
+    >>> for window in dataset:
+    ...   def to_numpy(ds):
+    ...     return list(ds.as_numpy_iterator())
+    ...   print({'a': to_numpy(window['a'])})
+    {'a': [1, 2]}
+    {'a': [3, 4]}
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
@@ -1632,11 +1827,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     its internal state. The `initial_state` argument is used for the initial
     state and the final state is returned as the result.
 
-    For example:
-    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1)`
-      produces `5`
-    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y)`
-      produces `10`
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1).numpy()
+    5
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y).numpy()
+    10
 
     Args:
       initial_state: An element representing the initial state of the
@@ -1746,13 +1940,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     dataset, the unbatched dataset will contain `B` consecutive elements
     of shape `[a0, a1, ...]`.
 
-    ```python
-    # NOTE: The following example uses `{ ... }` to represent the contents
-    # of a dataset.
-    ds = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
-
-    ds.unbatch() == {'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
-    ```
+    >>> elements = [ [1, 2, 3], [1, 2], [1, 2, 3, 4] ]
+    >>> dataset = tf.data.Dataset.from_generator(lambda: elements, tf.int64)
+    >>> dataset = dataset.unbatch()
+    >>> list(dataset.as_numpy_iterator())
+    [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
     Returns:
       A `Dataset` transformation function, which can be passed to
@@ -1788,6 +1980,15 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     The options are "global" in the sense they apply to the entire dataset.
     If options are set multiple times, they are merged as long as different
     options do not use different non-default values.
+
+    >>> ds = tf.data.Dataset.range(5)
+    >>> ds = ds.interleave(lambda x: tf.data.Dataset.range(5),
+    ...                    cycle_length=3,
+    ...                    num_parallel_calls=3)
+    >>> options = tf.data.Options()
+    >>> # This will make the interleave order non-deterministic.
+    >>> options.experimental_deterministic = False
+    >>> ds = ds.with_options(options)
 
     Args:
       options: A `tf.data.Options` that identifies the options the use.
