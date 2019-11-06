@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 
+#ifdef __linux__
 #include <sys/utsname.h>
+#endif
 
 #include <vector>
 
@@ -62,14 +64,16 @@ string TryGetOperatorName(const Operator& op) {
 }
 
 string GetOSVersion() {
+  string os_info;
+#ifdef __linux__
   utsname info;
   if (uname(&info)) {
     // Failed
     LOG(ERROR) << "Cannot get OS info.";
     return "";
   }
-  string os_info =
-      string(info.sysname) + ";OSVer=" + string(info.release) + ";";
+  os_info = string(info.sysname) + ";OSVer=" + string(info.release) + ";";
+#endif
   return os_info;
 }
 
