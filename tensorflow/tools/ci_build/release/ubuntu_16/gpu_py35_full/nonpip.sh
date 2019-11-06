@@ -19,6 +19,8 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.5
+# Update bazel
+update_bazel_linux
 
 # Run configure.
 export TF_NEED_GCP=1
