@@ -43,8 +43,16 @@ operations. This gives DRR both its strengths and limitations: it is good at
 expressing op to op conversions, but not that well suited for, say, converting
 an op into a loop nest.
 
-Per the current implementation, DRR also does not have good support for regions
-in general.
+Per the current implementation, DRR does not have good support for the following
+features:
+
+*   Matching and generating ops with regions.
+*   Matching and generating ops with block arguments.
+*   Matching multi-result ops in nested patterns.
+*   Matching and generating variadic operand/result ops in nested patterns.
+*   Packing and unpacking variaidc operands/results during generation.
+*   [`NativeCodeCall`](#native-code-call-transforming-the-generated-op)
+    returning more than one results.
 
 ## Rule Definition
 
@@ -344,6 +352,9 @@ In the above example, we are using a string to specialize the `NativeCodeCall`
 template. The string can be an arbitrary C++ expression that evaluates into
 some C++ object expected at the `NativeCodeCall` site (here it would be
 expecting an array attribute). Typically the string should be a function call.
+
+Note that currently `NativeCodeCall` must return no more than one value or
+attribute. This might change in the future.
 
 ##### `NativeCodeCall` placeholders
 
