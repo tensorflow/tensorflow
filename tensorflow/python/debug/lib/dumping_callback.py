@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import atexit
 import collections
+import re
 import socket
 import threading
 import uuid
@@ -39,9 +40,12 @@ from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_stack
+from tensorflow.python.util.tf_export import tf_export
 
-TracingConfig = collections.namedtuple(
-    "TracingConfig", "dump_root tensor_debug_mode circular_buffer_size")
+DumpingConfig = collections.namedtuple(
+    "DumpingConfig",
+    "dump_root tensor_debug_mode circular_buffer_size "
+    "op_regex tensor_dtypes")
 _state = threading.local()
 
 
@@ -138,7 +142,34 @@ def _process_stack_frames():
   return code_location
 
 
-def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
+def _should_dump_tensor(op_type, dtype):
+  """Determine if the given tensor's value will be dumped.
+
+  The determination is made given the configurations such as `op_regex`,
+  `tensor_dtypes`.
+
+  Args:
+    op_type: Name of the op's type, as a string (e.g., "MatMul").
+    dtype: The dtype of the tensor, as a `dtypes.DType` object.
+
+  Returns:
+    A bool indicating whether the tensor's value will be dumped.
+  """
+  should_dump = True
+  if _state.config.op_regex:
+    should_dump = (should_dump and
+                   re.match(_state.config.op_regex, op_type))
+  if _state.config.tensor_dtypes:
+    if isinstance(_state.config.tensor_dtypes, (list, tuple)):
+      should_dump = (should_dump and
+                     any(dtype == dtype_item for dtype_item
+                         in _state.config.tensor_dtypes))
+    else:  # A callable that takes a DType argument and return a boolean.
+      should_dump = should_dump and _state.config.tensor_dtypes(dtype)
+  return should_dump
+
+
+def _instrument_symbolic_tensors(tensors, op_type, op_name, tfdbg_context_id):
   """Add debugging instrumentation for symbolic (i.e., non-eager) tensors.
 
   The detailed fashion in which the tensors are instrumented is determined
@@ -149,7 +180,10 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
     tensors: A tuple of Tensors to instrument. It is assumed that their ordering
       corresponds to the ordering of output tensors of an original op. Output
       slot indices (0-based) will be generated based on the ordering.
-    op_name: Name of the op that emits the Tensors.
+    op_type: Name of the op type of the node that emits `tensors` (e.g.,
+      "MatMul"), as a string.
+    op_name: Name of the node that emits `tensors` (e.g., "dense_1/MatMul"), as
+      a string.
     tfdbg_context_id: A unique ID for the context that the op belongs to (e.g.,
       a graph).
 
@@ -164,8 +198,13 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
   debug_urls = ["file://%s" % _state.config.dump_root]
   is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
   instrumented_tensors = [] if is_v1_graph_mode else None
-  if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
-    for output_slot, tensor in enumerate(tensors):
+  for output_slot, tensor in enumerate(tensors):
+    if not _should_dump_tensor(op_type, tensor.dtype):
+      if is_v1_graph_mode:
+        instrumented_tensors.append(tensor)
+      continue
+
+    if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
       # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
       # control dependency because it's a stateful op.
       debug_tensor = gen_debug_ops.debug_identity_v2(
@@ -186,9 +225,7 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
         identity.op._add_control_input(  # pylint: disable=protected-access
             debug_tensor.op)
         instrumented_tensors.append(identity)
-    return instrumented_tensors
-  elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
-    for output_slot, tensor in enumerate(tensors):
+    elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
       debug_tensor = gen_debug_ops.debug_identity_v2(
           tensor,
           tfdbg_context_id=tfdbg_context_id,
@@ -198,11 +235,11 @@ def _instrument_symbolic_tensors(tensors, op_name, tfdbg_context_id):
           debug_urls=debug_urls)
       if is_v1_graph_mode:
         instrumented_tensors.append(debug_tensor)
-    return instrumented_tensors
-  else:
-    raise NotImplementedError(
-        "Symbolic tensor instrumentation is not implemented for debug mode %s" %
-        _state.config.tensor_debug_mode)
+    else:
+      raise NotImplementedError(
+          "Symbolic tensor instrumentation is not implemented for debug "
+          "mode %s" % _state.config.tensor_debug_mode)
+  return instrumented_tensors
 
 
 def _dump_eager_tensors(tensors, op_type, input_tensor_ids):
@@ -243,7 +280,8 @@ def _dump_eager_tensors(tensors, op_type, input_tensor_ids):
         tensor_debug_mode=tensor_debug_mode,
         code_location=_process_stack_frames())
     for tensor in tensors:
-      if tensor.dtype.is_numpy_compatible:
+      if (_should_dump_tensor(op_type, tensor.dtype) and
+          tensor.dtype.is_numpy_compatible):
         execution_proto.tensor_protos.append(
             tensor_util.make_tensor_proto(tensor.numpy()))
     return execution_proto
@@ -277,7 +315,7 @@ def _dumping_callback(op_type,
     writer.WriteGraphOpCreation(graph_op_creation)
     if outputs and compat.as_bytes(
         op_type) not in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
-      return _instrument_symbolic_tensors(outputs, op_name, context_id)
+      return _instrument_symbolic_tensors(outputs, op_type, op_name, context_id)
   else:
     input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
     writer.WriteExecution(_dump_eager_tensors(outputs, op_type, input_ids))
@@ -286,9 +324,12 @@ def _dumping_callback(op_type,
 DEFAULT_TENSOR_DEBUG_MODE = "NO_TENSOR"
 
 
-def enable_dumping(dump_root,
-                   tensor_debug_mode=DEFAULT_TENSOR_DEBUG_MODE,
-                   circular_buffer_size=1000):
+@tf_export("debugging.experimental.enable_dump_debug_info")
+def enable_dump_debug_info(dump_root,
+                           tensor_debug_mode=DEFAULT_TENSOR_DEBUG_MODE,
+                           circular_buffer_size=1000,
+                           op_regex=None,
+                           tensor_dtypes=None):
   """Enable dumping debugging information from a TensorFlow program.
 
   The debugging information is dumped to a directory on the file system
@@ -309,7 +350,7 @@ def enable_dumping(dump_root,
       TensorFlow program.
 
   Once enabled, the dumping can be disabled with the corresponding
-  `disable_dumping()` method under the same Python namespace.
+  `disable_dump_debug_info()` method under the same Python namespace.
   Calling this method more than once with the same `dump_root` is idempotent.
   Calling this method more than once with different `tensor_debug_mode`s
   leads to a `ValueError`.
@@ -317,6 +358,14 @@ def enable_dumping(dump_root,
   leads to a `ValueError`.
   Calling this method with a different `dump_root` abolishes the
   previously-enabled `dump_root`.
+
+  Usage example:
+
+  ```py
+  tf.debugging.experimental.enable_dump_debug_info('/tmp/my-tfdbg-dumps')
+
+  # Code to build, train and run your TensorFlow model...
+  ```
 
   Args:
     dump_root: The directory path where the dumping information will be written.
@@ -335,7 +384,30 @@ def enable_dumping(dump_root,
       disabled, i.e., the execution debug events will be written to the file
       writers in the same way as non-execution events such as op creations and
       source-file snapshots.
-
+    op_regex: Dump data from only the tensors from op types that matches to the
+      regular expression (through Python's `re.match()`).
+      "Op type" refers to the names of the TensorFlow operations (e.g.,
+      "MatMul", "LogSoftmax"), which may repeat in a TensorFlow
+      function. It does *not* refer to the names of nodes (e.g.,
+      "dense/MatMul", "dense_1/MatMul_1") which are unique within a function.
+      - Example 1: Dump tensor data from only MatMul and Relu ops
+        `op_regex="^(MatMul|Relu)$"`.
+      - Example 2: Dump tensors from all ops *except* Relu:
+        `op_regex="(?!^Relu$)"`.
+      This filter operates in a logical AND relation with `tensor_dtypes`.
+    tensor_dtypes: Dump data from only the tensors of which the specified
+      dtypes. This optional argument can be in any of the following format:
+      - a list or tuple of `DType` objects or strings that can be converted
+        to `DType` objects via `tf.as_dtype()`. Examples:
+        - `tensor_dtype=[tf.float32, tf.float64]`,
+        - `tensor_dtype=["float32", "float64"]`,
+        - `tensor_dtypes=(tf.int32, tf.bool)`,
+        - `tensor_dtypes=("int32", "bool")`
+      - a callable that takes a single `DType` argument and returns a Python
+        `boolean` indicating whether the dtype is to be included in the data
+        dumping. Examples:
+        - `tensor_dtype=lambda dtype: dtype.is_integer`.
+      This filter operates in a logical AND relation with `op_regex`.
   Returns:
     A DebugEventsWriter instance used by the dumping callback. The caller
     may use its flushing methods, including `FlushNonExecutionFiles()` and
@@ -344,8 +416,6 @@ def enable_dumping(dump_root,
   # TODO(cais): Revise the "UIs (currently under construction)" part of the doc
   # string above.
   # TODO(cais): Add Python code example to the doc string above.
-  # TODO(cais): Once UIs are ready, expose this method and the associated
-  # `disable_` method under the `tf.debugging.*` namespace.
   tensor_debug_mode_keys = debug_event_pb2.TensorDebugMode.keys()
   if tensor_debug_mode not in tensor_debug_mode_keys:
     raise ValueError(
@@ -378,11 +448,25 @@ def enable_dumping(dump_root,
          tensor_debug_mode_keys[_state.config.tensor_debug_mode],
          tensor_debug_mode_keys[tensor_debug_mode]))
 
+  # Validate the types of tensor_dtypes.
+  if tensor_dtypes is not None:
+    if (not isinstance(tensor_dtypes, (list, tuple)) and
+        not callable(tensor_dtypes)):
+      raise ValueError(
+          "If specified, tensor_dtypes is expected to be a list, a tuple, or "
+          "a callable that takes a DType argument and returns a boolean, "
+          "but received %s" % (tensor_dtypes,))
+    if isinstance(tensor_dtypes, (list, tuple)):
+      tensor_dtypes = [
+          dtypes.as_dtype(dtype_item) for dtype_item in tensor_dtypes]
+
   if not hasattr(_state, "config") or _state.config.dump_root != dump_root:
-    _state.config = TracingConfig(
+    _state.config = DumpingConfig(
         dump_root=dump_root,
         tensor_debug_mode=tensor_debug_mode,
-        circular_buffer_size=int(circular_buffer_size))
+        circular_buffer_size=int(circular_buffer_size),
+        op_regex=re.compile(op_regex) if op_regex else None,
+        tensor_dtypes=tensor_dtypes)
     _state.hostname = socket.gethostname()
     # A list of source-file paths.
     _state.source_file_paths = []
@@ -398,16 +482,17 @@ def enable_dumping(dump_root,
       threading.current_thread().name, _state.config.dump_root,
       tensor_debug_mode)
 
-  atexit.register(disable_dumping)
+  atexit.register(disable_dump_debug_info)
   return _get_writer()
 
 
-def disable_dumping():
+@tf_export("debugging.experimental.disable_dump_debug_info")
+def disable_dump_debug_info():
   """Disable the currently-enabled debugging dumping.
 
-  If the `enable_dumping()` method under the same Python namespace has been
-  invoked before, calling this method disables it. If no call to
-  `enable_dumping()` has been made, calling this method is a no-op.
+  If the `enable_dump_debug_info()` method under the same Python namespace
+  has been invoked before, calling this method disables it. If no call to
+  `enable_dump_debug_info()` has been made, calling this method is a no-op.
   Calling this method more than once is idempotent.
   """
   if hasattr(_state, "config"):

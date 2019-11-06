@@ -71,7 +71,7 @@ class TracingCallbackTest(
   def tearDown(self):
     if os.path.isdir(self.dump_root):
       shutil.rmtree(self.dump_root, ignore_errors=True)
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
     super(TracingCallbackTest, self).tearDown()
 
   def testInvalidTensorDebugModeCausesError(self):
@@ -79,11 +79,11 @@ class TracingCallbackTest(
         ValueError,
         r"Invalid value in tensor_debug_mode \(\'NONSENSICAL\'\).*"
         r"Valid options.*NO_TENSOR.*"):
-      dumping_callback.enable_dumping(
+      dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="NONSENSICAL")
 
   def testDisablingTracingCallbackWithoutEnablingFirstIsTolerated(self):
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
@@ -91,7 +91,7 @@ class TracingCallbackTest(
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
     """Test catching Infinity in eager op execution: float32."""
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     x = constant_op.constant(10.0)
@@ -197,7 +197,7 @@ class TracingCallbackTest(
   )
   @test_util.run_in_graph_and_eager_modes
   def testNestedFunctionExecutionWithoutControlFlow(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     @def_function.function
@@ -248,12 +248,156 @@ class TracingCallbackTest(
                           np.sin(np.log(5.0) + 1.0))  # Sin op.
 
   @parameterized.named_parameters(
+      ("AddV2", "AddV2"),
+      ("Log", "Log"),
+      ("AddV2AndLog", "(AddV2|Log)"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testOpRegex(self, op_regex):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_TENSOR",
+        op_regex=op_regex)
+
+    @def_function.function
+    def log_sum(x, y):
+      return math_ops.log(x + y)
+
+    @def_function.function
+    def sin1p_log_sum(x, y):
+      return math_ops.sin(1.0 + log_sum(x, y))
+
+    x = constant_op.constant(2.0)
+    y = constant_op.constant(3.0)
+    self.assertAllClose(
+        self.evaluate(sin1p_log_sum(x, y)), np.sin(1.0 + np.log(5.0)))
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids, op_types,
+     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+    self.assertIn("AddV2", op_types)
+    self.assertIn("Log", op_types)
+    self.assertIn("Sin", op_types)
+
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+
+    if op_regex == "AddV2":
+      self.assertEqual(executed_op_types, ["AddV2", "AddV2"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
+      self.assertAllClose(tensor_values[1], np.log(5.0) + 1.0)  # 2nd AddV2 op.
+    elif op_regex == "Log":
+      self.assertEqual(executed_op_types, ["Log"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], np.log(5.0))  # Log op.
+    else:  # "(AddV2|Log)"
+      self.assertEqual(executed_op_types, ["AddV2", "Log", "AddV2"])
+      self.assertLen(tensor_values, 3)
+      self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
+      self.assertAllClose(tensor_values[1], np.log(5.0))  # Log op.
+      self.assertAllClose(tensor_values[2], np.log(5.0) + 1.0)  # 2nd AddV2 op.
+
+  def testIncorrectTensorDTypeArgFormatLeadsToError(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*\{\}"):
+      dumping_callback.enable_dump_debug_info(self.dump_root,
+                                              tensor_dtypes=dict())
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*"):
+      dumping_callback.enable_dump_debug_info(self.dump_root,
+                                              tensor_dtypes="float32")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*"):
+      dumping_callback.enable_dump_debug_info(
+          self.dump_root, tensor_dtypes=dtypes.float32)
+    with self.assertRaises(TypeError):
+      dumping_callback.enable_dump_debug_info(self.dump_root, tensor_dtypes=[
+          lambda dtype: dtype.is_floating, lambda dtype: dtype.is_integer])
+
+  @parameterized.named_parameters(
+      ("float", [dtypes.float32], None),
+      ("float_only_sum", ["float32"], "Sum"),
+      ("float_no_sum", (dtypes.float32,), "(?!Sum)"),
+      ("int", [dtypes.int32], None),
+      ("int_via_lambda", lambda dtype: dtype.is_integer, None),
+      ("exclude_Sum", None, "(?!Sum)"),
+      ("All", None, None),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorDTypesAndOpRegexFilters(self,
+                                        tensor_dtypes,
+                                        op_regex):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_TENSOR",
+        tensor_dtypes=tensor_dtypes,
+        op_regex=op_regex)
+
+    @def_function.function
+    def unique_sum(xs):
+      """Sum over the unique values, for testing."""
+      unique_xs, indices = array_ops.unique(xs)
+      return math_ops.reduce_sum(unique_xs), indices
+
+    xs = constant_op.constant([2., 6., 8., 1., 2.], dtype=dtypes.float32)
+    y, indices = self.evaluate(unique_sum(xs))
+    self.assertAllClose(y, 17.)
+    self.assertAllEqual(indices, [0, 1, 2, 3, 0])
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids, _,
+     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+
+    if tensor_dtypes == [dtypes.float32] and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique", "Sum"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllClose(tensor_values[1], 17.)  # Sum.
+    elif tensor_dtypes == ["float32"] and op_regex == "Sum":
+      self.assertEqual(executed_op_types, ["Sum"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], 17.)  # Sum.
+    elif tensor_dtypes == (dtypes.float32,) and op_regex == "(?!Sum)":
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+    elif tensor_dtypes == [dtypes.int32] and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllEqual(tensor_values[0], [0, 1, 2, 3, 0])  # Unique indices.
+    elif callable(tensor_dtypes) and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllEqual(tensor_values[0], [0, 1, 2, 3, 0])  # Unique indices.
+    elif not tensor_dtypes and op_regex == "(?!Sum)":
+      self.assertEqual(executed_op_types, ["Unique", "Unique"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllEqual(tensor_values[1], [0, 1, 2, 3, 0])  # Unique indices.
+    else:  # "All".
+      self.assertEqual(executed_op_types, ["Unique", "Unique", "Sum"])
+      self.assertLen(tensor_values, 3)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllEqual(tensor_values[1], [0, 1, 2, 3, 0])  # Unique indices.
+      self.assertAllClose(tensor_values[2], 17.)  # Sum.
+
+  @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
   def testFunctionExecutionWithControlFlow(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     @def_function.function
@@ -342,8 +486,8 @@ class TracingCallbackTest(
       self.assertAllClose(mul_values, [1.0, 2.0, 4.0, 8.0])
 
   def testCallingEnableTracingTwiceWithTheSameDumpRootIsIdempotent(self):
-    dumping_callback.enable_dumping(self.dump_root)
-    writer = dumping_callback.enable_dumping(self.dump_root)
+    dumping_callback.enable_dump_debug_info(self.dump_root)
+    writer = dumping_callback.enable_dump_debug_info(self.dump_root)
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -365,9 +509,9 @@ class TracingCallbackTest(
       next(execution_iter)
 
   def testCallingEnableTracingTwiceWithDifferentDumpRootsOverwrites(self):
-    dumping_callback.enable_dumping(self.dump_root)
+    dumping_callback.enable_dump_debug_info(self.dump_root)
     new_dump_root = self.dump_root + "_new_dump_root"
-    writer = dumping_callback.enable_dumping(new_dump_root)
+    writer = dumping_callback.enable_dump_debug_info(new_dump_root)
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -395,11 +539,11 @@ class TracingCallbackTest(
       next(execution_iter)
 
   def testCallingEnableRepeatedlyWithDifferentTensorDebugMode(self):
-    """Assert that calling enable_dumping() with different tensor-debug modes.
+    """Assert that calling enable_dump_debug_info() with different tensor-debug modes.
 
     It should lead to overwriting of the previously-configured mode.
     """
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode="NO_TENSOR")
 
     @def_function.function
@@ -422,7 +566,7 @@ class TracingCallbackTest(
 
     with self.assertRaisesRegexp(
         ValueError, r"already.*NO_TENSOR.*FULL_TENSOR.*not be honored"):
-      dumping_callback.enable_dumping(
+      dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="FULL_TENSOR")
 
   @parameterized.named_parameters(
@@ -430,9 +574,9 @@ class TracingCallbackTest(
       ("FullTensor", "FULL_TENSOR"),
   )
   def testDisableTracingWorks(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -458,7 +602,7 @@ class TracingCallbackTest(
       ("FullTensor", "FULL_TENSOR"),
   )
   def testMultiThreadedExecution(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     x = variables.Variable(10.0, dtype=dtypes.float32)
     y = variables.Variable(3.0, dtype=dtypes.float32)
@@ -520,7 +664,7 @@ class TracingCallbackTest(
   )
   @test_util.run_in_graph_and_eager_modes
   def testSimpleKerasRecurrentModelPredict(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     model = _create_simple_recurrent_keras_model([3, 4])
     batch_size = 5
@@ -584,7 +728,7 @@ class TracingCallbackTest(
   )
   @test_util.run_in_graph_and_eager_modes
   def testSimpleKerasRecurrentModelFit(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     model = _create_simple_recurrent_keras_model([3, 4])
     xs = np.ones([5, 3, 4])
@@ -648,7 +792,7 @@ class TracingCallbackTest(
   def testMobiletNetV2Fit(self, tensor_debug_mode):
     """Test training Keras MobileNetV2 works with dumping."""
     # Use a large circular-buffer to make sure we capture all the executed ops.
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root,
         tensor_debug_mode=tensor_debug_mode,
         circular_buffer_size=100000)
