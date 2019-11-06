@@ -7,7 +7,7 @@ following example.
 image classification example</a>
 
 For an explanation of the source code, you should also read
-[TensorFlow Lite Android image classification](https://www.tensorflow.org/lite/models/image_classification/android).
+[TensorFlow Lite Android image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md).
 
 This example app uses
 [image classification](https://www.tensorflow.org/lite/models/image_classification/overview)
@@ -39,6 +39,20 @@ as a starting point.
 
 The following sections contain some useful information for working with
 TensorFlow Lite on Android.
+
+### Use the TensorFlow Lite Android Support Library
+
+The TensorFlow Lite Android Support Library makes it easier to integrate models
+into your application. It provides high-level APIs that help transform raw input
+data into the form required by the model, and interpret the model's output,
+reducing the amount of boilerplate code required.
+
+It supports common data formats for inputs and outputs, including images and
+arrays. It also provides pre- and post-processing units that perform tasks such
+as image resizing and cropping.
+
+To get started, follow the instructions in the
+[TensorFlow Lite Android Support Library README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
 
 ### Use the TensorFlow Lite AAR from JCenter
 
