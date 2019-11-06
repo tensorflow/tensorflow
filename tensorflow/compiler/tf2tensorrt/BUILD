@@ -189,6 +189,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:array",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
