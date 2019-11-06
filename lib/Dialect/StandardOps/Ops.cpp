@@ -2341,6 +2341,83 @@ static LogicalResult verify(TruncateIOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ViewOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType srcInfo;
+  SmallVector<OpAsmParser::OperandType, 1> offsetInfo;
+  SmallVector<OpAsmParser::OperandType, 4> sizesInfo;
+  auto indexType = parser.getBuilder().getIndexType();
+  Type srcType, dstType;
+  return failure(
+      parser.parseOperand(srcInfo) ||
+      parser.parseOperandList(sizesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(offsetInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) ||
+      parser.resolveOperand(srcInfo, srcType, result.operands) ||
+      parser.resolveOperands(sizesInfo, indexType, result.operands) ||
+      parser.resolveOperands(offsetInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", dstType) ||
+      parser.addTypeToList(dstType, result.types));
+}
+
+static void print(OpAsmPrinter &p, ViewOp op) {
+  p << op.getOperationName() << ' ' << *op.getOperand(0) << '[';
+  p.printOperands(op.getDynamicSizes());
+  p << "][";
+  auto *dynamicOffset = op.getDynamicOffset();
+  if (dynamicOffset != nullptr)
+    p.printOperand(dynamicOffset);
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getOperand(0)->getType() << " to " << op.getType();
+}
+
+static LogicalResult verify(ViewOp op) {
+  auto baseType = op.getOperand(0)->getType().dyn_cast<MemRefType>();
+  auto viewType = op.getResult()->getType().dyn_cast<MemRefType>();
+
+  // Operand 0 type and ViewOp result type must be memref.
+  if (!baseType || !viewType)
+    return op.emitError("operand type ") << baseType << " and result type "
+                                         << viewType << " are must be memref";
+
+  // The base memref should be rank 1 with i8 element type.
+  if (baseType.getRank() != 1 || !baseType.getElementType().isInteger(8))
+    return op.emitError("unsupported shape for base memref type ") << baseType;
+
+  // The base memref should have identity layout map (or none).
+  if (baseType.getAffineMaps().size() > 1 ||
+      (baseType.getAffineMaps().size() == 1 &&
+       !baseType.getAffineMaps()[0].isIdentity()))
+    return op.emitError("unsupported map for base memref type ") << baseType;
+
+  // The base memref and the view memref should be in the same memory space.
+  if (baseType.getMemorySpace() != viewType.getMemorySpace())
+    return op.emitError("different memory spaces specified for base memref "
+                        "type ")
+           << baseType << " and view memref type " << viewType;
+
+  // Verify that the result memref type has a strided layout map. is strided
+  int64_t offset;
+  llvm::SmallVector<int64_t, 4> strides;
+  if (failed(mlir::getStridesAndOffset(viewType, strides, offset)))
+    return op.emitError("result type ") << viewType << " is not strided";
+
+  // Verify that we have the correct number of operands for the result type.
+  unsigned memrefOperandCount = 1;
+  unsigned numDynamicDims = viewType.getNumDynamicDims();
+  unsigned dynamicOffsetCount =
+      offset == MemRefType::getDynamicStrideOrOffset() ? 1 : 0;
+  if (op.getNumOperands() !=
+      memrefOperandCount + numDynamicDims + dynamicOffsetCount)
+    return op.emitError("incorrect number of operands for type ") << viewType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ZeroExtendIOp
 //===----------------------------------------------------------------------===//
 

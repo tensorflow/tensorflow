@@ -901,3 +901,55 @@ func @invalid_splat(%v : f32) { // expected-note {{prior use here}}
   // expected-error@-1 {{expects different type than prior uses}}
   return
 }
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8>
+  // expected-error@+1 {{incorrect number of operands for type}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xi8> to memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
+  return
+}
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8>
+  // expected-error@+1 {{is not strided}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xi8> to memref<?x?xf32, (d0, d1)[s0] -> (d0, d1, s0)>
+  return
+}
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xf32>
+  // expected-error@+1 {{unsupported shape for base memref}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xf32> to memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
+  return
+}
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8, (d0) -> (d0 floordiv 8, d0 mod 8)>
+  // expected-error@+1 {{unsupported map for base memref}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xi8, (d0) -> (d0 floordiv 8, d0 mod 8)> to
+      memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
+  return
+}
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8, 2>
+  // expected-error@+1 {{different memory spaces}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xi8, 2> to
+      memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0), 1>
+  return
+}
