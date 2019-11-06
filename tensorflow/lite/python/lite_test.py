@@ -791,6 +791,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       inp, output, calibration_gen = self._getCalibrationQuantizeModel()
       sess = session.Session()
 
+    idx = 1 if enable_mlir else 0
+    node_name = 'Conv2D' if enable_mlir else 'Conv2D_bias'
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
     float_converter.experimental_new_converter = enable_mlir
@@ -798,13 +800,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertTrue(float_tflite)
     interpreter = Interpreter(model_content=float_tflite)
     interpreter.allocate_tensors()
-    if enable_mlir:
-      self.assertEqual(interpreter.get_tensor_details()[0]['name'], 'Conv2D')
-    else:
-      self.assertEqual(interpreter.get_tensor_details()[0]['name'],
-                       'Conv2D_bias')
-
-    self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+    self.assertEqual(interpreter.get_tensor_details()[idx]['name'], node_name)
+    self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
                      lite.constants.FLOAT)
     # Convert model to quantized version
     quantized_converter = lite.TFLiteConverter.from_session(
@@ -830,19 +827,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       self.assertTrue(quantized_tflite)
       interpreter = Interpreter(model_content=quantized_tflite)
       interpreter.allocate_tensors()
-      if enable_mlir:
-        self.assertEqual(interpreter.get_tensor_details()[0]['name'], 'Conv2D')
-      else:
-        self.assertEqual(interpreter.get_tensor_details()[0]['name'],
-                         'Conv2D_bias')
+      self.assertEqual(interpreter.get_tensor_details()[idx]['name'], node_name)
 
       if is_float16_quantized:
         # Verify that bias constant is float16 type.
-        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+        self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
                          lite.constants.FLOAT16)
       elif is_post_training_quantized:
         # Verify that bias constants is int32 type.
-        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+        self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
                          lite.constants.INT32)
       else:
         raise ValueError('Invalid test options.')
