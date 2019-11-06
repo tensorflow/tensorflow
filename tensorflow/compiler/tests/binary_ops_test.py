@@ -335,6 +335,33 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=np.array([3.0269620882574744, 3.3149631512242195],
                               dtype=dtype))
 
+  def testMultiply(self):
+    for dtype in self.numeric_types | {np.float64}:
+      self._testBinary(
+          math_ops.multiply,
+          np.array([1, 20], dtype=dtype),
+          np.array([10, 2], dtype=dtype),
+          expected=np.array([10, 40], dtype=dtype))
+      self._testBinary(
+          math_ops.multiply,
+          dtype(5),
+          np.array([1, 20], dtype=dtype),
+          expected=np.array([5, 100], dtype=dtype))
+      self._testBinary(
+          math_ops.multiply,
+          np.array([[10], [2]], dtype=dtype),
+          dtype(7),
+          expected=np.array([[70], [14]], dtype=dtype))
+
+      if dtype not in self.int_types:
+        self._testBinary(
+            math_ops.multiply,
+            np.array([1.9131952969218875, 1.596299504298079], dtype=dtype),
+            np.array([1.1137667913355869, 1.7186636469261405], dtype=dtype),
+            expected=np.array([2.130853387051026, 2.743501927643327],
+                              dtype=dtype),
+            rtol=1e-14)
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -386,22 +413,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             np.array([[10], [2]], dtype=dtype),
             dtype(7),
             expected=np.array([[7], [2]], dtype=dtype))
-
-      self._testBinary(
-          math_ops.multiply,
-          np.array([1, 20], dtype=dtype),
-          np.array([10, 2], dtype=dtype),
-          expected=np.array([10, 40], dtype=dtype))
-      self._testBinary(
-          math_ops.multiply,
-          dtype(5),
-          np.array([1, 20], dtype=dtype),
-          expected=np.array([5, 100], dtype=dtype))
-      self._testBinary(
-          math_ops.multiply,
-          np.array([[10], [2]], dtype=dtype),
-          dtype(7),
-          expected=np.array([[70], [14]], dtype=dtype))
 
       # Complex support for squared_difference is incidental, see b/68205550
       if dtype not in self.complex_types | {np.uint8, np.int8}:
