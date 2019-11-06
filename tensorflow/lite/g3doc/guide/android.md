@@ -135,7 +135,7 @@ bazel build --cxxopt='-std=c++11' -c opt         \
   //tensorflow/lite/java:tensorflow-lite
 ```
 
-This will generate an AAR file in `bazel-genfiles/tensorflow/lite/java/`. Note
+This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
 From there, there are several approaches you can take to use the .aar in your
@@ -169,7 +169,7 @@ Execute the following command from your root checkout directory:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-genfiles/tensorflow/lite/java/tensorflow-lite.aar \
+  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite.aar \
   -DgroupId=org.tensorflow \
   -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
 ```
