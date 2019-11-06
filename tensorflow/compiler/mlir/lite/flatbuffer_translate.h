@@ -30,13 +30,15 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        std::string* serialized_flatbuffer,
                                        bool emit_builtin_tflite_ops,
                                        bool emit_select_tf_ops,
-                                       bool emit_custom_ops);
+                                       bool emit_custom_ops,
+                                       bool add_pseudo_input_nodes = true);
 
 // Same as the above but with a custom op name mapper.
 bool MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
+    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper,
+    bool add_pseudo_input_nodes);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_H_

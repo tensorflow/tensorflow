@@ -862,7 +862,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, output_arrays_order);
+      context, loc, output_arrays_order, /*add_pseudo_input_nodes=*/false);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
