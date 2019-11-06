@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
-# Placeholder for Google-internal load statements - 2.
 
 package(
     default_visibility = ["//visibility:public"],
