@@ -71,6 +71,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
+        "//tensorflow/lite/toco/logging:gen_html",
+        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "@six_archive//:six",
     ],
 )

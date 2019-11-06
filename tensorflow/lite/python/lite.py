@@ -537,6 +537,8 @@ class TFLiteConverter(TFLiteConverterBase):
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
+    conversion_summary_dir: A string indicating the path to the generated
+      conversion logs.
     target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
       Set of OpsSet options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
@@ -621,6 +623,7 @@ class TFLiteConverter(TFLiteConverterBase):
     self._post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
+    self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
@@ -991,7 +994,8 @@ class TFLiteConverter(TFLiteConverterBase):
         "reorder_across_fake_quant": self.reorder_across_fake_quant,
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "dump_graphviz_dir": self.dump_graphviz_dir,
-        "dump_graphviz_video": self.dump_graphviz_video
+        "dump_graphviz_video": self.dump_graphviz_video,
+        "conversion_summary_dir": self.conversion_summary_dir
     })
 
     # Converts model.

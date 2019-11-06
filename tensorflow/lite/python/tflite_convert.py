@@ -22,6 +22,7 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+import warnings
 
 import six
 from six.moves import zip
@@ -29,6 +30,7 @@ from six.moves import zip
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.platform import app
@@ -198,6 +200,8 @@ def _convert_tf1_model(flags):
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
+  if flags.conversion_summary_dir:
+    converter.conversion_summary_dir = flags.conversion_summary_dir
 
   if flags.experimental_new_converter:
     converter.experimental_new_converter = True
@@ -479,6 +483,13 @@ def _get_tf1_flags(parser):
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
+  parser.add_argument(
+      "--conversion_summary_dir",
+      type=str,
+      help=("Full filepath to store the conversion logs, which inclues graphviz"
+            " of the model before/after the conversion, an HTML report and the "
+            "conversion proto buffers. This will only be generated when passing"
+            " --experimental_new_converter"))
 
 
 def _get_tf2_flags(parser):
@@ -565,7 +576,17 @@ def run_main(_):
   if use_v2_converter:
     _convert_tf2_model(tflite_flags)
   else:
-    _convert_tf1_model(tflite_flags)
+    try:
+      _convert_tf1_model(tflite_flags)
+    finally:
+      if tflite_flags.conversion_summary_dir:
+        if tflite_flags.experimental_new_converter:
+          gen_html.gen_conversion_log_html(tflite_flags.conversion_summary_dir,
+                                           tflite_flags.post_training_quantize)
+        else:
+          warnings.warn(
+              "Conversion summary will only be generated when enabling"
+              " the new converter via --experimental_new_converter. ")
 
 
 def main():

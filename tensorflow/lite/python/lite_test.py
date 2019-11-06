@@ -502,6 +502,44 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       num_items_graphviz_video = len(os.listdir(graphviz_dir))
       self.assertGreater(num_items_graphviz_video, num_items_graphviz)
 
+  def testDumpConversionSummary(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    log_dir = self.get_temp_dir()
+    converter.conversion_summary_dir = log_dir
+    # Conversion logs will only be generated when the mlir converter is enabled.
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    num_items_conversion_summary = len(os.listdir(log_dir))
+    self.assertTrue(num_items_conversion_summary)
+
+  def testDumpConversionSummaryWithOldConverter(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    log_dir = self.get_temp_dir()
+    converter.conversion_summary_dir = log_dir
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    # Check nothing is generated under the conversion summary path.
+    num_items_conversion_summary = len(os.listdir(log_dir))
+    self.assertEqual(num_items_conversion_summary, 0)
+
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
