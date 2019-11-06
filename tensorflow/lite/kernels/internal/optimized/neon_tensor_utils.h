@@ -69,28 +69,24 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
                    result_stride);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int16_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, input, bias,
                    input_to_gate_weights, multiplier, shift, n_batch, n_input,
-                   n_output, output_zp, scratch, output);
+                   n_output, output_zp, scratch, output, context);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int8_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, input, bias,
                    input_to_gate_weights, multiplier, shift, n_batch, n_input,
-                   n_output, output_zp, scratch, output);
+                   n_output, output_zp, scratch, output, context);
 }
 
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,

@@ -24,7 +24,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
+#include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -722,13 +726,9 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
   free(aligned_vec_free);
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int16_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -779,13 +779,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int8_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -855,6 +851,77 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     }
     output[i] = static_cast<int8_t>(temp);
   }
+}
+
+void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
+                        const int8_t* input_to_gate_weights, int32_t n_batch,
+                        int32_t n_input, int32_t n_output, int32_t output_zp,
+                        int32_t* scratch, CpuBackendContext* context) {
+  using ::tflite::cpu_backend_gemm::Gemm;
+  using ::tflite::cpu_backend_gemm::GemmParams;
+  using ::tflite::cpu_backend_gemm::MatrixParams;
+  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
+
+  ruy::Matrix<int8_t> ruy_lhs;
+  ruy::Matrix<int8_t> ruy_rhs;
+  ruy::Matrix<int32_t> ruy_dst;
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n_output;
+  lhs_params.cols = n_input;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = n_input;
+  rhs_params.cols = n_batch;
+
+  MatrixParams<int32_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n_output;
+  dst_params.cols = n_batch;
+
+  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
+                                          &ruy_lhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
+
+  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
+  ruy_spec.bias = bias;
+  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
+                           &ruy_dst);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(

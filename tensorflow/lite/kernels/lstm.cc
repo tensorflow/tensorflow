@@ -1197,7 +1197,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_bias, output_gate_bias, projection_weights, projection_bias,
             params, &op_data->quantized_lstm_param, activation_state,
             cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4, scratch5);
+            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
         return kTfLiteOk;
       }
     }
