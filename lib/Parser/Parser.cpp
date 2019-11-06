@@ -1533,7 +1533,7 @@ Attribute Parser::parseAttribute(Type type) {
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
-  if (!consumeIf(Token::l_brace))
+  if (parseToken(Token::l_brace, "expected '{' in attribute dictionary"))
     return failure();
 
   auto parseElt = [&]() -> ParseResult {
@@ -3870,6 +3870,15 @@ public:
   ParseResult
   parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
+      return success();
+    return parser.parseAttributeDict(result);
+  }
+
+  /// Parse a named dictionary into 'result' if the `attributes` keyword is
+  /// present.
+  ParseResult parseOptionalAttrDictWithKeyword(
+      SmallVectorImpl<NamedAttribute> &result) override {
+    if (failed(parseOptionalKeyword("attributes")))
       return success();
     return parser.parseAttributeDict(result);
   }

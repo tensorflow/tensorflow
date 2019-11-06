@@ -48,9 +48,8 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
                                result.attributes);
 
   // If module attributes are present, parse them.
-  if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttrDict(result.attributes))
-      return failure();
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
 
   // Parse the module body.
   auto *body = result.addRegion();
@@ -65,18 +64,14 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
 void ModuleOp::print(OpAsmPrinter &p) {
   p << "module";
 
-  Optional<StringRef> name = getName();
-  if (name) {
+  if (Optional<StringRef> name = getName()) {
     p << ' ';
     p.printSymbolName(*name);
   }
 
   // Print the module attributes.
-  auto attrs = getAttrs();
-  if (!attrs.empty() && !(attrs.size() == 1 && name)) {
-    p << " attributes";
-    p.printOptionalAttrDict(attrs, {mlir::SymbolTable::getSymbolAttrName()});
-  }
+  p.printOptionalAttrDictWithKeyword(getAttrs(),
+                                     {mlir::SymbolTable::getSymbolAttrName()});
 
   // Print the region.
   p.printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,

@@ -183,9 +183,8 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
            << (errorMessage.empty() ? "" : ": ") << errorMessage;
 
   // If function attributes are present, parse them.
-  if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttrDict(result.attributes))
-      return failure();
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
 
   // Add the attributes to the function arguments.
   SmallString<8> attrNameBuf;
