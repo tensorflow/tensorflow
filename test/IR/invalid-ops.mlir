@@ -926,7 +926,7 @@ func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
 
 func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
   %0 = alloc() : memref<2048xf32>
-  // expected-error@+1 {{unsupported shape for base memref}}
+  // expected-error@+1 {{must be 1D memref of 8-bit integer values}}
   %1 = view %0[%arg0, %arg1][]
     : memref<2048xf32> to memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
   return
@@ -953,3 +953,26 @@ func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
       memref<?x?xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0), 1>
   return
 }
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8>
+  // expected-error@+1 {{incorrect dynamic strides}}
+  %1 = view %0[%arg0, %arg1][]
+    : memref<2048xi8> to
+      memref<?x?x4xf32, (d0, d1, d2) -> (d0 * 777 + d1 * 4 + d2)>
+  return
+}
+
+// -----
+
+func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<2048xi8>
+  // expected-error@+1 {{incorrect dynamic strides}}
+  %1 = view %0[%arg0][]
+    : memref<2048xi8> to
+      memref<16x4x?xf32, (d0, d1, d2) -> (d0 * 777 + d1 * 4 + d2)>
+  return
+}
+
