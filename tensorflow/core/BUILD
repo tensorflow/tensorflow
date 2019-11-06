@@ -502,7 +502,6 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
@@ -541,7 +540,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
@@ -2315,7 +2313,6 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringprintf",
