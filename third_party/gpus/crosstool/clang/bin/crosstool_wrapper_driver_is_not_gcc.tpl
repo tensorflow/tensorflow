@@ -53,6 +53,13 @@ NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '%{cuda_version}'
 
+
+# TODO(amitpatankar): Benchmark enabling all capabilities by default.
+# Environment variable for supported TF CUDA Compute Capabilities
+# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+CUDA_COMPUTE_ENV_VAR = 'TF_CUDA_COMPUTE_CAPABILITIES'
+DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
+
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
 
