@@ -1169,7 +1169,8 @@ def ViewOp : Std_Op<"view"> {
         (d0, d1, d2)[s0, s1] -> (d0 * s0 + d1 * 4 + d2 + s1)
   }];
 
-  let arguments = (ins AnyMemRef:$source, Variadic<Index>:$operands);
+  let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
+                       Variadic<Index>:$operands);
   let results = (outs AnyMemRef);
 
   let extraClassDeclaration = [{
