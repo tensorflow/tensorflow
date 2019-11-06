@@ -151,7 +151,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:op_gen_lib",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
@@ -233,7 +233,7 @@ cc_library(
             ":tf_tensor_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )

@@ -173,7 +173,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core:math_ops_op_lib",
     "//tensorflow/core:nn_ops_op_lib",
     "//tensorflow/core:no_op_op_lib",
-    "//tensorflow/core:protos_all",
+    "//tensorflow/core:protos_all_cc",
     "//tensorflow/core:resource_variable_ops_op_lib",
     "//tensorflow/core:sendrecv_ops_op_lib",
     "//tensorflow/core:state_ops_op_lib",
