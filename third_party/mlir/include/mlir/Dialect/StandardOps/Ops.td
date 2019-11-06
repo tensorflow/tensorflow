@@ -1133,6 +1133,68 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   }];
 }
 
+def ViewOp : Std_Op<"view"> {
+  let summary = "memref view operation";
+  let description = [{
+    The "view" operation converts a 1-D memref with i8 element type,
+    to an N-D memref with arbitrary element type. In addition, the ViewOp
+    supports the following arguments:
+    *) A dynamic size operand must be specified for each dynamic dimension
+       in the resulting view memref type.
+    *) A single dynamic offset operand can be specified which represents a
+       a dynamic offset within the base 1-D memref at which to create the
+       resulting memref view.
+
+    // Allocate a flat 1D/i8 memref.
+    %0 = alloc() : memref<2048xi8>
+
+    // ViewOp with static sizes and offset.
+    %1 = view %0[][] : memref<2048xi8> to memref<64x4xf32>
+
+    // ViewOp with one dynamic size and a dynamic offset.
+    %2 = view %0[%size0][%offset_1024]
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+
+    // ViewOp creating 3D shape where two of the dim sizes are dynamic.
+    // *) The dynamic size for the second dimension induces a dynamic
+    //    stride for the first dimension, which is represented by the
+    //    symbol 's0' in the layout map of the ViewOp result memref type.
+    //    Note that this dynamic stride will be computed from the view
+    //    shape and dynamic sizes.
+    // *) The dynamic offset specified in the ViewOp is applied to the
+    //    base 1-D memref, and is represented by the symbol 's1' in the
+    //    layout map of the ViewOp result memref type.
+    %3 = view %0[%size0, %size1][%offset_1024]
+      : memref<2048xi8> to memref<?x?x4xf32,
+        (d0, d1, d2)[s0, s1] -> (d0 * s0 + d1 * 4 + d2 + s1)
+  }];
+
+  let arguments = (ins AnyMemRef:$source, Variadic<Index>:$operands);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a memref_shape_cast is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offset for this shape cast operation if specified.
+    /// Returns nullptr if no dynamic offset was specified.
+    Value *getDynamicOffset() {
+      unsigned offsetPos = 1 + getType().getNumDynamicDims();
+      if (offsetPos >= getNumOperands())
+        return nullptr;
+      return getOperand(offsetPos);
+    }
+
+    /// Returns the dynamic sizes for this shape cast operation.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + 1,
+              operand_begin() + 1 + getType().getNumDynamicDims()};
+    }
+  }];
+  // TODO(andydavis) Add canonicalizer to fold constants into shape and map.
+}
+
+
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
   let hasFolder = 1;

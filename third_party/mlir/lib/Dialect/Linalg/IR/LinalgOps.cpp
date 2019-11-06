@@ -529,7 +529,7 @@ void mlir::linalg::ViewOp::build(Builder *b, OperationState &result,
   result.addAttributes(attrs);
 }
 
-static void print(OpAsmPrinter &p, ViewOp op) {
+static void print(OpAsmPrinter &p, mlir::linalg::ViewOp op) {
   p << op.getOperationName() << " " << *op.buffer() << "[";
   interleaveComma(op.ranges(), p, [&](Value *v) { p << *v; });
   p << "] ";

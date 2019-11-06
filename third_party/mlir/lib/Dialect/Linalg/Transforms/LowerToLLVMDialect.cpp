@@ -490,14 +490,15 @@ public:
 class ViewOpConversion : public LLVMOpLowering {
 public:
   explicit ViewOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(ViewOp::getOperationName(), context, lowering_) {}
+      : LLVMOpLowering(mlir::linalg::ViewOp::getOperationName(), context,
+                       lowering_) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    ViewOpOperandAdaptor adaptor(operands);
+    mlir::linalg::ViewOpOperandAdaptor adaptor(operands);
 
-    auto viewOp = cast<ViewOp>(op);
+    auto viewOp = cast<mlir::linalg::ViewOp>(op);
     BaseViewConversionHelper helper(op->getLoc(), viewOp.getViewType(),
                                     rewriter, lowering);
     LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
