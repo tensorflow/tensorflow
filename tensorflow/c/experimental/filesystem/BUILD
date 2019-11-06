@@ -1,6 +1,7 @@
 # Experimental filesystem C APIs for TensorFlow.
 # Will be moved in proper place once all filesystems are converted to the
 # modular framework.
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -44,5 +45,29 @@ cc_library(
     deps = [
         ":filesystem_interface",
         "//tensorflow/core/platform:env",
+    ],
+)
+
+# Compliance test for modules and for interface
+tf_cc_test(
+    name = "modular_filesystem_test",
+    size = "small",
+    srcs = ["modular_filesystem_test.cc"],
+    linkopts = ["-ldl"],
+    tags = [
+        "manual",  # Requires DSOs as arguments, eventual setup
+        "notap",  # b/139060984, requires implementing modular support for Google filesystem
+    ],
+    deps = [
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/lib/io:path",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:error",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:test",
     ],
 )
