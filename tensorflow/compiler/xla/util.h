@@ -89,7 +89,8 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 #define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
   static ::xla::TimerStats XLA_TimerStats##counter;                  \
   ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, /*enabled=*/VLOG_IS_ON(level), &XLA_TimerStats##counter);
+      label, /*enabled=*/VLOG_IS_ON(level), __FILE__, __LINE__,      \
+      &XLA_TimerStats##counter);
 
 struct TimerStats {
   tensorflow::mutex stats_mutex;
@@ -102,13 +103,14 @@ struct TimerStats {
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
 struct ScopedLoggingTimer {
-  // The timer does nothing if enabled is false.  This lets you pass in your
-  // file's VLOG_IS_ON value.
-  //
-  // timer_stats is unowned non-null pointer which is used to populate the
+  // label: Label to display for logging.
+  // enabled: Whether this timer should do anything at all.
+  // file: Filename to display in logging.
+  // line: Line number to display in logging.
+  // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled,
-                     TimerStats* timer_stats);
+  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+                     int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
   // function is called.
@@ -117,6 +119,8 @@ struct ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
   bool enabled;
+  const char* file;
+  int line;
   string label;
   uint64 start_micros;
   TimerStats* timer_stats;
