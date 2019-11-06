@@ -157,8 +157,9 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved.
-        patch_file = clean_dep("//third_party:com_google_absl_fix_mac_build.patch"),
+        # TODO: Remove patch #1 when https://github.com/abseil/abseil-cpp/issues/326 is resolved.
+        # Patch #2 needs to stay until we have a better control over which symbols to export.
+        patch_file = clean_dep("//third_party:com_google_absl.patch"),
         sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",
         strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
         urls = [
