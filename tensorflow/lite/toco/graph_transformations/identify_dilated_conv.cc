@@ -112,11 +112,19 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
 
   // Post-BatchToSpace Bias Op
   Operator* bias_add_op = !has_bias_before_bts ? final_op : next_op;
-  if (bias_add_op->type != OperatorType::kAdd) {
-    // Bias op is required before or after BatchToSpace
+  if ((bias_add_op->type != OperatorType::kAdd) &&
+      (bias_add_op->type != OperatorType::kBatchNormalization)) {
+    // Bias op or Batch Norm is required before or after BatchToSpace
     return false;
   }
-  CHECK_EQ(bias_add_op->inputs.size(), 2);
+  switch (bias_add_op->type) {
+    case OperatorType::kAdd:
+      CHECK_EQ(bias_add_op->inputs.size(), 2);
+    case OperatorType::kBatchNormalization:
+      CHECK_EQ(bias_add_op->inputs.size(), 4);
+    default:
+      break;
+  }
   CHECK_EQ(bias_add_op->outputs.size(), 1);
 
   // 2. RE-WIRE OPERATORS
