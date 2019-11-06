@@ -132,18 +132,19 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     string BuildTraceMeName() override {
-      int64 buffer_limit;
-      {
-        tf_shared_lock l(*mu_);
-        buffer_limit =
-            legacy_autotune_ ? auto_tuner_.buffer_limit() : buffer_size_->value;
+      int64 limit = -1;
+      // NOTE: We only set the buffer limit value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        limit = buffer_limit();
+        mu_->unlock();
       }
       string prefetch_with_slack_trace = "";
       if (dataset()->slack_period_ > 0) {
         int64 slack_us = slack_us_;
         prefetch_with_slack_trace = strings::StrCat(",slack=", slack_us);
       }
-      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit,
+      return strings::StrCat(prefix(), "#buffer_limit=", limit,
                              prefetch_with_slack_trace, "#");
     }
 
@@ -304,8 +305,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     };
 
     inline int64 buffer_limit() EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      return legacy_autotune_ ? auto_tuner_.buffer_limit()
-                              : buffer_size_->value;
+      if (legacy_autotune_) {
+        return auto_tuner_.buffer_limit();
+      }
+      return buffer_size_->value;
     }
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
