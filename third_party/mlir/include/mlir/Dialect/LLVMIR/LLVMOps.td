@@ -132,6 +132,15 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
   let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
   let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
 }
+class LLVM_UnaryArithmeticOp<string mnemonic, string builderFunc,
+                        list<OpTrait> traits = []> :
+    LLVM_OneResultOp<mnemonic,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$operand)>,
+    LLVM_Builder<"$res = builder." # builderFunc # "($operand);"> {
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
+}
 
 // Integer binary operations.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", "CreateAdd", [Commutative]>;
@@ -247,6 +256,7 @@ def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub", "CreateFSub">;
 def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul", "CreateFMul">;
 def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
+def LLVM_FNegOp : LLVM_UnaryArithmeticOp<"fneg", "CreateFNeg">;
 
 // Memory-related operations.
 def LLVM_AllocaOp :
