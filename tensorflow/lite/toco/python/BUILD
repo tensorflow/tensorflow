@@ -41,7 +41,7 @@ cc_library(
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco:model_flags_proto",
         "//tensorflow/lite/toco:toco_convert",
-        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
+        "//tensorflow/lite/toco/logging:toco_conversion_log_proto",
         "//tensorflow/lite/toco:toco_flags_proto",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",

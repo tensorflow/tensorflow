@@ -31,7 +31,7 @@ cc_library(
     hdrs = ["conversion_log_util.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":toco_conversion_log_proto_cc",
+        ":toco_conversion_log_proto",
         "//tensorflow/core:protos_all",
         "//tensorflow/lite:version",
         "//tensorflow/lite/toco:model",
