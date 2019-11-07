@@ -1182,9 +1182,12 @@ void ModulePrinter::printAffineExprInternal(
 
     // Pretty print multiplication with -1.
     auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>();
-    if (rhsConst && rhsConst.getValue() == -1) {
+    if (rhsConst && binOp.getKind() == AffineExprKind::Mul &&
+        rhsConst.getValue() == -1) {
       os << "-";
       printAffineExprInternal(lhsExpr, BindingStrength::Strong, printValueName);
+      if (enclosingTightness == BindingStrength::Strong)
+        os << ')';
       return;
     }
 
