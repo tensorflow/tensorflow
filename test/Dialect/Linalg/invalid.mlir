@@ -1,49 +1,5 @@
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
-// -----
-
-func @buffer_alloc_single_index() {
-  // expected-error @+1 {{expected one index operand}}
-  %0 = linalg.buffer_alloc : !linalg.buffer<?xf32>
-}
-
-// -----
-
-func @buffer_alloc_unexpected_index(%s : index) {
-  // expected-error @+1 {{expected zero operand}}
-  %0 = linalg.buffer_alloc %s : !linalg.buffer<32xf32>
-}
-
-// -----
-
-func @buffer_alloc_nonegative_size() {
-  // expected-error @+1 {{expected nonnegative static buffer size}}
-  %0 = linalg.buffer_alloc : !linalg.buffer<0xf32>
-}
-
-// -----
-
-func @buffer_alloc_nonegative_alignment(%arg0: index) {
-  // expected-error @+1 {{expected positive alignment}}
-  %0 = linalg.buffer_alloc %arg0 {alignment = -123}: !linalg.buffer<?xf32>
-}
-
-// -----
-
-func @buffer_alloc_powerof2_alignment(%arg0: index) {
-  // expected-error @+1 {{expected power of 2 alignment}}
-  %0 = linalg.buffer_alloc %arg0 {alignment = 123}: !linalg.buffer<?xf32>
-}
-
-// -----
-
-func @buffer_valid_element_type() {
-  // expected-error @+1 {{expected valid buffer element type}}
-  %0 = linalg.buffer_alloc : !linalg.buffer<4xindex>
-}
-
-// -----
-
 func @load_number_of_indices(%v : memref<f32>) {
   // expected-error @+2 {{incorrect number of indices for load}}
   %c0 = constant 0 : index
@@ -95,22 +51,6 @@ func @transpose_not_permutation(%v : memref<?x?xf32, (i, j)[off, M]->(off + M * 
 func @transpose_bad_rank(%v : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>) {
   // expected-error @+1 {{expected a permutation map of same rank as the view}}
   linalg.transpose %v (i) -> (i) : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>
-}
-
-// -----
-
-func @view_type(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %step: index) {
-  // expected-error @+2 {{expected memref type}}
-  %r = linalg.range %min:%max:%step : !linalg.range
-  %0 = linalg.view %buf[%r]: !linalg.buffer<?xf32> -> index
-}
-
-// -----
-
-func @view_num_ranges(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %step: index) {
-  // expected-error @+2 {{expected 2 ranges}}
-  %r = linalg.range %min:%max:%step : !linalg.range
-  %0 = linalg.view %buf[%r]: !linalg.buffer<?xf32> -> memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>
 }
 
 // -----
@@ -393,16 +333,6 @@ func @generic_fun_result_0_element_type(%arg0: memref<?xf32, (i)[off]->(off + i)
 
 // expected-error @+1 {{unknown Linalg type}}
 !invalid_type = type !linalg.unknown
-
-// -----
-
-// expected-error @+1 {{expected single element in size list}}
-!invalid_type = type !linalg.buffer<1x1xf32>
-
-// -----
-
-// expected-error @+1 {{expected '>'}}
-!invalid_type = type !linalg<"buffer<1xf32">
 
 // -----
 

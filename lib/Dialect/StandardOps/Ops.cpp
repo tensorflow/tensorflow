@@ -34,6 +34,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//

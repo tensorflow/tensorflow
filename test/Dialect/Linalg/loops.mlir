@@ -12,22 +12,20 @@
 // CHECK-DAG: #[[Stride2Dilation4:.*]] = (d0, d1) -> (d0 * 2 + d1 * 4)
 // CHECK-DAG: #[[Stride3Dilation5:.*]] = (d0, d1) -> (d0 * 3 + d1 * 5)
 
-func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
+
+func @matmul(%arg0: memref<?xi8>, %M: index, %N: index, %K: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  %I = linalg.range %c0:%arg1:%c1 : !linalg.range
-  %J = linalg.range %c0:%arg2:%c1 : !linalg.range
-  %K = linalg.range %c0:%arg3:%c1 : !linalg.range
-  %A = linalg.view %arg0[%I, %K] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
-  %B = linalg.view %arg0[%K, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
-  %C = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %A = view %arg0[%M, %K][%c0] : memref<?xi8> to memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %B = view %arg0[%K, %N][%c0] : memref<?xi8> to memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %C = view %arg0[%M, %N][%c0] : memref<?xi8> to memref<?x?xf32, offset: ?, strides: [?, 1]>
   linalg.matmul(%A, %B, %C) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
   return
 }
-// CHECK-LABEL: func @matmul(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xf32, #[[strided2D]]>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xf32, #[[strided2D]]>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xf32, #[[strided2D]]>
+// CHECK-LABEL: func @matmul(%{{.*}}: memref<?xi8>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
+//       CHECK: %[[A:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?x?xf32, #[[strided2D]]>
+//       CHECK: %[[B:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?x?xf32, #[[strided2D]]>
+//       CHECK: %[[C:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?x?xf32, #[[strided2D]]>
 //       CHECK: %[[M:.*]] = dim %[[A]], 0 : memref<?x?xf32, #[[strided2D]]>
 //       CHECK: %[[K:.*]] = dim %[[A]], 1 : memref<?x?xf32, #[[strided2D]]>
 //       CHECK: %[[N:.*]] = dim %[[B]], 1 : memref<?x?xf32, #[[strided2D]]>
@@ -41,21 +39,19 @@ func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
 //   CHECK-DAG:       %[[res:.*]] = addf %[[c]], %[[inc]] : f32
 //       CHECK:       store %[[res]], %[[C]][%{{.*}}, %{{.*}}] : memref<?x?xf32, #[[strided2D]]>
 
-func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
+func @matvec(%arg0: memref<?xi8>, %M: index, %N: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  %I = linalg.range %c0:%arg1:%c1 : !linalg.range
-  %J = linalg.range %c0:%arg2:%c1 : !linalg.range
-  %2 = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
-  %3 = linalg.view %arg0[%J] : !linalg.buffer<?xf32> -> memref<?xf32, offset: ?, strides: [1]>
-  %4 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> memref<?xf32, offset: ?, strides: [1]>
+  %2 = view %arg0[%M, %N][%c0] : memref<?xi8> to memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %3 = view %arg0[%M][%c0] : memref<?xi8> to memref<?xf32, offset: ?, strides: [1]>
+  %4 = view %arg0[%N][%c0] : memref<?xi8> to memref<?xf32, offset: ?, strides: [1]>
   linalg.matvec(%2, %3, %4) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>
   return
 }
-// CHECK-LABEL: func @matvec(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xf32, #[[strided2D]]>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?xf32, #[[strided1D]]>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?xf32, #[[strided1D]]>
+// CHECK-LABEL: func @matvec(%{{.*}}: memref<?xi8>, %{{.*}}: index, %{{.*}}: index) {
+//       CHECK: %[[A:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?x?xf32, #[[strided2D]]>
+//       CHECK: %[[B:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?xf32, #[[strided1D]]>
+//       CHECK: %[[C:.*]] = std.view %{{.*}}[{{.*}}] : memref<?xi8> to memref<?xf32, #[[strided1D]]>
 //       CHECK: %[[M:.*]] = dim %[[A]], 0 : memref<?x?xf32, #[[strided2D]]>
 //       CHECK: %[[K:.*]] = dim %[[A]], 1 : memref<?x?xf32, #[[strided2D]]>
 //       CHECK: loop.for %{{.*}} = %{{.*}} to %[[M]] step %{{.*}} {
@@ -67,20 +63,19 @@ func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
 //   CHECK-DAG:     %[[res:.*]] = addf %[[c]], %[[inc]] : f32
 //       CHECK:     store %[[res]], %[[C]][%{{.*}}] : memref<?xf32, #[[strided1D]]>
 
-func @dot(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
+func @dot(%arg0: memref<?xi8>, %M: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  %I = linalg.range %c0:%arg1:%c1 : !linalg.range
-  %1 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> memref<?xf32, offset: ?, strides: [1]>
-  %2 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> memref<?xf32, offset: ?, strides: [1]>
-  %3 = linalg.view %arg0[] : !linalg.buffer<?xf32> -> memref<f32>
+  %1 = view %arg0[%M][%c0] : memref<?xi8> to memref<?xf32, offset: ?, strides: [1]>
+  %2 = view %arg0[%M][%c0] : memref<?xi8> to memref<?xf32, offset: ?, strides: [1]>
+  %3 = view %arg0[][] : memref<?xi8> to memref<f32>
   linalg.dot(%1, %2, %3) : memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>, memref<f32>
   return
 }
-// CHECK-LABEL: func @dot(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?xf32, #[[strided1D]]>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> memref<?xf32, #[[strided1D]]>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[] : !linalg.buffer<?xf32> -> memref<f32>
+// CHECK-LABEL: func @dot(%{{.*}}: memref<?xi8>, %{{.*}}: index) {
+//       CHECK: %[[A:.*]] = std.view %{{.*}}[{{.*}}][{{.*}}] : memref<?xi8> to memref<?xf32, #[[strided1D]]>
+//       CHECK: %[[B:.*]] = std.view %{{.*}}[{{.*}}][{{.*}}] : memref<?xi8> to memref<?xf32, #[[strided1D]]>
+//       CHECK: %[[C:.*]] = std.view %{{.*}}[][] : memref<?xi8> to memref<f32>
 //       CHECK: %[[K:.*]] = dim %[[A]], 0 : memref<?xf32, #[[strided1D]]>
 //       CHECK: loop.for %{{.*}} = %{{.*}} to %[[K]] step %{{.*}} {
 //   CHECK-DAG:   %[[a:.*]] = load %[[A]][%{{.*}}] : memref<?xf32, #[[strided1D]]>

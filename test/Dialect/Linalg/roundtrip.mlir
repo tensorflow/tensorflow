@@ -7,7 +7,6 @@
 
 // CHECK-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
-// CHECK-DAG: #[[strided2D42by1SymbolicOffset:.*]] = (d0, d1)[s0] -> (d0 * 42 + s0 + d1)
 // CHECK-DAG: #[[strided3D:.*]] = (d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)
 // CHECK-DAG: #[[strided6D:.*]] = (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3, s4, s5] -> (d0 * s1 + s0 + d1 * s2 + d2 * s3 + d3 * s4 + d4 * s5 + d5)
 
@@ -21,60 +20,31 @@ func @range(%arg0: index, %arg1: index, %arg2: index) {
 // CHECK-LABEL: func @range(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
 //  CHECK-NEXT:  linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
 
-func @buffer_size(%arg0: !linalg.buffer<?xf32>) -> index {
-  %0 = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
-  return %0 : index
-}
-// CHECK-LABEL: func @buffer_size
-//       CHECK:   linalg.buffer_size {{.*}} : !linalg.buffer<?xf32>
-
-func @buffer(%arg0: index, %arg1: index) {
-  %0 = muli %arg0, %arg0 : index
-  %1 = linalg.buffer_alloc %0 : !linalg.buffer<?xvector<4xi8>>
-  %2 = linalg.buffer_alloc %0 {alignment = 16} : !linalg.buffer<?xvector<4xi8>>
-  %3 = linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
-  %4 = linalg.buffer_alloc {alignment = 32} : !linalg.buffer<17xvector<4xi8>>
-  linalg.buffer_dealloc %4 : !linalg.buffer<17xvector<4xi8>>
-  linalg.buffer_dealloc %3 : !linalg.buffer<17xvector<4xi8>>
-  linalg.buffer_dealloc %2 : !linalg.buffer<?xvector<4xi8>>
-  linalg.buffer_dealloc %1 : !linalg.buffer<?xvector<4xi8>>
-  return
-}
-// CHECK-LABEL: func @buffer(%{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:  muli %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} {alignment = 16 : i64} : !linalg.buffer<?xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_alloc {alignment = 32 : i64} : !linalg.buffer<17xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<17xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<17xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
-//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
-
 func @views(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index) {
+  %c0 = constant 0 : index
   %0 = muli %arg0, %arg0 : index
-  %1 = linalg.buffer_alloc %0 : !linalg.buffer<?xf32>
-  %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-  %3 = linalg.view %1[%2, %2] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %1 = alloc (%0) : memref<?xi8>
+  %2 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
+  %3 = view %1[%arg0, %arg0][%c0] : memref<?xi8> to memref<?x?xf32, offset: ?, strides: [?, 1]>
   %4 = linalg.slice %3[%2, %2] : memref<?x?xf32, offset: ?, strides: [?, 1]>, !linalg.range, !linalg.range, memref<?x?xf32, offset: ?, strides: [?, 1]>
   %5 = linalg.slice %3[%2, %arg2] : memref<?x?xf32, offset: ?, strides: [?, 1]>, !linalg.range, index, memref<?xf32, offset: ?, strides: [1]>
   %6 = linalg.slice %3[%arg2, %2] : memref<?x?xf32, offset: ?, strides: [?, 1]>, index, !linalg.range, memref<?xf32, offset: ?, strides: [1]>
   %7 = linalg.slice %3[%arg2, %arg3] : memref<?x?xf32, offset: ?, strides: [?, 1]>, index, index, memref<f32>
-  %8 = linalg.view %1[%2, %2] : !linalg.buffer<?xf32> -> memref<?x?xvector<4x4xf32>, offset: ?, strides: [?, 1]>
-  linalg.buffer_dealloc %1 : !linalg.buffer<?xf32>
+  %8 = view %1[%arg0, %arg0][%c0] : memref<?xi8> to memref<?x?xvector<4x4xf32>, offset: ?, strides: [?, 1]>
+  dealloc %1 : memref<?xi8>
   return
 }
 // CHECK-LABEL: func @views(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:  muli %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
-//  CHECK-NEXT:  linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
-//  CHECK-NEXT:  linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xf32, #[[strided2D]]>
+//  CHECK:  muli %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:  alloc(%{{.*}}) : memref<?xi8>
+//  CHECK-NEXT:  range
+//  CHECK-NEXT:  std.view %{{.*}}[%{{.*}}][%{{.*}}] : memref<?xi8> to memref<?x?xf32, #[[strided2D]]>
 //  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32, #[[strided2D]]>, !linalg.range, !linalg.range, memref<?x?xf32, #[[strided2D]]>
 //  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32, #[[strided2D]]>, !linalg.range, index, memref<?xf32, #[[strided1D]]>
 //  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32, #[[strided2D]]>, index, !linalg.range, memref<?xf32, #[[strided1D]]>
 //  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32, #[[strided2D]]>, index, index, memref<f32>
-//  CHECK-NEXT:  linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> memref<?x?xvector<4x4xf32>, #[[strided2D]]>
-//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xf32>
+//  CHECK-NEXT:  view %{{.*}}[%{{.*}}][%{{.*}}] : memref<?xi8> to memref<?x?xvector<4x4xf32>, #[[strided2D]]>
+//  CHECK-NEXT:  dealloc %{{.*}} : memref<?xi8>
 
 func @ops(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?xf32, offset: ?, strides: [1]>, %arg2: memref<?xf32, offset: ?, strides: [1]>, %arg3: memref<f32>) {
   linalg.matmul(%arg0, %arg0, %arg0) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
@@ -87,41 +57,6 @@ func @ops(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?xf3
 //  CHECK-NEXT:  linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?xf32, #[[strided2D]]>, memref<?x?xf32, #[[strided2D]]>, memref<?x?xf32, #[[strided2D]]>
 //  CHECK-NEXT:  linalg.matvec(%{{.*}}, %{{.*}}, %{{.*}}) : memref<?x?xf32, #[[strided2D]]>, memref<?xf32, #[[strided1D]]>, memref<?xf32, #[[strided1D]]>
 //  CHECK-NEXT:  linalg.dot(%{{.*}}, %{{.*}}, %{{.*}}) : memref<?xf32, #[[strided1D]]>, memref<?xf32, #[[strided1D]]>, memref<f32>
-
-func @dim(%arg0: memref<?x?xf32, offset: ?, strides: [42, 1]>) {
-  %0 = dim %arg0, 1 : memref<?x?xf32, offset: ?, strides: [42, 1]>
-  %1 = linalg.buffer_alloc %0 : !linalg.buffer<?xf32>
-  linalg.buffer_dealloc %1 : !linalg.buffer<?xf32>
-  return
-}
-// CHECK-LABEL: func @dim(
-//       CHECK:  %{{.*}}: memref<?x?xf32, #[[strided2D42by1SymbolicOffset]]>) {
-//  CHECK-NEXT:   dim %{{.*}}, 1 : memref<?x?xf32, #[[strided2D42by1SymbolicOffset]]>
-//  CHECK-NEXT:   linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
-//  CHECK-NEXT:   linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xf32>
-
-func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
-  loop.for %i0 = %arg0 to %arg1 step %arg2 {
-    loop.for %i1 = %arg0 to %arg1 step %arg2 {
-      %min_cmp = cmpi "slt", %i0, %i1 : index
-      %min = select %min_cmp, %i0, %i1 : index
-      %max_cmp = cmpi "sge", %i0, %i1 : index
-      %max = select %max_cmp, %i0, %i1 : index
-      loop.for %i2 = %min to %max step %i1 {
-      }
-    }
-  }
-  return
-}
-// CHECK-LABEL: func @linalg_for(
-//       CHECK:  %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:   loop.for %{{.*}} to %{{.*}} step %{{.*}} {
-//  CHECK-NEXT:     loop.for %{{.*}} to %{{.*}} step %{{.*}} {
-//  CHECK-NEXT:       cmpi "slt", %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       select %{{.*}}, %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       cmpi "sge", %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       select %{{.*}}, %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       loop.for %{{.*}} to %{{.*}} step %{{.*}} {
 
 func @fill_view(%arg0: memref<?xf32, offset: ?, strides: [1]>, %arg1: f32) {
   linalg.fill(%arg0, %arg1) : memref<?xf32, offset: ?, strides: [1]>, f32
@@ -189,13 +124,6 @@ func @subview(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>) {
 //       CHECK:  %{{.*}}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>) {
 //       CHECK:   constant 0 : index
 //       CHECK:   linalg.subview %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?xvector<3x4xi4>, #[[strided2D]]>
-
-func @const_buffer_view(%arg0: index, %arg1: index, %arg2: index) {
-  %c0 = linalg.buffer_alloc : !linalg.buffer<17xf32>
-  %c1 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
-  %c2 = linalg.view %c0[%c1] : !linalg.buffer<17xf32> -> memref<?xf32, offset: ?, strides: [1]>
-  return
-}
 
 #accesses = [
   (i, j, k) -> (j, i),
