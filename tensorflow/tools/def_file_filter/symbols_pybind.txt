@@ -125,3 +125,5 @@ tensorflow::TensorToNdarray
 
 [safe_ptr] # py_checkpoint_reader
 tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
