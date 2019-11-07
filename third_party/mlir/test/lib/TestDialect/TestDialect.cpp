@@ -270,9 +270,14 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
 SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
     llvm::Optional<Location> location, ArrayRef<Value *> operands,
     ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
-  if (location)
-    mlir::emitError(*location) << "expected to fail";
-  return SmallVector<Type, 2>{nullptr};
+  if (operands[0]->getType() != operands[1]->getType()) {
+    if (location)
+      mlir::emitError(*location)
+          << "operand type mismatch " << operands[0]->getType() << " vs "
+          << operands[1]->getType();
+    return {nullptr};
+  }
+  return {operands[0]->getType()};
 }
 
 // Static initialization for Test dialect registration.
