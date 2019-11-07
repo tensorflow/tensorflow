@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -229,6 +231,8 @@ class ExecutionTest : public HloTestBase {
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloGetDimensionSizeRewriter rewriter;
     TF_CHECK_OK(rewriter.Run(module.get()).status());
+    HloDCE dce;
+    TF_CHECK_OK(dce.Run(module.get()).status());
     return ExecuteAndTransfer(std::move(module), arguments);
   }
 };
@@ -723,7 +727,6 @@ ENTRY main {
   ROOT reduce = s32[] reduce(reshaped, init),
       dimensions={0},
       to_apply=update_s32
-  // ROOT gds = s32[] get-dimension-size(reshaped), dimensions={0}
 }
 )";
 
@@ -749,6 +752,32 @@ ENTRY main {
   // Reducing it produces 16
 
   Literal expected = LiteralUtil::CreateR0<int32>(16);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, SetGetDimensionSize) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+ENTRY main {
+  param = s32[3] parameter(0)
+  size = s32[] constant(2)
+  param_dynamic_size = s32[3] set-dimension-size(param, size),
+    dimensions={0}
+  ROOT gds = s32[] get-dimension-size(param_dynamic_size),
+    dimensions={0}
+}
+)";
+
+  // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Should return the size 2 instead of 3.
+  Literal expected = LiteralUtil::CreateR0<int32>(2);
 
   EXPECT_EQ(result, expected);
 }
