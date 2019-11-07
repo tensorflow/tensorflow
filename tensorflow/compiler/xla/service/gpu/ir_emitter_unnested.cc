@@ -106,28 +106,6 @@ namespace m = match;
 // efficient.
 const int64 kMinDimensionToTransposeTiled = 16;
 
-// Returns true if all paths from `hlo` to `root` contain only tuples. The
-// result of such an HloInstruction does not need to be materialized, when the
-// computation can have a hybrid result.
-bool ReachRootViaOnlyTuples(const HloInstruction& hlo,
-                            const HloInstruction& root) {
-  if (hlo.opcode() != HloOpcode::kTuple) {
-    return false;
-  }
-
-  if (&hlo == &root) {
-    return true;
-  }
-
-  for (HloInstruction* user : hlo.users()) {
-    if (!ReachRootViaOnlyTuples(*user, root)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // Updates the launch dimensions in "thunk" and annotate the launch dimensions
 // of the corresponding IR kernel in "llvm_module".
 // Precondition: "thunk" must be a KernelThunk.
