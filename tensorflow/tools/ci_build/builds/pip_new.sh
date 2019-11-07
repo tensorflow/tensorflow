@@ -662,17 +662,18 @@ fi
 # Run tests (if any is specified).
 run_all_tests
 
-for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
-  if [[ ${OS_TYPE} == "ubuntu" ]]; then
-    # Avoid Python3.6 abnormality by installing auditwheel here.
-    set +e
-    pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-    pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-    sudo pip3 install auditwheel==2.0.0 || \
-      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-    set -e
-    auditwheel --version
 
+if [[ ${OS_TYPE} == "ubuntu" ]]; then
+  # Avoid Python3.6 abnormality by installing auditwheel here.
+  set +e
+  pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+  pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+  sudo pip3 install auditwheel==2.0.0 || \
+    sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+  set -e
+  auditwheel --version
+
+  for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
     # Repair the wheels for cpu manylinux2010
     echo "auditwheel repairing ${WHL_PATH}"
     auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
@@ -685,7 +686,6 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
     else
       die "WARNING: Cannot find repaired wheel."
     fi
-  fi
-done
-
+  done
+fi
 echo "EOF: Successfully ran pip_new.sh"
