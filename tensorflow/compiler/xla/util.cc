@@ -50,22 +50,22 @@ Status WithLogBacktrace(const Status& status) {
 ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
                                        const char* file, int line,
                                        TimerStats* timer_stats)
-    : enabled(enabled),
-      file(file),
-      line(line),
-      label(label),
-      timer_stats(timer_stats) {
-  if (enabled) {
-    start_micros = tensorflow::Env::Default()->NowMicros();
+    : enabled_(enabled),
+      file_(file),
+      line_(line),
+      label_(label),
+      timer_stats_(timer_stats) {
+  if (enabled_) {
+    start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
 }
 
 void ScopedLoggingTimer::StopAndLog() {
-  if (enabled) {
+  if (enabled_) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros) / 1000000.0;
+    double secs = (end_micros - start_micros_) / 1000000.0;
 
-    TimerStats& stats = *timer_stats;
+    TimerStats& stats = *timer_stats_;
     tensorflow::mutex_lock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
@@ -73,15 +73,15 @@ void ScopedLoggingTimer::StopAndLog() {
     }
     stats.times_called++;
 
-    LOG(INFO).AtLocation(file, line)
-        << label
+    LOG(INFO).AtLocation(file_, line_)
+        << label_
         << " time: " << tensorflow::strings::HumanReadableElapsedTime(secs)
         << " (cumulative: "
         << tensorflow::strings::HumanReadableElapsedTime(stats.cumulative_secs)
         << ", max: "
         << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
         << ", #called: " << stats.times_called << ")";
-    enabled = false;
+    enabled_ = false;
   }
 }
 

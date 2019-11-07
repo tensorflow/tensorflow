@@ -102,7 +102,8 @@ struct TimerStats {
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
-struct ScopedLoggingTimer {
+class ScopedLoggingTimer {
+ public:
   // label: Label to display for logging.
   // enabled: Whether this timer should do anything at all.
   // file: Filename to display in logging.
@@ -118,12 +119,13 @@ struct ScopedLoggingTimer {
 
   ~ScopedLoggingTimer();
 
-  bool enabled;
-  const char* file;
-  int line;
-  string label;
-  uint64 start_micros;
-  TimerStats* timer_stats;
+ private:
+  bool enabled_;
+  const char* file_;
+  int line_;
+  string label_;
+  uint64 start_micros_;
+  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
