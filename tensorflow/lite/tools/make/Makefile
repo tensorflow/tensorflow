@@ -215,7 +215,7 @@ ALL_SRCS := \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
 	$(BENCHMARK_LIB_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
 GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
