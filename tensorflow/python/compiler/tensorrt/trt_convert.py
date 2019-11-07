@@ -432,8 +432,7 @@ class TrtGraphConverter(object):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               use_calibration=True,
-               allow_build_at_runtime=True):
+               use_calibration=True):
     """Initialize the converter.
 
     Args:
@@ -472,11 +471,6 @@ class TrtGraphConverter(object):
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
-      allow_build_at_runtime:  Whether to build TensorRT engines during runtime.
-        If no TensorRT engine can be found in cache that can handle the given
-        inputs during runtime, then a new TensorRT engine is built at runtime if
-        allow_build_at_runtime=True, and otherwise native TF is used.
-        This argument is only effective if is_dynamic_op=True.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -536,7 +530,6 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         max_batch_size=max_batch_size,
-        allow_build_at_runtime=allow_build_at_runtime)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
@@ -1182,7 +1175,7 @@ class TrtGraphConverterV2(object):
         node.attr["allow_build_at_runtime"].b = False
       self._for_each_trt_node(self._converted_graph_def,
                               _reset_allow_build_at_runtime)
-      # Rebuild the function since the graph changed above
+      # Rebuild the function since a node attribute changed above
       reset_converted_func = wrap_function.function_from_graph_def(
           self._converted_graph_def,
           [tensor.name for tensor in self._converted_func.inputs],
