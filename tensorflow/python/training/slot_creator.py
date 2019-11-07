@@ -15,9 +15,9 @@
 
 """Standard functions for creating slots.
 
-A slot is a `Variable` created with the same shape as a primary variable or
-`Tensor`. A slot is always scoped in the namespace of the primary object and
-typically has the same device and type.
+A slot is a `Variable` created with the same first m-dimension as a primary
+variable or `Tensor`. A slot is always scoped in the namespace of the primary
+object and typically has the same device and type.
 
 Slots are typically used as accumulators to track values associated with
 the primary object:
@@ -84,11 +84,19 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
     # remove "'linear//weight' + '/'" and ':0'.
     real_slot_name = slot.name[len(primary.op.name + "/"):-2]
     slice_info = primary._save_slice_info
-    slot._set_save_slice_info(variables.Variable.SaveSliceInfo(
-        slice_info.full_name + "/" + real_slot_name,
-        slice_info.full_shape[:],
-        slice_info.var_offset[:],
-        slice_info.var_shape[:]))
+    # support slot's shape not same as primary's shape
+    # example: primary's shape = [10, 20, 30], slot's shape =
+    # None, [], [10], [10, 20] or [10, 20, 30] is allowed
+    # slot's shape = None or [10, 20, 30], set slot's slice_info same as primary
+    # slot's shape = [], don't set slot's slice_info
+    # slot's shape = [10] or [10, 20], set slot's slice_info according to ndims
+    n = slot.shape.ndims
+    if n is None or n > 0:
+      slot._set_save_slice_info(
+          variables.Variable.SaveSliceInfo(
+              slice_info.full_name + "/" + real_slot_name,
+              slice_info.full_shape[:n], slice_info.var_offset[:n],
+              slice_info.var_shape[:n]))
   # pylint: enable=protected-access
   return slot
 

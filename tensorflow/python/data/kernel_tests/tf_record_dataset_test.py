@@ -24,6 +24,7 @@ import zlib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
@@ -65,6 +66,17 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
         writer.write(self._record(i, j))
       writer.close()
     return filenames
+
+  def testTFRecordDatasetConstructorErrorsTensorInput(self):
+    with self.assertRaisesRegex(TypeError,
+                                "filenames.*must be.*Tensor.*string"):
+      readers.TFRecordDataset([1, 2, 3])
+    with self.assertRaisesRegex(TypeError,
+                                "filenames.*must be.*Tensor.*string"):
+      readers.TFRecordDataset(constant_op.constant([1, 2, 3]))
+    # convert_to_tensor raises different errors in graph and eager
+    with self.assertRaises(Exception):
+      readers.TFRecordDataset(object())
 
   def testReadOneEpoch(self):
     # Basic test: read from file 0.
@@ -165,6 +177,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     dataset = readers.TFRecordDataset(files, num_parallel_reads=4)
     self.assertDatasetProduces(
         dataset, expected_output=expected_output * 10, assert_items_equal=True)
+
 
 if __name__ == "__main__":
   test.main()

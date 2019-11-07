@@ -32,9 +32,8 @@ void NcclBroadcaster::Run(StatusCallback done) {
   string nccl_collective_key =
       NcclCollectiveKey(col_ctx_->exec_key, col_ctx_->step_id);
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info->event_mgr,
-      gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
-      col_params_->default_rank, std::move(done));
+      compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
+      col_ctx_->output, col_params_->default_rank, std::move(done));
   VLOG(1)
       << "NcclBroadcast calling NcclManager::AddBroadcastSend/Recv num_tasks "
       << col_params_->group.num_tasks << " current task "
@@ -69,10 +68,10 @@ void NcclBroadcaster::Run(StatusCallback done) {
   {
     // When all devices at this worker have called `SignalMultiNodeReady`, the
     // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
-    // implementation of `Launched` keeps track of the number of devices that
-    // have launched.
+    // implementation of `UnblockDepdendencies` keeps track of the number of
+    // devices that have launched.
     profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
-    col_ctx_->col_exec->Launched(*col_params_);
+    col_ctx_->col_exec->UnblockDependencies(*col_params_);
   }
 }
 

@@ -180,8 +180,8 @@ class Loader(object):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
           else:
-            concrete_function.graph._captures[ops.tensor_id(bound_input)] = (  # pylint: disable=protected-access
-                bound_input, internal_capture)
+            concrete_function.graph.replace_capture(bound_input,
+                                                    internal_capture)
             if internal_capture.dtype == dtypes.resource:
               if resource_variable_ops.is_resource_variable(bound_input):
                 try:
@@ -206,7 +206,7 @@ class Loader(object):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
@@ -343,7 +343,7 @@ class Loader(object):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.TrackableAsset(filename), setattr
+    return tracking.Asset(filename), setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(
@@ -425,11 +425,13 @@ class _RestoredResource(tracking.TrackableResource):
     # Overwrite this method to avoid the implementation of
     # base class to re-wrap the polymorphic functions into
     # another layer of `tf.function`.
-    return {
+    functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
-        "_destroy_resource": self._destroy_resource,
     }
+    if self._destroy_resource:
+      functions.update(_destroy_resource=self._destroy_resource)
+    return functions
 
 
 def _call_attribute(instance, *args, **kwargs):
@@ -498,6 +500,15 @@ def load(export_dir, tags=None):
   representing the whole imported graph. For SavedModels exported from
   `tf.saved_model.save`, variables are instead assigned to whichever attributes
   they were assigned before export.
+
+  _Consuming SavedModels asynchronously_
+
+  When consuming SavedModels asynchronously (the producer is a separate
+  process), the SavedModel directory will appear before all files have been
+  written, and `tf.saved_model.load` will fail if pointed at an incomplete
+  SavedModel. Rather than checking for the directory, check for
+  "saved_model_dir/saved_model.pb". This file is written atomically as the last
+  `tf.saved_model.save` file operation.
 
   Args:
     export_dir: The SavedModel directory to load from.

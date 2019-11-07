@@ -41,6 +41,10 @@ class GPUBFCAllocator : public BFCAllocator {
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 
+#ifdef TENSORFLOW_MEM_DEBUG
+  bool ShouldRecordOpName() const override { return true; }
+#endif
+
  private:
   static bool GetAllowGrowthValue(const GPUOptions& gpu_options);
   static bool GetGarbageCollectionValue();

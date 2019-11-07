@@ -529,5 +529,18 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
 
+  @combinations.generate(
+      strategy_combinations.distributions_and_v2_optimizers())
+  def test_empty_var_list(self, distribution, optimizer_fn):
+    opt = optimizer_fn()
+    with distribution.scope():
+
+      def run_fn():
+        opt.minimize(lambda: constant_op.constant(1.), [])
+        opt.apply_gradients([])
+
+      distribution.experimental_run_v2(run_fn)
+
+
 if __name__ == "__main__":
   test.main()

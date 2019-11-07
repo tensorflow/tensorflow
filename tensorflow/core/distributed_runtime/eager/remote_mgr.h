@@ -59,15 +59,17 @@ class RemoteMgr {
   }
 
   // Serialize a TensorHandle(local/remote) to a RemoteTensorHandle.
-  Status SerializeRemoteTensorHandle(TensorHandle* in, RemoteTensorHandle* out,
-                                     Device* device, const string& device_name);
+  Status SerializeRemoteTensorHandle(
+      TensorHandle* in, RemoteTensorHandle* out, Device* device,
+      const string& device_name,
+      const bool serialize_resource_dtype_and_shape = false);
 
   // Deserialize a RemoteTensorHandle to a TensorHandle(local/remote).
   // The output holds a reference to the TensorHandle.
   Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
                                        TensorHandle** out);
 
-  EagerExecutor* GetOrCreateExecutorForStream(uint64 stream_id);
+  EagerExecutor& GetOrCreateExecutorForStream(uint64 stream_id);
 
   void DeleteExecutorForStream(uint64 stream_id);
 

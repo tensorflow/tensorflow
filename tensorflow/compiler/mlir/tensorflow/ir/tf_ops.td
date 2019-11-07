@@ -24,11 +24,18 @@ limitations under the License.
 // all ops whose definitions are generated from TensorFlow codebase.
 // Changes made there are not respected.
 
-#ifdef TF_OPS
-#else
+#ifndef TF_OPS
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
+
+#ifndef MLIR_CALLINTERFACES
+include "mlir/Analysis/CallInterfaces.td"
+#endif // MLIR_CALLINTERFACES
+
+// A derived attribute that returns the shape of the first result type.
+def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -78,9 +85,9 @@ def TF_ConstOp : TF_Op<"Const", [NoSideEffect]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *result, Attribute value">,
+      "Builder *builder, OperationState &result, Attribute value">,
     OpBuilder<
-      "Builder *builder, OperationState *result, Type type, Attribute value">,
+      "Builder *builder, OperationState &result, Type type, Attribute value">,
   ];
 
   let hasFolder = 1;
@@ -124,7 +131,7 @@ Returns a tensor with the same shape and contents as input.
     TF_Tensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_IfOp : TF_Op<"If", []> {
@@ -196,6 +203,44 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall",
+                                 [CallOpInterface, NoSideEffect]> {
+  let summary =
+    "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f,
+    StrAttr:$config,
+    StrAttr:$config_proto,
+    StrAttr:$executor_type
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
+}
+
 // In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
 // of function arguments.
 // Note: NoSideEffect trait is not added intentionally to preserve the captured
@@ -238,6 +283,62 @@ Inserts a placeholder for a tensor that will be always fed.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
+  let summary = "Placeholder op";
+  let description = [{
+    A placeholder op that passes through input when its output is not fed.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+  DerivedAttr shape = TF_DerivedResultShapeAttr;
+}
+
+def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
+                                         [CallOpInterface]> {
+  let summary =
+    "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f,
+    StrAttr:$config,
+    StrAttr:$config_proto,
+    StrAttr:$executor_type
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
 }
 
 def TF_WhileOp : TF_Op<"While", []> {
@@ -302,4 +403,32 @@ element_dtype: the desired type of elements in the list.
   );
 }
 
+// This operation when auto-generated is marked as NoSideEffect because it isn't
+// stateful in TensorFlow. However it is kept alive through control dependency,
+// and does not have any output. When placed in an island it wouldn't be kept
+// alive in any way and the canonicalizer would just always fold it away.
+def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", []> {
+  let summary = [{
+Metadata indicating how the TPU computation should be replicated.
+  }];
+
+  let description = [{
+This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+  }];
+
+  let arguments = (ins
+    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
+    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
+    StrAttr:$topology,
+    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
+    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
+    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
+  );
+
+  let results = (outs);
+}
 #endif // TF_OPS

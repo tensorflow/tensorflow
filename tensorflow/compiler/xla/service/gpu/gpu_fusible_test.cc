@@ -465,7 +465,43 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   const HloInstruction* fusion_2 =
-      module->entry_computation()->root_instruction()->operand(1)->operand(0);
+      module->entry_computation()->root_instruction()->operand(2);
+  EXPECT_NE(fusion_1, fusion_2);
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
+}
+
+TEST_F(GpuFusibleTest,
+       ShapesCompatibleForMultiOutputFusion_DifferentElementType) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
+      exp = f32[8,1,5,16,1,1]{5,4,3,2,1,0} exponential(p0.1)
+      ROOT tuple = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      const.2 = f32[] constant(0)
+      broadcast = f32[8,1,5,16,1,1]{5,4,3,2,1,0} broadcast(const.2), dimensions={}
+      add = f32[8,1,5,16,1,1]{5,4,3,2,1,0} add(p0.2, broadcast)
+      ROOT convert = s32[8,1,5,16,1,1]{5,4,3,2,1,0} convert(add)
+    }
+
+    ENTRY entry {
+      p0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      fusion.1 = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = s32[8,1,5,16,1,1]{5,4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      gte0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
+      ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(gte0, gte1, fusion.2)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(2);
+  EXPECT_NE(fusion_1, fusion_2);
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
 }
 

@@ -49,7 +49,7 @@ public:
       numProcessors.push_back(op->getResult(1));
     });
 
-    func.walk<loop::ForOp>([&processorIds, &numProcessors](loop::ForOp op) {
+    func.walk([&processorIds, &numProcessors](loop::ForOp op) {
       // Ignore nested loops.
       if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;

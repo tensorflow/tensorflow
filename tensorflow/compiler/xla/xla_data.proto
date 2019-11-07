@@ -583,6 +583,12 @@ message CholeskyOptions {
   bool lower = 1;
 }
 
+// Generic map of attributes used to pass hints / configuration options from
+// the Python frontend to the XLA backend.
+message FrontendAttributes {
+  map<string, string> map = 1;
+}
+
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,

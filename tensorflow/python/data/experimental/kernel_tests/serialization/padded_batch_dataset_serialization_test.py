@@ -17,18 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
 class PaddedBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatch(self):
 
     def build_dataset(seq_lens):
@@ -39,6 +44,7 @@ class PaddedBatchDatasetSerializationTest(
     seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
     self.run_core_tests(lambda: build_dataset(seq_lens), 8)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchNonDefaultPadding(self):
 
     def build_dataset(seq_lens):

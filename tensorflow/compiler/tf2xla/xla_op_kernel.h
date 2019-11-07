@@ -202,6 +202,17 @@ class XlaOpKernelContext {
   Status GetVariableTypeAndShape(int index, DataType* type,
                                  TensorShape* shape) const;
 
+  // When dynamic_dimension_is_minus_one is set, querying a dynamic dimension
+  // returns "-1", this is useful when the underlying ops expect explicit
+  // dynamic index like reshape.
+  void set_dynamic_dimension_is_minus_one(bool value) {
+    dynamic_dimension_is_minus_one_ = value;
+  }
+
+  bool dynamic_dimension_is_minus_one() const {
+    return dynamic_dimension_is_minus_one_;
+  }
+
   // Reads the current value of the resouce variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
   // variable. Returns an error if the variable has not been initialized, or if
@@ -280,6 +291,7 @@ class XlaOpKernelContext {
                                xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
+  bool dynamic_dimension_is_minus_one_;
 };
 
 }  // namespace tensorflow

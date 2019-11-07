@@ -21,33 +21,67 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace tensorflow {
 
-Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
+using mlir::MLIRContext;
+
+static StatusOr<mlir::OwningModuleRef> Import(
+    const GraphOptimizationPassOptions& options, const Graph& graph,
+    MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.
   GraphDebugInfo debug_info;
-  mlir::MLIRContext context;
-  NodeSpecs specs;
-  ExporterConfigs confs;
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ConvertGraphToMlir(**options.graph, debug_info,
-                                         *options.flib_def, specs, &context));
+  GraphImportConfig specs;
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));
+  mlir::StatusScopedDiagnosticHandler status_handler(context);
   if (failed(mlir::verify(*module))) {
-    // TODO(jpienaar): Remove, just simple verification that this works.
-    module->dump();
-    return errors::Internal("Verifier failed on MLIR import for the graph");
+    if (VLOG_IS_ON(1)) module->dump();
+    return status_handler.ConsumeStatus();
   }
-  auto status =
-      ConvertMlirToGraph(*module, confs, options.graph, options.flib_def);
-  if (!status.ok()) module->dump();
-  return status;
+  return module;
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      MlirRoundtripPass);
+static Status Export(mlir::OwningModuleRef module,
+                     const GraphOptimizationPassOptions& options,
+                     std::unique_ptr<Graph>* graph) {
+  GraphExportConfig confs;
+  return ConvertMlirToGraph(*module, confs, graph, options.flib_def);
+}
+
+static Status Roundtrip(const GraphOptimizationPassOptions& options,
+                        std::unique_ptr<Graph>* graph, MLIRContext* context) {
+  TF_ASSIGN_OR_RETURN(auto module, Import(options, **graph, context));
+  return Export(std::move(module), options, graph);
+}
+
+Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
+  MLIRContext context;
+  if (options.graph) return Roundtrip(options, options.graph, &context);
+
+  // If the graph is partitioned, then try and round trip them individually.
+  for (auto& it : *options.partition_graphs) {
+    VLOG(1) << "Roundtripping: " << it.first;
+    // TODO(jpienaar): Roundtrip results in different failures, investigate.
+    TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
+  }
+  return Status::OK();
+}
+
+Status MlirImportPass::Run(const GraphOptimizationPassOptions& options) {
+  MLIRContext context;
+  if (options.graph) {
+    if (!Import(options, **options.graph, &context).ok()) {
+      metrics::IncrementMLIRImportFailureCount();
+    }
+  }
+  return Status::OK();
+}
 
 }  // namespace tensorflow

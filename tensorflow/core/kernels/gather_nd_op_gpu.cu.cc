@@ -28,8 +28,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Index, int IXDIM>
 __global__ void GatherSliceOpKernel(
-    const T* params, const Index* indices, T* out,
-    const Eigen::array<int64, IXDIM> batch_strides,
+    const T* __restrict__ params, const Index* __restrict__ indices,
+    T* __restrict__ out, const Eigen::array<int64, IXDIM> batch_strides,
     const Eigen::array<int64, IXDIM> batch_indices, const int64 indices_size,
     const int64 slice_size, const int64 out_size) {
   // TODO(ebrevdo): reduce inner loop into two loops:

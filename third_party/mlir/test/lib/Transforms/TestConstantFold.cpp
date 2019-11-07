@@ -61,7 +61,7 @@ void TestConstantFold::runOnFunction() {
   // folding are at the beginning. This creates somewhat of a linear ordering to
   // the newly generated constants that matches the operation order and improves
   // the readability of test cases.
-  OperationFolder helper;
+  OperationFolder helper(&getContext());
   for (Operation *op : llvm::reverse(ops))
     foldOperation(op, helper);
 
@@ -71,11 +71,6 @@ void TestConstantFold::runOnFunction() {
     if (cst->use_empty())
       cst->erase();
   }
-}
-
-/// Creates a constant folding pass.
-std::unique_ptr<FunctionPassBase> mlir::createTestConstantFoldPass() {
-  return std::make_unique<TestConstantFold>();
 }
 
 static PassRegistration<TestConstantFold>

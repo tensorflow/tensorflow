@@ -81,7 +81,7 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of a
 /// Function.
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
   return std::make_unique<LoopTiling>(cacheSizeBytes);
 }
@@ -168,13 +168,13 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       boundExprs.push_back(dim + tileSizes[i]);
       boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
-      auto ubMap = b.getAffineMap(origUbMap.getNumDims() + 1,
+      auto ubMap = AffineMap::get(origUbMap.getNumDims() + 1,
                                   origUbMap.getNumSymbols(), boundExprs);
       newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
       auto dim = b.getAffineDimExpr(0);
-      auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i]);
+      auto ubMap = AffineMap::get(1, 0, dim + tileSizes[i]);
       newLoops[width + i].setUpperBound(newLoops[i].getInductionVar(), ubMap);
     }
   }
@@ -190,7 +190,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for op's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i].getOperation()->getParentOp() == band[i - 1].getOperation());
+    assert(band[i].getParentOp() == band[i - 1].getOperation());
   }
 
   auto origLoops = band;

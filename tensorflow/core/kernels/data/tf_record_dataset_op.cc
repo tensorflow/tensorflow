@@ -107,7 +107,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
           out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                     TensorShape({}));
           Status s =
-              reader_->ReadRecord(&out_tensors->back().scalar<string>()());
+              reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
           if (s.ok()) {
             metrics::RecordTFDataBytesRead(
                 kDatasetType, out_tensors->back().scalar<tstring>()().size());
@@ -208,7 +208,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
   };
 
   const std::vector<string> filenames_;
-  const string compression_type_;
+  const tstring compression_type_;
   io::RecordReaderOptions options_;
 };
 
@@ -230,9 +230,9 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
   }
 
-  string compression_type;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kCompressionType,
-                                                  &compression_type));
+  tstring compression_type;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
+                                                   &compression_type));
 
   int64 buffer_size = -1;
   OP_REQUIRES_OK(ctx,

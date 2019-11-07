@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -88,7 +89,9 @@ LEGACY_RANDOM_OPS = [
 ]
 
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"
+    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+    "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+    "EnqueueTPUEmbeddingSparseTensorBatch"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
@@ -299,8 +302,7 @@ class AutomaticControlDependencies(object):
         continue
       control_inputs = set()
       # Ensure stateful ops run
-      if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
-          or op_is_stateful(op)):
+      if op_def_registry.get(op.type) is None or op_is_stateful(op):
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -360,8 +362,11 @@ class AutomaticControlDependencies(object):
     for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
       if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
-            [o for o in self.ops_which_must_run
-             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+            [
+                o for o in self.ops_which_must_run
+                if r.graph.building_function or
+                (o._control_flow_context is r.op._control_flow_context)  # pylint: disable=protected-access
+            ])
 
 
 def automatic_control_dependencies(f):

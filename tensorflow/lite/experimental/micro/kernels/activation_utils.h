@@ -33,9 +33,18 @@ inline float ActivationValFloat(TfLiteFusedActivation act, float a) {
       return a;
     case kTfLiteActRelu:
       return a < 0.f ? 0.f : a;
+    case kTfLiteActRelu1:
+      return a < 0.f ? 0.f : ((a > 1.f) ? 1.f : a);
+    case kTfLiteActRelu6:
+      return a < 0.f ? 0.f : ((a > 6.f) ? 6.f : a);
+    case kTfLiteActTanh:
+      return (expf(a) - expf(-a)) / (expf(a) + expf(-a));
+    case kTfLiteActSignBit:
+      return signbit(a);
+    case kTfLiteActSigmoid:
+      return 1.f / (1.f + expf(-a));
     default:
-      // TODO(kreeger): Implement more activations.
-      exit(1);
+      return a;
   }
 }
 

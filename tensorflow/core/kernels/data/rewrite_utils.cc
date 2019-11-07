@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -137,248 +138,17 @@ Status ApplyRewrites(OpKernelContext* ctx,
   return Status::OK();
 }
 
-uint64 DefaultDependencyLoopNodeHash() {
-  static const uint64 hash = Hash64("DependencyLoopNode");
-  return hash;
-}
-
-uint64 DefaultDependencyLoopFnHash() {
-  static const uint64 hash = Hash64("DependencyLoopFn");
-  return hash;
-}
-
-void ClearOpDefForHashing(OpDef* op) {
-  op->clear_name();
-  op->clear_description();
-  op->clear_summary();
-  for (auto& arg : *op->mutable_input_arg()) {
-    arg.clear_name();
-    arg.clear_description();
-  }
-  for (auto& arg : *op->mutable_output_arg()) {
-    arg.clear_name();
-    arg.clear_description();
-  }
-}
-
-// forward declaration for use in HashAttr.
-uint64 HashSubgraphFunctionImpl(
-    const FunctionDefLibrary& library, const FunctionDef* f,
-    std::vector<std::string>* visited,
-    absl::flat_hash_map<std::string, uint64>* cache);
-
-// Produces a hash of a attribute from an op or a function. Since attributes
-// may refer to functions present in the graph, we may need to hash the function
-// referred to by the attribute, and thus we need the FunctionDefLibrary.
-uint64 HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
-                const AttrValue& attr_value, std::vector<std::string>* visited,
-                absl::flat_hash_map<std::string, uint64>* cache) {
-  uint64 attr_hash = 0;
-  if (attr_value.has_func()) {
-    for (const auto& func : library.function()) {
-      if (func.signature().name() == attr_value.func().name()) {
-        attr_hash = Hash64CombineUnordered(
-            attr_hash,
-            Hash64(absl::StrCat(
-                attr_key, "=",
-                HashSubgraphFunctionImpl(library, &func, visited, cache))));
-        break;
-      }
-    }
-  } else {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, Hash64(absl::StrCat(attr_key, "=",
-                                       DeterministicProtoHash64(attr_value))));
-  }
-
-  return attr_hash;
-}
-
-// This function hashes a subgraph (rooted at node) by traversing all possible
-// dependency paths from that node.
-uint64 HashSubgraphImpl(const grappler::GraphView& g, const NodeDef* node,
-                        std::vector<std::string>* visited,
-                        absl::flat_hash_map<std::string, uint64>* cache) {
-  uint64 input_hash = 0;
-  uint64 control_dep_hash = 0;
-
-  std::string canonical_node_name = absl::StrCat("node-", node->name());
-  auto it = cache->find(canonical_node_name);
-  if (it != cache->end()) {
-    return it->second;
-  }
-
-  uint64 op_hash = Hash64(node->op());
-
-  // Checks to make sure we won't get stuck in an infinite loop (especially in
-  // loops with control dependencies).
-  for (const std::string& visited_node_name : *visited) {
-    if (visited_node_name == canonical_node_name) {
-      uint64 final_hash =
-          Hash64Combine(DefaultDependencyLoopNodeHash(), op_hash);
-      (*cache)[canonical_node_name] = final_hash;
-      return final_hash;
-    }
-  }
-  visited->push_back(canonical_node_name);
-
-  for (int i = 0; i < node->input_size(); ++i) {
-    DCHECK_GT(node->input(i).length(), 0);
-    if (node->input(i)[0] == '^') {
-      // TODO(frankchn): Investigate if control dependencies are necessary
-      // inputs to the hash.
-      // Control dependency node names start with '^', and order of appearance
-      // for the control dependencies does not matter.
-      control_dep_hash = Hash64CombineUnordered(
-          control_dep_hash,
-          HashSubgraphImpl(g, g.GetNode(node->input(i).substr(1)), visited,
-                           cache));
-    } else {
-      // The output port is significant and is optionally delimited by a ':'
-      // for non-zero ports.
-      std::pair<std::string, std::string> node_spec =
-          absl::StrSplit(node->input(i), absl::MaxSplits(':', 1));
-      uint64 child_node_hash =
-          HashSubgraphImpl(g, g.GetNode(node_spec.first), visited, cache);
-      uint64 child_port_hash = Hash64(node_spec.second);
-      input_hash = Hash64Combine(
-          input_hash, Hash64Combine(child_node_hash, child_port_hash));
-    }
-  }
-
-  uint64 attr_hash = 0;
-  for (const auto& attr : node->attr()) {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(g.graph()->library(), attr.first, attr.second,
-                            visited, cache));
-  }
-
-  uint64 device_hash = Hash64(node->device());
-
-  uint64 final_hash = Hash64Combine(
-      Hash64Combine(attr_hash, op_hash),
-      Hash64Combine(device_hash, Hash64Combine(input_hash, control_dep_hash)));
-
-  (*cache)[canonical_node_name] = final_hash;
-  visited->pop_back();
-
-  return final_hash;
-}
-
-// This function hashes a function by traversing all possible dependency paths
-// from all output nodes declared by the function in its definition.
-uint64 HashSubgraphFunctionImpl(
-    const FunctionDefLibrary& library, const FunctionDef* f,
-    std::vector<std::string>* visited,
-    absl::flat_hash_map<std::string, uint64>* cache) {
-  std::string canonical_function_name =
-      absl::StrCat("function-", f->signature().name());
-
-  auto it = cache->find(canonical_function_name);
-  if (it != cache->end()) {
-    return it->second;
-  }
-
-  OpDef op = f->signature();
-  ClearOpDefForHashing(&op);
-  uint64 signature_hash = OpDefHash(op);
-
-  // Checks to make sure we won't get stuck in an infinite loop (especially when
-  // functions depend on other function ops as a control dependency).
-  for (const std::string& visited_node_name : *visited) {
-    if (visited_node_name == canonical_function_name) {
-      uint64 final_hash =
-          Hash64Combine(DefaultDependencyLoopFnHash(), signature_hash);
-      (*cache)[canonical_function_name] = final_hash;
-      return final_hash;
-    }
-  }
-  visited->push_back(canonical_function_name);
-
-  uint64 attr_hash = 0;
-  for (const auto& attr : f->attr()) {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(library, attr.first, attr.second, visited, cache));
-  }
-
-  uint64 arg_attr_hash = 0;
-  for (const auto& arg_attr : f->arg_attr()) {
-    for (const auto& attr : arg_attr.second.attr()) {
-      arg_attr_hash = Hash64CombineUnordered(
-          arg_attr_hash,
-          Hash64Combine(arg_attr.first, HashAttr(library, attr.first,
-                                                 attr.second, visited, cache)));
-    }
-  }
-
-  GraphDef node_graph;
-  for (const auto& node : f->node_def()) {
-    NodeDef* node_graph_node = node_graph.add_node();
-    *node_graph_node = node;
-  }
-  for (const auto& input_arg : f->signature().input_arg()) {
-    // We add dummy input nodes for the inputs to the function.
-    NodeDef* node_graph_node = node_graph.add_node();
-    node_graph_node->set_name(input_arg.name());
-    node_graph_node->set_op("_Retval");
-  }
-  *(node_graph.mutable_library()) = library;
-
-  grappler::GraphView node_gv(&node_graph);
-
-  // TODO(frankchn): Investigate whether we need to hash the name of the
-  // return argument / control return argument or whether we can relax it and
-  // hash the index (etc...)
-  uint64 ret_hash = f->ret_size();
-  for (const auto& ret : f->ret()) {
-    std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
-    // For every return value, we need to hash the output node (and the subgraph
-    // rooted at the output node) to ensure that the computation graph that
-    // ends at the output node has not changed.
-    uint64 node_hash = HashSubgraphImpl(
-        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
-    uint64 node_port_hash = Hash64(node_spec.second);
-
-    ret_hash = Hash64CombineUnordered(
-        ret_hash, Hash64Combine(Hash64(ret.first),
-                                Hash64Combine(node_hash, node_port_hash)));
-  }
-
-  uint64 control_ret_hash = f->control_ret_size();
-  for (const auto& ret : f->control_ret()) {
-    std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
-
-    uint64 node_hash = HashSubgraphImpl(
-        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
-    uint64 node_port_hash = Hash64(node_spec.second);
-
-    control_ret_hash = Hash64CombineUnordered(
-        control_ret_hash,
-        Hash64Combine(Hash64(ret.first),
-                      Hash64Combine(node_hash, node_port_hash)));
-  }
-
-  uint64 final_hash = Hash64Combine(
-      Hash64Combine(Hash64Combine(signature_hash, attr_hash), arg_attr_hash),
-      Hash64Combine(ret_hash, control_ret_hash));
-  (*cache)[canonical_function_name] = final_hash;
-  visited->pop_back();
-
-  return final_hash;
-}
-
 }  // anonymous namespace
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
+                      bool optimize_function_library, bool record_fingerprint,
                       DatasetBase** rewritten_input) {
   SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
   params.input_list = &input_list;
-  params.check_external_state = false;
+  params.external_state_policy =
+      SerializationContext::ExternalStatePolicy::kIgnore;
   params.fail_if_unimplemented = false;
   params.serialize_data_tensors = false;
   SerializationContext serialization_ctx(params);
@@ -407,9 +177,8 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   TF_RETURN_IF_ERROR(
       ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
 
-  // Some functions may have been modified without having their names
-  // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave).
+  // Some functions may have been modified without having their names changed
+  // (for example, nested dataset graphs from FlatMap or Interleave).
   TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
 
   Graph graph(OpRegistry::Global());
@@ -421,20 +190,43 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
   (*rewritten_input)->Ref();
+
+  if (record_fingerprint) {
+    (*ctx->runner())([graph_def = std::move(graph_def),
+                      input_list = std::move(input_list),
+                      output_node = std::move(output_node)]() {
+      const NodeDef* node_def = nullptr;
+      for (const auto& node : graph_def.node()) {
+        if (node.name() == output_node) {
+          node_def = &node;
+        }
+      }
+      if (node_def == nullptr) {
+        VLOG(3) << "Failed to find node: " << output_node;
+      }
+      uint64 hash = 0;
+      Status s = HashNode(graph_def, *node_def, &hash);
+      if (!s.ok()) {
+        VLOG(3) << "Failed to hash graph: " << s.ToString();
+        return;
+      }
+      for (const auto& pair : input_list) {
+        hash = Hash64CombineUnordered(hash, Hash64(pair.first));
+        uint64 tensor_hash = 0;
+        Status s = HashTensor(pair.second, &tensor_hash);
+        if (s.ok()) {
+          hash = Hash64CombineUnordered(hash, tensor_hash);
+        } else {
+          VLOG(3) << "Failed to hash tensor: " << s.ToString();
+        }
+      }
+      string graph_hash =
+          strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+      metrics::RecordTFDataFingerprint(graph_hash);
+    });
+  }
+
   return Status::OK();
-}
-
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f) {
-  std::vector<std::string> visited;
-  absl::flat_hash_map<std::string, uint64> cache;
-  return HashSubgraphFunctionImpl(library, f, &visited, &cache);
-}
-
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node) {
-  std::vector<std::string> visited;
-  absl::flat_hash_map<std::string, uint64> cache;
-  return HashSubgraphImpl(grappler::GraphView(&g), node, &visited, &cache);
 }
 
 }  // namespace data

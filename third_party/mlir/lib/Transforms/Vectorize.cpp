@@ -191,7 +191,7 @@ using namespace mlir;
 ///    programmer/library: we derive information from scalar code + annotations.
 /// 2. After dependence analysis and before polyhedral scheduling: the
 ///    information that supports vectorization does not need to be supplied by a
-///    higher level of abstraction. Traditional dependence anaysis is available
+///    higher level of abstraction. Traditional dependence analysis is available
 ///    in MLIR and will be used to drive vectorization and cost models.
 ///
 /// Let's pause here and remark that applying super-vectorization as described
@@ -211,7 +211,7 @@ using namespace mlir;
 ///   operating on elemental vector types. For this reason, the pattern
 ///   profitability analysis should include a component that also captures the
 ///   maximal amount of fusion available under a particular pattern. This is
-///   still at the stage of rought ideas but in this context, search is our
+///   still at the stage of rough ideas but in this context, search is our
 ///   friend as the Tensor Comprehensions and auto-TVM contributions
 ///   demonstrated previously.
 /// Bottom-line is we do not yet have good answers for the above but aim at
@@ -253,8 +253,8 @@ using namespace mlir;
 ///  1. defining super-vectorization patterns and matching them on the tree of
 ///     AffineForOp. A super-vectorization pattern is defined as a recursive
 ///     data structures that matches and captures nested, imperfectly-nested
-///     loops that have a. comformable loop annotations attached (e.g. parallel,
-///     reduction, vectoriable, ...) as well as b. all contiguous load/store
+///     loops that have a. conformable loop annotations attached (e.g. parallel,
+///     reduction, vectorizable, ...) as well as b. all contiguous load/store
 ///     operations along a specified minor dimension (not necessarily the
 ///     fastest varying) ;
 ///  2. analyzing those patterns for profitability (TODO(ntv): and
@@ -482,7 +482,7 @@ using namespace mlir;
 /// --test-fastest-varying=1 --test-fastest-varying=0
 /// ```
 ///
-/// produces this more insteresting mixed outer-innermost-loop vectorized code:
+/// produces this more interesting mixed outer-innermost-loop vectorized code:
 /// ```mlir
 /// mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
 ///   %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
@@ -772,7 +772,7 @@ static void computeMemoryOpIndices(Operation *op, AffineMap map,
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
     auto singleResMap =
-        builder.getAffineMap(map.getNumDims(), map.getNumSymbols(), resultExpr);
+        AffineMap::get(map.getNumDims(), map.getNumSymbols(), resultExpr);
     auto afOp =
         builder.create<AffineApplyOp>(op->getLoc(), singleResMap, mapOperands);
     results.push_back(afOp);
@@ -814,14 +814,15 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // as needed by various targets.
   if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
     OpBuilder b(opInst);
-    SmallVector<Value *, 4> mapOperands(load.getIndices());
+    SmallVector<Value *, 4> mapOperands(load.getMapOperands());
     SmallVector<Value *, 8> indices;
     indices.reserve(load.getMemRefType().getRank());
     if (load.getAffineMap() !=
         b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
       computeMemoryOpIndices(opInst, load.getAffineMap(), mapOperands, indices);
     } else {
-      indices.append(load.getIndices().begin(), load.getIndices().end());
+      indices.append(load.getMapOperands().begin(),
+                     load.getMapOperands().end());
     }
     auto permutationMap =
         makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
@@ -1038,7 +1039,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
 
-    SmallVector<Value *, 4> mapOperands(store.getIndices());
+    SmallVector<Value *, 4> mapOperands(store.getMapOperands());
     SmallVector<Value *, 8> indices;
     indices.reserve(store.getMemRefType().getRank());
     if (store.getAffineMap() !=
@@ -1046,7 +1047,8 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       computeMemoryOpIndices(opInst, store.getAffineMap(), mapOperands,
                              indices);
     } else {
-      indices.append(store.getIndices().begin(), store.getIndices().end());
+      indices.append(store.getMapOperands().begin(),
+                     store.getMapOperands().end());
     }
 
     auto permutationMap =
@@ -1097,7 +1099,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
 
 /// Iterates over the forward slice from the loads in the vectorization pattern
 /// and rewrites them using their vectorized counterpart by:
-///   1. Create the forward slice starting from the laods in the vectorization
+///   1. Create the forward slice starting from the loads in the vectorization
 ///   pattern.
 ///   2. Topologically sorts the forward slice.
 ///   3. For each operation in the slice, create the vector form of this
@@ -1240,7 +1242,7 @@ void Vectorize::runOnFunction() {
   NestedPatternContext mlContext;
 
   llvm::DenseSet<Operation *> parallelLoops;
-  f.walk<AffineForOp>([&parallelLoops](AffineForOp loop) {
+  f.walk([&parallelLoops](AffineForOp loop) {
     if (isLoopParallel(loop))
       parallelLoops.insert(loop);
   });
@@ -1276,7 +1278,7 @@ void Vectorize::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\n");
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
   return std::make_unique<Vectorize>(virtualVectorSize);
 }

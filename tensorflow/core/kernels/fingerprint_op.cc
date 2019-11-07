@@ -52,7 +52,7 @@ void FarmhashFingerprint64(TTypes<uint8, 2>::ConstTensor input,
   }
 }
 
-void FarmhashFingerprint64(TTypes<string>::ConstFlat input,
+void FarmhashFingerprint64(TTypes<tstring>::ConstFlat input,
                            TTypes<uint8, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
   DCHECK_EQ(output.dimension(1), sizeof(uint64));
@@ -79,7 +79,7 @@ class FingerprintOp : public OpKernel {
                 errors::InvalidArgument("`method` should be a scalar string: ",
                                         method_tensor.shape()));
     // For now, farmhash64 is the only function supported.
-    const string& method = method_tensor.scalar<string>()();
+    const tstring& method = method_tensor.scalar<tstring>()();
     OP_REQUIRES(
         context, method == "farmhash64",
         errors::InvalidArgument("Unsupported fingerprint method: ", method));

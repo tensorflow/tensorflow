@@ -136,7 +136,7 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         }
         if (ensemble_resource->num_trees() > 0) {
           // Create a dummy new tree with an empty node.
-          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
+          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight, 1);
         }
       }
       // If we managed to split, update the node range. If we didn't, don't
@@ -159,7 +159,7 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
     // boosting.
     if (num_trees <= 0) {
       // Create a new tree with a no-op leaf.
-      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight);
+      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight, 1);
     }
     return current_tree;
   }
@@ -357,7 +357,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
         }
         if (ensemble_resource->num_trees() > 0) {
           // Create a dummy new tree with an empty node.
-          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
+          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight, logits_dim_);
         }
       }
       // If we managed to split, update the node range. If we didn't, don't
@@ -380,7 +380,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     // boosting.
     if (num_trees <= 0) {
       // Create a new tree with a no-op leaf.
-      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight);
+      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight, logits_dim_);
     }
     return current_tree;
   }
@@ -406,7 +406,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
           left_node_contribs_list[feature_idx].matrix<float>();
       const auto& right_node_contribs =
           right_node_contribs_list[feature_idx].matrix<float>();
-      const auto& split_types = split_types_list[feature_idx].vec<string>();
+      const auto& split_types = split_types_list[feature_idx].vec<tstring>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
            ++candidate_idx) {
@@ -504,7 +504,8 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     float current_bias = 0.0;
     bool continue_centering = true;
     if (ensemble_resource->num_trees() == 0) {
-      ensemble_resource->AddNewTreeWithLogits(kLayerByLayerTreeWeight, logits);
+      ensemble_resource->AddNewTreeWithLogits(kLayerByLayerTreeWeight, {logits},
+                                              1);
       current_bias = logits;
     } else {
       const auto& current_biases = ensemble_resource->node_value(0, 0);

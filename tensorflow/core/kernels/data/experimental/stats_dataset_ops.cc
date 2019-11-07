@@ -42,7 +42,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     *output = new Dataset(ctx, input, std::move(tag));
   }
@@ -146,7 +146,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string tag_;
+    const tstring tag_;
   };
 };
 
@@ -157,7 +157,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     *output = new Dataset(ctx, input, std::move(tag));
   }
@@ -263,7 +263,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string tag_;
+    const tstring tag_;
   };
 };
 

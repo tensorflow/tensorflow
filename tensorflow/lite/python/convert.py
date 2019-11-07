@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
-
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
+
+import six
+from six.moves import map
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
@@ -55,7 +58,7 @@ def _try_convert_to_unicode(output):
 
   if isinstance(output, bytes):
     try:
-      return output.decode()
+      return six.ensure_text(output)
     except UnicodeDecodeError:
       pass
   return output
@@ -111,8 +114,8 @@ def toco_convert_protos(model_flags_str,
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter. (default False)
+    enable_mlir_converter: Enables MLIR-based conversion instead of the default
+      TOCO conversion. (default False)
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
@@ -151,7 +154,7 @@ def toco_convert_protos(model_flags_str,
 
       fp_model.write(model_flags_str)
       fp_toco.write(toco_flags_str)
-      fp_input.write(input_data_str)
+      fp_input.write(six.ensure_binary(input_data_str))
       debug_info_str = debug_info_str if debug_info_str else ""
       # if debug_info_str contains a "string value", then the call to
       # fp_debug.write(debug_info_str) will fail with the following error
@@ -227,7 +230,8 @@ def build_toco_convert_protos(input_tensors,
                               dump_graphviz_video=False,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
-                              debug_info=None):
+                              debug_info=None,
+                              conversion_summary_dir=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -291,6 +295,7 @@ def build_toco_convert_protos(input_tensors,
       or are unused in the final graph. (default False)
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
+    conversion_summary_dir: A string, the path to the generated conversion logs.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -323,6 +328,8 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
+  if conversion_summary_dir:
+    toco.conversion_summary_dir = conversion_summary_dir
   if target_ops:
     if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
       toco.enable_select_tf_ops = True
@@ -338,7 +345,8 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+    if toco.inference_input_type in \
+        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
       if not quantized_input_stats:
         raise ValueError("std_dev and mean must be defined when "
                          "inference_input_type is QUANTIZED_UINT8.")
@@ -347,7 +355,7 @@ def build_toco_convert_protos(input_tensors,
       shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
@@ -375,8 +383,8 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
       (default None)
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter.
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -400,7 +408,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
-    input_array.shape.dims.extend(map(int, shape))
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for name in output_arrays:
     model_flags.output_arrays.append(name)
@@ -426,8 +434,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    enable_mlir_converter: Enables the MLIR converter instead of the TOCO
-      converter.
+    enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
+      conversion.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 

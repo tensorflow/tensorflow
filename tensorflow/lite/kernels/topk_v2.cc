@@ -227,8 +227,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   switch (output_values->type) {
     case kTfLiteFloat32:
-      TopK(row_size, num_rows, input->data.f, k, output_indexes->data.i32,
-           output_values->data.f);
+      TopK(row_size, num_rows, GetTensorData<float>(input), k,
+           output_indexes->data.i32, GetTensorData<float>(output_values));
       break;
     case kTfLiteUInt8:
       TopK(row_size, num_rows, input->data.uint8, k, output_indexes->data.i32,

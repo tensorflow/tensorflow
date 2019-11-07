@@ -34,7 +34,10 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -110,10 +113,10 @@ def get_multi_inputs_multi_outputs_data():
       num_classes=2,
       random_seed=_RANDOM_SEED)
 
-  c_train = keras.utils.to_categorical(c_train)
-  c_test = keras.utils.to_categorical(c_test)
-  d_train = keras.utils.to_categorical(d_train)
-  d_test = keras.utils.to_categorical(d_test)
+  c_train = np_utils.to_categorical(c_train)
+  c_test = np_utils.to_categorical(c_test)
+  d_train = np_utils.to_categorical(d_train)
+  d_test = np_utils.to_categorical(d_test)
 
   train_data = {
       'input_a': a_train,
@@ -286,21 +289,10 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.adamax_optimizer_keras_v2_fn,
               strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
               strategy_combinations.nadam_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn
+              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
+              strategy_combinations.ftrl_optimizer_keras_v2_fn
           ],
-          experimental_run_tf_function=[True, False])) + combinations.combine(
-              distribution=[
-                  strategy_combinations.one_device_strategy,
-              ],
-              mode=['graph', 'eager'],
-              # TODO(b/109941998):  Ftrl optimizer doesn't have a GPU kernel.
-              # That is why it's not tested with MirroredStrategies.  It is also
-              # not tested with Default strategy, because that fails with
-              # colocation error dense_12/MatMul/ReadVariableOp on GPU and
-              # ResourceApplyFtrl that can't be on GPU.  Add default strategy,
-              # one device GPU strategy and mirrored GPU strategies.
-              optimizer=strategy_combinations.ftrl_optimizer_keras_v2_fn,
-              experimental_run_tf_function=[True, False])
+          experimental_run_tf_function=[True, False]))
   tpu_strategies_graph = combinations.combine(
       distribution=tpu_strategies,
       mode=['graph'],
@@ -467,6 +459,86 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
         model.predict(inputs)
         model.predict(inputs, batch_size=8)
+
+  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  def test_calling_model_with_mixed_precision(self, distribution,
+                                              experimental_run_tf_function):
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      policy_name = 'mixed_bfloat16'
+    else:
+      policy_name = 'mixed_float16'
+    with self.cached_session(), \
+         distribution.scope(), \
+         policy.policy_scope(policy_name):
+      optimizer_fn = gradient_descent_keras.SGD
+      optimizer = optimizer_fn(0.001)
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      y = keras.layers.Activation('softmax', dtype='float32')(y)
+      model = keras.Model(x, y)
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          experimental_run_tf_function=experimental_run_tf_function)
+
+      # We need to pass float32 since TPUs do not support float64, even though
+      # these arrays will immediately be casted to bfloat16 on TPUs. We also
+      # cannot pass bfloat16, as Numpy does not support it.
+      inputs = np.zeros((64, 3), dtype='float32')
+      targets = np.zeros((64, 4), dtype='float32')
+
+      model.fit(
+          inputs,
+          targets,
+          epochs=1,
+          batch_size=2,
+          verbose=0,
+          validation_data=(inputs, targets))
+
+      model.evaluate(inputs, targets)
+      model.evaluate(inputs, targets, batch_size=8)
+
+      model.predict(inputs)
+      model.predict(inputs, batch_size=8)
+
+  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  def test_operator_overload_mixed_precision(self, distribution,
+                                             experimental_run_tf_function):
+    # Regression test that tests a fixed bug does not reoccur. Adding an
+    # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
+    # the '+' operator, used to cause the gradient w.r.t. the variable to be
+    # None.
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      policy_name = 'mixed_bfloat16'
+    else:
+      policy_name = 'mixed_float16'
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v', ())
+        self.v2 = self.add_weight('v', ())
+
+      def call(self, inp):
+        inp += self.v1
+        return self.v2 + inp
+
+    with self.cached_session(), distribution.scope():
+      layer = MyLayer(dtype=policy.Policy(policy_name))
+      def run_fn():
+        x = np.array([1.])
+        with backprop.GradientTape() as tape:
+          y = layer(x)
+        grad_v1, grad_v2 = tape.gradient(y, [layer.v1, layer.v2])
+        return grad_v1, grad_v2
+      grad_v1, grad_v2 = distribution.experimental_run_v2(run_fn)
+      self.assertIsNotNone(grad_v1)
+      self.assertIsNotNone(grad_v2)
 
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_nested_numpy_arrays(self, distribution,
@@ -2067,4 +2139,5 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
 
 
 if __name__ == '__main__':
+  base_layer_utils.enable_v2_dtype_behavior()
   test.main()

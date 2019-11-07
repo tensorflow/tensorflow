@@ -62,8 +62,7 @@ def _make_execution_function(model, mode):
 
   def distributed_function(input_iterator):
     """A single step of the distributed execution across replicas."""
-    x, y, sample_weights = _prepare_feed_values(
-        model, input_iterator, mode)
+    x, y, sample_weights = _prepare_feed_values(input_iterator, mode)
     # Call `Model.{train,test,predict}_on_batch` on every replica passing
     # PerReplicas as arguments.  On every replica inside this call, each
     # PerReplica object will return the value for that replica.  The outputs
@@ -93,14 +92,13 @@ def _non_none_constant_value(v):
   return constant_value if constant_value is not None else v
 
 
-def _prepare_feed_values(model, inputs, mode):
+def _prepare_feed_values(inputs, mode):
   """Prepare feed values to the model execution function.
 
   Arguments:
-    model: Model to prepare feed values for.
-    inputs: An iterator of model inputs, targets, and sample_weights.
-      model inputs may be lists, single values, or dicts mapping input feed
-      names to values.
+    inputs: An iterator of model inputs, targets, and sample_weights. model
+      inputs may be lists, single values, or dicts mapping input feed names to
+      values.
     mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
 
   Returns:
@@ -110,14 +108,6 @@ def _prepare_feed_values(model, inputs, mode):
     for inputs will always be wrapped in lists.
   """
   inputs, targets, sample_weights = _get_input_from_iterator(inputs)
-
-  # When the inputs are dict, then we want to flatten it in the same order as
-  # the input layers, such that the data are fed into the input layers in the
-  # correct order.
-  if isinstance(inputs, dict):
-    inputs = [inputs[key] for key in model._feed_input_names]
-  else:
-    inputs = training_utils.ModelInputs(inputs).as_list()
 
   if mode == ModeKeys.PREDICT:
     sample_weights = []
@@ -360,7 +350,7 @@ def predict_on_batch(model, x):
 
   # If `model._distribution_strategy` is True, then we are in a replica context
   # at this point.
-  inputs = training_utils.cast_if_floating_dtype(inputs)
+  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
   if isinstance(inputs, collections.Sequence):
     # Unwrap lists with only one input, as we do when training on batch
     if len(inputs) == 1:

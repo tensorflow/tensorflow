@@ -198,6 +198,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         CHECK_EQ(0, producer->user_count());
         TF_CHECK_OK(computation()->RemoveInstruction(producer));
       }
+      RecomputeReachability();
       continue;
     }
     HloInstruction* input_fusion =

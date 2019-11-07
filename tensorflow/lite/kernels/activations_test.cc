@@ -567,6 +567,51 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
+TEST(QuantizedActivationsOpTest, ReluUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 7, 1,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({128, 128, 160, 192, 176, 128, 240, 144}));
+}
+
+TEST(QuantizedActivationsOpTest, ReluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        0, 0, 2, 4,  //
+                                                        3, 0, 7, 1,  //
+                                                    },
+                                                    kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 0, 32, 64, 48, 0, 112, 16}));
+}
+
 TEST_P(TanhOpTest, TanhUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
@@ -1173,6 +1218,91 @@ TEST(FloatActivationsOpTest, Softmax2D) {
                               })));
 }
 
+TEST(FloatActivationsOpTest, Softmax2DMultithreading) {
+  FloatActivationsOpModel m(0.1,
+                            /*input=*/{TensorType_FLOAT32, {16, 4}});
+  m.SetInput({
+      0, -6, 2,  4,  //  Thread 1.
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      3, -2, 10, 1,  //  Thread 2.
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+  });
+  m.SetNumThreads(2);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                                 .23463, .12877, .28658, .35003,  //
+                             })));
+
+  // Same input, but a different shape.
+  FloatActivationsOpModel m2(0.1,
+                             /*input=*/{TensorType_FLOAT32, {16, 2}});
+  m2.SetInput({
+      0,  -6,  // Thread 1
+      2,  4,   //
+      3,  -2,  //
+      10, 1,   //
+      0,  -6,  //
+      2,  4,   //
+      3,  -2,  //
+      10, 1,   //
+      10, 1,   // Thread 2
+      3,  -2,  //
+      2,  4,   //
+      0,  -6,  //
+      10, 1,   //
+      3,  -2,  //
+      2,  4,   //
+      0,  -6,  //
+  });
+  m2.SetNumThreads(2);
+  m2.Invoke();
+  EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                  0.645656, 0.354344,  //
+                                  0.450166, 0.549834,  //
+                                  0.622459, 0.377541,  //
+                                  0.710949, 0.28905,   //
+                                  0.645656, 0.354344,  //
+                                  0.450166, 0.549834,  //
+                                  0.622459, 0.377541,  //
+                                  0.710949, 0.28905,   //
+                                  0.710949, 0.28905,   //
+                                  0.622459, 0.377541,  //
+                                  0.450166, 0.549834,  //
+                                  0.645656, 0.354344,  //
+                                  0.710949, 0.28905,   //
+                                  0.622459, 0.377541,  //
+                                  0.450166, 0.549834,  //
+                                  0.645656, 0.354344,  //
+                              })));
+}
+
 TEST(QuantizedActivationsOpTest, Softmax2DUint8) {
   QuantizedActivationsOpModel m(0.1,
                                 /*input=*/{TensorType_UINT8, {2, 4}, -10, 10});
@@ -1253,6 +1383,7 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
 
 TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
   const float kLogSoftmaxQuantizedTolerance = 16 / 256.0;
+  // Corresponds to input scale of 20/255.
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOG_SOFTMAX,
       /*input=*/{TensorType_UINT8, {2, 4}, -10, 10},

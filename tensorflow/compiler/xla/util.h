@@ -86,10 +86,11 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)         \
-  static ::xla::TimerStats XLA_TimerStats##counter;                     \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(    \
-      label, /*enabled=*/VLOG_IS_ON(level), &XLA_TimerStats##counter);
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
+  static ::xla::TimerStats XLA_TimerStats##counter;                  \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
+      label, /*enabled=*/VLOG_IS_ON(level), __FILE__, __LINE__,      \
+      &XLA_TimerStats##counter);
 
 struct TimerStats {
   tensorflow::mutex stats_mutex;
@@ -101,14 +102,16 @@ struct TimerStats {
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
-struct ScopedLoggingTimer {
-  // The timer does nothing if enabled is false.  This lets you pass in your
-  // file's VLOG_IS_ON value.
-  //
-  // timer_stats is unowned non-null pointer which is used to populate the
+class ScopedLoggingTimer {
+ public:
+  // label: Label to display for logging.
+  // enabled: Whether this timer should do anything at all.
+  // file: Filename to display in logging.
+  // line: Line number to display in logging.
+  // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled,
-                     TimerStats* timer_stats);
+  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+                     int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
   // function is called.
@@ -116,10 +119,13 @@ struct ScopedLoggingTimer {
 
   ~ScopedLoggingTimer();
 
-  bool enabled;
-  string label;
-  uint64 start_micros;
-  TimerStats* timer_stats;
+ private:
+  bool enabled_;
+  const char* file_;
+  int line_;
+  string label_;
+  uint64 start_micros_;
+  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
@@ -398,6 +404,18 @@ string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a bfloat.
+string RoundTripFpToString(tensorflow::bfloat16 value);
+
+// Returns a string which can losslessly round trip to a fp16.
+string RoundTripFpToString(Eigen::half value);
+
+// Returns a string which can losslessly round trip to a float.
+string RoundTripFpToString(float value);
+
+// Returns a string which can losslessly round trip to a double.
+string RoundTripFpToString(double value);
+
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
@@ -484,8 +502,8 @@ int64 Product(absl::Span<const int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b);
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
@@ -507,7 +525,7 @@ void EraseAt(C* c, int64 index) {
 }
 
 template <typename T>
-std::vector<T> ArraySliceToVector(absl::Span<const T> slice) {
+std::vector<T> SpanToVector(absl::Span<const T> slice) {
   return std::vector<T>(slice.begin(), slice.end());
 }
 
@@ -535,6 +553,16 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return Status::OK();
 }
+
+// Utility function which splits a double-precision float (F64) into a pair of
+// single-precision floating point numbers. The most significant 49 bits (out of
+// the total 53 available) in the mantissa of the F64 is represented as the
+// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
+// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
+// sign bit and its mantissa.
+// Note: The resulting representation can still only represent 8-bit exponent
+// range that is available in F32s (out of a total of 11 exponent bits in F64s).
+std::pair<float, float> SplitF64ToF32(double x);
 
 // MakeCleanup(f) returns an RAII cleanup object that calls 'f' in its
 // destructor. The easiest way to use MakeCleanup is with a lambda argument,

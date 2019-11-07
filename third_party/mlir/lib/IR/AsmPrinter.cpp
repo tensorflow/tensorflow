@@ -24,6 +24,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -53,20 +54,25 @@ void OperationName::print(raw_ostream &os) const { os << getStringRef(); }
 
 void OperationName::dump() const { print(llvm::errs()); }
 
+DialectAsmPrinter::~DialectAsmPrinter() {}
+
 OpAsmPrinter::~OpAsmPrinter() {}
 
 //===----------------------------------------------------------------------===//
-// ModuleState
+// OpPrintingFlags
 //===----------------------------------------------------------------------===//
 
-// TODO(riverriddle) Rethink this flag when we have a pass that can remove debug
-// info or when we have a system for printer flags.
-static llvm::cl::opt<bool>
-    shouldPrintDebugInfoOpt("mlir-print-debuginfo",
-                            llvm::cl::desc("Print debug info in MLIR output"),
-                            llvm::cl::init(false));
+static llvm::cl::opt<unsigned> elideElementsAttrIfLarger(
+    "mlir-elide-elementsattrs-if-larger",
+    llvm::cl::desc("Elide ElementsAttrs with \"...\" that have "
+                   "more elements than the given upper limit"));
 
-static llvm::cl::opt<bool> printPrettyDebugInfo(
+static llvm::cl::opt<bool>
+    printDebugInfoOpt("mlir-print-debuginfo",
+                      llvm::cl::desc("Print debug info in MLIR output"),
+                      llvm::cl::init(false));
+
+static llvm::cl::opt<bool> printPrettyDebugInfoOpt(
     "mlir-pretty-debuginfo",
     llvm::cl::desc("Print pretty debug info in MLIR output"),
     llvm::cl::init(false));
@@ -74,9 +80,68 @@ static llvm::cl::opt<bool> printPrettyDebugInfo(
 // Use the generic op output form in the operation printer even if the custom
 // form is defined.
 static llvm::cl::opt<bool>
-    printGenericOpForm("mlir-print-op-generic",
-                       llvm::cl::desc("Print the generic op form"),
-                       llvm::cl::init(false), llvm::cl::Hidden);
+    printGenericOpFormOpt("mlir-print-op-generic",
+                          llvm::cl::desc("Print the generic op form"),
+                          llvm::cl::init(false), llvm::cl::Hidden);
+
+/// Initialize the printing flags with default supplied by the cl::opts above.
+OpPrintingFlags::OpPrintingFlags()
+    : elementsAttrElementLimit(
+          elideElementsAttrIfLarger.getNumOccurrences()
+              ? Optional<int64_t>(elideElementsAttrIfLarger)
+              : Optional<int64_t>()),
+      printDebugInfoFlag(printDebugInfoOpt),
+      printDebugInfoPrettyFormFlag(printPrettyDebugInfoOpt),
+      printGenericOpFormFlag(printGenericOpFormOpt) {}
+
+/// Enable the elision of large elements attributes, by printing a '...'
+/// instead of the element data, when the number of elements is greater than
+/// `largeElementLimit`. Note: The IR generated with this option is not
+/// parsable.
+OpPrintingFlags &
+OpPrintingFlags::elideLargeElementsAttrs(int64_t largeElementLimit) {
+  elementsAttrElementLimit = largeElementLimit;
+  return *this;
+}
+
+/// Enable printing of debug information. If 'prettyForm' is set to true,
+/// debug information is printed in a more readable 'pretty' form.
+OpPrintingFlags &OpPrintingFlags::enableDebugInfo(bool prettyForm) {
+  printDebugInfoFlag = true;
+  printDebugInfoPrettyFormFlag = prettyForm;
+  return *this;
+}
+
+/// Always print operations in the generic form.
+OpPrintingFlags &OpPrintingFlags::printGenericOpForm() {
+  printGenericOpFormFlag = true;
+  return *this;
+}
+
+/// Return if the given ElementsAttr should be elided.
+bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
+  return elementsAttrElementLimit.hasValue() &&
+         *elementsAttrElementLimit < int64_t(attr.getNumElements());
+}
+
+/// Return if debug information should be printed.
+bool OpPrintingFlags::shouldPrintDebugInfo() const {
+  return printDebugInfoFlag;
+}
+
+/// Return if debug information should be printed in the pretty form.
+bool OpPrintingFlags::shouldPrintDebugInfoPrettyForm() const {
+  return printDebugInfoPrettyFormFlag;
+}
+
+/// Return if operations should be printed in the generic form.
+bool OpPrintingFlags::shouldPrintGenericOpForm() const {
+  return printGenericOpFormFlag;
+}
+
+//===----------------------------------------------------------------------===//
+// ModuleState
+//===----------------------------------------------------------------------===//
 
 namespace {
 /// A special index constant used for non-kind attribute aliases.
@@ -322,14 +387,19 @@ void ModuleState::initialize(Operation *op) {
 namespace {
 class ModulePrinter {
 public:
-  ModulePrinter(raw_ostream &os, ModuleState *state = nullptr)
-      : os(os), state(state) {}
+  ModulePrinter(raw_ostream &os, OpPrintingFlags flags = llvm::None,
+                ModuleState *state = nullptr)
+      : os(os), printerFlags(flags), state(state) {}
   explicit ModulePrinter(ModulePrinter &printer)
-      : os(printer.os), state(printer.state) {}
+      : os(printer.os), printerFlags(printer.printerFlags),
+        state(printer.state) {}
+
+  /// Returns the output stream of the printer.
+  raw_ostream &getStream() { return os; }
 
   template <typename Container, typename UnaryFunctor>
   inline void interleaveComma(const Container &c, UnaryFunctor each_fn) const {
-    interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
+    mlir::interleaveComma(c, os, each_fn);
   }
 
   void print(ModuleOp module);
@@ -351,12 +421,16 @@ public:
 
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<StringRef> elidedAttrs = {});
+                             ArrayRef<StringRef> elidedAttrs = {},
+                             bool withKeyword = false);
   void printTrailingLocation(Location loc);
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
-  /// This enum is used to represent the binding stength of the enclosing
+  void printDialectAttribute(Attribute attr);
+  void printDialectType(Type type);
+
+  /// This enum is used to represent the binding strength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
   /// intelligently produce parens.
   enum class BindingStrength {
@@ -370,6 +444,9 @@ protected:
   /// The output stream for the printer.
   raw_ostream &os;
 
+  /// A set of flags to control the printer's behavior.
+  OpPrintingFlags printerFlags;
+
   /// An optional printer state for the module.
   ModuleState *state;
 };
@@ -377,7 +454,7 @@ protected:
 
 void ModulePrinter::printTrailingLocation(Location loc) {
   // Check to see if we are printing debug information.
-  if (!shouldPrintDebugInfoOpt)
+  if (!printerFlags.shouldPrintDebugInfo())
     return;
 
   os << " ";
@@ -386,6 +463,9 @@ void ModulePrinter::printTrailingLocation(Location loc) {
 
 void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
   switch (loc.getKind()) {
+  case StandardAttributes::OpaqueLocation:
+    printLocationInternal(loc.cast<OpaqueLoc>().getFallbackLocation(), pretty);
+    break;
   case StandardAttributes::UnknownLocation:
     if (pretty)
       os << "[unknown]";
@@ -496,7 +576,7 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
 }
 
 void ModulePrinter::printLocation(LocationAttr loc) {
-  if (printPrettyDebugInfo) {
+  if (printerFlags.shouldPrintDebugInfoPrettyForm()) {
     printLocationInternal(loc, /*pretty=*/true);
   } else {
     os << "loc(";
@@ -514,8 +594,8 @@ static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
 
   // Ignore all the characters that are valid in an identifier in the symbol
   // name.
-  symName =
-      symName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
+  symName = symName.drop_while(
+      [](char c) { return llvm::isAlnum(c) || c == '.' || c == '_'; });
   if (symName.empty())
     return true;
 
@@ -544,6 +624,13 @@ static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
     case '{':
       nestedPunctuation.push_back(c);
       continue;
+    case '-':
+      // Treat `->` as a special token.
+      if (!symName.empty() && symName.front() == '>') {
+        symName = symName.drop_front();
+        continue;
+      }
+      break;
     // Reject types with mismatched brackets.
     case '>':
       if (nestedPunctuation.pop_back_val() != '<')
@@ -588,6 +675,40 @@ static void printDialectSymbol(raw_ostream &os, StringRef symPrefix,
   os << "<\"" << symString << "\">";
 }
 
+/// Returns if the given string can be represented as a bare identifier.
+static bool isBareIdentifier(StringRef name) {
+  assert(!name.empty() && "invalid name");
+
+  // By making this unsigned, the value passed in to isalnum will always be
+  // in the range 0-255. This is important when building with MSVC because
+  // its implementation will assert. This situation can arise when dealing
+  // with UTF-8 multibyte characters.
+  unsigned char firstChar = static_cast<unsigned char>(name[0]);
+  if (!isalpha(firstChar) && firstChar != '_')
+    return false;
+  return llvm::all_of(name.drop_front(), [](unsigned char c) {
+    return isalnum(c) || c == '_' || c == '$' || c == '.';
+  });
+}
+
+/// Print the given string as a symbol reference. A symbol reference is
+/// represented as a string prefixed with '@'. The reference is surrounded with
+/// ""'s and escaped if it has any special or non-printable characters in it.
+static void printSymbolReference(StringRef symbolRef, raw_ostream &os) {
+  assert(!symbolRef.empty() && "expected valid symbol reference");
+
+  // If the symbol can be represented as a bare identifier, write it directly.
+  if (isBareIdentifier(symbolRef)) {
+    os << '@' << symbolRef;
+    return;
+  }
+
+  // Otherwise, output the reference wrapped in quotes with proper escaping.
+  os << "@\"";
+  printEscapedString(symbolRef, os);
+  os << '"';
+}
+
 void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
@@ -604,19 +725,9 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   }
 
   switch (attr.getKind()) {
-  default: {
-    auto &dialect = attr.getDialect();
+  default:
+    return printDialectAttribute(attr);
 
-    // Ask the dialect to serialize the attribute to a string.
-    std::string attrName;
-    {
-      llvm::raw_string_ostream attrNameStr(attrName);
-      dialect.printAttribute(attr, attrNameStr);
-    }
-
-    printDialectSymbol(os, "#", dialect.getNamespace(), attrName);
-    break;
-  }
   case StandardAttributes::Opaque: {
     auto opaqueAttr = attr.cast<OpaqueAttr>();
     printDialectSymbol(os, "#", opaqueAttr.getDialectNamespace(),
@@ -635,7 +746,13 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
     os << '{';
     interleaveComma(attr.cast<DictionaryAttr>().getValue(),
                     [&](NamedAttribute attr) {
-                      os << attr.first << " = ";
+                      os << attr.first;
+
+                      // The value of a UnitAttr is elided within a dictionary.
+                      if (attr.second.isa<UnitAttr>())
+                        return;
+
+                      os << " = ";
                       printAttribute(attr.second);
                     });
     os << '}';
@@ -685,12 +802,19 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
     printType(attr.cast<TypeAttr>().getValue());
     break;
   case StandardAttributes::SymbolRef:
-    os << '@' << attr.cast<SymbolRefAttr>().getValue();
+    printSymbolReference(attr.cast<SymbolRefAttr>().getValue(), os);
     break;
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
-    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\">";
+    os << '"' << "0x";
+
+    // Check for large ElementsAttr elision.
+    if (printerFlags.shouldElideElementsAttr(eltsAttr))
+      os << "...";
+    else
+      os << llvm::toHex(eltsAttr.getValue());
+    os << "\">";
     break;
   }
   case StandardAttributes::DenseElements: {
@@ -715,6 +839,7 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::FileLineColLocation:
   case StandardAttributes::FusedLocation:
   case StandardAttributes::NameLocation:
+  case StandardAttributes::OpaqueLocation:
   case StandardAttributes::UnknownLocation:
     printLocation(attr.cast<LocationAttr>());
     break;
@@ -758,6 +883,13 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   // Special case for 0-d and splat tensors.
   if (attr.isSplat()) {
     printEltFn(attr, os, 0);
+    return;
+  }
+
+  // Check for large elements attr elision. We explicitly check *after* splat,
+  // as the splat printing is already elided.
+  if (printerFlags.shouldElideElementsAttr(attr)) {
+    os << "...";
     return;
   }
 
@@ -818,19 +950,9 @@ void ModulePrinter::printType(Type type) {
   }
 
   switch (type.getKind()) {
-  default: {
-    auto &dialect = type.getDialect();
+  default:
+    return printDialectType(type);
 
-    // Ask the dialect to serialize the type to a string.
-    std::string typeName;
-    {
-      llvm::raw_string_ostream typeNameStr(typeName);
-      dialect.printType(type, typeNameStr);
-    }
-
-    printDialectSymbol(os, "!", dialect.getNamespace(), typeName);
-    return;
-  }
   case Type::Kind::Opaque: {
     auto opaqueTy = type.cast<OpaqueType>();
     printDialectSymbol(os, "!", opaqueTy.getDialectNamespace(),
@@ -938,6 +1060,65 @@ void ModulePrinter::printType(Type type) {
     os << "none";
     return;
   }
+}
+
+//===----------------------------------------------------------------------===//
+// CustomDialectAsmPrinter
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class provides the main specialication of the DialectAsmPrinter that is
+/// used to provide support for print attributes and types. This hooks allows
+/// for dialects to hook into the main ModulePrinter.
+struct CustomDialectAsmPrinter : public DialectAsmPrinter {
+public:
+  CustomDialectAsmPrinter(ModulePrinter &printer) : printer(printer) {}
+  ~CustomDialectAsmPrinter() override {}
+
+  raw_ostream &getStream() const override { return printer.getStream(); }
+
+  /// Print the given attribute to the stream.
+  void printAttribute(Attribute attr) override { printer.printAttribute(attr); }
+
+  /// Print the given floating point value in a stablized form.
+  void printFloat(const APFloat &value) override {
+    printFloatValue(value, getStream());
+  }
+
+  /// Print the given type to the stream.
+  void printType(Type type) override { printer.printType(type); }
+
+  /// The main module printer.
+  ModulePrinter &printer;
+};
+} // end anonymous namespace
+
+void ModulePrinter::printDialectAttribute(Attribute attr) {
+  auto &dialect = attr.getDialect();
+
+  // Ask the dialect to serialize the attribute to a string.
+  std::string attrName;
+  {
+    llvm::raw_string_ostream attrNameStr(attrName);
+    ModulePrinter subPrinter(attrNameStr, printerFlags, state);
+    CustomDialectAsmPrinter printer(subPrinter);
+    dialect.printAttribute(attr, printer);
+  }
+  printDialectSymbol(os, "#", dialect.getNamespace(), attrName);
+}
+
+void ModulePrinter::printDialectType(Type type) {
+  auto &dialect = type.getDialect();
+
+  // Ask the dialect to serialize the type to a string.
+  std::string typeName;
+  {
+    llvm::raw_string_ostream typeNameStr(typeName);
+    ModulePrinter subPrinter(typeNameStr, printerFlags, state);
+    CustomDialectAsmPrinter printer(subPrinter);
+    dialect.printType(type, printer);
+  }
+  printDialectSymbol(os, "!", dialect.getNamespace(), typeName);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1147,26 +1328,25 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                                          ArrayRef<StringRef> elidedAttrs) {
+                                          ArrayRef<StringRef> elidedAttrs,
+                                          bool withKeyword) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
     return;
 
   // Filter out any attributes that shouldn't be included.
-  SmallVector<NamedAttribute, 8> filteredAttrs;
-  for (auto attr : attrs) {
-    // If the caller has requested that this attribute be ignored, then drop it.
-    if (llvm::any_of(elidedAttrs,
-                     [&](StringRef elided) { return attr.first.is(elided); }))
-      continue;
-
-    // Otherwise add it to our filteredAttrs list.
-    filteredAttrs.push_back(attr);
-  }
+  SmallVector<NamedAttribute, 8> filteredAttrs(
+      llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
+        return !llvm::is_contained(elidedAttrs, attr.first.strref());
+      }));
 
   // If there are no attributes left to print after filtering, then we're done.
   if (filteredAttrs.empty())
     return;
+
+  // Print the 'attributes' keyword if necessary.
+  if (withKeyword)
+    os << " attributes";
 
   // Otherwise, print them all out in braces.
   os << " {";
@@ -1209,8 +1389,14 @@ public:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
-  };
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
+  }
+  void printOptionalAttrDictWithKeyword(
+      ArrayRef<NamedAttribute> attrs,
+      ArrayRef<StringRef> elidedAttrs = {}) override {
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs,
+                                         /*withKeyword=*/true);
+  }
 
   enum { nameSentinel = ~0U };
 
@@ -1267,6 +1453,11 @@ public:
     interleaveComma(map.getResults(), [&](AffineExpr expr) {
       printAffineExpr(expr, printValueName);
     });
+  }
+
+  /// Print the given string as a symbol reference.
+  void printSymbolName(StringRef symbolRef) override {
+    ::printSymbolReference(symbolRef, os);
   }
 
   // Number of spaces used for indenting nested operations.
@@ -1388,23 +1579,24 @@ void OperationPrinter::numberValueID(Value *value) {
   }
 
   if (specialNameBuffer.empty()) {
-    switch (value->getKind()) {
-    case Value::Kind::BlockArgument:
-      // If this is an argument to the entry block of a region, give it an 'arg'
-      // name.
-      if (auto *block = cast<BlockArgument>(value)->getOwner()) {
-        auto *parentRegion = block->getParent();
-        if (parentRegion && block == &parentRegion->front()) {
-          specialName << "arg" << nextArgumentID++;
-          break;
-        }
-      }
-      // Otherwise number it normally.
+    auto *blockArg = dyn_cast<BlockArgument>(value);
+    if (!blockArg) {
+      // This is an uninteresting operation result, give it a boring number and
+      // be done with it.
       valueIDs[value] = nextValueID++;
       return;
-    case Value::Kind::OpResult:
-      // This is an uninteresting result, give it a boring number and be
-      // done with it.
+    }
+
+    // Otherwise, if this is an argument to the entry block of a region, give it
+    // an 'arg' name.
+    if (auto *block = blockArg->getOwner()) {
+      auto *parentRegion = block->getParent();
+      if (parentRegion && block == &parentRegion->front())
+        specialName << "arg" << nextArgumentID++;
+    }
+
+    // Otherwise number it normally.
+    if (specialNameBuffer.empty()) {
       valueIDs[value] = nextValueID++;
       return;
     }
@@ -1427,7 +1619,7 @@ StringRef OperationPrinter::uniqueValueName(StringRef name) {
     // generates new names by incrementing nextConflictID.
     SmallString<64> probeName(name);
     probeName.push_back('_');
-    while (1) {
+    while (true) {
       probeName.resize(name.size() + 1);
       probeName += llvm::utostr(nextConflictID++);
       if (!usedNames.count(probeName)) {
@@ -1504,6 +1696,11 @@ void OperationPrinter::print(Operation *op) {
 
 void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
                                         raw_ostream &stream) const {
+  if (!value) {
+    stream << "<<NULL>>";
+    return;
+  }
+
   int resultNo = -1;
   auto lookupValue = value;
 
@@ -1581,13 +1778,13 @@ void OperationPrinter::printOperation(Operation *op) {
 
   // TODO(riverriddle): FuncOp cannot be round-tripped currently, as
   // FunctionType cannot be used in a TypeAttr.
-  if (printGenericOpForm && !isa<FuncOp>(op))
+  if (printerFlags.shouldPrintGenericOpForm() && !isa<FuncOp>(op))
     return printGenericOp(op);
 
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
   if (auto *opInfo = op->getAbstractOperation()) {
-    opInfo->printAssembly(op, this);
+    opInfo->printAssembly(op, *this);
     return;
   }
 
@@ -1724,22 +1921,22 @@ void IntegerSet::print(raw_ostream &os) const {
 }
 
 void Value::print(raw_ostream &os) {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    // TODO: Improve this.
-    os << "<block argument>\n";
-    return;
-  case Value::Kind::OpResult:
-    return getDefiningOp()->print(os);
-  }
+  if (auto *op = getDefiningOp())
+    return op->print(os);
+  // TODO: Improve this.
+  assert(isa<BlockArgument>(*this));
+  os << "<block argument>\n";
 }
 
-void Value::dump() { print(llvm::errs()); }
+void Value::dump() {
+  print(llvm::errs());
+  llvm::errs() << "\n";
+}
 
-void Operation::print(raw_ostream &os) {
+void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
   // Handle top-level operations.
   if (!getParent()) {
-    ModulePrinter modulePrinter(os);
+    ModulePrinter modulePrinter(os, flags);
     OperationPrinter(this, modulePrinter).print(this);
     return;
   }
@@ -1755,7 +1952,7 @@ void Operation::print(raw_ostream &os) {
     region = nextRegion;
 
   ModuleState state(getContext());
-  ModulePrinter modulePrinter(os, &state);
+  ModulePrinter modulePrinter(os, flags, &state);
   OperationPrinter(region, modulePrinter).print(this);
 }
 
@@ -1776,7 +1973,7 @@ void Block::print(raw_ostream &os) {
     region = nextRegion;
 
   ModuleState state(region->getContext());
-  ModulePrinter modulePrinter(os, &state);
+  ModulePrinter modulePrinter(os, /*flags=*/llvm::None, &state);
   OperationPrinter(region, modulePrinter).print(this);
 }
 
@@ -1798,10 +1995,10 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
   OperationPrinter(region, modulePrinter).printBlockName(this);
 }
 
-void ModuleOp::print(raw_ostream &os) {
+void ModuleOp::print(raw_ostream &os, OpPrintingFlags flags) {
   ModuleState state(getContext());
   state.initialize(*this);
-  ModulePrinter(os, &state).print(*this);
+  ModulePrinter(os, flags, &state).print(*this);
 }
 
 void ModuleOp::dump() { print(llvm::errs()); }

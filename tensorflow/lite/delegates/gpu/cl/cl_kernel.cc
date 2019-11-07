@@ -159,12 +159,22 @@ Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const {
 }
 
 template <>
+Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const {
+  return SetBytes(index, value.GetData(), value.GetSize());
+}
+
+template <>
 Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const {
   return SetBytes(index, value.GetData(), value.GetSize());
 }
 
 template <>
 Status CLKernel::SetBytesAuto<FLT>(const FLT& value) {
+  return SetBytesAuto(value.GetData(), value.GetSize());
+}
+
+template <>
+Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value) {
   return SetBytesAuto(value.GetData(), value.GetSize());
 }
 

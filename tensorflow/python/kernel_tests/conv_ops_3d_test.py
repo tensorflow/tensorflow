@@ -32,6 +32,7 @@ from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.eager import context
 
 
 def GetTestConfigs():
@@ -61,7 +62,7 @@ class Conv3DTest(test.TestCase):
         # as we will be using its gradients as reference for fp16 gradients.
         return optional_float64 + [dtypes.float32, dtypes.float16]
     else:
-      return [dtypes.float64, dtypes.float32, dtypes.float16]
+      return optional_float64 + [dtypes.float32, dtypes.float16]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
@@ -223,7 +224,10 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D1x1x1Filter2x1x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
+    ctx = context.context()
+    is_eager = ctx is not None and ctx.executing_eagerly()
+    if test.is_gpu_available(cuda_only=True) or \
+      (test_util.IsMklEnabled() and is_eager is False):
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 3, 6, 1, 1],
           filter_in_sizes=[1, 1, 1, 1, 1],
@@ -248,7 +252,10 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2Filter1x2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
+    ctx = context.context()
+    is_eager = ctx is not None and ctx.executing_eagerly()
+    if test.is_gpu_available(cuda_only=True) or \
+      (test_util.IsMklEnabled() and is_eager is False):
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 4, 6, 3, 1],
           filter_in_sizes=[2, 2, 2, 1, 1],

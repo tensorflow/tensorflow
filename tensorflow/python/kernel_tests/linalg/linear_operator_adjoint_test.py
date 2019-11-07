@@ -20,7 +20,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_adjoint
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -31,6 +33,7 @@ linalg = linalg_lib
 LinearOperatorAdjoint = linear_operator_adjoint.LinearOperatorAdjoint  # pylint: disable=invalid-name
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorAdjointTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -239,7 +242,13 @@ class LinearOperatorAdjointTest(
     self.assertAllClose(
         inv_matrix.T.dot(x), self.evaluate(operator.H.solvevec(x)))
 
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[1., 2.], [3., 4.]])
+    operator = LinearOperatorAdjoint(linalg.LinearOperatorFullMatrix(matrix))
+    self.check_tape_safe(operator)
 
+
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorAdjointNonSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Tests done in the base class NonSquareLinearOperatorDerivedClassTest."""

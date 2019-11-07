@@ -46,7 +46,7 @@ class SessionMgrTest : public ::testing::Test {
   SessionMgrTest()
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(), factory_) {
-    device_mgr_ = absl::make_unique<DeviceMgr>(
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(
         FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0"));
     env_.local_devices = device_mgr_->ListDevices();
     env_.device_mgr = device_mgr_.get();
@@ -102,7 +102,7 @@ TEST_F(SessionMgrTest, CreateSessionClusterDefWorkerName) {
 
   EXPECT_TRUE(device->IsLocal());
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-  EXPECT_EQ("/job:worker/replica:0/task:3", session->worker_name);
+  EXPECT_EQ("/job:worker/replica:0/task:3", session->worker_name());
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
 }
 
@@ -113,7 +113,7 @@ TEST_F(SessionMgrTest, CreateSessionDefaultWorkerName) {
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-  EXPECT_EQ("/job:mnist/replica:0/task:0", session->worker_name);
+  EXPECT_EQ("/job:mnist/replica:0/task:0", session->worker_name());
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
 }
 

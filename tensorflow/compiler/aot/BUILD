@@ -31,7 +31,7 @@ cc_library(
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -91,7 +91,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tfcompile_lib",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:compiler",
@@ -103,6 +103,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm//:aarch64_code_gen",  # fixdeps: keep
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:powerpc_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 

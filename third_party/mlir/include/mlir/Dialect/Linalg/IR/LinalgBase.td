@@ -19,13 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef LINALG_BASE
-#else
+#ifndef LINALG_BASE
 #define LINALG_BASE
 
 def Linalg_Dialect : Dialect {
@@ -42,8 +40,9 @@ def Linalg_Dialect : Dialect {
     more generally at interface points across language boundaries (e.g. C++ /
     Python).
 
-    Generally, Linalg passes non-owning pointers to View data structures to
-    precompiled library calls linked externally.
+    Generally, Linalg passes non-owning pointers to strided memref data
+    structures to precompiled library calls linked externally. The name `view`
+    is used interchangeably in Linalg to signify strided memref.
   }];
 }
 
@@ -54,9 +53,5 @@ def Buffer : Type<LinalgIsBufferTypePred, "buffer">;
 // Whether a type is a RangeType.
 def LinalgIsRangeTypePred : CPred<"$_self.isa<RangeType>()">;
 def Range : Type<LinalgIsRangeTypePred, "range">;
-
-// Whether a type is a ViewType.
-def LinalgIsViewTypePred : CPred<"$_self.isa<ViewType>()">;
-def View : Type<LinalgIsViewTypePred, "view">;
 
 #endif // LINALG_BASE

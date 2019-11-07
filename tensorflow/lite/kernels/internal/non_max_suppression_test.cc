@@ -300,5 +300,26 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithSoftNMS) {
   EXPECT_EQ(num_selected_indices, 4);
   MatchFirstNElements(4, selected_indices, {3, 0, 1, 5});
 }
+
+TEST(NonMaxSuppression, TestNullSelectedScoresOutput) {
+  // Inputs
+  std::vector<float> boxes;
+  std::vector<float> scores;
+  InitializeCandidates(&boxes, &scores);
+  const float iou_threshold = 0.5;
+  const float score_threshold = 0.4;
+  int max_output_size;
+
+  // Outputs
+  std::vector<int> selected_indices(6);
+  int num_selected_indices = -1;
+
+  max_output_size = 100;
+  reference_ops::NonMaxSuppression(
+      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
+      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
+      /**selected_scores=**/ nullptr, &num_selected_indices);
+  EXPECT_EQ(num_selected_indices, 2);
+}
 }  // namespace
 }  // namespace tflite

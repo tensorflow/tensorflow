@@ -49,41 +49,46 @@ inline void RunCpuid(std::uint32_t eax, std::uint32_t ecx,
 }  // namespace
 
 bool DetectCpuSse42() {
-  constexpr std::uint32_t kAvx512EcxSse42 = 1u << 20;
-  constexpr std::uint32_t kAvx512EcxAbm = 1u << 5;
+  constexpr std::uint32_t kEcxSse42 = 1u << 20;
+  constexpr std::uint32_t kEcxAbm = 1u << 5;
 
   std::uint32_t abcd[4];
 
   RunCpuid(1, 0, abcd);
-  const bool has_sse4_2_base = (abcd[2] & kAvx512EcxSse42) == kAvx512EcxSse42;
+  const bool has_sse4_2_base = (abcd[2] & kEcxSse42) == kEcxSse42;
   RunCpuid(0x80000001, 0, abcd);
-  const bool has_abm = (abcd[2] & kAvx512EcxAbm) == kAvx512EcxAbm;
+  const bool has_abm = (abcd[2] & kEcxAbm) == kEcxAbm;
 
   return has_sse4_2_base && has_abm;
 }
 
 bool DetectCpuAvx2() {
-  constexpr std::uint32_t kAvx2Ebx = 1u << 5;
+  constexpr std::uint32_t kEbxAvx2 = 1u << 5;
+  constexpr std::uint32_t kEcxFma = 1u << 12;
 
   std::uint32_t abcd[4];
-  RunCpuid(7, 0, abcd);
 
-  return (abcd[1] & kAvx2Ebx) == kAvx2Ebx;
+  RunCpuid(7, 0, abcd);
+  const bool has_avx2 = (abcd[1] & kEbxAvx2) == kEbxAvx2;
+  RunCpuid(1, 0, abcd);
+  const bool has_fma = (abcd[2] & kEcxFma) == kEcxFma;
+
+  return has_avx2 && has_fma;
 }
 
 bool DetectCpuAvx512() {
-  constexpr std::uint32_t kAvx512EbxF = 1u << 16;
-  constexpr std::uint32_t kAvx512EbxDq = 1u << 17;
-  constexpr std::uint32_t kAvx512EbxCd = 1u << 28;
-  constexpr std::uint32_t kAvx512EbxBw = 1u << 30;
-  constexpr std::uint32_t kAvx512EbxVl = 1u << 31;
+  constexpr std::uint32_t kEbxAvx512F = 1u << 16;
+  constexpr std::uint32_t kEbxAvx512Dq = 1u << 17;
+  constexpr std::uint32_t kEbxAvx512Cd = 1u << 28;
+  constexpr std::uint32_t kEbxAvx512Bw = 1u << 30;
+  constexpr std::uint32_t kEbxAvx512Vl = 1u << 31;
 
-  constexpr std::uint32_t kAvx512EbxMask =
-      kAvx512EbxF | kAvx512EbxDq | kAvx512EbxCd | kAvx512EbxBw | kAvx512EbxVl;
+  constexpr std::uint32_t kEbxAvx512Mask =
+      kEbxAvx512F | kEbxAvx512Dq | kEbxAvx512Cd | kEbxAvx512Bw | kEbxAvx512Vl;
   std::uint32_t abcd[4];
   RunCpuid(7, 0, abcd);
 
-  return (abcd[1] & kAvx512EbxMask) == kAvx512EbxMask;
+  return (abcd[1] & kEbxAvx512Mask) == kEbxAvx512Mask;
 }
 
 #endif

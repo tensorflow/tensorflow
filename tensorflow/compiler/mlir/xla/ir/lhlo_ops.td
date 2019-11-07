@@ -15,17 +15,14 @@ limitations under the License.
 
 // This is the operation definition file for LXLA.
 
-#ifdef LHLO_OPS
-#else
+#ifndef LHLO_OPS
 #define LHLO_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 #endif
 
@@ -88,7 +85,11 @@ class LHLO_UnaryElementwiseOp<string mnemonic> :
 
 def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
+def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
+
 def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+
+def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exp">, BASE_HLO_ExpOp;
 
@@ -122,22 +123,32 @@ def LHLO_MinOp : LHLO_BinaryElementwiseOp<"min", []>, BASE_HLO_MinOp;
 
 def LHLO_MulOp : LHLO_BinaryElementwiseOp<"mul", []>, BASE_HLO_MulOp;
 
+def LHLO_RemOp :
+      LHLO_BinaryElementwiseOp<"remainder", []>, BASE_HLO_RemOp;
+
 def LHLO_SubOp : LHLO_BinaryElementwiseOp<"sub", []>, BASE_HLO_SubOp;
 
 def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
+
+def LHLO_OrOp: LHLO_BinaryElementwiseOp<"or", []>, BASE_HLO_OrOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
-def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
+def LHLO_ReduceOp: LHLO_Op<"reduce", [
+      SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Variadic<LHLO_BufferOrTuple>:$operands_and_init,
+    Variadic<LHLO_BufferOrTuple>:$operands,
+    Variadic<LHLO_BufferOrTuple>:$init_values,
     Variadic<LHLO_BufferOrTuple>:$out,
-    SymbolRefAttr:$computation,
-    ElementsAttr:$dimensions
+    I64ElementsAttr:$dimensions
   );
+
+  let regions = (region SizedRegion<1>:$body);
 }
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
@@ -173,12 +184,13 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
 
 def LHLO_SliceOp: LHLO_Op<
       "slice",
-      [AllTypesMatch<["start_indices", "limit_indices"]>]> {
+      [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$output,
-    ElementsAttr:$start_indices,
-    ElementsAttr:$limit_indices
+    I64ElementsAttr:$start_indices,
+    I64ElementsAttr:$limit_indices,
+    I64ElementsAttr:$strides
   );
 }
 
@@ -215,7 +227,7 @@ def LHLO_BroadcastOp : LHLO_Op<"broadcast",
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$output,
-    ElementsAttr:$broadcast_sizes
+    I64ElementsAttr:$broadcast_sizes
   );
 }
 
@@ -241,7 +253,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []>, BASE_HLO_ConcatenateOp {
    let arguments = (ins
      Variadic<LHLO_Buffer>:$val,
      LHLO_Buffer:$output,
-     I64Attr: $dimension
+     I64Attr:$dimension
    );
 }
 
@@ -266,11 +278,11 @@ def LHLO_GatherOp: LHLO_Op<"gather", []>, BASE_HLO_GatherOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_IntBuffer:$start_indices,
-    I64Attr: $index_vector_dim,
-    ElementsAttr: $offset_dims,
-    ElementsAttr: $slice_sizes,
-    ElementsAttr: $collapsed_slice_dims,
-    ElementsAttr: $start_index_map,
+    I64Attr:$index_vector_dim,
+    I64ElementsAttr:$offset_dims,
+    I64ElementsAttr:$slice_sizes,
+    I64ElementsAttr:$collapsed_slice_dims,
+    I64ElementsAttr:$start_index_map,
     LHLO_Buffer:$output
   );
 }
@@ -295,7 +307,7 @@ def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
 def LHLO_ReverseOp: LHLO_Op<"reverse", []>, BASE_HLO_ReverseOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
-    ElementsAttr:$dimensions,
+    I64ElementsAttr:$dimensions,
     LHLO_Buffer:$output
   );
 }
@@ -304,20 +316,53 @@ def LHLO_PadOp: LHLO_Op<"pad", []>, BASE_HLO_PadOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$padding_value,
-    ElementsAttr: $edge_padding_low,
-    ElementsAttr: $edge_padding_high,
-    ElementsAttr: $interior_padding,
-    LHLO_Buffer: $output
+    I64ElementsAttr:$edge_padding_low,
+    I64ElementsAttr:$edge_padding_high,
+    I64ElementsAttr:$interior_padding,
+    LHLO_Buffer:$output
   );
 }
 
 def LHLO_TransposeOp: LHLO_Op<"transpose", []>, BASE_HLO_TransposeOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
-    ElementsAttr:$permutation,
+    I64ElementsAttr:$permutation,
     LHLO_Buffer:$output
   );
 }
 
+//===----------------------------------------------------------------------===//
+// Late operations
+//===----------------------------------------------------------------------===//
+
+def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let summary = "Fusion operator";
+  let description = [{
+    Models the fusion instruction generated by the XLA compiler's fusion pass.
+
+    Fusion instructions are generated by the fusion pass of the XLA compiler.
+    They serve as a hint to the backend that it is beneficial to emit the
+    contained instructions into a single loop nest or kernel. The XLA fusion
+    pass is designed such that it only generates fusion nodes that can be
+    handled by the XLA compilers backends.
+    The XLA runtime expects this hint to be followed, as it expects a single
+    kernel per HLO instruction. This restriction might be lifted in the future.
+  }];
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+     OpBuilder<"Builder *builder, OperationState &result, "
+               "ArrayRef<NamedAttribute> attributes">
+   ];
+}
+
+def TerminatorOp :
+    LHLO_Op<"terminator", [Terminator]> {
+  let summary = "LHLO termination operation";
+  let description = [{
+    Terminator operation for the LHLO dialect.
+  }];
+}
 
 #endif // LHLO_OPS

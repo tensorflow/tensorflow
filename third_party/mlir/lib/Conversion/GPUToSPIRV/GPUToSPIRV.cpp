@@ -1,4 +1,4 @@
-//===- GPUToSPIRV.cp - MLIR SPIR-V lowering passes ------------------------===//
+//===- GPUToSPIRV.cpp - MLIR SPIR-V lowering passes -----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -29,6 +29,18 @@ using namespace mlir;
 
 namespace {
 
+/// Pattern lowering GPU block/thread size/id to loading SPIR-V invocation
+/// builin variables.
+template <typename OpTy, spirv::BuiltIn builtin>
+class LaunchConfigConversion : public SPIRVOpLowering<OpTy> {
+public:
+  using SPIRVOpLowering<OpTy>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
 /// Pattern to convert a kernel function in GPU dialect (a FuncOp with the
 /// attribute gpu.kernel) within a spv.module.
 class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
@@ -41,24 +53,48 @@ public:
 };
 } // namespace
 
+template <typename OpTy, spirv::BuiltIn builtin>
+PatternMatchResult LaunchConfigConversion<OpTy, builtin>::matchAndRewrite(
+    Operation *op, ArrayRef<Value *> operands,
+    ConversionPatternRewriter &rewriter) const {
+  auto dimAttr = op->getAttrOfType<StringAttr>("dimension");
+  if (!dimAttr) {
+    return this->matchFailure();
+  }
+  int32_t index = 0;
+  if (dimAttr.getValue() == "x") {
+    index = 0;
+  } else if (dimAttr.getValue() == "y") {
+    index = 1;
+  } else if (dimAttr.getValue() == "z") {
+    index = 2;
+  } else {
+    return this->matchFailure();
+  }
+
+  // SPIR-V invocation builtin variables are a vector of type <3xi32>
+  auto spirvBuiltin = this->loadFromBuiltinVariable(op, builtin, rewriter);
+  rewriter.replaceOpWithNewOp<spirv::CompositeExtractOp>(
+      op, rewriter.getIntegerType(32), spirvBuiltin,
+      rewriter.getI32ArrayAttr({index}));
+  return this->matchSuccess();
+}
+
 PatternMatchResult
 KernelFnConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                     ConversionPatternRewriter &rewriter) const {
   auto funcOp = cast<FuncOp>(op);
   FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
-    return succeeded(lowerFunction(funcOp, operands, &typeConverter, rewriter,
-                                   newFuncOp))
+    return succeeded(lowerFunction(funcOp, &typeConverter, rewriter, newFuncOp))
                ? matchSuccess()
                : matchFailure();
   }
 
-  if (failed(lowerAsEntryFunction(funcOp, operands, &typeConverter, rewriter,
-                                  newFuncOp))) {
+  if (failed(
+          lowerAsEntryFunction(funcOp, &typeConverter, rewriter, newFuncOp))) {
     return matchFailure();
   }
-  newFuncOp.getOperation()->removeAttr(Identifier::get(
-      gpu::GPUDialect::getKernelFuncAttrName(), op->getContext()));
   return matchSuccess();
 }
 
@@ -82,7 +118,7 @@ void GPUToSPIRVPass::runOnModule() {
   auto module = getModule();
 
   SmallVector<Operation *, 4> spirvModules;
-  for (auto funcOp : module.getOps<FuncOp>()) {
+  module.walk([&module, &spirvModules](FuncOp funcOp) {
     if (gpu::GPUDialect::isKernel(funcOp)) {
       OpBuilder builder(module.getBodyRegion());
       // Create a new spirv::ModuleOp for this function, and clone the
@@ -95,18 +131,30 @@ void GPUToSPIRVPass::runOnModule() {
           builder.getI32IntegerAttr(
               static_cast<int32_t>(spirv::AddressingModel::Logical)),
           builder.getI32IntegerAttr(
-              static_cast<int32_t>(spirv::MemoryModel::VulkanKHR)));
+              static_cast<int32_t>(spirv::MemoryModel::GLSL450)),
+          builder.getStrArrayAttr(
+              spirv::stringifyCapability(spirv::Capability::Shader)),
+          builder.getStrArrayAttr(spirv::stringifyExtension(
+              spirv::Extension::SPV_KHR_storage_buffer_storage_class)));
+      // Hardwire the capability to be Shader.
       OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);
     }
-  }
+  });
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVBasicTypeConverter basicTypeConverter(context);
+  SPIRVBasicTypeConverter basicTypeConverter;
   SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
-  patterns.insert<KernelFnConversion>(context, typeConverter);
+  patterns.insert<
+      KernelFnConversion,
+      LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
+      LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
+      LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,
+      LaunchConfigConversion<gpu::ThreadIdOp,
+                             spirv::BuiltIn::LocalInvocationId>>(context,
+                                                                 typeConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);
@@ -119,9 +167,27 @@ void GPUToSPIRVPass::runOnModule() {
                                  &typeConverter))) {
     return signalPassFailure();
   }
+
+  // After the SPIR-V modules have been generated, some finalization is needed
+  // for the entry functions. For example, adding spv.EntryPoint op,
+  // spv.ExecutionMode op, etc.
+  for (auto *spvModule : spirvModules) {
+    for (auto op :
+         cast<spirv::ModuleOp>(spvModule).getBlock().getOps<FuncOp>()) {
+      if (gpu::GPUDialect::isKernel(op)) {
+        OpBuilder builder(op.getContext());
+        builder.setInsertionPointAfter(op);
+        if (failed(finalizeEntryFunction(op, builder))) {
+          return signalPassFailure();
+        }
+        op.getOperation()->removeAttr(Identifier::get(
+            gpu::GPUDialect::getKernelFuncAttrName(), op.getContext()));
+      }
+    }
+  }
 }
 
-ModulePassBase *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
+OpPassBase<ModuleOp> *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
 
 static PassRegistration<GPUToSPIRVPass>
     pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");

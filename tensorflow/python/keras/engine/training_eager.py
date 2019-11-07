@@ -157,6 +157,7 @@ def _model_loss(model,
             weights = mask
           else:
             # Update dimensions of weights to match with mask if possible.
+            weights = math_ops.cast(weights, outs[i].dtype)
             mask, _, weights = (
                 tf_losses_utils.squeeze_or_expand_dimensions(
                     mask, sample_weight=weights))
@@ -258,7 +259,7 @@ def _process_single_batch(model,
       else:
         scaled_total_loss = total_loss
     if training:
-      trainable_weights = model._unique_trainable_weights
+      trainable_weights = model.trainable_weights
       if trainable_weights:
         # TODO(tanzheny) b/132690565: Provide mechanism for user to override
         # model.train_on_batch.

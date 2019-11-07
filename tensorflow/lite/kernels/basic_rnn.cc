@@ -144,14 +144,14 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
       output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
-  float* hidden_state_ptr_batch = hidden_state->data.f;
+  float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
   // Initialize the pointer to input and output.
-  const float* input_ptr_batch = input->data.f;
-  float* output_ptr_batch = output->data.f;
+  const float* input_ptr_batch = GetTensorData<float>(input);
+  float* output_ptr_batch = GetTensorData<float>(output);
   // Initialize input_weights, recurrent_weights and bias.
-  const float* input_weights_ptr = input_weights->data.f;
-  const float* recurrent_weights_ptr = recurrent_weights->data.f;
-  const float* bias_ptr = bias->data.f;
+  const float* input_weights_ptr = GetTensorData<float>(input_weights);
+  const float* recurrent_weights_ptr = GetTensorData<float>(recurrent_weights);
+  const float* bias_ptr = GetTensorData<float>(bias);
 
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
@@ -175,15 +175,15 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
       output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
-  float* hidden_state_ptr_batch = hidden_state->data.f;
+  float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
   // Initialize the pointer to input and output.
-  const float* input_ptr_batch = input->data.f;
-  float* output_ptr_batch = output->data.f;
+  const float* input_ptr_batch = GetTensorData<float>(input);
+  float* output_ptr_batch = GetTensorData<float>(output);
   // Initialize input_weights, recurrent_weights and bias.
   const int8_t* input_weights_ptr = GetTensorData<int8_t>(input_weights);
   const int8_t* recurrent_weights_ptr =
       GetTensorData<int8_t>(recurrent_weights);
-  const float* bias_ptr = bias->data.f;
+  const float* bias_ptr = GetTensorData<float>(bias);
   // Get the scale of the quantized weights.
   float input_weights_scale = input_weights->params.scale;
   float recurrent_weights_scale = recurrent_weights->params.scale;
@@ -191,7 +191,7 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   int8_t* quantized_input_ptr = GetTensorData<int8_t>(input_scratch);
   int8_t* quantized_hidden_state_ptr =
       GetTensorData<int8_t>(hidden_state_scratch);
-  float* scaling_factors_ptr = scaling_factors->data.f;
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
 
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,

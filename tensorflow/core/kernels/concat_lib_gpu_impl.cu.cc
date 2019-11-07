@@ -36,7 +36,7 @@ namespace {
 template <typename T, typename IntType>
 __global__ void concat_fixed_kernel(
     GpuDeviceArrayStruct<const T*> input_ptr_data, int split_size,
-    int total_rows, int total_cols, T* output) {
+    int total_rows, int total_cols, T* __restrict__ output) {
   const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
   IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
 

@@ -111,15 +111,15 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_AVX512 0
 #endif
 
-#if defined(RUY_ENABLE_AVX2_ENHANCEMENTS) && RUY_PLATFORM(X86_ENHANCEMENTS) && \
-    RUY_PLATFORM(X86) && defined(__AVX2__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && defined(__AVX2__)
 #define RUY_DONOTUSEDIRECTLY_AVX2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_AVX2 0
 #endif
 
 // Note does not check for LZCNT or POPCNT.
-#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && defined(__SSE4_2__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && \
+    defined(__SSE4_2__) && defined(__FMA__)
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 0

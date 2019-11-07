@@ -123,7 +123,6 @@ public:
   // Creates an empty AffineValueMap (users should call 'reset' to reset map
   // and operands).
   AffineValueMap() {}
-  AffineValueMap(AffineMap map);
   AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
                  ArrayRef<Value *> results = llvm::None);
 
@@ -135,6 +134,12 @@ public:
   // Resets this AffineValueMap with 'map', 'operands', and 'results'.
   void reset(AffineMap map, ArrayRef<Value *> operands,
              ArrayRef<Value *> results = llvm::None);
+
+  /// Return the value map that is the difference of value maps 'a' and 'b',
+  /// represented as an affine map and its operands. The output map + operands
+  /// are canonicalized and simplified.
+  static void difference(const AffineValueMap &a, const AffineValueMap &b,
+                         AffineValueMap *res);
 
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
@@ -150,6 +155,8 @@ public:
   /// Return true if this is an identity map.
   bool isIdentity() const;
 
+  void setResult(unsigned i, AffineExpr e) { map.setResult(i, e); }
+  AffineExpr getResult(unsigned i) { return map.getResult(i); }
   inline unsigned getNumOperands() const { return operands.size(); }
   inline unsigned getNumDims() const { return map.getNumDims(); }
   inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
@@ -181,7 +188,7 @@ class IntegerValueSet {
   /// Returns true if this integer set is determined to be empty. Emptiness is
   /// checked by by eliminating identifiers successively (through either
   /// Gaussian or Fourier-Motzkin) while using the GCD test and a trivial
-  /// invalid constraint check. Returns 'true' if the constaint system is found
+  /// invalid constraint check. Returns 'true' if the constraint system is found
   /// to be empty; false otherwise. This method is exact for rational spaces but
   /// not integer spaces - thus, if it returns true, the set is provably integer
   /// empty as well, but if it returns false, it doesn't necessarily mean an
@@ -204,8 +211,8 @@ private:
 };
 
 /// A flat list of affine equalities and inequalities in the form.
-/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
-/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
 ///
 /// FlatAffineConstraints stores coefficients in a contiguous buffer (one buffer
 /// for equalities and one for inequalities). The size of each buffer is
@@ -477,7 +484,13 @@ public:
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
   /// operands.
-  LogicalResult composeMap(AffineValueMap *vMap);
+  LogicalResult composeMap(const AffineValueMap *vMap);
+
+  /// Composes an affine map whose dimensions match one to one to the
+  /// dimensions of this FlatAffineConstraints. The results of the map 'other'
+  /// are added as the leading dimensions of this constraint system. Returns
+  /// failure if 'other' is a semi-affine map.
+  LogicalResult composeMatchingMap(AffineMap other);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions
@@ -518,12 +531,6 @@ public:
   /// This method calls constantFoldId for the specified range of identifiers,
   /// 'num' identifiers starting at position 'pos'.
   void constantFoldIdRange(unsigned pos, unsigned num);
-
-  /// Returns true if all the identifiers in the specified range [start, limit)
-  /// can only take a single value each if the remaining identifiers are treated
-  /// as symbols/parameters, i.e., for given values of the latter, there only
-  /// exists a unique value for each of the dimensions in the specified range.
-  bool isRangeOneToOne(unsigned start, unsigned limit) const;
 
   /// Updates the constraints to be the smallest bounding (enclosing) box that
   /// contains the points of 'this' set and that of 'other', with the symbols

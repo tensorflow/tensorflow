@@ -32,16 +32,15 @@ namespace {
 // otimized shaders
 
 std::string GetFullyConnectedKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const int3& work_group_size) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define READ_IMAGE read_imagef\n";
       break;
@@ -68,9 +67,8 @@ std::string GetFullyConnectedKernelCode(
   c += "  uint c2 = tid.y * 2;\n";  // it should be * 4, so as we have FLT4
   // but we keep half8 in float4 so, we have * 2 y_coord for texture
   c += "  for (int i = 0; i < src_depth_x4; ++i, c += 4, c2 += 8) {\n";
-  c += "    FLT4 v = " +
-       src_tensor.Read3D("0", "0", "c", TextureAddressMode::DONT_CARE) + ";\n";
-  if (precision != CalculationsPrecision::F32) {
+  c += "    FLT4 v = " + src_tensor.Read3D("0", "0", "c") + ";\n";
+  if (op_def.precision != CalculationsPrecision::F32) {
     c += "   half8 m0 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
          "c2+0)));\n";
     c += "   half8 m1 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
@@ -104,9 +102,9 @@ std::string GetFullyConnectedKernelCode(
   c += "    s += temp[tid.x][3];\n";
   c += "    FLT4 r0 = TO_FLT4(s) + READ_IMAGE(biases, smp_none, (int2)(gid, "
        "0));\n";
-  c += "  " + dst_tensor.GetAddress("dst_adr", "0", "0", "gid") + "\n";
-  c += PostProcess(linked_operations, "r0", "gid", "dst_adr");
-  c += "  " + dst_tensor.Write3D("r0", "dst_adr") + "\n";
+  const LinkingContext context{"r0", "0", "0", "gid"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("r0", "0", "0", "gid") + "\n";
   c += "  }\n";
   c += "}\n";
 
@@ -143,8 +141,7 @@ Status FullyConnectedTexture::Compile(const CreationContext& creation_context) {
     work_group_size_ = {wg_width, wg_height, 1};
     wg_width /= 2;
     const auto code = GetFullyConnectedKernelCode(
-        definition_.src_tensors[0], definition_.dst_tensors[0],
-        definition_.precision, linked_operations_, work_group_size_);
+        definition_, linked_operations_, work_group_size_);
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_));
@@ -160,7 +157,7 @@ Status FullyConnectedTexture::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_depth_x4));

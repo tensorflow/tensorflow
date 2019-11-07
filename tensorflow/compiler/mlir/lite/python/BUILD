@@ -15,7 +15,6 @@ cc_library(
     hdrs = [
         "graphdef_to_tfl_flatbuffer.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
@@ -23,11 +22,16 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:ViewOpGraph",
     ],
 )

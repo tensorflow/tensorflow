@@ -36,80 +36,77 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
   return true;
 }
 
+std::string GetSrcDepthSizeVar(int src_index) {
+  return "src_size_" + std::to_string(src_index) + "_depth";
+}
+
 std::string GetConcatKernelCode(
-    const OperationDef& definition, const std::vector<int>& channels,
+    const OperationDef& op_def, const std::vector<int>& channels,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::vector<std::shared_ptr<TensorCodeGenerator>> srcs(channels.size());
+  std::vector<TensorCodeGenerator> srcs(channels.size());
   for (int i = 0; i < channels.size(); ++i) {
     const std::string tensor_name = "src_data_" + std::to_string(i);
-    const std::string uniform_name = "src_size_" + std::to_string(i);
-    srcs[i] = std::shared_ptr<TensorCodeGenerator>(new TensorCodeGenerator(
-        tensor_name, uniform_name, definition.src_tensors[i]));
+    srcs[i] = TensorCodeGenerator(
+        tensor_name, {"dst_size.x", "dst_size.y", GetSrcDepthSizeVar(i)},
+        op_def.src_tensors[i]);
   }
-  TensorCodeGenerator dst("dst_data", "dst_size", definition.dst_tensors[0]);
+  TensorCodeGenerator dst("dst_data",
+                          {"dst_size.x", "dst_size.y", "dst_size.z"},
+                          op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(definition.precision);
+  std::string c = GetCommonDefines(op_def.precision);
   const std::string postfix[] = {".x", ".y", ".z", ".w"};
 
-  code += "__kernel void main_function(\n";
+  c += "__kernel void main_function(\n";
   for (const auto& src : srcs) {
-    code += src->GetDeclaration(AccessType::READ) + ",\n";
+    c += src.GetDeclaration(AccessType::READ) + ",\n";
   }
-  code += dst.GetDeclaration(AccessType::WRITE);
-  code += GetArgsDeclaration(linked_operations);
+  c += dst.GetDeclaration(AccessType::WRITE);
+  c += GetArgsDeclaration(linked_operations);
   for (int i = 0; i < channels.size(); ++i) {
-    const std::string uniform_name = "src_size_" + std::to_string(i);
-    code += "    int4 " + uniform_name + ",\n";
+    c += "    int " + GetSrcDepthSizeVar(i) + ",\n";
   }
-  code += "    int4 dst_size\n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
-  code += "    return; \n";
-  code += "  } \n";
+  c += "    int4 dst_size\n";
+  c += ") {\n";
+  c += "  int X = get_global_id(0);\n";
+  c += "  int Y = get_global_id(1);\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
 
   if (IsAllChannelsX4(channels)) {
     // When all channels % 4 == 0 we can read/assign/write FLT4 elements easily.
     // Also it is easy to write a loop in this case, to prevent long kernel
     // generation.
-    code += "  int Z = 0;\n";
+    c += "  int Z = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
-      const std::string uniform_name = "src_size_" + std::to_string(i);
       const int depth = IntegralDivideRoundUp(channels[i], 4);
       if (depth % 2 == 0) {
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
-        code += "  for (int i = 0; i < " + uniform_name + ".w; i += 2) {\n";
-        code += "    FLT4 result0 = " +
-                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-                ";\n";
-        code +=
-            "    FLT4 result1 = " +
-            srcs[i]->Read3D("X", "Y", "i + 1", TextureAddressMode::DONT_CARE) +
-            ";\n";
-        code += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
-        code += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
-        code += PostProcess(linked_operations, "result0", "Z", "dst_adr0");
-        code += PostProcess(linked_operations, "result1", "Z + 1", "dst_adr1");
-        code += "    " + dst.Write3D("result0", "dst_adr0");
-        code += "    " + dst.Write3D("result1", "dst_adr1");
-        code += "    Z += 2;\n";
-        code += "  }\n";
+        c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; i += 2) {\n";
+        c += "    FLT4 result0 = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
+        c += "    FLT4 result1 = " + srcs[i].Read3D("X", "Y", "i + 1") + ";\n";
+        c += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
+        c += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
+        const LinkingContext context_0{"result0", "X", "Y", "Z"};
+        const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
+        c += PostProcess(linked_operations, context_0);
+        c += PostProcess(linked_operations, context_1);
+        c += "    " + dst.Write3D("result0", "X", "Y", "Z");
+        c += "    " + dst.Write3D("result1", "X", "Y", "Z + 1");
+        c += "    Z += 2;\n";
+        c += "  }\n";
       } else {
-        code += "  for (int i = 0; i < " + uniform_name + ".w; ++i) {\n";
-        code += "    FLT4 result = " +
-                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-                ";\n";
-        code += "    " + dst.GetAddress("dst_adr", "X", "Y", "Z") + "\n";
-        code += PostProcess(linked_operations, "result", "Z", "dst_adr");
-        code += "    " + dst.Write3D("result", "dst_adr");
-        code += "    Z++;\n";
-        code += "  }\n";
+        c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; ++i) {\n";
+        c += "    FLT4 result = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
+        const LinkingContext context{"result", "X", "Y", "Z"};
+        c += PostProcess(linked_operations, context);
+        c += "    " + dst.Write3D("result", "X", "Y", "Z");
+        c += "    Z++;\n";
+        c += "  }\n";
       }
     }
   } else {
-    code += "  FLT4 result = (FLT4)(0.0);\n";
+    c += "  FLT4 result = (FLT4)(0.0);\n";
     int out_channel = 0;
     int read_index = 0;
     int z = 0;
@@ -118,24 +115,19 @@ std::string GetConcatKernelCode(
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
-        code += "  FLT4 " + temp_name + " = ";
-        code += srcs[i]->Read3D("X", "Y", std::to_string(d),
-                                TextureAddressMode::DONT_CARE) +
-                ";\n";
-        for (int c = 0; c < channels_in_group; ++c) {
-          code += "  result" + postfix[out_channel] + " = ";
-          code += temp_name + postfix[c] + ";\n";
+        c += "  FLT4 " + temp_name + " = ";
+        c += srcs[i].Read3D("X", "Y", std::to_string(d)) + ";\n";
+        for (int ch = 0; ch < channels_in_group; ++ch) {
+          c += "  result" + postfix[out_channel] + " = ";
+          c += temp_name + postfix[ch] + ";\n";
           out_channel++;
           if (out_channel == 4) {
             out_channel = 0;
-            code += "  {\n";
-            code += "  " +
-                    dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) +
-                    "\n";
-            code += PostProcess(linked_operations, "result", std::to_string(z),
-                                "dst_adr");
-            code += "  " + dst.Write3D("result", "dst_adr");
-            code += "  }\n";
+            c += "  {\n";
+            const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+            c += PostProcess(linked_operations, context);
+            c += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
+            c += "  }\n";
             z++;
           }
         }
@@ -143,17 +135,15 @@ std::string GetConcatKernelCode(
       }
     }
     if (out_channel != 0) {
-      code += "  {\n";
-      code +=
-          "  " + dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) + "\n";
-      code += PostProcess(linked_operations, "result", std::to_string(z),
-                          "dst_adr");
-      code += "  " + dst.Write3D("result", "dst_adr");
-      code += "  }\n";
+      c += "  {\n";
+      const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+      c += PostProcess(linked_operations, context);
+      c += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
+      c += "  }\n";
     }
   }
-  code += "}\n";
-  return code;
+  c += "}\n";
+  return c;
 }
 }  // namespace
 
@@ -176,8 +166,14 @@ ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
 Status ConcatZ::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, channels_, linked_operations_);
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR() && !IsAllChannelsX4(channels_)) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
+      code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
@@ -186,19 +182,17 @@ Status ConcatZ::BindArguments() {
   for (int i = 0; i < channels_.size(); ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   for (int i = 0; i < channels_.size(); ++i) {
-    int4 size(src_[i]->Width(), src_[i]->Height(), channels_[i],
-              IntegralDivideRoundUp(channels_[i], 4));
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(size));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[i]->Depth()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   return OkStatus();
 }
 
 int3 ConcatZ::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import sys
 import traceback
@@ -42,6 +43,7 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
@@ -134,6 +136,12 @@ class BaseLayerTest(keras_parameterized.TestCase):
       layer(np.ones((5, 10)))
       self.assertEqual(layer.build_counter, 1)
 
+  def test_eager_switch_case_input(self):
+    with context.eager_mode():
+      task = keras.Input(shape=(), dtype=dtypes.int32)
+      control_flow_ops.switch_case(
+          task[0], [lambda: constant_op.constant(1.0) for _ in range(10)])
+
   def test_dynamic_layer_with_deferred_sequential_model(self):
     model = keras.Sequential(
         [DynamicLayer(dynamic=True),
@@ -205,6 +213,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+
+  def test_deepcopy(self):
+    with context.eager_mode():
+      bias_reg = lambda x: 1e-3 * math_ops.reduce_sum(x)
+      layer = keras.layers.Conv2D(32, (3, 3), bias_regularizer=bias_reg)
+      # Call the Layer on data to generate regularize losses.
+      layer(array_ops.ones((1, 10, 10, 3)))
+      self.assertLen(layer.losses, 1)
+      new_layer = copy.deepcopy(layer)
+      self.assertEqual(new_layer.bias_regularizer, bias_reg)
+      self.assertEqual(layer.get_config(), new_layer.get_config())
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):
@@ -1432,11 +1451,25 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
+    layer._supports_ragged_inputs = True
+
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
+
+  def test_supports_ragged_inputs_attribute_error(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'does not support RaggedTensors'):
+      ragged = ragged_tensor.RaggedTensor.from_row_splits(
+          values=array_ops.constant([1., 2., 3.], dtype='float32'),
+          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
+      model = keras.Sequential([
+          keras.layers.InputLayer(input_shape=(None,), ragged=True),
+          IdentityLayer()])
+      model.compile(rmsprop.RMSprop(0.001), loss='mse')
+      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

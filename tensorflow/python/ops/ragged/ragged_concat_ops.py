@@ -56,14 +56,13 @@ def concat(values, axis, name=None):
       the input tensors have different ranks.
 
   #### Example:
-    ```python
-    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
-    >>> ragged.concat([t1, t2], axis=0)
-    [[1, 2], [3, 4, 5], [6], [7, 8, 9]]
-    >>> ragged.concat([t1, t2], axis=1)
-    [[1, 2, 6], [3, 4, 5, 7, 8, 9]]
-    ```
+
+  >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+  >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
+  >>> tf.concat([t1, t2], axis=0)
+  <tf.RaggedTensor [[1, 2], [3, 4, 5], [6], [7, 8, 9]]>
+  >>> tf.concat([t1, t2], axis=1)
+  <tf.RaggedTensor [[1, 2, 6], [3, 4, 5, 7, 8, 9]]>
   """
   if not isinstance(values, (list, tuple)):
     values = [values]
@@ -79,15 +78,21 @@ def stack(values, axis=0, name=None):
   (`R >= axis`), returns a rank-`R+1` `RaggedTensor` `result` such that
   `result[i0...iaxis]` is `[value[i0...iaxis] for value in values]`.
 
-  #### Example:
-    ```python
-    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
-    >>> tf.ragged.stack([t1, t2], axis=0)
-    [[[1, 2], [3, 4, 5]], [[6], [7, 9, 0]]]
-    >>> tf.ragged.stack([t1, t2], axis=1)
-    [[[1, 2], [6]], [[3, 4, 5], [7, 8, 9]]]
-    ```
+  #### Examples:
+
+  >>> # Stacking two ragged tensors.
+  >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+  >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
+  >>> tf.ragged.stack([t1, t2], axis=0)
+  <tf.RaggedTensor [[[1, 2], [3, 4, 5]], [[6], [7, 8, 9]]]>
+  >>> tf.ragged.stack([t1, t2], axis=1)
+  <tf.RaggedTensor [[[1, 2], [6]], [[3, 4, 5], [7, 8, 9]]]>
+
+  >>> # Stacking two dense tensors with different sizes.
+  >>> t3 = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> t4 = tf.constant([[5], [6], [7]])
+  >>> tf.ragged.stack([t3, t4], axis=0)
+  <tf.RaggedTensor [[[1, 2, 3], [4, 5, 6]], [[5], [6], [7]]]>
 
   Args:
     values: A list of `tf.Tensor` or `tf.RaggedTensor`.  May not be empty. All
@@ -157,6 +162,12 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
 
   out_ndims = ndims if (ndims is None or not stack_values) else ndims + 1
   axis = ragged_util.get_positive_axis(axis, out_ndims)
+
+  if stack_values and ndims == 1 and axis == 0:
+    return ragged_tensor.RaggedTensor.from_row_lengths(
+        values=array_ops.concat(rt_inputs, axis=0),
+        row_lengths=array_ops.concat([array_ops.shape(r) for r in rt_inputs],
+                                     axis=0))
 
   # If all the inputs are Tensors, and we're combining the final dimension,
   # then we can delegate to the tf.stack/tf.concat operation, and return a

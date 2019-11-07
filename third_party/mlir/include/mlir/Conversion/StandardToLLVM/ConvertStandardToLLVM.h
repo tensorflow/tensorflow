@@ -50,6 +50,12 @@ public:
   /// non-standard or non-builtin types.
   Type convertType(Type t) override;
 
+  /// Convert a function type.  The arguments and results are converted one by
+  /// one and results are packed into a wrapped LLVM IR structure type. `result`
+  /// is populated with argument mapping.
+  LLVM::LLVMType convertFunctionSignature(FunctionType type, bool isVariadic,
+                                          SignatureConversion &result);
+
   /// Convert a non-empty list of types to be returned from a function into a
   /// supported LLVM IR type.  In particular, if more than one values is
   /// returned, create an LLVM IR structure type with elements that correspond
@@ -61,6 +67,25 @@ public:
 
   /// Returns the LLVM dialect.
   LLVM::LLVMDialect *getDialect() { return llvmDialect; }
+
+  /// Promote the LLVM struct representation of all MemRef descriptors to stack
+  /// and use pointers to struct to avoid the complexity of the
+  /// platform-specific C/C++ ABI lowering related to struct argument passing.
+  SmallVector<Value *, 4> promoteMemRefDescriptors(Location loc,
+                                                   ArrayRef<Value *> opOperands,
+                                                   ArrayRef<Value *> operands,
+                                                   OpBuilder &builder);
+
+  /// Promote the LLVM struct representation of one MemRef descriptor to stack
+  /// and use pointer to struct to avoid the complexity of the platform-specific
+  /// C/C++ ABI lowering related to struct argument passing.
+  Value *promoteOneMemRefDescriptor(Location loc, Value *operand,
+                                    OpBuilder &builder);
+
+  static constexpr unsigned kPtrPosInMemRefDescriptor = 0;
+  static constexpr unsigned kOffsetPosInMemRefDescriptor = 1;
+  static constexpr unsigned kSizePosInMemRefDescriptor = 2;
+  static constexpr unsigned kStridePosInMemRefDescriptor = 3;
 
 protected:
   /// LLVM IR module used to parse/create types.
@@ -102,9 +127,6 @@ private:
   // Get the LLVM representation of the index type based on the bitwidth of the
   // pointer as defined by the data layout of the module.
   LLVM::LLVMType getIndexType();
-
-  // Wrap the given LLVM IR type into an LLVM IR dialect type.
-  Type wrap(llvm::Type *llvmType);
 
   // Extract an LLVM IR dialect type.
   LLVM::LLVMType unwrap(Type type);

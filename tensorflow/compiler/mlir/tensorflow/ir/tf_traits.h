@@ -30,44 +30,10 @@ namespace TF {
 
 // Verifies if 'ref_type' is a REF type corresponding to 'type'.
 static inline LogicalResult VerifyRefTypeMatch(mlir::Type type,
-                                               mlir::Type ref_type) {
-  auto ref_type_kind = ref_type.getKind();
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F16:
-      return success(ref_type_kind == mlir::TF::TensorFlowTypes::HALF_REF);
-    case mlir::StandardTypes::F32:
-      return success(ref_type_kind == mlir::TF::TensorFlowTypes::FLOAT_REF);
-    case mlir::StandardTypes::F64:
-      return success(ref_type_kind == mlir::TF::TensorFlowTypes::DOUBLE_REF);
-    case mlir::StandardTypes::BF16:
-      return success(ref_type_kind == mlir::TF::TensorFlowTypes::BFLOAT16_REF);
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          return success(ref_type_kind == mlir::TF::TensorFlowTypes::BOOL_REF);
-        case 8:
-          return success(ref_type_kind == mlir::TF::TensorFlowTypes::INT8_REF);
-        case 16:
-          return success(ref_type_kind == mlir::TF::TensorFlowTypes::INT16_REF);
-        case 32:
-          return success(ref_type_kind == mlir::TF::TensorFlowTypes::INT32_REF);
-        case 64:
-          return success(ref_type_kind == mlir::TF::TensorFlowTypes::INT64_REF);
-        default:
-          return failure();
-      }
-    }
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case mlir::TF::TensorFlowTypes::enumerant:    \
-    return success(ref_type_kind == mlir::TF::TensorFlowTypes::enumerant##_REF);
-
-#define HANDLE_TF_REF_TYPE(tftype, enumerant, name)
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-    default:
-      return failure();
-  }
+                                               mlir::Type maybe_ref_type) {
+  if (auto ref_type = maybe_ref_type.dyn_cast<mlir::TF::TensorFlowRefType>())
+    return success(ref_type.RemoveRef().getKind() == type.getKind());
+  return failure();
 }
 
 // This class provides verification for ops that are known to have the same

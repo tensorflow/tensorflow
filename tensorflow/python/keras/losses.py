@@ -25,6 +25,7 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -60,7 +62,7 @@ class Loss(object):
   'SUM_OVER_BATCH_SIZE' will raise an error.
 
   Please see
-  https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for more
+  https://www.tensorflow.org/tutorials/distribute/custom_training for more
   details on this.
 
   You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
@@ -81,7 +83,7 @@ class Loss(object):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -167,7 +169,7 @@ class Loss(object):
           'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
-          'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
+          'https://www.tensorflow.org/tutorials/distribute/custom_training'
           ' for more details.')
 
     if self.reduction == losses_utils.ReductionV2.AUTO:
@@ -188,7 +190,7 @@ class LossFunctionWrapper(Loss):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) name for the loss.
     **kwargs: The keyword arguments that are passed on to `fn`.
@@ -213,6 +215,9 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
+    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+          y_pred, y_true)
     return self.fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):
@@ -382,7 +387,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) Name for the op.
   """
@@ -446,7 +451,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -507,7 +512,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -741,7 +746,7 @@ class Huber(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -788,7 +793,7 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
-      (y_true - y_pred) / K.clip(math_ops.abs(y_true), K.epsilon(), None))
+      (y_true - y_pred) / K.maximum(math_ops.abs(y_true), K.epsilon()))
   return 100. * K.mean(diff, axis=-1)
 
 
@@ -801,8 +806,8 @@ def mean_absolute_percentage_error(y_true, y_pred):  # pylint: disable=missing-d
 def mean_squared_logarithmic_error(y_true, y_pred):  # pylint: disable=missing-docstring
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
-  second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
+  first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
+  second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
@@ -1056,9 +1061,6 @@ def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-# Retaining the legacy namespaces: 'cosine_proximity' and 'cosine'.
-# TODO(psv): Change name of this function to `cosine_similarity` after fixing
-# estimator test.
 @keras_export(
     'keras.losses.cosine_similarity',
     v1=[
@@ -1068,11 +1070,27 @@ def poisson(y_true, y_pred):
         'keras.losses.cosine',
         'keras.losses.cosine_similarity',
     ])
-def cosine_proximity(y_true, y_pred, axis=-1):
-  """Computes the cosine similarity between labels and predictions."""
+def cosine_similarity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions.
+
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets.
+
+  `loss = -sum(y_true * y_pred)`
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+    axis: Axis along which to determine similarity.
+
+  Returns:
+    Cosine similarity tensor.
+  """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineSimilarity')
@@ -1110,7 +1128,7 @@ class CosineSimilarity(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -1125,12 +1143,12 @@ class CosineSimilarity(LossFunctionWrapper):
 
 # Aliases.
 
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
-cosine_similarity = cosine_proximity
 
 
 def is_categorical_crossentropy(loss):

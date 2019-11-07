@@ -49,14 +49,17 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
  public:
   explicit TestClusterFLR(DeviceMgr* device_mgr) : device_mgr_(device_mgr) {}
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) override {
-    mutex_lock l(mu_);
-    *handle = next_handle_;
-    next_handle_++;
-    return Status::OK();
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* handle,
+                   FunctionLibraryRuntime::DoneCallback done) override {
+    {
+      mutex_lock l(mu_);
+      *handle = next_handle_;
+      next_handle_++;
+    }
+    done(Status::OK());
   }
 
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -94,7 +97,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0",
                                           &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     TF_CHECK_OK(device_mgr_->LookupDevice(
         "/job:a/replica:0/task:0/device:CPU:0", &device0_));
     TF_CHECK_OK(device_mgr_->LookupDevice(
@@ -121,8 +124,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     OptimizerOptions opts;
     cluster_flr_.reset(new TestClusterFLR(device_mgr_.get()));
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, nullptr, cluster_flr_.get(), nullptr, session_metadata));
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, nullptr, cluster_flr_.get(),
+        nullptr, session_metadata));
     rendezvous_ = new IntraProcessRendezvous(device_mgr_.get());
   }
 
@@ -193,6 +197,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       return status;
     }
+    bool is_cross_process = false;
+    TF_CHECK_OK(pflr->IsCrossProcess(handle, &is_cross_process));
+    EXPECT_FALSE(is_cross_process);
 
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
@@ -295,8 +302,8 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr(
       new ProcessFunctionLibraryRuntime(
-          nullptr /* device_mgr */, Env::Default(), TF_GRAPH_DEF_VERSION,
-          lib_def.get(), opts, nullptr, nullptr /* cluster_flr */));
+          nullptr /* device_mgr */, Env::Default(), /*config=*/nullptr,
+          TF_GRAPH_DEF_VERSION, lib_def.get(), opts));
   FunctionLibraryRuntime* flr =
       proc_flr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   EXPECT_NE(flr, nullptr);
@@ -433,6 +440,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
   TF_CHECK_OK(Instantiate("FindDevice",
                           {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
                           instantiate_opts, &h));
+  bool is_cross_process = false;
+  TF_CHECK_OK(proc_flr_->IsCrossProcess(h, &is_cross_process));
+  EXPECT_TRUE(is_cross_process);
   EXPECT_EQ(0, proc_flr_->GetHandleOnDevice(
                    "/job:b/replica:0/task:0/device:CPU:0", h));
   TF_CHECK_OK(Instantiate("FindDevice",

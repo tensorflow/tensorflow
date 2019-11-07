@@ -2459,8 +2459,19 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
             }
           }
         }
+        trees {
+          nodes {
+            leaf {
+              vector {
+                value: 0
+                value: 0
+              }
+            }
+          }
+        }
         tree_weights: 0.1
         tree_weights: 0.2
+        tree_weights: 1.0
         tree_weights: 1.0
       """, tree_ensemble_config)
 

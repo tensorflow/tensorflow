@@ -39,10 +39,10 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "@com_google_absl//absl/base",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",

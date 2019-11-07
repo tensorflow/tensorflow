@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -61,6 +59,26 @@ class BASE_HLO_AbsOp {
   }];
 }
 
+class BASE_HLO_CeilOp {
+  string summary = "Ceil operator";
+
+  string description = [{
+    Returns `Ceil(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -69,6 +87,17 @@ class BASE_HLO_ConvertOp {
     float to int.
 
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
+  }];
+}
+
+class BASE_HLO_CosOp {
+  string summary = "Cos operator";
+
+  string description = [{
+    Returns `Cos(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
 
@@ -83,11 +112,60 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_FloorOp {
+  string summary = "Floor operator";
+
+  string description = [{
+    Returns `Floor(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_ImagOp {
+  string summary = "Imag operator";
+
+  string description = [{
+    Returns `Imag(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_LogOp {
+  string summary = "Logarithm operator";
+
+  string description = [{
+    Returns `log(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
   string description = [{
     Returns `-operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_RealOp {
+  string summary = "Real operator";
+
+  string description = [{
+    Returns `Real(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_RsqrtOp {
+  string summary = "Reciprocal Square-root operator";
+
+  string description = [{
+    Returns `1.0 / sqrt(operand)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -113,6 +191,28 @@ class BASE_HLO_SignOp {
   }];
 }
 
+class BASE_HLO_SinOp {
+  string summary = "Sin operator";
+
+  string description = [{
+    Returns `Sin(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_SqrtOp {
+  string summary = "Square-root operator";
+
+  string description = [{
+    Returns `sqrt(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_TanhOp {
   string summary = "Tanh operator";
 
@@ -132,7 +232,7 @@ class BASE_HLO_TanhOp {
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<ElementsAttr>;
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";
@@ -188,6 +288,27 @@ class BASE_HLO_MulOp {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
+class BASE_HLO_PowOp {
+  string summary = "Power operator";
+
+  string description = [{
+    Returns `lhs ^ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_RemOp {
+  string summary = "Remainder operator";
+
+  string description = [{
+    Returns `lhs % rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
 
 class BASE_HLO_SubOp {
   string summary = "Subtraction operator";
@@ -211,9 +332,27 @@ class BASE_HLO_AndOp {
   }];
 }
 
-//===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
-//===----------------------------------------------------------------------===//
+class BASE_HLO_OrOp {
+  string summary = "Logical or";
+
+  string description = [{
+    Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_XorOp {
+  string summary = "Logical xor";
+
+  string description = [{
+    Returns `lhs xor rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
 
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
@@ -223,6 +362,17 @@ class BASE_HLO_ReduceOp {
     in parallel.
 
     See https://www.tensorflow.org/xla/operation_semantics#reduce.
+  }];
+}
+
+class BASE_HLO_ReduceWindowOp {
+  string summary = "ReduceWindow operator";
+
+  string description = [{
+    Returns the result of executing a reduction function over all elements in
+    each window of one or more arrays in parallel.
+
+    See https://www.tensorflow.org/xla/operation_semantics#reducewindow.
   }];
 }
 
@@ -266,6 +416,21 @@ def HLO_PrecisionAttr : StrEnumAttr<"Precision",
 def HLO_PrecisionConfigAttr:
     OptionalAttr<
           TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
+
+//===----------------------------------------------------------------------===//
+// Fast Fourier Transform Type enum definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA FftType proto enum.
+def HLO_FFT_TYPE_FFT : StrEnumAttrCase<"FFT">;
+def HLO_FFT_TYPE_IFFT : StrEnumAttrCase<"IFFT">;
+def HLO_FFT_TYPE_RFFT : StrEnumAttrCase<"RFFT">;
+def HLO_FFT_TYPE_IRFFT : StrEnumAttrCase<"IRFFT">;
+
+def HLO_FftTypeAttr : StrEnumAttr<"FftType",
+    "XLA fast fourier transform type.",
+    [HLO_FFT_TYPE_FFT, HLO_FFT_TYPE_IFFT,
+     HLO_FFT_TYPE_RFFT, HLO_FFT_TYPE_IRFFT]>;
 
 //===----------------------------------------------------------------------===//
 // Comparison op definitions.
@@ -312,6 +477,16 @@ class BASE_HLO_SliceOp {
     Slices a portion of the `operand` into a new configuration.
 
     See https://www.tensorflow.org/xla/operation_semantics#slice.
+  }];
+}
+
+class BASE_HLO_DynamicSliceOp {
+  string summary = "Dynamic Slice operator";
+
+  string description = [{
+    Extracts a sub-array from the input array at dynamic start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicslice.
   }];
 }
 
@@ -401,6 +576,22 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+class BASE_HLO_CrossReplicaSumOp {
+   string summary = "Sums input across replicated instances.";
+
+   string description = [{
+     For each of the replica groups, operands of the group devices are summed
+     so that each device has the sum.
+
+     For example, suppose there are 8 TPU devices: `[A, B, C, D, E, F, G, H]`.
+     Passing group_assignment=`[[0,2,4,6],[1,3,5,7]]` sets `A, C, E, G` as group 0,
+     and `B, D, F, H` as group 1. Thus we get the outputs:
+     `[A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H]`.
+
+     See https://www.tensorflow.org/xla/operation_semantics#crossreplicasum.
+   }];
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -418,6 +609,27 @@ class BASE_HLO_DotOp {
     multiplication.
 
     See https://www.tensorflow.org/xla/operation_semantics#dot.
+  }];
+}
+
+class BASE_HLO_DotGeneralOp {
+  string summary = "General Dot operator";
+  string description = [{
+    Performs general dot products between vectors, vector/matrix and
+    matrix/matrix multiplication.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dotgeneral.
+  }];
+}
+
+class BASE_HLO_FftOp {
+  string summary = "Fast fourier transform operator";
+
+  string description = [{
+    Returns the fast-fourier-transform of the input array.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#fft.
   }];
 }
 
@@ -458,6 +670,21 @@ class BASE_HLO_SelectOp {
   }];
 }
 
+class BASE_HLO_SelectAndScatterOp {
+  string summary = "SelectAndScatter operator";
+
+  string description = [{
+    Runs a windowed selection `select` function over `operand` with shape
+    `window_dimensions` and stride `window_strides`. This will produce an amount
+    of selected locations whose shape matches `source`. These are then scattered
+    to the output which is initialized with `init_value`.
+    Multiple scattered elements which land in the same output location are
+    combined using the `scatter` function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
 class BASE_HLO_ReverseOp {
   string summary = "Reverse operator";
 
@@ -489,6 +716,17 @@ class BASE_HLO_TransposeOp {
     `res_dimensions[i] = operand_dimensions[permutation[i]]`
 
     See https://www.tensorflow.org/xla/operation_semantics#transpose.
+  }];
+}
+
+class BASE_HLO_RngUniformOp {
+  string summary = "RNG with uniform distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated following
+    the uniform distribution over the interval `[a,b)`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
 }
 

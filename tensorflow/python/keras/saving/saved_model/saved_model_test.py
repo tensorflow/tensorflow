@@ -26,6 +26,9 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
+from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
@@ -39,7 +42,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
-from tensorflow.python.keras.saving.saved_model import save as keras_save
+from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -49,6 +52,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
@@ -78,6 +82,16 @@ class LayerWithLoss(keras.layers.Layer):
     return inputs
 
 
+class LayerWithUpdate(keras.layers.Layer):
+
+  def build(self, _):
+    self.v = self.add_weight('v', shape=[], dtype=dtypes.int32)
+
+  def call(self, inputs):
+    self.add_update(self.v.assign_add(math_ops.reduce_sum(inputs)))
+    return inputs
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
@@ -86,22 +100,32 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
-  @keras_parameterized.run_with_all_model_types
-  def test_model_save_and_load(self):
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 4)).astype(np.float32)
-
+  def _test_save_and_load(self, use_dataset=False):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.layers[-1].activity_regularizer = regularizers.get('l2')
     model.activity_regularizer = regularizers.get('l2')
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    model.train_on_batch(input_arr, target_arr)
-
     def callable_loss():
       return math_ops.reduce_sum(model.weights[0])
     model.add_loss(callable_loss)
+
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 4))
+
+    if not tf2.enabled():
+      # The layer autocast behavior only runs when autocast is enabled, so
+      # in V1, the numpy inputs still need to be cast to float32.
+      x = x.astype(np.float32)
+      y = y.astype(np.float32)
+
+    if use_dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(1)
+      model.fit(dataset)
+    else:
+      model.train_on_batch(x, y)
+
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
     loaded = keras_load.load(saved_model_dir)
@@ -124,6 +148,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.assertAllClose(
           sorted(self.evaluate(model.get_losses_for(input_arr))),
           sorted(self.evaluate(loaded.get_losses_for(input_arr))))
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load(self):
+    self._test_save_and_load(use_dataset=True)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load_dataset(self):
+    self._test_save_and_load(use_dataset=True)
 
   def test_trainable_weights(self):
     layer = keras.layers.Dense(4, name='custom_layer')
@@ -158,8 +190,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 3)).astype(np.float32)
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
 
     # Test that symbolic losses are maintained (train_on_batch saves symbolic
     # losses.)
@@ -339,8 +371,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.add(keras.layers.Dropout(0.5))
     model.add(keras.layers.Dense(4, kernel_regularizer=regularizers.get('l2')))
 
-    input_arr = np.random.random((2, 3)).astype(np.float32)
-    target_arr = np.random.random((2, 4)).astype(np.float32)
+    input_arr = np.random.random((2, 3))
+    target_arr = np.random.random((2, 4))
 
     model.compile(
         loss='mse',
@@ -375,11 +407,12 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(
         model.predict(input_arr),
         loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr))['predictions'])
+            ops.convert_to_tensor(input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
-            float_list=feature_pb2.FloatList(value=input_arr.flatten()))}
+            float_list=feature_pb2.FloatList(
+                value=input_arr.astype('float32').flatten()))}
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
@@ -474,6 +507,128 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       loaded_predictions = loaded.predict(features)
       self.assertAllClose(predictions, loaded_predictions)
 
+  def testSaveTensorKwarg(self):
+
+    class LayerWithTensorKwarg(keras.layers.Layer):
+
+      def call(self, inputs, tensor=None):
+        if tensor is not None:
+          return inputs * math_ops.cast(tensor, dtypes.float32)
+        else:
+          return inputs
+
+    t = array_ops.sequence_mask(1)
+    inputs = keras.layers.Input(shape=(3))
+    model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
+
+    input_arr = np.random.random((1, 3))
+    predictions = model.predict(input_arr)
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    loaded_predictions = loaded.predict(input_arr)
+    self.assertAllClose(predictions, loaded_predictions)
+
+  def testModelWithTfFunctionCall(self):
+    class Subclass(keras.models.Model):
+
+      @def_function.function
+      def call(self, inputs, training=False):
+        return inputs * math_ops.cast(training, dtypes.float32)
+
+    model = Subclass()
+    model.predict(array_ops.ones((1, 2)), steps=1)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual(
+        [[1, 5]],
+        self.evaluate(loaded(array_ops.constant([[1, 5.]]), training=True)))
+    self.assertAllEqual(
+        [[0, 0]],
+        self.evaluate(loaded(array_ops.constant([[1, 5.]]), training=False)))
+
+  def testReviveFunctionalModel(self):
+
+    class CustomAdd(keras.layers.Add):
+
+      def build(self, input_shape):
+        self.w = self.add_weight('w', shape=[])
+        super(CustomAdd, self).build(input_shape)
+
+      def call(self, inputs):
+        outputs = super(CustomAdd, self).call(inputs)
+        return outputs * self.w
+
+    input1 = keras.layers.Input(shape=(None, 3), name='input_1')
+    input2 = keras.layers.Input(shape=(None, 3), name='input_2')
+
+    d = keras.layers.Dense(4, name='dense_with_two_inbound_nodes')
+    output1 = d(input1)
+    output2 = d(input2)
+
+    # Use a custom layer in this model to ensure that layers aren't being
+    # recreated directly from the config.
+    outputs = CustomAdd(name='custom')([output1, output2])
+    model = keras.models.Model([input1, input2], outputs, name='save_model')
+
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertEqual('save_model', loaded.name)
+    self.assertLen(
+        loaded.get_layer('dense_with_two_inbound_nodes')._inbound_nodes, 2)
+    self.assertEqual('CustomAdd', type(loaded.get_layer('custom')).__name__)
+    self.assertLen(loaded.get_layer('custom').weights, 1)
+
+  def _testAddUpdate(self, scope):
+    with scope:
+      layer_with_update = LayerWithUpdate()
+      model = testing_utils.get_model_from_layers([layer_with_update],
+                                                  input_shape=(3,),
+                                                  input_dtype=dtypes.int32)
+
+      if testing_utils.get_model_type() == 'subclass':
+        model._set_inputs(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32))
+      self.evaluate(variables.variables_initializer(model.variables))
+      saved_model_dir = self._save_model_dir()
+      model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[-1]
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    self.assertEqual(self.evaluate(loaded_layer.v), 0)
+
+    loaded.predict(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32),
+                   steps=1)
+    self.assertEqual(self.evaluate(loaded_layer.v), 6)
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveLayerWithUpdates(self):
+    @tf_contextlib.contextmanager
+    def nullcontextmanager():
+      yield
+    self._testAddUpdate(nullcontextmanager())
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveInStrategyScope(self):
+    self._testAddUpdate(mirrored_strategy.MirroredStrategy().scope())
+
+  def testSaveTimeDistributedLayer(self):
+    model = keras.Sequential([
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(1), input_shape=(None, 1))])
+    predictions = model.predict_on_batch(array_ops.ones((3, 2, 1)))
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
+                        predictions)
 
 
 class TestLayerCallTracing(test.TestCase):

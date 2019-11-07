@@ -27,12 +27,14 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectAbs(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
-
-void SelectApplyMask(const OperationDef& op_def,
+void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
+                     const BHWC& mask_shape,
                      std::unique_ptr<GPUOperation>* ptr);
 
-void SelectReLU(const ReLUAttributes& attr, const OperationDef& op_def,
+void SelectLSTM(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
+
+void SelectReLU(const CreationContext& creation_context,
+                const ReLUAttributes& attr, const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr);
 
 Status SelectPReLU(const PReLUAttributes& attr,
@@ -49,9 +51,6 @@ void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr);
-
-void SelectSigmoid(const OperationDef& op_def,
-                   std::unique_ptr<GPUOperation>* ptr);
 
 Status SelectUpsampling(const Upsample2DAttributes& attr,
                         const OperationDef& op_def,
@@ -84,6 +83,10 @@ Status SelectBroadcastAdd(const AddAttributes& attr,
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
+
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

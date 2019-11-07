@@ -1,4 +1,24 @@
 op {
   graph_op_name: "LMDBDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "filenames"
+    description: <<END
+A scalar or a vector containing the name(s) of the binary file(s) to be
+read.
+END
+  }
+  summary: "Creates a dataset that emits the key-value pairs in one or more LMDB files."
+  description: <<END
+The Lightning Memory-Mapped Database Manager, or LMDB, is an embedded binary
+key-value database. This dataset can read the contents of LMDB database files,
+the names of which generally have the `.mdb` suffix.
+
+Each output element consists of a key-value pair represented as a pair of
+scalar string `Tensor`s, where the first `Tensor` contains the key and the
+second `Tensor` contains the value.
+
+LMDB uses different file formats on big- and little-endian machines.
+`LMDBDataset` can only read files in the format of the host machine.
+END
 }

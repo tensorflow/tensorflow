@@ -30,7 +30,7 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-// Returns true if 'c' is an allowable puncuation character: [$._-]
+// Returns true if 'c' is an allowable punctuation character: [$._-]
 // Returns false otherwise.
 static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
@@ -176,11 +176,20 @@ Token Lexer::lexToken() {
 
 /// Lex an '@foo' identifier.
 ///
-///   symbol-ref-id ::= `@` bare-id
+///   symbol-ref-id ::= `@` (bare-id | string-literal)
 ///
 Token Lexer::lexAtIdentifier(const char *tokStart) {
-  // These always start with a letter or underscore.
-  auto cur = *curPtr++;
+  char cur = *curPtr++;
+
+  // Try to parse a string literal, if present.
+  if (cur == '"') {
+    Token stringIdentifier = lexString(curPtr);
+    if (stringIdentifier.is(Token::error))
+      return stringIdentifier;
+    return formToken(Token::at_identifier, tokStart);
+  }
+
+  // Otherwise, these always start with a letter or underscore.
   if (!isalpha(cur) && cur != '_')
     return emitError(curPtr - 1,
                      "@ identifier expected to start with letter or '_'");
@@ -275,7 +284,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 
   // Handle the hexadecimal case.
   if (curPtr[-1] == '0' && *curPtr == 'x') {
-    // If we see stuff like 0xi32, this is a literal `0` follwed by an
+    // If we see stuff like 0xi32, this is a literal `0` followed by an
     // identifier `xi32`, stop after `0`.
     if (!isxdigit(curPtr[1]))
       return formToken(Token::integer, tokStart);
@@ -369,7 +378,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
 Token Lexer::lexString(const char *tokStart) {
   assert(curPtr[-1] == '"');
 
-  while (1) {
+  while (true) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);

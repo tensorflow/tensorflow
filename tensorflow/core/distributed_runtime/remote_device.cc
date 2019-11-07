@@ -129,7 +129,7 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
       }
     }
   };
-  wi->GetStatusAsync(&call->req, &call->resp, cb);
+  wi->GetStatusAsync(&call->req, &call->resp, /*fail_fast=*/false, cb);
 }
 
 }  // namespace tensorflow

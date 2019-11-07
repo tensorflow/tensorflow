@@ -110,28 +110,17 @@ TEST(MathOpsTest, Segment_ShapeFn) {
 }
 
 TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
-  for (const auto* op_name : {"Add",        "Complex",
-                              "Div",        "Equal",
-                              "Greater",    "GreaterEqual",
-                              "Igamma",     "Igammac",
-                              "Zeta",       "Polygamma",
-                              "Less",       "LessEqual",
-                              "LogicalAnd", "LogicalOr",
-                              "Maximum",    "Minimum",
-                              "Mod",        "Mul",
-                              "NotEqual",   "Pow",
-                              "Sub",        "SquaredDifference",
-                              "DivNoNan"}) {
-    ShapeInferenceTestOp op(op_name);
+  auto test_shapes = [&](ShapeInferenceTestOp& op,
+                         bool incompatible_shape_error) {
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");
     INFER_OK(op, "?;[1,2]", "?");
 
     INFER_OK(op, "[?];[1]", "[d0_0]");
     INFER_OK(op, "[1];[?]", "[d1_0]");
-    INFER_OK(op, "[?];[2]", "[d1_0]");
-    INFER_OK(op, "[2];[?]", "[d0_0]");
-    INFER_OK(op, "[?];[?]", "[?]");
+    INFER_OK(op, "[?];[2]", incompatible_shape_error ? "[d1_0]" : "?");
+    INFER_OK(op, "[2];[?]", incompatible_shape_error ? "[d0_0]" : "?");
+    INFER_OK(op, "[?];[?]", incompatible_shape_error ? "[?]" : "?");
     INFER_OK(op, "[];[?]", "[d1_0]");
     INFER_OK(op, "[?];[]", "[d0_0]");
 
@@ -144,7 +133,7 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[2]", "[d1_0]");
     INFER_OK(op, "[2];[1]", "[d0_0]");
     INFER_OK(op, "[2];[]", "[d0_0]");
-    INFER_OK(op, "[2];[?]", "[d0_0]");
+    INFER_OK(op, "[2];[?]", incompatible_shape_error ? "[d0_0]" : "?");
 
     INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
     INFER_OK(op, "[];[0]", "[d1_0]");
@@ -152,14 +141,46 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[0];[1]", "[d0_0]");
     INFER_OK(op, "[0];[]", "[d0_0]");
 
-    INFER_OK(op, "[2];[?,?]", "[d1_0,d0_0]");
-    INFER_OK(op, "[2,2];[?,?,?]", "[d1_0,d0_0,d0_1]");
+    INFER_OK(op, "[2];[?,?]", incompatible_shape_error ? "[d1_0,d0_0]" : "?");
+    INFER_OK(op, "[2,2];[?,?,?]",
+             incompatible_shape_error ? "[d1_0,d0_0,d0_1]" : "?");
 
     // Multiple dimension cases (same test cases, switching x and y).
     INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",
-             "[d0_0,d0_1,d0_2,d0_3|d1_0,d0_4,d0_5]");
+             incompatible_shape_error ? "[d0_0,d0_1,d0_2,d0_3|d1_0,d0_4,d0_5]"
+                                      : "?");
     INFER_OK(op, "[3,1,?];[?,1,2,3,4,5]",
-             "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]");
+             incompatible_shape_error ? "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]"
+                                      : "?");
+
+    if (incompatible_shape_error) {
+      INFER_ERROR("Dimensions must be equal", op, "[2];[3]");
+    } else {
+      INFER_OK(op, "[2];[3]", "[]");
+    }
+  };
+
+  for (string op_name : {"Add",        "Complex",
+                         "Div",        "Equal",
+                         "Greater",    "GreaterEqual",
+                         "Igamma",     "Igammac",
+                         "Zeta",       "Polygamma",
+                         "Less",       "LessEqual",
+                         "LogicalAnd", "LogicalOr",
+                         "Maximum",    "Minimum",
+                         "Mod",        "Mul",
+                         "NotEqual",   "Pow",
+                         "Sub",        "SquaredDifference",
+                         "DivNoNan"}) {
+    ShapeInferenceTestOp op(op_name);
+    AddNodeAttr("incompatible_shape_error", true, &op.node_def);
+    test_shapes(op, true);
+
+    if ((op_name == "Equal") || (op_name == "NotEqual")) {
+      ShapeInferenceTestOp op(op_name);
+      AddNodeAttr("incompatible_shape_error", false, &op.node_def);
+      test_shapes(op, false);
+    }
   }
 }
 
@@ -202,15 +223,15 @@ TEST(MathOpsTest, Select_ShapeFn) {
   // rerun shape inference, updating the context <c>.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  typedef std::vector<std::pair<TensorShapeProto, DataType>> ShapeDtypeV;
+  typedef std::vector<std::pair<PartialTensorShape, DataType>> ShapeDtypeV;
   std::vector<std::unique_ptr<ShapeDtypeV>> handle_data;
   std::unique_ptr<shape_inference::InferenceContext> c;
   auto run_inference_for_handles = [&]() -> Status {
     CHECK(op_reg_data->shape_inference_fn != nullptr);
     c.reset(new shape_inference::InferenceContext(
-        TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
-        {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
-        handle_data));
+        TF_GRAPH_DEF_VERSION, op.node_def, op_reg_data->op_def,
+        {PartialTensorShape(), PartialTensorShape(), PartialTensorShape()}, {},
+        {}, handle_data));
     TF_CHECK_OK(c->construction_status());
     Status s = c->Run(op_reg_data->shape_inference_fn);
     LOG(INFO) << "Inference got " << s;
@@ -222,11 +243,10 @@ TEST(MathOpsTest, Select_ShapeFn) {
     return p;
   };
 
-  TensorShapeProto i0 = shape_proto({1, -1});
-  TensorShapeProto i1 = shape_proto({-1, 2});
-  TensorShapeProto unknown_shape;
-  unknown_shape.set_unknown_rank(true);
-  TensorShapeProto scalar;
+  auto i0 = PartialTensorShape({1, -1});
+  auto i1 = PartialTensorShape({-1, 2});
+  PartialTensorShape unknown_shape;
+  auto scalar = PartialTensorShape({});
 
   handle_data.emplace_back(
       new ShapeDtypeV{{scalar, DT_FLOAT}, {unknown_shape, DT_INT32}});

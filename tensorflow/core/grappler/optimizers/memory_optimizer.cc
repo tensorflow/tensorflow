@@ -608,6 +608,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     if (dtype != DT_HALF && dtype != DT_FLOAT && dtype != DT_DOUBLE &&
         dtype != DT_INT64) {  // Only GPU-supported TemporaryVariable types.
       VLOG(1) << "Unsupported dtype for " << node->name();
+      continue;
     }
 
     // Compute a topological ordering for the node fanin.

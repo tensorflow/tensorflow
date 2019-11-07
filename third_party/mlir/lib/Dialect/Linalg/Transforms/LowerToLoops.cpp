@@ -40,13 +40,13 @@ using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
 
-using IndexedLinalgValue = TemplatedIndexedValue<linalg_load, linalg_store>;
+using IndexedLinalgValue = TemplatedIndexedValue<std_load, std_store>;
 using edsc::op::operator+;
 using edsc::op::operator==;
 
 static SmallVector<ValueHandle, 8>
 foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
-                    ArrayRef<Value *> vals, OperationFolder &folder) {
+                    ArrayRef<Value *> vals, OperationFolder *folder) {
   assert(map.getNumSymbols() == 0);
   assert(map.getNumInputs() == vals.size());
   SmallVector<ValueHandle, 8> res;
@@ -63,10 +63,10 @@ foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
 
 static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
                                           Optional<AffineMap> permutation,
-                                          OperationFolder &state) {
+                                          OperationFolder *folder) {
   return permutation ? applyMapToValues(ScopedContext::getBuilder(),
                                         ScopedContext::getLocation(),
-                                        permutation.getValue(), ivs, state)
+                                        permutation.getValue(), ivs, folder)
                      : SmallVector<Value *, 4>(ivs.begin(), ivs.end());
 }
 
@@ -76,7 +76,7 @@ static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
 static SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
                                               AffineMap map,
                                               ArrayRef<Value *> allViewSizes,
-                                              OperationFolder &folder) {
+                                              OperationFolder *folder) {
   // Apply `map` to get view sizes in loop order.
   auto sizes = applyMapToValues(b, loc, map, allViewSizes, folder);
   // Create a new range with the applied tile sizes.
@@ -94,7 +94,7 @@ template <typename LinalgOpType> class LinalgScopedEmitter {};
 template <> class LinalgScopedEmitter<CopyOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, CopyOp copyOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto nPar = copyOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto inputIvs =
@@ -116,7 +116,7 @@ public:
 template <> class LinalgScopedEmitter<FillOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, FillOp fillOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto nPar = fillOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto ivs =
@@ -132,7 +132,7 @@ public:
 template <> class LinalgScopedEmitter<DotOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, DotOp dotOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 1);
     IndexHandle r_i(allIvs[0]);
     IndexedLinalgValue A(dotOp.getInput(0)), B(dotOp.getInput(1)),
@@ -146,7 +146,7 @@ template <> class LinalgScopedEmitter<MatvecOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        MatvecOp matvecOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 2);
     IndexHandle i(allIvs[0]), r_j(allIvs[1]);
     IndexedLinalgValue A(matvecOp.getInput(0)), B(matvecOp.getInput(1)),
@@ -160,7 +160,7 @@ template <> class LinalgScopedEmitter<MatmulOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        MatmulOp matmulOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     assert(allIvs.size() == 3);
     IndexHandle i(allIvs[0]), j(allIvs[1]), r_k(allIvs[2]);
     IndexedLinalgValue A(matmulOp.getInput(0)), B(matmulOp.getInput(1)),
@@ -173,7 +173,7 @@ public:
 template <> class LinalgScopedEmitter<ConvOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs, ConvOp convOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     auto maps = loopToOperandRangesMaps(convOp);
@@ -191,12 +191,12 @@ public:
 };
 
 // Emits the MLIR for the scalar part of the generic op by:
-//   1. Emitting linalg_load and linalg_store ops for each input and output
+//   1. Emitting std_load and std_store ops for each input and output
 //      view in order. This is achieved by applying the appropriate input or
 //      output map to the enclosing induction variables.
 //   2. Emitting a call to `op.fun()` that takes as arguments the scalars
 //      from point 1. above.
-//   3. Emitting linalg_store to store the results of 2. to the output
+//   3. Emitting std_store to store the results of 2. to the output
 //      views.
 //
 // An example output may resemble:
@@ -205,12 +205,17 @@ public:
 //    loop.for %i = %c0 to %0 step %c1 {
 //      loop.for %j = %c0 to %1 step %c1 {
 //        loop.for %k = %c0 to %4 step %c1 {
-//          %11 = linalg.load %arg0[%i, %j] : !linalg.view<?x?xf32>
-//          %12 = linalg.load %arg1[%i, %j, %k] : !linalg.view<?x?x?xf32>
-//          %13 = linalg.load %arg2[%i, %k, %j] : !linalg.view<?x?x?xf32>
+//          %11 = linalg.load %arg0[%i, %j] :
+//            memref<?x?xf32, stride_specification>
+//          %12 = linalg.load %arg1[%i, %j, %k] :
+//            memref<?x?x?xf32, stride_specification>
+//          %13 = linalg.load %arg2[%i, %k, %j] :
+//            memref<?x?x?xf32, stride_specification>
 //          %14:2 = call @foo(%11, %12, %13) : (f32, f32, f32) -> (f32, f32)
-//          linalg.store %14#0, %arg1[%i, %j, %k] : !linalg.view<?x?x?xf32>
-//          linalg.store %14#1, %arg2[%i, %k, %j] : !linalg.view<?x?x?xf32>
+//          linalg.store %14#0, %arg1[%i, %j, %k] :
+//            memref<?x?x?Xf32, stride_specification>
+//          linalg.store %14#1, %arg2[%i, %k, %j] :
+//            memref<?x?x?Xf32, stride_specification>
 //       }
 //      }
 //    }
@@ -219,7 +224,7 @@ template <> class LinalgScopedEmitter<GenericOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
                                        GenericOp genericOp,
-                                       OperationFolder &folder) {
+                                       OperationFolder *folder) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     using edsc::intrinsics::detail::ValueHandleArray;
@@ -227,19 +232,18 @@ public:
     unsigned nOutputs = genericOp.getNumOutputs();
     SmallVector<Value *, 4> indexedValues(nInputs + nOutputs);
 
-    // 1.a. Emit linalg_load from input views.
+    // 1.a. Emit std_load from input views.
     for (unsigned i = 0, e = nInputs; i < e; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getInputIndexingMap(i), allIvs, folder));
-      indexedValues[i] = linalg_load(genericOp.getInput(i), indexing);
+      indexedValues[i] = std_load(genericOp.getInput(i), indexing);
     }
 
-    // 1.b. Emit linalg_load from output views.
+    // 1.b. Emit std_load from output views.
     for (unsigned i = 0, e = nOutputs; i < e; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-      indexedValues[nInputs + i] =
-          linalg_load(genericOp.getOutput(i), indexing);
+      indexedValues[nInputs + i] = std_load(genericOp.getOutput(i), indexing);
     }
 
     auto funcOp = genericOp.getFunction();
@@ -248,11 +252,11 @@ public:
       Operation *callOp = call(funcOp, indexedValues);
       assert(callOp->getNumResults() == genericOp.getNumOutputs());
 
-      // 3. Emit linalg_store.
+      // 3. Emit std_store.
       for (unsigned i = 0, e = nOutputs; i < e; ++i) {
         ValueHandleArray indexing(foldedAffineApplies(
             b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-        linalg_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
+        std_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
       }
     } else {
       // TODO(ntv): When a region inliner exists, use it.
@@ -271,16 +275,26 @@ public:
           map.map(std::get<0>(it), std::get<1>(it));
       }
 
-      // 3. Emit linalg_store.
+      // 3. Emit std_store.
       auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
       assert(yieldOp->getNumOperands() == nOutputs);
       for (unsigned i = 0, e = nOutputs; i < e; ++i) {
         ValueHandleArray indexing(foldedAffineApplies(
             b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-        linalg_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
-                     indexing);
+        std_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
+                  indexing);
       }
     }
+  }
+};
+
+template <> class LinalgScopedEmitter<IndexedGenericOp> {
+public:
+  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+                                       IndexedGenericOp genericOp,
+                                       OperationFolder *folder) {
+    // This is just a shim to make Linalg compile.
+    // TODO(pifon): Implement lowering after IndexedGenericOp def is submitted.
   }
 };
 
@@ -288,8 +302,8 @@ template <typename ConcreteOp>
 class LinalgRewritePattern : public RewritePattern {
 public:
   explicit LinalgRewritePattern(MLIRContext *context)
-      : RewritePattern(ConcreteOp::getOperationName(), /*benefit=*/1, context) {
-  }
+      : RewritePattern(ConcreteOp::getOperationName(), /*benefit=*/1, context),
+        folder(context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -303,8 +317,8 @@ public:
         inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp)));
     if (!invertedMap) {
       LinalgScopedEmitter<ConcreteOp>::emitScalarImplementation({}, linalgOp,
-                                                                folder);
-      rewriter.replaceOp(op, {});
+                                                                &folder);
+      rewriter.eraseOp(op);
       return matchSuccess();
     }
 
@@ -321,7 +335,7 @@ public:
 
     auto loopRanges =
         emitLoopRanges(scope.getBuilder(), scope.getLocation(), invertedMap,
-                       getViewSizes(linalgOp), folder);
+                       getViewSizes(linalgOp), &folder);
     assert(loopRanges.size() == pivs.size() + rivs.size() + wivs.size());
 
     // clang-format off
@@ -332,12 +346,12 @@ public:
           [&linalgOp, &allIvs, this] {
             auto allIvValues = extractValues(allIvs);
             LinalgScopedEmitter<ConcreteOp>::emitScalarImplementation(
-                allIvValues, linalgOp, folder);
+                allIvValues, linalgOp, &folder);
         });
       });
     });
     // clang-format on
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 
@@ -373,7 +387,7 @@ populateLinalgToLoopRewritePatterns(OwningRewritePatternList &patterns,
 
 namespace {
 struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
-  void runOnFunction();
+  void runOnFunction() override;
 };
 } // namespace
 
@@ -390,7 +404,8 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::linalg::createLowerLinalgToLoopsPass() {
   return std::make_unique<LowerLinalgToLoopsPass>();
 }
 

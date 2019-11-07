@@ -313,6 +313,15 @@ struct IfOptionsT;
 struct WhileOptions;
 struct WhileOptionsT;
 
+struct NonMaxSuppressionV4Options;
+struct NonMaxSuppressionV4OptionsT;
+
+struct NonMaxSuppressionV5Options;
+struct NonMaxSuppressionV5OptionsT;
+
+struct ScatterNdOptions;
+struct ScatterNdOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -589,11 +598,14 @@ enum BuiltinOperator {
   BuiltinOperator_HARD_SWISH = 117,
   BuiltinOperator_IF = 118,
   BuiltinOperator_WHILE = 119,
+  BuiltinOperator_NON_MAX_SUPPRESSION_V4 = 120,
+  BuiltinOperator_NON_MAX_SUPPRESSION_V5 = 121,
+  BuiltinOperator_SCATTER_ND = 122,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_WHILE
+  BuiltinOperator_MAX = BuiltinOperator_SCATTER_ND
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[120] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[123] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -714,7 +726,10 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[120] {
     BuiltinOperator_ROUND,
     BuiltinOperator_HARD_SWISH,
     BuiltinOperator_IF,
-    BuiltinOperator_WHILE
+    BuiltinOperator_WHILE,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+    BuiltinOperator_SCATTER_ND
   };
   return values;
 }
@@ -841,13 +856,16 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "HARD_SWISH",
     "IF",
     "WHILE",
+    "NON_MAX_SUPPRESSION_V4",
+    "NON_MAX_SUPPRESSION_V5",
+    "SCATTER_ND",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_WHILE) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_SCATTER_ND) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -948,11 +966,14 @@ enum BuiltinOptions {
   BuiltinOptions_IfOptions = 92,
   BuiltinOptions_WhileOptions = 93,
   BuiltinOptions_DepthToSpaceOptions = 94,
+  BuiltinOptions_NonMaxSuppressionV4Options = 95,
+  BuiltinOptions_NonMaxSuppressionV5Options = 96,
+  BuiltinOptions_ScatterNdOptions = 97,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_DepthToSpaceOptions
+  BuiltinOptions_MAX = BuiltinOptions_ScatterNdOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[95] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[98] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1048,7 +1069,10 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[95] {
     BuiltinOptions_HardSwishOptions,
     BuiltinOptions_IfOptions,
     BuiltinOptions_WhileOptions,
-    BuiltinOptions_DepthToSpaceOptions
+    BuiltinOptions_DepthToSpaceOptions,
+    BuiltinOptions_NonMaxSuppressionV4Options,
+    BuiltinOptions_NonMaxSuppressionV5Options,
+    BuiltinOptions_ScatterNdOptions
   };
   return values;
 }
@@ -1150,13 +1174,16 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "IfOptions",
     "WhileOptions",
     "DepthToSpaceOptions",
+    "NonMaxSuppressionV4Options",
+    "NonMaxSuppressionV5Options",
+    "ScatterNdOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_DepthToSpaceOptions) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_ScatterNdOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1539,6 +1566,18 @@ template<> struct BuiltinOptionsTraits<WhileOptions> {
 
 template<> struct BuiltinOptionsTraits<DepthToSpaceOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DepthToSpaceOptions;
+};
+
+template<> struct BuiltinOptionsTraits<NonMaxSuppressionV4Options> {
+  static const BuiltinOptions enum_value = BuiltinOptions_NonMaxSuppressionV4Options;
+};
+
+template<> struct BuiltinOptionsTraits<NonMaxSuppressionV5Options> {
+  static const BuiltinOptions enum_value = BuiltinOptions_NonMaxSuppressionV5Options;
+};
+
+template<> struct BuiltinOptionsTraits<ScatterNdOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ScatterNdOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2324,6 +2363,30 @@ struct BuiltinOptionsUnion {
   const DepthToSpaceOptionsT *AsDepthToSpaceOptions() const {
     return type == BuiltinOptions_DepthToSpaceOptions ?
       reinterpret_cast<const DepthToSpaceOptionsT *>(value) : nullptr;
+  }
+  NonMaxSuppressionV4OptionsT *AsNonMaxSuppressionV4Options() {
+    return type == BuiltinOptions_NonMaxSuppressionV4Options ?
+      reinterpret_cast<NonMaxSuppressionV4OptionsT *>(value) : nullptr;
+  }
+  const NonMaxSuppressionV4OptionsT *AsNonMaxSuppressionV4Options() const {
+    return type == BuiltinOptions_NonMaxSuppressionV4Options ?
+      reinterpret_cast<const NonMaxSuppressionV4OptionsT *>(value) : nullptr;
+  }
+  NonMaxSuppressionV5OptionsT *AsNonMaxSuppressionV5Options() {
+    return type == BuiltinOptions_NonMaxSuppressionV5Options ?
+      reinterpret_cast<NonMaxSuppressionV5OptionsT *>(value) : nullptr;
+  }
+  const NonMaxSuppressionV5OptionsT *AsNonMaxSuppressionV5Options() const {
+    return type == BuiltinOptions_NonMaxSuppressionV5Options ?
+      reinterpret_cast<const NonMaxSuppressionV5OptionsT *>(value) : nullptr;
+  }
+  ScatterNdOptionsT *AsScatterNdOptions() {
+    return type == BuiltinOptions_ScatterNdOptions ?
+      reinterpret_cast<ScatterNdOptionsT *>(value) : nullptr;
+  }
+  const ScatterNdOptionsT *AsScatterNdOptions() const {
+    return type == BuiltinOptions_ScatterNdOptions ?
+      reinterpret_cast<const ScatterNdOptionsT *>(value) : nullptr;
   }
 };
 
@@ -8104,6 +8167,126 @@ inline flatbuffers::Offset<WhileOptions> CreateWhileOptions(
 
 flatbuffers::Offset<WhileOptions> CreateWhileOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhileOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct NonMaxSuppressionV4OptionsT : public flatbuffers::NativeTable {
+  typedef NonMaxSuppressionV4Options TableType;
+  NonMaxSuppressionV4OptionsT() {
+  }
+};
+
+struct NonMaxSuppressionV4Options FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef NonMaxSuppressionV4OptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  NonMaxSuppressionV4OptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(NonMaxSuppressionV4OptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<NonMaxSuppressionV4Options> Pack(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV4OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct NonMaxSuppressionV4OptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit NonMaxSuppressionV4OptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  NonMaxSuppressionV4OptionsBuilder &operator=(const NonMaxSuppressionV4OptionsBuilder &);
+  flatbuffers::Offset<NonMaxSuppressionV4Options> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<NonMaxSuppressionV4Options>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<NonMaxSuppressionV4Options> CreateNonMaxSuppressionV4Options(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  NonMaxSuppressionV4OptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<NonMaxSuppressionV4Options> CreateNonMaxSuppressionV4Options(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV4OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct NonMaxSuppressionV5OptionsT : public flatbuffers::NativeTable {
+  typedef NonMaxSuppressionV5Options TableType;
+  NonMaxSuppressionV5OptionsT() {
+  }
+};
+
+struct NonMaxSuppressionV5Options FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef NonMaxSuppressionV5OptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  NonMaxSuppressionV5OptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(NonMaxSuppressionV5OptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<NonMaxSuppressionV5Options> Pack(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV5OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct NonMaxSuppressionV5OptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit NonMaxSuppressionV5OptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  NonMaxSuppressionV5OptionsBuilder &operator=(const NonMaxSuppressionV5OptionsBuilder &);
+  flatbuffers::Offset<NonMaxSuppressionV5Options> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<NonMaxSuppressionV5Options>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<NonMaxSuppressionV5Options> CreateNonMaxSuppressionV5Options(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  NonMaxSuppressionV5OptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<NonMaxSuppressionV5Options> CreateNonMaxSuppressionV5Options(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV5OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ScatterNdOptionsT : public flatbuffers::NativeTable {
+  typedef ScatterNdOptions TableType;
+  ScatterNdOptionsT() {
+  }
+};
+
+struct ScatterNdOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ScatterNdOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ScatterNdOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ScatterNdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ScatterNdOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ScatterNdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ScatterNdOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ScatterNdOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ScatterNdOptionsBuilder &operator=(const ScatterNdOptionsBuilder &);
+  flatbuffers::Offset<ScatterNdOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ScatterNdOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ScatterNdOptions> CreateScatterNdOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ScatterNdOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ScatterNdOptions> CreateScatterNdOptions(flatbuffers::FlatBufferBuilder &_fbb, const ScatterNdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -8522,6 +8705,15 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const DepthToSpaceOptions *builtin_options_as_DepthToSpaceOptions() const {
     return builtin_options_type() == BuiltinOptions_DepthToSpaceOptions ? static_cast<const DepthToSpaceOptions *>(builtin_options()) : nullptr;
   }
+  const NonMaxSuppressionV4Options *builtin_options_as_NonMaxSuppressionV4Options() const {
+    return builtin_options_type() == BuiltinOptions_NonMaxSuppressionV4Options ? static_cast<const NonMaxSuppressionV4Options *>(builtin_options()) : nullptr;
+  }
+  const NonMaxSuppressionV5Options *builtin_options_as_NonMaxSuppressionV5Options() const {
+    return builtin_options_type() == BuiltinOptions_NonMaxSuppressionV5Options ? static_cast<const NonMaxSuppressionV5Options *>(builtin_options()) : nullptr;
+  }
+  const ScatterNdOptions *builtin_options_as_ScatterNdOptions() const {
+    return builtin_options_type() == BuiltinOptions_ScatterNdOptions ? static_cast<const ScatterNdOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8932,6 +9124,18 @@ template<> inline const WhileOptions *Operator::builtin_options_as<WhileOptions>
 
 template<> inline const DepthToSpaceOptions *Operator::builtin_options_as<DepthToSpaceOptions>() const {
   return builtin_options_as_DepthToSpaceOptions();
+}
+
+template<> inline const NonMaxSuppressionV4Options *Operator::builtin_options_as<NonMaxSuppressionV4Options>() const {
+  return builtin_options_as_NonMaxSuppressionV4Options();
+}
+
+template<> inline const NonMaxSuppressionV5Options *Operator::builtin_options_as<NonMaxSuppressionV5Options>() const {
+  return builtin_options_as_NonMaxSuppressionV5Options();
+}
+
+template<> inline const ScatterNdOptions *Operator::builtin_options_as<ScatterNdOptions>() const {
+  return builtin_options_as_ScatterNdOptions();
 }
 
 struct OperatorBuilder {
@@ -12043,6 +12247,75 @@ inline flatbuffers::Offset<WhileOptions> CreateWhileOptions(flatbuffers::FlatBuf
       _body_subgraph_index);
 }
 
+inline NonMaxSuppressionV4OptionsT *NonMaxSuppressionV4Options::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new NonMaxSuppressionV4OptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void NonMaxSuppressionV4Options::UnPackTo(NonMaxSuppressionV4OptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<NonMaxSuppressionV4Options> NonMaxSuppressionV4Options::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV4OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateNonMaxSuppressionV4Options(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<NonMaxSuppressionV4Options> CreateNonMaxSuppressionV4Options(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV4OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const NonMaxSuppressionV4OptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateNonMaxSuppressionV4Options(
+      _fbb);
+}
+
+inline NonMaxSuppressionV5OptionsT *NonMaxSuppressionV5Options::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new NonMaxSuppressionV5OptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void NonMaxSuppressionV5Options::UnPackTo(NonMaxSuppressionV5OptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<NonMaxSuppressionV5Options> NonMaxSuppressionV5Options::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV5OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateNonMaxSuppressionV5Options(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<NonMaxSuppressionV5Options> CreateNonMaxSuppressionV5Options(flatbuffers::FlatBufferBuilder &_fbb, const NonMaxSuppressionV5OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const NonMaxSuppressionV5OptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateNonMaxSuppressionV5Options(
+      _fbb);
+}
+
+inline ScatterNdOptionsT *ScatterNdOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ScatterNdOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ScatterNdOptions::UnPackTo(ScatterNdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ScatterNdOptions> ScatterNdOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ScatterNdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateScatterNdOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ScatterNdOptions> CreateScatterNdOptions(flatbuffers::FlatBufferBuilder &_fbb, const ScatterNdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ScatterNdOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateScatterNdOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -12712,6 +12985,18 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const DepthToSpaceOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_NonMaxSuppressionV4Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV4Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_NonMaxSuppressionV5Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV5Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_ScatterNdOptions: {
+      auto ptr = reinterpret_cast<const ScatterNdOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -13106,6 +13391,18 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const DepthToSpaceOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_NonMaxSuppressionV4Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV4Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_NonMaxSuppressionV5Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV5Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_ScatterNdOptions: {
+      auto ptr = reinterpret_cast<const ScatterNdOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -13488,6 +13785,18 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const DepthToSpaceOptionsT *>(value);
       return CreateDepthToSpaceOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_NonMaxSuppressionV4Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV4OptionsT *>(value);
+      return CreateNonMaxSuppressionV4Options(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_NonMaxSuppressionV5Options: {
+      auto ptr = reinterpret_cast<const NonMaxSuppressionV5OptionsT *>(value);
+      return CreateNonMaxSuppressionV5Options(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ScatterNdOptions: {
+      auto ptr = reinterpret_cast<const ScatterNdOptionsT *>(value);
+      return CreateScatterNdOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -13868,6 +14177,18 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_DepthToSpaceOptions: {
       value = new DepthToSpaceOptionsT(*reinterpret_cast<DepthToSpaceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_NonMaxSuppressionV4Options: {
+      value = new NonMaxSuppressionV4OptionsT(*reinterpret_cast<NonMaxSuppressionV4OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_NonMaxSuppressionV5Options: {
+      value = new NonMaxSuppressionV5OptionsT(*reinterpret_cast<NonMaxSuppressionV5OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ScatterNdOptions: {
+      value = new ScatterNdOptionsT(*reinterpret_cast<ScatterNdOptionsT *>(u.value));
       break;
     }
     default:
@@ -14344,6 +14665,21 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_DepthToSpaceOptions: {
       auto ptr = reinterpret_cast<DepthToSpaceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_NonMaxSuppressionV4Options: {
+      auto ptr = reinterpret_cast<NonMaxSuppressionV4OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_NonMaxSuppressionV5Options: {
+      auto ptr = reinterpret_cast<NonMaxSuppressionV5OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ScatterNdOptions: {
+      auto ptr = reinterpret_cast<ScatterNdOptionsT *>(value);
       delete ptr;
       break;
     }

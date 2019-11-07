@@ -22,8 +22,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// An optimization pass that roundtrips the Graph to MLIR and back.
+// An optimization pass that simply roundtrips the Graph to MLIR and back.
 class MlirRoundtripPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
+// An optimization pass that simply imports the Graph to MLIR.
+class MlirImportPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;
 };

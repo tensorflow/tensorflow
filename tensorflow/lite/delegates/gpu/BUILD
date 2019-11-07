@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -99,7 +100,6 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
-    copts = ["-std=c++11"],
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
@@ -127,15 +127,35 @@ cc_binary(
     deps = [":gl_delegate"],
 )
 
-# build -c opt --config ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_metal.so
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_delegate.so
 cc_binary(
-    name = "libtensorflowlite_gpu_metal.so",
+    name = "libtensorflowlite_gpu_delegate.so",
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_gpu_delegate.so",
+    ] + select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+        "//conditions:default": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     tags = [
         "nobuilder",
         "notap",
     ],
+    deps = [":delegate"],
+)
+
+# bazel build -c opt --cpu ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :libtensorflowlite_gpu_metal --apple_platform_type=ios
+ios_static_framework(
+    name = "tensorflow_lite_gpu_framework",
+    hdrs = [
+        "metal_delegate.h",
+        "metal_delegate_internal.h",
+    ],
+    minimum_os_version = "10.0",
     deps = [":metal_delegate"],
 )
 
@@ -159,6 +179,36 @@ cc_library(
     hdrs = ["spi.h"],
     deps = [
         ":api",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
+    name = "delegate",
+    srcs = ["delegate.cc"],
+    hdrs = ["delegate.h"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu/cl:api",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/gl:api2",
+        "@com_google_absl//absl/types:span",
     ],
 )

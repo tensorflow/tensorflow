@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <vector>
 
 #include "llvm/IR/Module.h"
@@ -68,22 +69,17 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 // the dimensions more major then the given dimensions, minor is the size of
 // dimensions more minor then the given dimensions, and middle is the size of
 // the given dimensions.
-std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
-    const Shape& shape, DimensionVector dims_middle) {
+std::array<int64, 3> PartitionShapeByMiddleDimensions(
+    const Shape& shape, absl::Span<const int64> dims_middle) {
   CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-
-  absl::Span<const int64> minor_to_major = LayoutUtil::MinorToMajor(shape);
-  int64 values[3] = {1, 1, 1};
+  std::array<int64, 3> values = {1, 1, 1};
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
-  // Iterate through the dimensions for the three segments in the order of
-  // minor, middle and major to accumulate the size of each segment.
-  absl::c_for_each(minor_to_major, [&](int64 cur_dim) {
+  for (int64 cur_dim : LayoutUtil::MinorToMajor(shape)) {
     if (cur_segment != kMajor) {
       // Handle change of segments.
-      bool cur_dim_in_middle = absl::c_any_of(
-          dims_middle, [&](int64 dim) { return dim == cur_dim; });
+      bool cur_dim_in_middle = absl::c_linear_search(dims_middle, cur_dim);
       if (cur_segment == kMinor) {
         if (cur_dim_in_middle) {
           cur_segment = kMiddle;
@@ -94,11 +90,9 @@ std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
         }
       }
     }
-
     values[cur_segment] *= shape.dimensions(cur_dim);
-  });
-
-  return std::make_tuple(values[kMajor], values[kMiddle], values[kMinor]);
+  }
+  return values;
 }
 
 }  // namespace
@@ -206,26 +200,24 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
     return false;
   }
 
-  bool is_row_reduction;
-  DimensionVector dims_in_elem;
-  std::tie(is_row_reduction, dims_in_elem) =
+  ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(input->shape(),
                                               reduce.dimensions());
 
-  if (is_row_reduction) {
+  if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return dims_in_elem[2] >= kWarpSize;
+    return reduction_dimensions.dimensions[2] >= kWarpSize;
   }
 
-  // For column reduction, the tile block is tize_size_y x tile_size_x, and we
+  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
   // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
-  return dims_in_elem[1] >= kWarpSize;
+  return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
+ReductionDimensions GetReductionKindAndContiguousComponents(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
   DimensionVector dims_to_keep;
   for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
@@ -235,38 +227,33 @@ std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
   }
 
   if (dims_to_keep.empty()) {
-    return std::make_pair(
-        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
+    return {/*is_row_reduction=*/true,
+            {1, 1, ShapeUtil::ElementsIn(input_shape)}};
   }
 
   if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
                                            dims_to_keep)) {
-    int64 num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
-    std::tie(num_reduced_major, num_kept, num_reduced_minor) =
+    std::array<int64, 3> shape_partition =
         PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
-    if (num_kept == 1) {
-      return std::make_pair(
-          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
+    if (shape_partition[1] == 1) {
+      return {/*is_row_reduction=*/true,
+              {1, 1, shape_partition[0] * shape_partition[2]}};
     }
-    if (num_reduced_minor == 1) {
-      return std::make_pair(false,
-                            DimensionVector{1, num_reduced_major, num_kept});
+    if (shape_partition[2] == 1) {
+      return {/*is_row_reduction=*/false,
+              {1, shape_partition[0], shape_partition[1]}};
     }
-    return std::make_pair(
-        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
+    return {/*is_row_reduction=*/true, shape_partition};
   }
 
-  int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
-  std::tie(num_kept_major, num_reduced, num_kept_minor) =
-      PartitionShapeByMiddleDimensions(
-          input_shape,
-          DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
-  if (num_kept_minor == 1) {
-    return std::make_pair(true,
-                          DimensionVector{1, num_kept_major, num_reduced});
+  std::array<int64, 3> shape_partition =
+      PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
+
+  if (shape_partition[2] == 1) {
+    return {/*is_row_reduction=*/true,
+            {1, shape_partition[0], shape_partition[1]}};
   }
-  return std::make_pair(
-      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
+  return {/*is_row_reduction=*/false, shape_partition};
 }
 
 // This emits a device-side call to

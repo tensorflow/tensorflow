@@ -25,6 +25,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import node as node_module
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -71,8 +72,8 @@ class InputLayer(base_layer.Layer):
     if strategy and batch_size is not None and \
         distributed_training_utils.global_batch_size_supported(strategy):
       if batch_size % strategy.num_replicas_in_sync != 0:
-        raise ValueError('The `batch_size` argument value {} cannot be '
-                         'divisible by number of replicas {}'.format(
+        raise ValueError('The `batch_size` argument ({}) must be divisible by '
+                         'the number of replicas ({})'.format(
                              batch_size, strategy.num_replicas_in_sync))
       batch_size = batch_size // strategy.num_replicas_in_sync
 
@@ -157,6 +158,10 @@ class InputLayer(base_layer.Layer):
         'name': self.name
     }
     return config
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.InputLayerSavedModelSaver(self)
 
 
 @keras_export('keras.layers.Input', 'keras.Input')

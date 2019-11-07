@@ -60,7 +60,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  void *Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
   void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                      uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
@@ -80,19 +80,20 @@ class HostExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override;
-  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                       uint64 size) override;
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                        uint32 pattern, uint64 size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                  const void *host_src, uint64 size) override;

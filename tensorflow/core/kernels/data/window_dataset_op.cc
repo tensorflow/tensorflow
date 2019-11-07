@@ -48,7 +48,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         window_size_(window_size),
         window_shift_(window_shift),
         window_stride_(window_stride),
-        drop_remainder_(drop_remainder) {
+        drop_remainder_(drop_remainder),
+        output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
+        output_shapes_(input_->output_shapes().size(), TensorShape({})) {
     input_->Ref();
   }
 
@@ -61,16 +63,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override {
-    static DataTypeVector* output_dtypes =
-        new DataTypeVector(input_->output_dtypes().size(), {DT_VARIANT});
-    return *output_dtypes;
+    return output_dtypes_;
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
-    static std::vector<PartialTensorShape>* output_shapes =
-        new std::vector<PartialTensorShape>(input_->output_shapes().size(),
-                                            TensorShape({}));
-    return *output_shapes;
+    return output_shapes_;
   }
 
   string DebugString() const override {
@@ -130,6 +127,12 @@ class WindowDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(), "#window_size=", dataset()->window_size_,
+                             ",window_shift=", dataset()->window_shift_,
+                             ",window_stride=", dataset()->window_stride_, "#");
+    }
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
@@ -363,6 +366,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   const int64 window_shift_;
   const int64 window_stride_;
   const bool drop_remainder_;
+  const DataTypeVector output_dtypes_;
+  const std::vector<PartialTensorShape> output_shapes_;
 };
 
 WindowDatasetOp::WindowDatasetOp(OpKernelConstruction* ctx)

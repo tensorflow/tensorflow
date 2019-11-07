@@ -86,10 +86,13 @@ def repeat_ranges(params, splits, repeats):
     A `Tensor` with the same rank and type as `params`.
 
   #### Example:
-    ```python
-    >>> repeat_ranges(['a', 'b', 'c'], [0, 2, 3], 3)
-    ['a', 'b', 'a', 'b', 'a', 'b', 'c', 'c', 'c']
-    ```
+
+  >>> print(repeat_ranges(
+  ...     params=tf.constant(['a', 'b', 'c']),
+  ...     splits=tf.constant([0, 2, 3]),
+  ...     repeats=tf.constant(3)))
+  tf.Tensor([b'a' b'b' b'a' b'b' b'a' b'b' b'c' b'c' b'c'],
+      shape=(9,), dtype=string)
   """
   # Divide `splits` into starts and limits, and repeat them `repeats` times.
   if repeats.shape.ndims != 0:

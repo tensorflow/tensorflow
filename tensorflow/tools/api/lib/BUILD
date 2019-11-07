@@ -23,5 +23,6 @@ py_library(
         ":api_objects_proto_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "@six_archive//:six",
     ],
 )

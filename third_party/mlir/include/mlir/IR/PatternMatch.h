@@ -273,7 +273,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
@@ -286,7 +286,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy createChecked(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
 
     // If the Operation we produce is valid, return it.
@@ -307,12 +307,23 @@ public:
   virtual Operation *createOperation(const OperationState &state) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
-  /// another region "parent".  The two regions must be different.  The caller
+  /// another region "parent". The two regions must be different. The caller
   /// is responsible for creating or updating the operation transferring flow
-  // of control to the region and pass it the correct block arguments.
+  /// of control to the region and passing it the correct block arguments.
   virtual void inlineRegionBefore(Region &region, Region &parent,
                                   Region::iterator before);
   void inlineRegionBefore(Region &region, Block *before);
+
+  /// Clone the blocks that belong to "region" before the given position in
+  /// another region "parent". The two regions must be different. The caller is
+  /// responsible for creating or updating the operation transferring flow of
+  /// control to the region and passing it the correct block arguments.
+  virtual void cloneRegionBefore(Region &region, Region &parent,
+                                 Region::iterator before,
+                                 BlockAndValueMapping &mapping);
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before);
+  void cloneRegionBefore(Region &region, Block *before);
 
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA
@@ -345,11 +356,19 @@ public:
                                     valuesToRemoveIfDead);
   }
 
+  /// This method erases an operation that is known to have no uses.
+  virtual void eraseOp(Operation *op);
+
+  /// Merge the operations of block 'source' into the end of block 'dest'.
+  /// 'source's predecessors must either be empty or only contain 'dest`.
+  /// 'argValues' is used to replace the block arguments of 'source' after
+  /// merging.
+  virtual void mergeBlocks(Block *source, Block *dest,
+                           ArrayRef<Value *> argValues = llvm::None);
+
   /// Split the operations starting at "before" (inclusive) out of the given
   /// block into a new block, and return it.
-  virtual Block *splitBlock(Block *block, Block::iterator before) {
-    return block->splitBlock(before);
-  }
+  virtual Block *splitBlock(Block *block, Block::iterator before);
 
   /// This method is used as the final notification hook for patterns that end
   /// up modifying the pattern root in place, by changing its operands.  This is
@@ -408,13 +427,12 @@ public:
   // Pattern Insertion
   //===--------------------------------------------------------------------===//
 
-  void insert(RewritePattern *pattern) { patterns.emplace_back(pattern); }
-
   /// Add an instance of each of the pattern types 'Ts' to the pattern list with
   /// the given arguments.
-  // Note: ConstructorArg is necessary here to separate the two variadic lists.
+  /// Note: ConstructorArg is necessary here to separate the two variadic lists.
   template <typename... Ts, typename ConstructorArg,
-            typename... ConstructorArgs>
+            typename... ConstructorArgs,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
   void insert(ConstructorArg &&arg, ConstructorArgs &&... args) {
     // The following expands a call to emplace_back for each of the pattern
     // types 'Ts'. This magic is necessary due to a limitation in the places
@@ -456,12 +474,14 @@ private:
 /// work-list driven manner. Return true if no more patterns can be matched in
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
-/// Note: This method also performs folding and simply dead-code elimination
+/// Note: These methods also perform folding and simple dead-code elimination
 ///       before attempting to match any of the provided patterns.
 ///
 bool applyPatternsGreedily(Operation *op,
                            const OwningRewritePatternList &patterns);
-
+/// Rewrite the given regions, which must be isolated from above.
+bool applyPatternsGreedily(MutableArrayRef<Region> regions,
+                           const OwningRewritePatternList &patterns);
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

@@ -40,10 +40,8 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
   Example:
 
-  ```python
-  >>> ragged.constant([[1, 2], [3], [4, 5, 6]]).eval()
-  RaggedTensorValue(values=[1, 2, 3, 4, 5, 6], splits=[0, 2, 3, 6])
-  ```
+  >>> tf.ragged.constant([[1, 2], [3], [4, 5, 6]])
+  <tf.RaggedTensor [[1, 2], [3], [4, 5, 6]]>
 
   All scalar values in `pylist` must have the same nesting depth `K`, and the
   returned `RaggedTensor` will have rank `K`.  If `pylist` contains no scalar
@@ -98,10 +96,9 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
   Example:
 
-  ```python
-  >>> ragged.constant_value([[1, 2], [3], [4, 5, 6]])
-  RaggedTensorValue(values=[1, 2, 3, 4, 5, 6], splits=[0, 2, 3, 6])
-  ```
+  >>> tf.compat.v1.ragged.constant_value([[1, 2], [3], [4, 5, 6]])
+  tf.RaggedTensorValue(values=array([1, 2, 3, 4, 5, 6]),
+                       row_splits=array([0, 2, 3, 6]))
 
   All scalar values in `pylist` must have the same nesting depth `K`, and the
   returned `RaggedTensorValue` will have rank `K`.  If `pylist` contains no

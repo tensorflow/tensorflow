@@ -22,6 +22,7 @@
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR.h"
 
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -35,8 +36,12 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/ToolOutputFile.h"
+
+#define DEBUG_TYPE "execution-engine"
 
 using namespace mlir;
 using llvm::dbgs;
@@ -68,20 +73,40 @@ namespace mlir {
 
 void SimpleObjectCache::notifyObjectCompiled(const Module *M,
                                              MemoryBufferRef ObjBuffer) {
-  CachedObjects[M->getModuleIdentifier()] = MemoryBuffer::getMemBufferCopy(
+  cachedObjects[M->getModuleIdentifier()] = MemoryBuffer::getMemBufferCopy(
       ObjBuffer.getBuffer(), ObjBuffer.getBufferIdentifier());
 }
 
 std::unique_ptr<MemoryBuffer> SimpleObjectCache::getObject(const Module *M) {
-  auto I = CachedObjects.find(M->getModuleIdentifier());
-  if (I == CachedObjects.end()) {
-    dbgs() << "No object for " << M->getModuleIdentifier()
-           << " in cache. Compiling.\n";
+  auto I = cachedObjects.find(M->getModuleIdentifier());
+  if (I == cachedObjects.end()) {
+    LLVM_DEBUG(dbgs() << "No object for " << M->getModuleIdentifier()
+                      << " in cache. Compiling.\n");
     return nullptr;
   }
-  dbgs() << "Object for " << M->getModuleIdentifier()
-         << " loaded from cache.\n";
+  LLVM_DEBUG(dbgs() << "Object for " << M->getModuleIdentifier()
+                    << " loaded from cache.\n");
   return MemoryBuffer::getMemBuffer(I->second->getMemBufferRef());
+}
+
+void SimpleObjectCache::dumpToObjectFile(llvm::StringRef outputFilename) {
+  // Set up the output file.
+  std::string errorMessage;
+  auto file = openOutputFile(outputFilename, &errorMessage);
+  if (!file) {
+    llvm::errs() << errorMessage << "\n";
+    return;
+  }
+
+  // Dump the object generated for a single module to the output file.
+  assert(cachedObjects.size() == 1 && "Expected only one object entry.");
+  auto &cachedObject = cachedObjects.begin()->second;
+  file->os() << cachedObject->getBuffer();
+  file->keep();
+}
+
+void ExecutionEngine::dumpToObjectFile(llvm::StringRef filename) {
+  cache->dumpToObjectFile(filename);
 }
 
 // Setup LLVM target triple from the current machine.
@@ -94,8 +119,8 @@ bool ExecutionEngine::setupTargetTriple(Module *llvmModule) {
     errs() << "NO target: " << errorMessage << "\n";
     return true;
   }
-  auto machine =
-      target->createTargetMachine(targetTriple, "generic", "", {}, {});
+  std::unique_ptr<llvm::TargetMachine> machine(
+      target->createTargetMachine(targetTriple, "generic", "", {}, {}));
   llvmModule->setDataLayout(machine->createDataLayout());
   llvmModule->setTargetTriple(targetTriple);
   return false;
@@ -168,11 +193,14 @@ void packFunctionArguments(Module *module) {
   }
 }
 
-Expected<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::create(ModuleOp m,
-                        std::function<Error(llvm::Module *)> transformer,
-                        ArrayRef<StringRef> sharedLibPaths) {
-  auto engine = std::make_unique<ExecutionEngine>();
+ExecutionEngine::ExecutionEngine(bool enableObjectCache)
+    : cache(enableObjectCache ? nullptr : new SimpleObjectCache()) {}
+
+Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
+    ModuleOp m, std::function<Error(llvm::Module *)> transformer,
+    Optional<llvm::CodeGenOpt::Level> jitCodeGenOptLevel,
+    ArrayRef<StringRef> sharedLibPaths, bool enableObjectCache) {
+  auto engine = std::make_unique<ExecutionEngine>(enableObjectCache);
 
   std::unique_ptr<llvm::LLVMContext> ctx(new llvm::LLVMContext);
   auto llvmModule = translateModuleToLLVMIR(m);
@@ -223,7 +251,8 @@ ExecutionEngine::create(ModuleOp m,
       auto loaded = DynamicLibrarySearchGenerator::Load(
           libPath.data(), dataLayout.getGlobalPrefix());
       if (!loaded) {
-        errs() << "Could not load: " << libPath << "\n";
+        errs() << "Could not load " << libPath << ":\n  " << loaded.takeError()
+               << "\n";
         continue;
       }
       JD.addGenerator(std::move(*loaded));
@@ -237,6 +266,8 @@ ExecutionEngine::create(ModuleOp m,
   // LLJITWithObjectCache example.
   auto compileFunctionCreator = [&](JITTargetMachineBuilder JTMB)
       -> Expected<IRCompileLayer::CompileFunction> {
+    if (jitCodeGenOptLevel)
+      JTMB.setCodeGenOptLevel(jitCodeGenOptLevel.getValue());
     auto TM = JTMB.createTargetMachine();
     if (!TM)
       return TM.takeError();
@@ -253,6 +284,9 @@ ExecutionEngine::create(ModuleOp m,
 
   // Add a ThreadSafemodule to the engine and return.
   ThreadSafeModule tsm(std::move(deserModule), std::move(ctx));
+  if (transformer)
+    cantFail(tsm.withModuleDo(
+        [&](llvm::Module &module) { return transformer(&module); }));
   cantFail(jit->addIRModule(std::move(tsm)));
   engine->jit = std::move(jit);
 
@@ -280,5 +314,4 @@ Error ExecutionEngine::invoke(StringRef name, MutableArrayRef<void *> args) {
 
   return Error::success();
 }
-
 } // end namespace mlir

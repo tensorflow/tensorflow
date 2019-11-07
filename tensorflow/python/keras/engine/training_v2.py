@@ -35,13 +35,15 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 
 # The list of DataAdapter that support validation_split, only numpy and data
 # tensor support validation_split for now.
-_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
+_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter,
+                                 data_adapter.GenericArrayLikeDataAdapter]
 
 # The list of DataAdapter that support model._standardize_user_data. Currently
 # keras.sequence/python generator will cause error when calling
@@ -49,7 +51,9 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
-    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter,
+    data_adapter.TensorLikeDataAdapter,
+    data_adapter.GenericArrayLikeDataAdapter,
+    data_adapter.DatasetAdapter,
     data_adapter.CompositeTensorDataAdapter
 ]
 
@@ -133,8 +137,9 @@ def run_one_epoch(model,
           # Now we know the cardinality of the input(dataset or generator).
           steps_per_epoch = step
           aggregator.steps = steps_per_epoch
-          progbar.params['steps'] = steps_per_epoch
-          progbar.progbar.target = steps_per_epoch
+          if mode == ModeKeys.TRAIN:
+            progbar.params['steps'] = steps_per_epoch
+            progbar.progbar.target = steps_per_epoch
         else:
           callbacks.model.stop_training = True
           logging.warning(
@@ -241,19 +246,19 @@ class Loop(training_utils.TrainingLoop):
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
 
-      initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
-          initial_epoch, ModeKeys.TRAIN)
-
       training_dataset = training_data_adapter.get_dataset()
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
+      inferred_steps = training_utils.infer_steps_for_dataset(
           model,
           training_dataset,
           steps_per_epoch,
           steps_name='steps_per_epoch',
           epochs=0)
+
+      steps_per_epoch = (
+          inferred_steps if steps_per_epoch is None else steps_per_epoch)
 
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
@@ -301,6 +306,10 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
+
+        initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
+            initial_epoch, ModeKeys.TRAIN)
+
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -330,6 +339,13 @@ class Loop(training_utils.TrainingLoop):
                 training_context=training_context,
                 total_epochs=epochs)
             cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
+
+            # In the case of steps_per_epoch = None, the final cardinality will
+            # be determined when the inputs are fully consumed (eg dataset or
+            # generator). Update the steps_per_epoch to the new value.
+            if (steps_per_epoch is None
+                and training_context.progbar.progbar.target is not None):
+              steps_per_epoch = training_context.progbar.progbar.target
 
             # Evaluation
             if (do_validation and
@@ -432,7 +448,7 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=1,
           steps_per_epoch=steps,
-          samples=use_sample,
+          samples=total_samples,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=mode)
@@ -575,12 +591,13 @@ def _process_training_inputs(model,
     if validation_data:
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
-           validation_data)
-      # For eval data, we use the training data batch_size it was unknown.
+           validation_data, raise_if_ambiguous=False)
+      # For eval data, we use a representative batch size of the
+      # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
       # validation data input.
       if not batch_size:
-        batch_size = train_adapter.batch_size()
+        batch_size = train_adapter.representative_batch_size()
       val_adapter = _process_inputs(
           model,
           ModeKeys.TEST,
@@ -705,6 +722,7 @@ class TrainingContext(object):
 
     try:
       yield
+      model._successful_loop_finish = True
     finally:
       # End of all epochs
       self.callbacks._call_end_hook(mode)
@@ -727,14 +745,16 @@ class TrainingContext(object):
   @tf_contextlib.contextmanager
   def on_batch(self, step=0, mode=ModeKeys.TRAIN, size=1):
     """Provide a scope for running one batch."""
-    batch_logs = {'batch': step, 'size': size}
-    self.callbacks._call_batch_hook(
-        mode, 'begin', step, batch_logs)
-    self.progbar.on_batch_begin(step, batch_logs)
-    try:
-      yield batch_logs
-    finally:
-      if not batch_logs.pop('data_exhausted', False):
-        self.callbacks._call_batch_hook(
-            mode, 'end', step, batch_logs)
-        self.progbar.on_batch_end(step, batch_logs)
+    with traceme.TraceMe(
+        'TraceContext', graph_type=mode, step_num=step, batch_size=size):
+      batch_logs = {'batch': step, 'size': size}
+      self.callbacks._call_batch_hook(
+          mode, 'begin', step, batch_logs)
+      self.progbar.on_batch_begin(step, batch_logs)
+      try:
+        yield batch_logs
+      finally:
+        if not batch_logs.pop('data_exhausted', False):
+          self.callbacks._call_batch_hook(
+              mode, 'end', step, batch_logs)
+          self.progbar.on_batch_end(step, batch_logs)

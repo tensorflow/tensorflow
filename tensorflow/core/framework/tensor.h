@@ -79,6 +79,8 @@ class TensorBuffer : public core::RefCounted {
   virtual void FillAllocationDescription(
       AllocationDescription* proto) const = 0;
 
+  virtual bool GetAllocatedBytes(size_t* out_bytes) const;
+
   /// \brief Helper method to reinterpret the buffer as an array of `T`.
   template <typename T>
   T* base() const {
@@ -651,6 +653,7 @@ class Tensor {
 
   friend class DMAHelper;             // For access to buf_.
   friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
   friend class TensorReference;       // For access to buf_.
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
@@ -940,6 +943,7 @@ inline Tensor::Tensor(Tensor&& other)
 class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
  public:
   using TensorBuffer::TensorBuffer;
+  bool GetAllocatedBytes(size_t* out_bytes) const final;
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
@@ -950,7 +954,8 @@ template <typename T>
 struct Tensor::ValueAndTensorBuffer {
   class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
    public:
-    HostScalarTensorBuffer(void* data) : HostScalarTensorBufferBase(data) {}
+    explicit HostScalarTensorBuffer(void* data)
+        : HostScalarTensorBufferBase(data) {}
     size_t size() const final { return sizeof(T); }
     TensorBuffer* root_buffer() final { return this; }
 

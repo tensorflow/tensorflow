@@ -403,7 +403,18 @@ Status BatchExampleProtoToTensors(
   return Status::OK();
 }
 
-Status ParseExampleAttrs::FinishInit() {
+Status ParseExampleAttrs::FinishInit(int op_version) {
+  switch (op_version) {
+    case 1:
+      num_ragged = 0;
+      break;
+    case 2:
+      num_dense = dense_types.size();
+      num_ragged = ragged_value_types.size();
+      break;
+    default:
+      return errors::InvalidArgument("Unexpected op_version", op_version);
+  }
   if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
     return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
   }
@@ -413,6 +424,14 @@ Status ParseExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_dense) != dense_shapes.size()) {
     return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
   }
+  if (static_cast<size_t>(num_ragged) != ragged_value_types.size()) {
+    return errors::InvalidArgument(
+        "len(ragged_keys) != len(ragged_value_types)");
+  }
+  if (static_cast<size_t>(num_ragged) != ragged_split_types.size()) {
+    return errors::InvalidArgument(
+        "len(ragged_keys) != len(ragged_split_types)");
+  }
   if (num_dense > std::numeric_limits<int32>::max()) {
     return errors::InvalidArgument("num_dense_ too large");
   }
@@ -421,6 +440,15 @@ Status ParseExampleAttrs::FinishInit() {
   }
   for (const DataType& type : sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : ragged_value_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : ragged_split_types) {
+    if (!(type == DT_INT64 || type == DT_INT32)) {
+      return errors::InvalidArgument("Invalid ragged_split_type: ",
+                                     DataTypeString(type));
+    }
   }
   return Status::OK();
 }
@@ -444,42 +472,88 @@ Status ParseSingleExampleAttrs::FinishInit() {
   return Status::OK();
 }
 
-Status ParseSequenceExampleAttrs::FinishInit() {
-  if (num_context_sparse != context_sparse_keys.size() ||
-      num_context_sparse != context_sparse_types.size()) {
+Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
+  switch (op_version) {
+    case 1:
+      num_context_ragged = 0;
+      num_feature_list_ragged = 0;
+      if (num_context_sparse != context_sparse_keys.size()) {
+        return errors::InvalidArgument(
+            "num_context_sparse (", num_context_sparse,
+            ") must match the size of context_sparse_keys (",
+            context_sparse_keys.size(), ")");
+      }
+      if (num_context_dense != context_dense_keys.size()) {
+        return errors::InvalidArgument(
+            "num_context_dense (", num_context_dense,
+            ") must match the size of context_dense_keys (",
+            context_dense_keys.size(), ")");
+      }
+      if (num_feature_list_sparse != feature_list_sparse_keys.size()) {
+        return errors::InvalidArgument(
+            "num_feature_list_sparse (", num_feature_list_sparse,
+            ") must match the size of feature_list_sparse_keys (",
+            feature_list_sparse_keys.size(), ")");
+      }
+      if (num_feature_list_dense != feature_list_dense_keys.size()) {
+        return errors::InvalidArgument(
+            "num_feature_list_dense (", num_feature_list_dense,
+            ") must match the size of feature_list_dense_keys (",
+            feature_list_dense_keys.size(), ")");
+      }
+      break;
+    case 2:
+      num_context_dense = context_dense_types.size();
+      num_context_ragged = context_ragged_value_types.size();
+      num_feature_list_ragged = feature_list_ragged_value_types.size();
+      break;
+    default:
+      return errors::InvalidArgument("Unexpected op_version", op_version);
+  }
+  if (num_context_sparse != context_sparse_types.size()) {
     return errors::InvalidArgument(
         "num_context_sparse (", num_context_sparse,
-        ") must match the size of context_sparse_keys (",
-        context_sparse_keys.size(), ") and context_sparse_types (",
+        ") must match the size of context_sparse_types (",
         context_sparse_types.size(), ")");
   }
-  if (num_context_dense != context_dense_keys.size() ||
-      num_context_dense != context_dense_types.size() ||
+  if (num_context_dense != context_dense_types.size() ||
       num_context_dense != context_dense_shapes.size()) {
     return errors::InvalidArgument(
         "num_context_dense (", num_context_dense,
-        ") must match the size of context_dense_keys (",
-        context_dense_keys.size(), "), context_dense_types (",
+        ") must match the size of context_dense_types (",
         context_dense_types.size(), ") and context_dense_shapes (",
         context_dense_shapes.size(), ")");
   }
-  if (num_feature_list_sparse != feature_list_sparse_keys.size() ||
-      num_feature_list_sparse != feature_list_sparse_types.size()) {
+  if ((num_context_ragged != context_ragged_value_types.size()) ||
+      (num_context_ragged != context_ragged_split_types.size())) {
+    return errors::InvalidArgument(
+        "num_context_ragged (", num_context_ragged,
+        ") must match the size of context_ragged_value_types (",
+        context_ragged_value_types.size(), ") and context_ragged_split_types (",
+        context_ragged_split_types.size(), ")");
+  }
+  if (num_feature_list_sparse != feature_list_sparse_types.size()) {
     return errors::InvalidArgument(
         "num_feature_list_sparse (", num_feature_list_sparse,
-        ") must match the size of feature_list_sparse_keys (",
-        feature_list_sparse_keys.size(), ") and feature_list_sparse_types (",
+        ") must match the size of feature_list_sparse_types (",
         feature_list_sparse_types.size(), ")");
   }
-  if (num_feature_list_dense != feature_list_dense_keys.size() ||
-      num_feature_list_dense != feature_list_dense_types.size() ||
+  if (num_feature_list_dense != feature_list_dense_types.size() ||
       num_feature_list_dense != feature_list_dense_shapes.size()) {
     return errors::InvalidArgument(
         "num_feature_list_dense (", num_feature_list_dense,
-        ") must match the size of feature_list_dense_keys (",
-        feature_list_dense_keys.size(), "), feature_list_dense_types (",
+        ") must match the size of feature_list_dense_types (",
         feature_list_dense_types.size(), ") and feature_list_dense_shapes (",
         feature_list_dense_shapes.size(), ")");
+  }
+  if ((num_feature_list_ragged != feature_list_ragged_value_types.size()) ||
+      (num_feature_list_ragged != feature_list_ragged_split_types.size())) {
+    return errors::InvalidArgument(
+        "num_feature_list_ragged (", num_feature_list_ragged,
+        ") must match the size of feature_list_ragged_value_types (",
+        feature_list_ragged_value_types.size(),
+        ") and feature_list_ragged_split_types (",
+        feature_list_ragged_split_types.size(), ")");
   }
   for (const DataType& type : context_dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
@@ -492,6 +566,24 @@ Status ParseSequenceExampleAttrs::FinishInit() {
   }
   for (const DataType& type : feature_list_sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_ragged_value_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_ragged_split_types) {
+    if (!(type == DT_INT64 || type == DT_INT32)) {
+      return errors::InvalidArgument("Invalid context_ragged_split_type: ",
+                                     DataTypeString(type));
+    }
+  }
+  for (const DataType& type : feature_list_ragged_value_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_ragged_split_types) {
+    if (!(type == DT_INT64 || type == DT_INT32)) {
+      return errors::InvalidArgument("Invalid feature_list_ragged_split_type: ",
+                                     DataTypeString(type));
+    }
   }
 
   return Status::OK();
@@ -532,6 +624,43 @@ Status ParseSingleSequenceExampleAttrs::FinishInit() {
   }
   for (const DataType& type : feature_list_sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
+Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
+                      std::vector<bool>* variable_length,
+                      std::vector<std::size_t>* elements_per_stride) {
+  // Temporary check until we start allowing a variable length outer
+  // dimension.
+  for (int i = 0; i < dense_shapes.size(); ++i) {
+    bool shape_ok = true;
+    if (dense_shapes[i].dims() == -1) {
+      shape_ok = false;
+    } else {
+      for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+        if (dense_shapes[i].dim_size(d) == -1) {
+          shape_ok = false;
+        }
+      }
+    }
+    if (!shape_ok) {
+      return errors::InvalidArgument(
+          "dense_shapes[", i,
+          "] has unknown rank or unknown inner dimensions: ",
+          dense_shapes[i].DebugString());
+    }
+    TensorShape dense_shape;
+    if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {
+      variable_length->push_back(true);
+      for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+        dense_shape.AddDim(dense_shapes[i].dim_size(d));
+      }
+    } else {
+      variable_length->push_back(false);
+      dense_shapes[i].AsTensorShape(&dense_shape);
+    }
+    elements_per_stride->push_back(dense_shape.num_elements());
   }
   return Status::OK();
 }

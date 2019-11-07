@@ -20,12 +20,15 @@ public final class Interpreter {
   /// The configuration options for the `Interpreter`.
   public let options: Options?
 
-  /// The total number of input tensors associated with the model.
+  /// An `Array` of `Delegate`s for the `Interpreter` to use to perform graph operations.
+  public let delegates: [Delegate]?
+
+  /// The total number of input `Tensor`s associated with the model.
   public var inputTensorCount: Int {
     return Int(TfLiteInterpreterGetInputTensorCount(cInterpreter))
   }
 
-  /// The total number of output tensors associated with the model.
+  /// The total number of output `Tensor`s associated with the model.
   public var outputTensorCount: Int {
     return Int(TfLiteInterpreterGetOutputTensorCount(cInterpreter))
   }
@@ -39,23 +42,27 @@ public final class Interpreter {
   /// Creates a new instance with the given values.
   ///
   /// - Parameters:
-  ///   - modelPath: Local file path to a TensorFlow Lite model.
-  ///   - options: Custom configuration options for the interpreter. Default is `nil` indicating
-  ///       that the interpreter will determine the configuration options.
+  ///   - modelPath: The local file path to a TensorFlow Lite model.
+  ///   - options: Configurations for the `Interpreter`. The default is `nil` indicating that the
+  ///       `Interpreter` will determine the configuration options.
+  ///   - delegate: `Array` of `Delegate`s for the `Interpreter` to use to peform graph operations.
+  ///       The default is `nil`.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
-  public init(modelPath: String, options: Options? = nil) throws {
+  public init(modelPath: String, options: Options? = nil, delegates: [Delegate]? = nil) throws {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }
+    guard let cInterpreterOptions = TfLiteInterpreterOptionsCreate() else {
+      throw InterpreterError.failedToCreateInterpreter
+    }
+    defer { TfLiteInterpreterOptionsDelete(cInterpreterOptions) }
 
     self.options = options
-    let cInterpreterOptions: OpaquePointer? = try options.map { options in
-      guard let cOptions = TfLiteInterpreterOptionsCreate() else {
-        throw InterpreterError.failedToCreateInterpreter
-      }
-      if let threadCount = options.threadCount, threadCount > 0 {
-        TfLiteInterpreterOptionsSetNumThreads(cOptions, Int32(threadCount))
+    self.delegates = delegates
+    options.map {
+      if let threadCount = $0.threadCount, threadCount > 0 {
+        TfLiteInterpreterOptionsSetNumThreads(cInterpreterOptions, Int32(threadCount))
       }
       TfLiteInterpreterOptionsSetErrorReporter(
-        cOptions,
+        cInterpreterOptions,
         { (_, format, args) -> Void in
           // Workaround for optionality differences for x86_64 (non-optional) and arm64 (optional).
           let optionalArgs: CVaListPointer? = args
@@ -69,10 +76,8 @@ public final class Interpreter {
         },
         nil
       )
-      return cOptions
     }
-    defer { TfLiteInterpreterOptionsDelete(cInterpreterOptions) }
-
+    delegates?.forEach { TfLiteInterpreterOptionsAddDelegate(cInterpreterOptions, $0.cDelegate) }
     guard let cInterpreter = TfLiteInterpreterCreate(model.cModel, cInterpreterOptions) else {
       throw InterpreterError.failedToCreateInterpreter
     }
@@ -85,19 +90,19 @@ public final class Interpreter {
 
   /// Invokes the interpreter to perform inference from the loaded graph.
   ///
-  /// - Throws: An error if the model was not ready because tensors were not allocated.
+  /// - Throws: An error if the model was not ready because the tensors were not allocated.
   public func invoke() throws {
     guard TfLiteInterpreterInvoke(cInterpreter) == kTfLiteOk else {
       throw InterpreterError.allocateTensorsRequired
     }
   }
 
-  /// Returns the input tensor at the given index.
+  /// Returns the input `Tensor` at the given index.
   ///
   /// - Parameters:
-  ///   - index: The index for the input tensor.
+  ///   - index: The index for the input `Tensor`.
   /// - Throws: An error if the index is invalid or the tensors have not been allocated.
-  /// - Returns: The input tensor at the given index.
+  /// - Returns: The input `Tensor` at the given index.
   public func input(at index: Int) throws -> Tensor {
     let maxIndex = inputTensorCount - 1
     guard case 0...maxIndex = index else {
@@ -136,14 +141,14 @@ public final class Interpreter {
     return tensor
   }
 
-  /// Returns the output tensor at the given index.
+  /// Returns the output `Tensor` at the given index.
   ///
   /// - Parameters:
-  ///   - index: The index for the output tensor.
+  ///   - index: The index for the output `Tensor`.
   /// - Throws: An error if the index is invalid, tensors haven't been allocated, or interpreter
-  ///     hasn't been invoked for models that dynamically compute output tensors based on the values
-  ///     of its input tensors.
-  /// - Returns: The output tensor at the given index.
+  ///     has not been invoked for models that dynamically compute output tensors based on the
+  ///     values of its input tensors.
+  /// - Returns: The output `Tensor` at the given index.
   public func output(at index: Int) throws -> Tensor {
     let maxIndex = outputTensorCount - 1
     guard case 0...maxIndex = index else {
@@ -182,14 +187,14 @@ public final class Interpreter {
     return tensor
   }
 
-  /// Resizes the input tensor at the given index to the specified tensor shape.
+  /// Resizes the input `Tensor` at the given index to the specified `Tensor.Shape`.
   ///
   /// - Note: After resizing an input tensor, the client **must** explicitly call
   ///     `allocateTensors()` before attempting to access the resized tensor data or invoking the
   ///     interpreter to perform inference.
   /// - Parameters:
-  ///   - index: The index for the input tensor.
-  ///   - shape: The shape that the input tensor should be resized to.
+  ///   - index: The index for the input `Tensor`.
+  ///   - shape: The shape to resize the input `Tensor` to.
   /// - Throws: An error if the input tensor at the given index could not be resized.
   public func resizeInput(at index: Int, to shape: Tensor.Shape) throws {
     let maxIndex = inputTensorCount - 1
@@ -207,14 +212,14 @@ public final class Interpreter {
     }
   }
 
-  /// Copies the given data to the input tensor at the given index.
+  /// Copies the given data to the input `Tensor` at the given index.
   ///
   /// - Parameters:
-  ///   - data: The data to be copied to the input tensor's data buffer.
-  ///   - index: The index for the input tensor.
+  ///   - data: The data to be copied to the input `Tensor`'s data buffer.
+  ///   - index: The index for the input `Tensor`.
   /// - Throws: An error if the `data.count` does not match the input tensor's `data.count` or if
   ///     the given index is invalid.
-  /// - Returns: The input tensor with the copied data.
+  /// - Returns: The input `Tensor` with the copied data.
   @discardableResult
   public func copy(_ data: Data, toInputAt index: Int) throws -> Tensor {
     let maxIndex = inputTensorCount - 1
@@ -241,10 +246,10 @@ public final class Interpreter {
     return try input(at: index)
   }
 
-  /// Allocates memory for all input tensors based on their `Tensor.Shape`s.
+  /// Allocates memory for all input `Tensor`s based on their `Tensor.Shape`s.
   ///
   /// - Note: This is a relatively expensive operation and should only be called after creating the
-  ///     interpreter and/or resizing any input tensors.
+  ///     interpreter and resizing any input tensors.
   /// - Throws: An error if memory could not be allocated for the input tensors.
   public func allocateTensors() throws {
     guard TfLiteInterpreterAllocateTensors(cInterpreter) == kTfLiteOk else {
@@ -256,7 +261,7 @@ public final class Interpreter {
 extension Interpreter {
   /// Options for configuring the `Interpreter`.
   public struct Options: Equatable, Hashable {
-    /// The maximum number of CPU threads that the interpreter should run on. Default is `nil`
+    /// The maximum number of CPU threads that the interpreter should run on. The default is `nil`
     /// indicating that the `Interpreter` will decide the number of threads to use.
     public var threadCount: Int? = nil
 
@@ -264,6 +269,11 @@ extension Interpreter {
     public init() {}
   }
 }
+
+/// A type alias for `Interpreter.Options` to support backwards compatiblity with the deprecated
+/// `InterpreterOptions` struct.
+@available(*, deprecated, renamed: "Interpreter.Options")
+public typealias InterpreterOptions = Interpreter.Options
 
 extension String {
   /// Returns a new `String` initialized by using the given format C array as a template into which

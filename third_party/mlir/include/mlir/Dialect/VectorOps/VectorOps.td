@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VECTOR_OPS
-#else
+#ifndef VECTOR_OPS
 #define VECTOR_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -37,10 +35,10 @@ def Vector_Dialect : Dialect {
 class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Vector_Dialect, mnemonic, traits> {
   // For every vector op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
-  //                                         OperationState *result)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -85,10 +83,10 @@ def OuterProductOp :
 
     Examples
 
-      %2 = vector.extractelement %0, %1: vector<4xf32>, vector<8xf32>
+      %2 = vector.outerproduct %0, %1: vector<4xf32>, vector<8xf32>
       return %2: vector<4x8xf32>
 
-      %3 = vector.extractelement %0, %1, %2:
+      %3 = vector.outerproduct %0, %1, %2:
         vector<4xf32>, vector<8xf32>, vector<4x8xf32>
       return %3: vector<4x8xf32>
   }];

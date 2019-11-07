@@ -19,17 +19,23 @@ from __future__ import print_function
 
 import math
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class MapAndBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNumParallelBatches(self):
     range_size = 11
     num_repeats = 2
@@ -55,6 +61,7 @@ class MapAndBatchDatasetSerializationTest(
     self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
     self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNumParallelCalls(self):
     range_size = 11
     num_repeats = 2
@@ -80,6 +87,7 @@ class MapAndBatchDatasetSerializationTest(
     self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
     self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparse(self):
 
     def build_dataset():

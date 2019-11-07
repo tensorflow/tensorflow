@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ARENA_PLANNER_H_
 #define TENSORFLOW_LITE_ARENA_PLANNER_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -65,9 +66,11 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus ResetAllocations() override;
   TfLiteStatus PlanAllocations() override;
   TfLiteStatus ExecuteAllocations(int first_node, int last_node) override;
+  TfLiteStatus ReleaseNonPersistentMemory() override;
+  TfLiteStatus AcquireNonPersistentMemory() override;
 
   // Returns the base arena location for a given allocation type.
-  int64_t BasePointer(TfLiteAllocationType type);
+  std::intptr_t BasePointer(TfLiteAllocationType type);
 
  private:
   // Make sure all the arenas have reserved enough memory to store all their

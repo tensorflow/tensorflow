@@ -31,8 +31,8 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
                                     const int n, const int num_diags,
                                     const int max_diag_len,
                                     const int upper_diag_index,
-                                    const Scalar* diag_ptr,
-                                    Scalar* output_ptr) {
+                                    const Scalar* __restrict__ diag_ptr,
+                                    Scalar* __restrict__ output_ptr) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int batch_and_diag_index = index / max_diag_len;
     const int index_in_the_diagonal =
@@ -56,8 +56,8 @@ template <typename Scalar>
 __global__ void MatrixCopyInputAndSetDiagKernel(
     const int num_threads, const int m, const int n, const int num_diags,
     const int max_diag_len, const int lower_diag_index,
-    const int upper_diag_index, const Scalar* input_ptr, const Scalar* diag_ptr,
-    Scalar* output_ptr) {
+    const int upper_diag_index, const Scalar* __restrict__ input_ptr,
+    const Scalar* __restrict__ diag_ptr, Scalar* __restrict__ output_ptr) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int batch_and_row_index = index / n;
     const int col = index - batch_and_row_index * n;

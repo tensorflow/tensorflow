@@ -98,7 +98,7 @@ public:
 
   static StringRef getOperationName() { return "vector.transfer_read"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
-  static void build(Builder *builder, OperationState *result,
+  static void build(Builder *builder, OperationState &result,
                     VectorType vectorType, Value *srcMemRef,
                     ArrayRef<Value *> srcIndices, AffineMap permutationMap,
                     Optional<Value *> paddingValue = None);
@@ -115,8 +115,8 @@ public:
   Optional<Value *> getPaddingValue();
   AffineMap getPermutationMap();
 
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 
@@ -162,7 +162,7 @@ public:
 
   static StringRef getOperationName() { return "vector.transfer_write"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
-  static void build(Builder *builder, OperationState *result, Value *srcVector,
+  static void build(Builder *builder, OperationState &result, Value *srcVector,
                     Value *dstMemRef, ArrayRef<Value *> dstIndices,
                     AffineMap permutationMap);
   Value *getVector() { return getOperand(Offsets::VectorOffset); }
@@ -176,8 +176,8 @@ public:
   operand_range getIndices();
   AffineMap getPermutationMap();
 
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 
@@ -196,10 +196,10 @@ public:
   using Op::Op;
 
   static StringRef getOperationName() { return "vector.type_cast"; }
-  static void build(Builder *builder, OperationState *result, Value *srcVector,
+  static void build(Builder *builder, OperationState &result, Value *srcVector,
                     Type dstType);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 

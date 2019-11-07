@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -54,21 +55,19 @@ void MultiplyAdd::SetLinkIndex(int index) {
   add_vec_.SetName(absl::StrCat("mad_add_", index));
 }
 
-std::string MultiplyAdd::GetCoreCode(const std::string& src,
-                                     const std::string& z_coord,
-                                     const std::string& address) const {
-  std::string result = absl::StrCat(src, " = ", src);
+std::string MultiplyAdd::GetCoreCode(const LinkingContext& context) const {
+  std::string result = absl::StrCat(context.var_name, " = ", context.var_name);
   if (use_mul_vec_) {
-    result = absl::StrCat(result, " * ", mul_vec_.ReadLinearFLT4(z_coord));
+    absl::StrAppend(&result, " * ", mul_vec_.ReadLinearFLT4(context.z_coord));
   }
   if (scalar_mul_.Active()) {
-    absl::StrAppend(&result, " * ", scalar_mul_.GetName());
+    absl::StrAppend(&result, " * (FLT)(", scalar_mul_.GetName(), ")");
   }
   if (use_add_vec_) {
-    result = absl::StrCat(result, " + ", add_vec_.ReadLinearFLT4(z_coord));
+    absl::StrAppend(&result, " + ", add_vec_.ReadLinearFLT4(context.z_coord));
   }
   if (scalar_add_.Active()) {
-    absl::StrAppend(&result, " + ", scalar_add_.GetName());
+    absl::StrAppend(&result, " + (FLT)(", scalar_add_.GetName(), ")");
   }
   return absl::StrCat(result, ";\n");
 }
@@ -76,10 +75,10 @@ std::string MultiplyAdd::GetCoreCode(const std::string& src,
 std::string MultiplyAdd::GetArgsDeclaration() const {
   std::string args;
   if (use_mul_vec_) {
-    args = absl::StrCat(args, ",\n    ", mul_vec_.GetDeclaration());
+    absl::StrAppend(&args, ",\n    ", mul_vec_.GetDeclaration());
   }
   if (use_add_vec_) {
-    args = absl::StrCat(args, ",\n    ", add_vec_.GetDeclaration());
+    absl::StrAppend(&args, ",\n    ", add_vec_.GetDeclaration());
   }
   if (scalar_mul_.Active()) {
     absl::StrAppend(&args, ",\n    ", scalar_mul_.GetDeclaration());
@@ -107,6 +106,7 @@ Status MultiplyAdd::BindArguments(CLKernel* kernel) {
 }
 
 Status MultiplyAdd::UploadMul(const MultiplyScalarAttributes& attr,
+                              CalculationsPrecision scalar_precision,
                               CLContext* context) {
   auto mul = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
       &attr.param);
@@ -114,19 +114,21 @@ Status MultiplyAdd::UploadMul(const MultiplyScalarAttributes& attr,
   if (mul) {
     RETURN_IF_ERROR(UploadMul(*mul, context));
   } else {
-    scalar_mul_ = FLT(definition_.precision, *mul_scalar);
+    scalar_mul_ = FLT(scalar_precision, *mul_scalar);
   }
   return OkStatus();
 }
 
-Status MultiplyAdd::UploadAdd(const AddAttributes& attr, CLContext* context) {
+Status MultiplyAdd::UploadAdd(const AddAttributes& attr,
+                              CalculationsPrecision scalar_precision,
+                              CLContext* context) {
   auto add = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
       &attr.param);
   auto add_scalar = absl::get_if<float>(&attr.param);
   if (add) {
     RETURN_IF_ERROR(UploadAdd(*add, context));
   } else {
-    scalar_add_ = FLT(definition_.precision, *add_scalar);
+    scalar_add_ = FLT(scalar_precision, *add_scalar);
   }
   return OkStatus();
 }
@@ -135,8 +137,12 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const MultiplyScalarAttributes& attr,
                          MultiplyAdd* result) {
+  const auto scalar_precision = creation_context.device->IsPowerVR()
+                                    ? CalculationsPrecision::F32
+                                    : definition.precision;
   *result = MultiplyAdd(definition);
-  RETURN_IF_ERROR(result->UploadMul(attr, creation_context.context));
+  RETURN_IF_ERROR(
+      result->UploadMul(attr, scalar_precision, creation_context.context));
   result->SetLinkIndex(0);
   return OkStatus();
 }
@@ -144,8 +150,12 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const AddAttributes& attr, MultiplyAdd* result) {
+  const auto scalar_precision = creation_context.device->IsPowerVR()
+                                    ? CalculationsPrecision::F32
+                                    : definition.precision;
   *result = MultiplyAdd(definition);
-  RETURN_IF_ERROR(result->UploadAdd(attr, creation_context.context));
+  RETURN_IF_ERROR(
+      result->UploadAdd(attr, scalar_precision, creation_context.context));
   result->SetLinkIndex(0);
   return OkStatus();
 }
@@ -154,9 +164,14 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const MultiplyScalarAttributes& mul_attr,
                          const AddAttributes& add_attr, MultiplyAdd* result) {
+  const auto scalar_precision = creation_context.device->IsPowerVR()
+                                    ? CalculationsPrecision::F32
+                                    : definition.precision;
   *result = MultiplyAdd(definition);
-  RETURN_IF_ERROR(result->UploadMul(mul_attr, creation_context.context));
-  RETURN_IF_ERROR(result->UploadAdd(add_attr, creation_context.context));
+  RETURN_IF_ERROR(
+      result->UploadMul(mul_attr, scalar_precision, creation_context.context));
+  RETURN_IF_ERROR(
+      result->UploadAdd(add_attr, scalar_precision, creation_context.context));
   result->SetLinkIndex(0);
   return OkStatus();
 }

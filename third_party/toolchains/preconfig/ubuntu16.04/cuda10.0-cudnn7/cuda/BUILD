@@ -1,4 +1,5 @@
 load(":build_defs.bzl", "cuda_header_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -163,6 +164,14 @@ cc_library(
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
 )
 
 genrule(
@@ -1243,25 +1252,15 @@ cp -f "/usr/local/cuda-10.0/lib64/libcusparse.so.10.0" "$(location cuda/lib/libc
 genrule(
     name = "cuda-bin",
     outs = [
-        "cuda/bin/bin2c",
         "cuda/bin/crt/link.stub",
-        "cuda/bin/crt/prelink.stub",
-        "cuda/bin/cuda-gdb",
-        "cuda/bin/cuda-gdbserver",
-        "cuda/bin/cuda-memcheck",
-        "cuda/bin/cudafe++",
-        "cuda/bin/cuobjdump",
-        "cuda/bin/fatbinary",
-        "cuda/bin/gpu-library-advisor",
-        "cuda/bin/nvcc",
-        "cuda/bin/nvcc.profile",
-        "cuda/bin/nvdisasm",
         "cuda/bin/nvlink",
-        "cuda/bin/nvprof",
-        "cuda/bin/nvprune",
-        "cuda/bin/ptxas",
+        "cuda/bin/fatbinary",
+        "cuda/bin/bin2c",
     ],
-    cmd = """cp -rLf "/usr/local/cuda-10.0/bin/." "$(@D)/cuda/bin/" """,
+    cmd = """cp -f "/usr/local/cuda-10.0/bin/crt/link.stub" "$(location cuda/bin/crt/link.stub)" && \
+cp -f "/usr/local/cuda-10.0/bin/nvlink" "$(location cuda/bin/nvlink)" && \
+cp -f "/usr/local/cuda-10.0/bin/fatbinary" "$(location cuda/bin/fatbinary)" && \
+cp -f "/usr/local/cuda-10.0/bin/bin2c" "$(location cuda/bin/bin2c)" """,
 )
 
 genrule(

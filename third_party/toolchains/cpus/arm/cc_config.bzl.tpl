@@ -331,17 +331,13 @@ def _impl(ctx):
                             flags = [
                                 "-std=c++11",
                                 "-isystem",
-                                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/4.9.3/",
+			 	"%{ARM_COMPILER_PATH}%/lib/gcc/arm-rpi-linux-gnueabihf/6.5.0/include",
                                 "-isystem",
-                                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/sysroot/usr/include/",
+                                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-rpi-linux-gnueabihf/6.5.0/include-fixed",
                                 "-isystem",
-                                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
+                                "%{ARM_COMPILER_PATH}%/arm-rpi-linux-gnueabihf/sysroot/usr/include/",
                                 "-isystem",
-                                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include",
-                                "-isystem",
-                                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed",
-                                "-isystem",
-                                "%{ARM_COMPILER_PATH}%/local_include",
+		                "%{ARM_COMPILER_PATH}%/arm-rpi-linux-gnueabihf/include/c++/6.5.0/",
                                 "-isystem",
                                 "%{PYTHON_INCLUDE_PATH}%",
                                 "-isystem",
@@ -563,12 +559,10 @@ def _impl(ctx):
 
     if (ctx.attr.cpu == "armeabi"):
         cxx_builtin_include_directories = [
-                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/4.9.3/",
-                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/sysroot/usr/include/",
-                "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
-                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include",
-                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed",
-                "%{ARM_COMPILER_PATH}%/local_include",
+                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-rpi-linux-gnueabihf/6.5.0/include",
+                "%{ARM_COMPILER_PATH}%/lib/gcc/arm-rpi-linux-gnueabihf/6.5.0/include-fixed",
+                "%{ARM_COMPILER_PATH}%/arm-rpi-linux-gnueabihf/sysroot/usr/include/",
+		"%{ARM_COMPILER_PATH}%/arm-rpi-linux-gnueabihf/include/c++/6.5.0/",
                 "/usr/include",
                 "/tmp/openblas_install/include/",
             ]
@@ -585,44 +579,44 @@ def _impl(ctx):
         tool_paths = [
             tool_path(
                 name = "ar",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ar",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-ar",
             ),
             tool_path(name = "compat-ld", path = "/bin/false"),
             tool_path(
                 name = "cpp",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-cpp",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-cpp",
             ),
             tool_path(
                 name = "dwp",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-dwp",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-dwp",
             ),
             tool_path(
                 name = "gcc",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcc",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-gcc",
             ),
             tool_path(
                 name = "gcov",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcov",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-gcov",
             ),
             tool_path(
                 name = "ld",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ld",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-ld",
             ),
             tool_path(
                 name = "nm",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-nm",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-nm",
             ),
             tool_path(
                 name = "objcopy",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objcopy",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-objcopy",
             ),
             tool_path(
                 name = "objdump",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objdump",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-objdump",
             ),
             tool_path(
                 name = "strip",
-                path = "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-strip",
+                path = "%{ARM_COMPILER_PATH}%/bin/arm-rpi-linux-gnueabihf-strip",
             ),
         ]
     elif (ctx.attr.cpu == "local"):

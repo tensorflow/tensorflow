@@ -331,7 +331,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

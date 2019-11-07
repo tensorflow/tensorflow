@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -384,9 +382,8 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
       auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
-          gpu_ptr, num_bytes, gtl::string_as_array(&buf));
-      strings::StrAppend(&ret,
-                         PrintMemory(gtl::string_as_array(&buf), num_bytes));
+          gpu_ptr, num_bytes, &*buf.begin());
+      strings::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
     }
   }
   return ret;

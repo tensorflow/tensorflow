@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/direct_session.h"
 
+#include <algorithm>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/core/threadpool_options.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -188,8 +188,8 @@ class DirectSessionFactory : public SessionFactory {
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
-    DirectSession* session =
-        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
+    DirectSession* session = new DirectSession(
+        options, new StaticDeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
@@ -422,6 +422,9 @@ Status DirectSession::Extend(GraphDef&& graph) {
 }
 
 Status DirectSession::ExtendLocked(GraphDef graph) {
+  if (finalized_) {
+    return errors::FailedPrecondition("Session has been finalized.");
+  }
   if (!(flib_def_ && execution_state_)) {
     // If this is the first call, we can initialize the execution state
     // with `graph` and do not need to call `Extend()`.
@@ -500,11 +503,11 @@ Status DirectSession::RunInternal(
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          return strings::StrCat("SessionRun #id=", step_id,
+          return strings::StrCat("SessionRun#id=", step_id,
                                  ",model_id=", model_metadata.name(), ":",
                                  model_metadata.version(), "#");
         } else {
-          return strings::StrCat("SessionRun #id=", step_id, "#");
+          return strings::StrCat("SessionRun#id=", step_id, "#");
         }
       },
       profiler::TraceMeLevel::kInfo);
@@ -555,7 +558,7 @@ Status DirectSession::RunInternal(
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state.rendez, [&run_state](const Status& ret) {
         {
-          mutex_lock l(run_state.mu_);
+          mutex_lock l(run_state.mu);
           run_state.status.Update(ret);
         }
         run_state.executors_done.Notify();
@@ -705,7 +708,7 @@ Status DirectSession::RunInternal(
   if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
     // The step has been cancelled: make sure we don't attempt to receive the
     // outputs as this would make it block forever.
-    mutex_lock l(run_state.mu_);
+    mutex_lock l(run_state.mu);
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
@@ -714,7 +717,7 @@ Status DirectSession::RunInternal(
   }
 
   {
-    mutex_lock l(run_state.mu_);
+    mutex_lock l(run_state.mu);
     TF_RETURN_IF_ERROR(run_state.status);
   }
 
@@ -736,8 +739,8 @@ Status DirectSession::RunInternal(
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const PerPartitionExecutorsAndLib& partition :
          executors_and_keys->items) {
-      const Graph* graph = partition.graph;
-      const string device = partition.flib->device()->name();
+      const Graph* graph = partition.graph.get();
+      const string& device = partition.flib->device()->name();
       device_to_graph[device] = graph;
     }
 
@@ -748,18 +751,24 @@ Status DirectSession::RunInternal(
     CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
     for (const auto& item : executors_and_keys->items) {
       TF_RETURN_IF_ERROR(
-          cost_model_manager_.AddToCostGraphDef(item.graph, cost_graph));
+          cost_model_manager_.AddToCostGraphDef(item.graph.get(), cost_graph));
     }
   }
 
   // If requested via RunOptions, output the partition graphs.
   if (run_options.output_partition_graphs()) {
-    protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
-        run_metadata->mutable_partition_graphs();
-    for (const PerPartitionExecutorsAndLib& exec_and_lib :
-         executors_and_keys->items) {
-      GraphDef* partition_graph_def = partition_graph_defs->Add();
-      exec_and_lib.graph->ToGraphDef(partition_graph_def);
+    if (options_.config.experimental().disable_output_partition_graphs()) {
+      return errors::InvalidArgument(
+          "RunOptions.output_partition_graphs() is not supported when "
+          "disable_output_partition_graphs is true.");
+    } else {
+      protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+          run_metadata->mutable_partition_graphs();
+      for (const PerPartitionExecutorsAndLib& exec_and_lib :
+           executors_and_keys->items) {
+        GraphDef* partition_graph_def = partition_graph_defs->Add();
+        exec_and_lib.graph->ToGraphDef(partition_graph_def);
+      }
     }
   }
   metrics::UpdateGraphExecTime(options_.env->NowMicros() - start_time_usecs);
@@ -850,14 +859,11 @@ Status DirectSession::Run(const RunOptions& run_options,
     // output_names[i] == output_names[j].
     std::vector<int> first_indices;
     if (!unique_outputs) {
-      first_indices.resize(output_names.size());
-      for (int i = 0; i < output_names.size(); ++i) {
-        for (int j = 0; j <= i; ++j) {
-          if (output_names[i] == output_names[j]) {
-            first_indices[i] = j;
-            break;
-          }
-        }
+      first_indices.reserve(output_names.size());
+      for (const auto& name : output_names) {
+        first_indices.push_back(
+            std::find(output_names.begin(), output_names.end(), name) -
+            output_names.begin());
       }
     }
     outputs->clear();
@@ -922,7 +928,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state->rendez, [run_state](const Status& ret) {
         if (!ret.ok()) {
-          mutex_lock l(run_state->mu_);
+          mutex_lock l(run_state->mu);
           run_state->status.Update(ret);
         }
         run_state->executors_done.Notify();
@@ -1033,7 +1039,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     bool done = true;
     if (s.ok()) {
       {
-        mutex_lock l(run_state->mu_);
+        mutex_lock l(run_state->mu);
         if (!run_state->status.ok()) {
           LOG(WARNING) << "An error unrelated to this prun has been detected. "
                        << run_state->status;
@@ -1286,7 +1292,7 @@ Status DirectSession::CreateExecutors(
           ? &options_.config.experimental().session_metadata()
           : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
-      device_mgr_.get(), options_.env, graph_def_version,
+      device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       nullptr, nullptr, session_metadata));
 
@@ -1353,13 +1359,16 @@ Status DirectSession::CreateExecutors(
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
                                          device->name(),
                                          partition_graph.get()));
-    // NewLocalExecutor takes ownership of partition_graph.
-    item->graph = partition_graph.get();
+
     item->executor = nullptr;
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
-    TF_RETURN_IF_ERROR(NewExecutor(
-        executor_type, params, std::move(partition_graph), &item->executor));
+    TF_RETURN_IF_ERROR(
+        NewExecutor(executor_type, params, *partition_graph, &item->executor));
+    if (!options_.config.experimental().disable_output_partition_graphs() ||
+        options_.config.graph_options().build_cost_model() > 0) {
+      item->graph = std::move(partition_graph);
+    }
   }
 
   // Cache the mapping from input/output names to graph elements to
@@ -1475,12 +1484,15 @@ Status DirectSession::GetOrCreateExecutors(
   // The executor_lock_ is intentionally released while executors are
   // being created.
   CallableOptions callable_options;
+  callable_options.mutable_feed()->Reserve(inputs_sorted.size());
   for (const string& input : inputs_sorted) {
     callable_options.add_feed(input);
   }
+  callable_options.mutable_fetch()->Reserve(outputs_sorted.size());
   for (const string& output : outputs_sorted) {
     callable_options.add_fetch(output);
   }
+  callable_options.mutable_target()->Reserve(tn_sorted.size());
   for (const string& target : tn_sorted) {
     callable_options.add_target(target);
   }
@@ -1520,6 +1532,10 @@ Status DirectSession::CreateGraphs(
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64* collective_graph_key) {
   mutex_lock l(graph_state_lock_);
+  if (finalized_) {
+    return errors::FailedPrecondition("Session has been finalized.");
+  }
+
   std::unique_ptr<ClientGraph> client_graph;
 
   std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
@@ -1749,7 +1765,7 @@ void DirectSession::WaitForNotification(RunState* run_state,
       WaitForNotification(&run_state->executors_done, timeout_in_ms);
   if (!status.ok()) {
     {
-      mutex_lock l(run_state->mu_);
+      mutex_lock l(run_state->mu);
       run_state->status.Update(status);
     }
     cm->StartCancel();
@@ -1928,6 +1944,20 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     return errors::InvalidArgument("No such callable handle: ", handle);
   }
   callables_.erase(handle);
+  return Status::OK();
+}
+
+Status DirectSession::Finalize() {
+  mutex_lock l(graph_state_lock_);
+  if (finalized_) {
+    return errors::FailedPrecondition("Session already finalized.");
+  }
+  if (!graph_created_) {
+    return errors::FailedPrecondition("Session not yet created.");
+  }
+  execution_state_.reset();
+  flib_def_.reset();
+  finalized_ = true;
   return Status::OK();
 }
 

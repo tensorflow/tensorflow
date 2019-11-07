@@ -44,7 +44,7 @@ import sys
 
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
+from tensorflow.python.ops import gen_audio_ops as audio_ops
 import input_data
 import models
 from tensorflow.python.framework import graph_util
@@ -92,12 +92,12 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
   wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [],
                                                   name='wav_data')
-  decoded_sample_data = contrib_audio.decode_wav(
+  decoded_sample_data = tf.audio.decode_wav(
       wav_data_placeholder,
       desired_channels=1,
       desired_samples=model_settings['desired_samples'],
       name='decoded_sample_data')
-  spectrogram = contrib_audio.audio_spectrogram(
+  spectrogram = audio_ops.audio_spectrogram(
       decoded_sample_data.audio,
       window_size=model_settings['window_size_samples'],
       stride=model_settings['window_stride_samples'],
@@ -111,7 +111,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
         pooling_type='AVG',
         padding='SAME')
   elif preprocess == 'mfcc':
-    fingerprint_input = contrib_audio.mfcc(
+    fingerprint_input = audio_ops.mfcc(
         spectrogram,
         sample_rate,
         dct_coefficient_count=model_settings['fingerprint_width'])
@@ -154,6 +154,16 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
 
   # Create the model and load its weights.
   sess = tf.compat.v1.InteractiveSession()

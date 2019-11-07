@@ -438,6 +438,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: 7.65
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -464,7 +470,10 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         trees {
           nodes {
             leaf {
-              scalar: 0.0
+              vector {
+                value: 0.0
+                value: 0.0
+              }
             }
           }
         }
@@ -1103,7 +1112,6 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         trees {
           nodes {
             leaf {
-              scalar: 0.0
             }
           }
         }
@@ -1352,7 +1360,10 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         trees {
           nodes {
             leaf {
-              scalar: 0.0
+              vector {
+                value: 0.0
+                value: 0.0
+              }
             }
           }
         }
@@ -3065,6 +3076,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: -0.2
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -3152,6 +3169,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: -0.2
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -3301,6 +3324,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: -0.2
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -3357,6 +3386,10 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         trees {
           nodes {
             leaf {
+              vector {
+                value: 0
+                value: 0
+              }
             }
           }
         }
@@ -3682,6 +3715,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: -0.62
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -3766,12 +3805,20 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       trees {
         nodes {
           leaf {
+            vector {
+              value: 0
+              value: 0
+            }
           }
         }
       }
       trees {
         nodes {
           leaf {
+            vector {
+              value: 0
+              value: 0
+            }
           }
         }
       }
@@ -4000,6 +4047,12 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: 7.62
+              original_leaf {
+                vector {
+                  value: 0.0
+                  value: 0.0
+                }
+              }
             }
           }
           nodes {
@@ -4026,6 +4079,10 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         trees {
           nodes {
             leaf {
+              vector {
+                value: 0
+                value: 0
+              }
             }
           }
         }

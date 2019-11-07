@@ -31,6 +31,7 @@ from six import iteritems
 from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
@@ -952,21 +953,16 @@ class _VariableStore(object):
 
     # Run the regularizer if requested and save the resulting loss.
     if regularizer:
-      with ops.colocate_with(v):
-        with ops.name_scope(name + "/Regularizer/"):
-          with ops.init_scope():
-            loss = regularizer(v)
-        if loss is not None:
-          if context.executing_eagerly():
-            v_name = "v_%s" % type(v)
-            loss_name = "loss_%s" % type(loss)
-          else:
-            v_name = v.name
-            loss_name = loss.name
-          logging.vlog(
-              1, "Applied regularizer to %s and added the result %s "
-              "to REGULARIZATION_LOSSES.", v_name, loss_name)
-          ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
+      def make_regularizer_op():
+        with ops.colocate_with(v):
+          with ops.name_scope(name + "/Regularizer/"):
+            return regularizer(v)
+
+      if regularizer(v) is not None:
+        lazy_eval_tensor = _LazyEvalTensor(make_regularizer_op)
+        ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES,
+                              lazy_eval_tensor)
+
     return v
 
   # Initialize variable when no initializer provided
@@ -1001,6 +997,78 @@ class _VariableStore(object):
                        (name, dtype.base_dtype))
 
     return initializer, initializing_from_value
+
+
+class _LazyEvalTensor(object):
+  """A Tensor-like object that only evaluates its thunk when used."""
+
+  def __init__(self, thunk):
+    """Initializes a _LazyEvalTensor object.
+
+    Args:
+      thunk: A callable. A thunk which computes the value of the tensor.
+    """
+    self._thunk = thunk
+    self._master_tensor = thunk()
+
+  def _as_tensor(self, dtype=None, name=None, as_ref=False):
+    del name
+    assert not as_ref
+    assert dtype in [None, self.dtype]
+
+    return self._thunk()
+
+
+def _make_master_property(name):
+  @property
+  def prop(self):
+    return getattr(self._master_tensor, name)  # pylint: disable=protected-access
+  return prop
+
+_master_property_list = ("device", "dtype", "graph", "name", "op", "shape",
+                         "value_index")
+for _name in _master_property_list:
+  setattr(_LazyEvalTensor, _name, _make_master_property(_name))
+
+
+def _make_master_method(name):
+  def method(self, *args, **kwargs):
+    return getattr(self._master_tensor, name)(*args, **kwargs)  # pylint: disable=protected-access
+  return method
+
+_master_method_list = ("get_shape", "__str__", "shape_as_list")
+for _name in _master_method_list:
+  setattr(_LazyEvalTensor, _name, _make_master_method(_name))
+
+
+def _make_op_method(name):
+  def method(self, *args, **kwargs):
+    return getattr(self._as_tensor(), name)(*args, **kwargs)  # pylint: disable=protected-access
+  return method
+
+_op_list = ("__abs__", "__add__", "__and__", "__bool__", "__div__", "__eq__",
+            "__floordiv__", "__ge__", "__getitem__", "__gt__", "__invert__",
+            "__iter__", "__le__", "__len__", "__lt__", "__matmul__", "__mod__",
+            "__mul__", "__ne__", "__neg__", "__nonzero__", "__or__", "__pow__",
+            "__radd__", "__rand__", "__rdiv__", "__rfloordiv__", "__rmatmul__",
+            "__rmod__", "__rmul__", "__ror__", "__rpow__", "__rsub__",
+            "__rtruediv__", "__rxor__", "__sub__", "__truediv__", "__xor__",
+            "eval", "numpy")
+for _name in _op_list:
+  setattr(_LazyEvalTensor, _name, _make_op_method(_name))
+
+
+ops.register_tensor_conversion_function(
+    _LazyEvalTensor,
+    lambda val, dtype, name, as_ref: val._as_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
+    )
+
+session.register_session_run_conversion_functions(
+    _LazyEvalTensor,
+    lambda fetch: ([fetch._master_tensor], lambda fetched_vals: fetched_vals[0])  # pylint: disable=protected-access
+    )
+
+ops.register_dense_tensor_like_type(_LazyEvalTensor)
 
 
 # To stop regularization, use this regularizer
@@ -2020,6 +2088,27 @@ class variable_scope(object):
         assert v.name == "foo/v:0"
         c = tf.constant([1], name="c")
         assert c.name == "foo/c:0"
+  ```
+
+  Keep in mind that the counters for `default_name` are discarded once the
+  parent scope is exited. Therefore when the code re-enters the scope (for
+  instance by saving it), all nested default_name counters will be restarted.
+
+  For instance:
+
+  ```python
+  with tf.compat.v1.variable_scope("foo") as vs:
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("a", [1])
+      assert v.name == "foo/bar/a:0", v.name
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("b", [1])
+      assert v.name == "foo/bar_1/b:0"
+
+  with tf.compat.v1.variable_scope(vs):
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("c", [1])
+      assert v.name == "foo/bar/c:0"   # Uses bar instead of bar_2!
   ```
 
   Basic example of sharing a variable AUTO_REUSE:

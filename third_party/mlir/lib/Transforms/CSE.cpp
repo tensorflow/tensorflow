@@ -83,7 +83,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
 
 namespace {
 /// Simple common sub-expression elimination.
-struct CSE : public FunctionPass<CSE> {
+struct CSE : public OperationPass<CSE> {
   CSE() = default;
   CSE(const CSE &) {}
 
@@ -119,7 +119,7 @@ struct CSE : public FunctionPass<CSE> {
   void simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
                       Region &region);
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
 private:
   /// Operations marked as dead and to be erased.
@@ -238,11 +238,13 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
   }
 }
 
-void CSE::runOnFunction() {
-  /// A scoped hash table of defining operations within a function.
+void CSE::runOnOperation() {
+  /// A scoped hash table of defining operations within a region.
   ScopedMapTy knownValues;
-  simplifyRegion(knownValues, getAnalysis<DominanceInfo>(),
-                 getFunction().getBody());
+
+  DominanceInfo &domInfo = getAnalysis<DominanceInfo>();
+  for (Region &region : getOperation()->getRegions())
+    simplifyRegion(knownValues, domInfo, region);
 
   // If no operations were erased, then we mark all analyses as preserved.
   if (opsToErase.empty())
@@ -258,9 +260,6 @@ void CSE::runOnFunction() {
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createCSEPass() {
-  return std::make_unique<CSE>();
-}
+std::unique_ptr<Pass> mlir::createCSEPass() { return std::make_unique<CSE>(); }
 
-static PassRegistration<CSE>
-    pass("cse", "Eliminate common sub-expressions in functions");
+static PassRegistration<CSE> pass("cse", "Eliminate common sub-expressions");

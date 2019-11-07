@@ -31,6 +31,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -46,6 +47,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
@@ -347,11 +349,14 @@ class OutputsAggregator(Aggregator):
     self.results = nest.pack_sequence_as(self._structure, self.results)
 
 
-def get_progbar(model, count_mode):
+def get_progbar(model, count_mode, include_metrics=True):
   """Get Progbar."""
-  stateful_metric_names = None
-  if hasattr(model, 'metrics_names'):
-    stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
+  if include_metrics:
+    stateful_metric_names = getattr(model, 'metrics_names', None)
+    if stateful_metric_names:
+      stateful_metric_names = stateful_metric_names[1:]  # Exclude `loss`
+  else:
+    stateful_metric_names = None
   return cbks.ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names)
 
 
@@ -524,9 +529,10 @@ def standardize_input_data(data,
       raise ValueError('Error when checking model ' + exception_prefix +
                        ': the list of Numpy arrays that you are passing to '
                        'your model is not the size the model expected. '
-                       'Expected to see ' + str(len(names)) + ' array(s), '
-                       'but instead got the following list of ' +
-                       str(len(data)) + ' arrays: ' + str(data)[:200] + '...')
+                       'Expected to see ' + str(len(names)) + ' array(s), ' +
+                       'for inputs ' + str(names) + ' but instead got the '
+                       'following list of ' + str(len(data)) + ' arrays: ' +
+                       str(data)[:200] + '...')
     elif len(names) > 1:
       raise ValueError('Error when checking model ' + exception_prefix +
                        ': you are passing a list as input to your model, '
@@ -1057,6 +1063,7 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
+      weights = math_ops.cast(weights, dtype=y_pred.dtype)
       mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
@@ -1189,7 +1196,7 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
+      input_data, (iterator_ops.Iterator, iterator_ops.OwnedIterator))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1410,8 +1417,8 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data,
-      (dataset_ops.DatasetV1, dataset_ops.DatasetV2, iterator_ops.IteratorV2))
+      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+             iterator_ops.OwnedIterator))
 
 
 # pylint: disable=protected-access
@@ -1548,7 +1555,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.Iterator, iterator_ops.IteratorV2))
+                           iterator_ops.Iterator, iterator_ops.OwnedIterator))
 
 
 def get_iterator(dataset):
@@ -1642,7 +1649,8 @@ def infer_steps_for_dataset(model,
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
   if (model._in_multi_worker_mode() and
-      dataset.options().experimental_distribute.auto_shard):
+      (dataset.options().experimental_distribute.auto_shard_policy !=
+       AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
@@ -1885,7 +1893,7 @@ def split_training_and_validation_data(x, y, sample_weights, validation_split):
   return x, y, sample_weights, val_x, val_y, val_sample_weights
 
 
-def unpack_validation_data(validation_data):
+def unpack_validation_data(validation_data, raise_if_ambiguous=True):
   """Unpack validation data based input type.
 
   The validation data is not touched if its dataset or dataset iterator.
@@ -1894,29 +1902,42 @@ def unpack_validation_data(validation_data):
 
   Args:
     validation_data: dataset, dataset iterator, or numpy, tensor tuple.
+    raise_if_ambiguous: boolean on whether to fail if validation_data cannot be
+      parsed. Otherwise simply return validation_data, None, None and defer the
+      decision to the caller.
 
   Returns:
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
-                                   iterator_ops.IteratorV2,
-                                   dataset_ops.DatasetV2))):
+                                   iterator_ops.OwnedIterator,
+                                   dataset_ops.DatasetV2,
+                                   data_utils.Sequence))
+      or not hasattr(validation_data, '__len__')):
     val_x = validation_data
     val_y = None
     val_sample_weight = None
   elif len(validation_data) == 2:
-    val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-    val_sample_weight = None
+    try:
+      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+      val_sample_weight = None
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   elif len(validation_data) == 3:
-    val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    try:
+      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   else:
-    raise ValueError(
-        'When passing a `validation_data` argument, '
-        'it must contain either 2 items (x_val, y_val), '
-        'or 3 items (x_val, y_val, val_sample_weights), '
-        'or alternatively it could be a dataset or a '
-        'dataset or a dataset iterator. '
-        'However we received `validation_data=%s`' % validation_data)
+    if raise_if_ambiguous:
+      raise ValueError(
+          'When passing a `validation_data` argument, '
+          'it must contain either 2 items (x_val, y_val), '
+          'or 3 items (x_val, y_val, val_sample_weights), '
+          'or alternatively it could be a dataset or a '
+          'dataset or a dataset iterator. '
+          'However we received `validation_data=%s`' % validation_data)
+    val_x, val_y, val_sample_weight = validation_data, None, None
   return val_x, val_y, val_sample_weight
 
 

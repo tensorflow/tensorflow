@@ -14,12 +14,36 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 namespace optimize {
 namespace operator_property {
-OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
+
+namespace {
+
+// The op as well as it variants.
+// TODO(jianlijianli): extend it to support ops that has multiple variants.
+struct OpVariant {
+  BuiltinOperator op_code;
+};
+
+const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
+                                   int op_index) {
+  OpVariant op_signature;
+  OperatorT* op =
+      model->subgraphs.at(subgraph_index)->operators[op_index].get();
+  op_signature.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  return op_signature;
+}
+}  // namespace
+
+OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
+                                     int op_index) {
+  OpVariant op_signature = GetOperatorVariant(model, subgraph_index, op_index);
+  BuiltinOperator op_code = op_signature.op_code;
   OperatorProperty property;
-  switch (op) {
+  switch (op_code) {
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
@@ -42,6 +66,13 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
+    case BuiltinOperator_SPLIT:
+      property.arbitrary_outputs = true;
+      // We skip input 0 since it is the split dim which is not real valued.
+      property.inputs = {{1, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
@@ -87,9 +118,10 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_EXPAND_DIMS:
-      property.inputs = {{0, {}}, {1, {}}};
+      // We skip input 1 as it is not real valued (it's the index of axis) and
+      // hence does not need to be quantized.
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
       property.version = 1;
       break;
     case BuiltinOperator_FULLY_CONNECTED: {
@@ -130,6 +162,15 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       tensor_property.restriction = true;
       tensor_property.restricted_value = {1 / 256.0, -128};
       property.outputs = {{0, tensor_property}};
+      property.version = 2;
+      break;
+    }
+    case BuiltinOperator_LSTM: {
+      // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
+      // TODO(jianlijianli): extend this to other variants of LSTM.
+      // LSTM need 5 intermediate tensors. This agrees with the fully quantized
+      // kernels in lstm_eval.cc
+      property.intermediates = {{0, {}}, {1, {}}, {2, {}}, {3, {}}, {4, {}}};
       property.version = 2;
       break;
     }
@@ -183,6 +224,17 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_RELU:
+    case BuiltinOperator_RELU6:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    case BuiltinOperator_RELU_N1_TO_1:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
@@ -190,6 +242,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 1;
       break;
     case BuiltinOperator_RESIZE_BILINEAR:
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
@@ -224,6 +277,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     }
+    case BuiltinOperator_STRIDED_SLICE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};

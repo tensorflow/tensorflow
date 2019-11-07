@@ -317,6 +317,14 @@ TEST(Model, UInt2Records) {
                           uint2(8, 2), uint2(2, 8), uint2(1, 8), uint2(2, 8),
                           uint2(4, 1)));
 
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::EQUALITY,
+                                     &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 4, 0, 5));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint2(2, 8), uint2(2, 8), uint2(1, 12), uint2(8, 2),
+                          uint2(1, 8), uint2(4, 1)));
+
   ASSERT_TRUE(AssignObjectsToTensors(
                   usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
                   .ok());
@@ -346,6 +354,15 @@ TEST(Model, UInt3Records) {
               ElementsAre(uint3(1, 2, 8), uint3(4, 3, 2), uint3(1, 1, 1),
                           uint3(2, 4, 1), uint3(2, 2, 2), uint3(8, 1, 2),
                           uint3(1, 2, 1), uint3(1, 1, 1), uint3(2, 2, 2)));
+
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::EQUALITY,
+                                     &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 4, 5, 6, 2, 4));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint3(1, 2, 8), uint3(4, 3, 2), uint3(1, 1, 1),
+                          uint3(2, 4, 1), uint3(2, 2, 2), uint3(8, 1, 2),
+                          uint3(1, 2, 1)));
 
   ASSERT_TRUE(AssignObjectsToTensors(
                   usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_GPU_CODEGEN_TEST_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_GPU_CODEGEN_TEST_H_
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/compiler/xla/tests/llvm_irgen_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace gpu {
@@ -28,27 +30,12 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
  protected:
   // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
   // the ftz option.
-  std::unique_ptr<HloModule> CreateNewUnverifiedModuleWithFTZ(bool ftz);
+  std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModuleWithFTZ(bool ftz);
 
   // Compiles the given HLO module to PTX and verifies the PTX matches the given
   // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
-  void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
+  void CompileAndVerifyPtx(std::unique_ptr<VerifiedHloModule> hlo_module,
                            absl::string_view pattern);
-
-  // Compiles the given `hlo` with optimizations, and verifies that optimized
-  // HLO matches the given FileCheck pattern.
-  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
-                         bool print_operand_shape = false);
-
-  // LikeMatchOptimizedHlo, but checks operand shapes as well.
-  void MatchOptimizedHloWithShapes(absl::string_view hlo,
-                                   absl::string_view pattern) {
-    MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
-  }
-
-  // Compiles and returns module with optimizations from a given HLO.
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      absl::string_view hlo);
 };
 
 }  // namespace gpu

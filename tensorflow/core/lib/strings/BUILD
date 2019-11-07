@@ -1,13 +1,30 @@
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core:__pkg__",
+        # tensorflow/core/platform still references some of the headers in this package
+        "//tensorflow/core/platform:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# base64, proto_serialization, proto_text_util, and all tests.
-# Note: proto_serialization depends on target lib/hash:hash being added.
+# Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.
+
+cc_library(
+    name = "base64",
+    srcs = ["base64.cc"],
+    hdrs = ["base64.h"],
+    deps = [
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+    ],
+)
+
+cc_library(
+    name = "numbers",
+    hdrs = ["numbers.h"],
+    deps = ["//tensorflow/core/platform:numbers"],
+)
 
 cc_library(
     name = "ordered_code",
@@ -22,33 +39,51 @@ cc_library(
 )
 
 cc_library(
+    name = "proto_serialization",
+    srcs = ["proto_serialization.cc"],
+    hdrs = ["proto_serialization.h"],
+    deps = [
+        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:protobuf",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "proto_text_util",
+    srcs = ["proto_text_util.cc"],
+    hdrs = ["proto_text_util.h"],
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:scanner",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "scanner",
     hdrs = ["scanner.h"],
     deps = ["//tensorflow/core/platform:scanner"],
 )
 
 cc_library(
-    name = "string_utils",
-    srcs = [
-        "strcat.cc",
-    ],
-    hdrs = [
-        "numbers.h",
-        "str_util.h",
-        "strcat.h",
-    ],
-    deps = [
-        "//tensorflow/core/lib/gtl:stl_util",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:numbers",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    name = "str_util",
+    hdrs = ["str_util.h"],
+    deps = ["//tensorflow/core/platform:str_util"],
+)
+
+cc_library(
+    name = "strcat",
+    hdrs = ["strcat.h"],
+    deps = ["//tensorflow/core/platform:strcat"],
 )
 
 cc_library(
@@ -80,7 +115,6 @@ filegroup(
         "ordered_code.cc",
         "proto_serialization.cc",
         "proto_text_util.cc",
-        "strcat.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -91,7 +125,6 @@ filegroup(
         "base64_test.cc",
         "ordered_code_test.cc",
         "proto_serialization_test.cc",
-        "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -130,19 +163,9 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_lib_android_gif_internal_string_headers",
-    srcs = [
-        "numbers.h",
-        "strcat.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_low_level_library_tests",
     srcs = [
         "base64_test.cc",
-        "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

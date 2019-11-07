@@ -30,12 +30,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
 
 class QuantizeAndDequantizeTest : public OpsTestBase {};
+
+struct ParameterizedQuantizeAndDequantizeTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<int> {};
 
 // Convert a simple scalar tensor.
 TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
@@ -89,8 +94,33 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor_V3) {
   EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
+// Creates a tensor with the specified dims, using values chosen from data,
+// multiplied by (1 + index) along the axis dimension.
+template <typename T>
+std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
+                                      const std::vector<T>& data) {
+  uint32 seed = 123;
+  int64 out_size = 1;
+  for (int dim : dims) {
+    out_size *= dim;
+  }
+  int minor_size = 1;
+  for (int i = axis + 1; i < dims.size(); ++i) {
+    minor_size *= dims[i];
+  }
+  std::vector<T> out(out_size);
+  int num_slices = (axis == -1) ? 1 : dims[axis];
+  for (int out_idx = 0; out_idx < out_size; ++out_idx) {
+    int in_idx = rand_r(&seed) % data.size();
+    int multiplier = ((out_idx / minor_size) % num_slices) + 1;
+    out[out_idx] = data[in_idx] * multiplier;
+  }
+  return out;
+}
+
 // Convert a 1D tensor with signed 8 bits.
-TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
+TEST_P(ParameterizedQuantizeAndDequantizeTest, Convert_4D_tensor_with_int8) {
+  const int axis = GetParam();
   TF_ASSERT_OK(
       NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
           .Input(FakeInput(DT_FLOAT))
@@ -99,29 +129,48 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
           .Attr("range_given", false)
+          .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  // Each slice contains the same 7 values multiplied by (slice_idx + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625}));
 
-  // With int8, the tensor is quantized to {-128, -64, 0, 38, 102, 71, 64}.
-  // Scale is: 1/127
-  // Then it is dequantized to {-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128, 0.5}
+  const int num_slices = (axis == -1) ? 1 : dims[axis];
+  const TensorShape range_shape =
+      (axis == -1) ? TensorShape({}) : TensorShape({num_slices});
+  std::vector<float> init_value(num_slices, 0.0f);
+  AddInputFromArray<float>(range_shape, init_value);  // Min
+  AddInputFromArray<float>(range_shape, init_value);  // Max
+
+  // With int8, the values in the tensor are quantized to
+  // {-128, -64, 0, 38, 102, 71, 64}.
+  // Scale is: (slice_idx + 1) / 128
+  // Then it is dequantized to:
+  //    (slice_idx + 1) * {-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128, 0.5}
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
+  Tensor expected(allocator(), DT_FLOAT, TensorShape(dims));
   test::FillValues<float>(
-      &expected, {-1, -0.5, 0, 38.0 / 128, 102.0 / 128, 71.0 / 128, 0.5});
+      &expected,
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-1, -0.5, 0, 38.0 / 128, 102.0 / 128, 71.0 / 128, 0.5}));
+
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 
   // Ensure that the inputs haven't been changed.
-  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
-  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(inputs_[1]->flat<float>()(slice_idx), 0.0);
+    EXPECT_EQ(inputs_[2]->flat<float>()(slice_idx), 0.0);
+  }
 }
 
 // Convert a 1D tensor with signed 8 bits and round_mode half_up.
-TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_round_half_up) {
+TEST_P(ParameterizedQuantizeAndDequantizeTest,
+       Convert_4D_tensor_with_int8_round_half_up) {
+  const int axis = GetParam();
   TF_ASSERT_OK(
       NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
           .Input(FakeInput(DT_FLOAT))
@@ -131,32 +180,50 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_round_half_up) {
           .Attr("num_bits", 8)
           .Attr("range_given", false)
           .Attr("round_mode", "HALF_UP")
+          .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  const std::vector<int64> dims = {5, 7, 11, 13};
+  // Each slice contains the same 7 values multiplied by (slice_idx + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625}));
 
-  // With int8, the tensor is quantized to {-128, -64, 0, 38, 102, 71, 65}.
-  // Scale is: 1/127
-  // Then it is dequantized to {-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128,
-  // 65.0 /128}
+  const int num_slices = (axis == -1) ? 1 : dims[axis];
+  const TensorShape range_shape =
+      (axis == -1) ? TensorShape({}) : TensorShape({num_slices});
+  std::vector<float> init_value(num_slices, 0.0f);
+  AddInputFromArray<float>(range_shape, init_value);  // Min
+  AddInputFromArray<float>(range_shape, init_value);  // Max
+
+  // With int8, the values in the tensor are quantized to
+  // {-128, -64, 0, 38, 102, 71, 65}.
+  // Scale is: (slice_idx + 1) / 128
+  // Then it is dequantized to:
+  //   (slice_idx + 1) * {-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128, 65.0 /128}
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
-  test::FillValues<float>(&expected, {-1, -0.5, 0, 38.0 / 128, 102.0 / 128,
-                                      71.0 / 128, 65.0 / 128});
+  Tensor expected(allocator(), DT_FLOAT, TensorShape(dims));
+  test::FillValues<float>(&expected, ScalePerSliceAlongAxis<float>(
+                                         dims, axis,
+                                         {-1, -0.5, 0, 38.0 / 128, 102.0 / 128,
+                                          71.0 / 128, 65.0 / 128}));
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 
   // Ensure that the inputs haven't been changed.
-  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
-  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(inputs_[1]->flat<float>()(slice_idx), 0.0);
+    EXPECT_EQ(inputs_[2]->flat<float>()(slice_idx), 0.0);
+  }
 }
 
 // Convert a 1D tensor with signed 8 bits and round_mode half_up, using
 // narrow range quantization.
-TEST_F(QuantizeAndDequantizeTest,
-       Convert_1D_tensor_with_int8_round_half_up_narrow_range) {
+TEST_P(ParameterizedQuantizeAndDequantizeTest,
+       Convert_4D_tensor_with_int8_round_half_up_narrow_range) {
+  const int axis = GetParam();
   TF_ASSERT_OK(
       NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
           .Input(FakeInput(DT_FLOAT))
@@ -167,26 +234,43 @@ TEST_F(QuantizeAndDequantizeTest,
           .Attr("range_given", false)
           .Attr("round_mode", "HALF_UP")
           .Attr("narrow_range", true)
+          .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  // Each slice contains the same 7 values multiplied by (slice_idx + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625}));
 
-  // With int8, the tensor is quantized to {-127, -63, 0, 38, 102, 70, 64}.
-  // Scale is: 1/127
-  // Then it is dequantized to {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70.0/127,
-  // 64.0/127}
+  const int num_slices = (axis == -1) ? 1 : dims[axis];
+  const TensorShape range_shape =
+      (axis == -1) ? TensorShape({}) : TensorShape({num_slices});
+  std::vector<float> init_value(num_slices, 0.0f);
+  AddInputFromArray<float>(range_shape, init_value);  // Min
+  AddInputFromArray<float>(range_shape, init_value);  // Max
+
+  // With int8, the values in the tensor are quantized to
+  // {-127, -63, 0, 38, 102, 70, 64}.
+  // Scale is: (slice_idx + 1) / 127
+  // Then it is dequantized to:
+  //    (slice_idx + 1) * {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70/127,
+  //    64/127}
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
-  test::FillValues<float>(&expected, {-1, -63.0 / 127, 0, 38.0 / 127,
-                                      102.0 / 127, 70.0 / 127, 64.0 / 127});
+  Tensor expected(allocator(), DT_FLOAT, TensorShape(dims));
+  test::FillValues<float>(
+      &expected,
+      ScalePerSliceAlongAxis<float>(dims, axis,
+                                    {-1, -63.0 / 127, 0, 38.0 / 127,
+                                     102.0 / 127, 70.0 / 127, 64.0 / 127}));
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 
   // Ensure that the inputs haven't been changed.
-  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
-  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(inputs_[1]->flat<float>()(slice_idx), 0.0);
+    EXPECT_EQ(inputs_[2]->flat<float>()(slice_idx), 0.0);
+  }
 }
 
 // Convert a 1D tensor with signed 8 bits.
@@ -221,7 +305,9 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_V3) {
 }
 
 // Convert a 1D tensor with signed 8 bits, using narrow range quantization.
-TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_narrow_range_V3) {
+TEST_P(ParameterizedQuantizeAndDequantizeTest,
+       Convert_4D_tensor_with_int8_narrow_range_V3) {
+  const int axis = GetParam();
   TF_ASSERT_OK(
       NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
           .Input(FakeInput(DT_FLOAT))
@@ -231,28 +317,54 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_narrow_range_V3) {
           .Attr("signed_input", true)
           .Attr("range_given", false)
           .Attr("narrow_range", true)
+          .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
-  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  // Each slice contains the same 7 values multiplied by (slice_idx + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625}));
 
-  // With int8, the tensor is quantized to {-127, -64, 0, 38, 102, 70, 64}.
-  // Scale is: 1/127
-  // Then it is dequantized to {-1, -64.0/127, 0, 38.0/127, 102.0/127, 70.0/127,
-  // 64.0/127}
+  const int num_slices = (axis == -1) ? 1 : dims[axis];
+  const TensorShape range_shape =
+      (axis == -1) ? TensorShape({}) : TensorShape({num_slices});
+  std::vector<float> init_value(num_slices, 0.0f);
+  AddInputFromArray<float>(range_shape, init_value);  // Min
+  AddInputFromArray<float>(range_shape, init_value);  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});     // num_bits
+
+  // With int8, the values in the tensor are quantized to
+  // {-127, -63, 0, 38, 102, 70, 64}.
+  // Scale is: (slice_idx + 1) / 127
+  // Then it is dequantized to:
+  //   (slice_idx + 1) * {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70/127, 64/127}
+
+  // With int8, each slice of the the tensor is quantized to
+  // {-127, -64, 0, 38, 102, 70, 64}.
+  // Scale is: (slice_idx + 1) / 127
+  // Then it is dequantized to:
+  //   (slice_idx + 1) * {-1, -64.0/127, 0, 38.0/127, 102.0/127, 70/127, 64/127}
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
-  test::FillValues<float>(&expected, {-1, -64.0 / 127, 0, 38.0 / 127,
-                                      102.0 / 127, 70.0 / 127, 64.0 / 127});
+  Tensor expected(allocator(), DT_FLOAT, TensorShape(dims));
+  test::FillValues<float>(
+      &expected,
+      ScalePerSliceAlongAxis<float>(dims, axis,
+                                    {-1, -64.0 / 127, 0, 38.0 / 127,
+                                     102.0 / 127, 70.0 / 127, 64.0 / 127}));
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 
   // Ensure that the inputs haven't been changed.
-  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
-  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(inputs_[1]->flat<float>()(slice_idx), 0.0);
+    EXPECT_EQ(inputs_[2]->flat<float>()(slice_idx), 0.0);
+  }
 }
+
+// Instantiate parameterized tests for axis = -1, 1, 3.
+INSTANTIATE_TEST_SUITE_P(All, ParameterizedQuantizeAndDequantizeTest,
+                         ::testing::Values(-1, 1, 3));
 
 // Convert a 1D tensor with signed 4 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {

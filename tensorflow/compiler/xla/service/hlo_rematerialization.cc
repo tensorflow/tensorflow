@@ -286,12 +286,10 @@ class InstructionList {
         max_position_item = item;
       }
     }
-    if (max_position_item->next == nullptr) {
-      InsertAfter(to_insert, max_position_item);
-
-    } else {
-      InsertBeforeInstructions(to_insert, {max_position_item->next});
-    }
+    // No rematerializable instruction should be inserted at the end of the
+    // computation.
+    CHECK(max_position_item->next != nullptr);
+    InsertBeforeInstructions(to_insert, {max_position_item->next});
   }
 
   void Blacklist(const HloInstruction* inst) {
@@ -317,24 +315,6 @@ class InstructionList {
     // 'before'. This guarantees monotonicity of the position numbers, but not
     // uniqueness.
     item->position = before->position;
-  }
-
-  void InsertAfter(Item* item, Item* after) {
-    VLOG(3) << "InsertAfter: " << item->instruction->name() << " after "
-            << after->instruction->name();
-    // Insert new item into linked list.
-    item->next = after->next;
-    item->prev = after;
-
-    after->next = item;
-    if (item->next != nullptr) {
-      item->next->prev = item;
-    }
-
-    // Assign the same position number to the newly added instruction as
-    // 'before'. This guarantees monotonicity of the position numbers, but not
-    // uniqueness.
-    item->position = after->position;
   }
 
   Item* first_;
@@ -568,12 +548,29 @@ class MemoryUsageTracker {
     return absl::c_linear_search(in_progress_uses, buffer_id);
   }
 
-  // Returns whether the given instruction is live at the current program
+  // Returns whether the given buffer is live at the current program
   // point.
   bool IsCurrentlyLive(BufferId buffer_id) const {
     const Buffer& buffer = buffers_[buffer_id];
     return (buffer.defining_instruction->placed &&
             buffer.unfinished_user_count > 0);
+  }
+
+  // Returns whether the given instruction is live at the current program
+  // point.
+  bool IsInstructionCurrentlyLive(Item* instruction) const {
+    // If the instruction has not started yet, it is not alive.
+    if (!IsPlaced(instruction->instruction)) {
+      return false;
+    }
+    for (const HloInstruction* user : instruction->instruction->users()) {
+      if (!IsPlaced(user)) {
+        // If there is an unplaced user, consider this instruction currently
+        // live.
+        return true;
+      }
+    }
+    return false;
   }
 
   // Create a new buffer, add it to buffers_, and return a reference.
@@ -728,7 +725,8 @@ Status MemoryUsageTracker::EndInstruction() {
       // Buffer is now dead.
       VLOG(3) << "  " << buffer.ToString() << " is now dead.";
       memory_usage_ -= AllocatedSize(buffer_id);
-      CHECK_GE(memory_usage_, 0);
+      // The memory usage can become negative inside the computation as we can
+      // free up the parameter space and reuse it for other tensors.
     }
   }
 
@@ -739,7 +737,8 @@ Status MemoryUsageTracker::EndInstruction() {
     if (buffer.unfinished_user_count == 0) {
       VLOG(3) << "  " << buffer.ToString() << " is immediately dead.";
       memory_usage_ -= AllocatedSize(buffer_id);
-      CHECK_GE(memory_usage_, 0);
+      // The memory usage can become negative inside the computation as we can
+      // free up the parameter space and reuse it for other tensors.
     }
   }
 
@@ -766,12 +765,13 @@ int64 MemoryUsageTracker::MemoryReducedIfCompressed(
   // We only compress a single piece of an output at one time.
   CHECK_EQ(item->buffers_output.size(), 1);
   BufferId buffer_id = item->buffers_output[0];
-  if (IsCurrentlyLive(buffer_id) && !IsInUse(buffer_id)) {
+  if (IsCurrentlyLive(buffer_id) && !IsInUse(buffer_id) &&
+      IsInstructionCurrentlyLive(item)) {
     const Buffer& buffer = buffers_.at(buffer_id);
     memory_reduced += buffer.size;
 
     int64 compact_shape_size = size_function_(compact_shape);
-    // Account for buffers that are compress after instruction.
+    // Account for buffers that are compressed after instruction.
     memory_reduced -= compact_shape_size;
   }
   return memory_reduced;
@@ -1346,14 +1346,14 @@ StatusOr<int64> CompressInstruction(MemoryUsageTracker* memory_tracker,
       best_item, compressed_item, uncompressed_item));
 
   // Insert rematerialized instruction right before the earliest unplaced
-  // use of the instruction *and* the earliest unplaced last use of any
-  // operands of remat. Unplaced uses of the remat's operands are included
-  // because we don't want to extend the live range of remat's operands as
-  // this could increase memory usage.
+  // use of the instruction.
   ItemList place_before;
   for (auto user : uncompressed->users()) {
     place_before.push_back(instruction_list->GetItem(user));
   }
+
+  instruction_list->Blacklist(compressed_item->instruction);
+  instruction_list->Blacklist(uncompressed_item->instruction);
 
   instruction_list->InsertBeforeInstructions(uncompressed_item, place_before);
 
@@ -1479,20 +1479,27 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
       }
 
       HloInstruction* best = best_item->instruction;
-      VLOG(1) << "Rematerializing instruction " << best->name() << " (saving "
-              << HumanReadableNumBytes(
-                     memory_tracker.MemoryReducedIfRematerialized(best_item))
-              << ")";
       changed = true;
       remat_count++;
 
       int64 added_instruction = 0;
       if (best_strategy.kind == RematStrategy::kCompress) {
+        VLOG(1) << "Compressing instruction " << best->name() << " (saving "
+                << HumanReadableNumBytes(
+                       memory_tracker.MemoryReducedIfCompressed(
+                           best_item, best_strategy.compact_shape))
+                << ")";
+
         TF_ASSIGN_OR_RETURN(added_instruction,
                             CompressInstruction(&memory_tracker, best_item,
                                                 best_strategy.compact_shape,
                                                 &instruction_list));
       } else {
+        VLOG(1) << "Rematerializing instruction " << best->name() << " (saving "
+                << HumanReadableNumBytes(
+                       memory_tracker.MemoryReducedIfRematerialized(best_item))
+                << ")";
+
         TF_ASSIGN_OR_RETURN(added_instruction,
                             RematerializeInstruction(&memory_tracker, best_item,
                                                      &remat_move_instructions,
@@ -1544,7 +1551,6 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   }
 
   // Verify some invariants on the memory tracker.
-  CHECK_EQ(memory_tracker.memory_usage(), 0);
   for (auto* instruction : computation->instructions()) {
     CHECK(memory_tracker.IsPlaced(instruction)) << instruction->name();
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
 #include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
 #include <deque>
@@ -1051,6 +1052,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return kGray;
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:

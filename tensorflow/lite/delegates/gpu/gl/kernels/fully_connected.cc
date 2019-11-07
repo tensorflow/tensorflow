@@ -39,9 +39,18 @@ class FullyConnectedBuffers : public NodeShader {
     auto attr = absl::any_cast<const FullyConnectedAttributes&>(
         ctx.node->operation.attributes);
 
+    const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+    const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+
+    // This shader can work with any workgroup size, the values below work well
+    // for OpenGL.
+    constexpr int kWorkgroupHintX = 4;
+    constexpr int kWorkgroupHintY = 4;
+
     // TODO(akulik): check that input has h,w == 1,1
     std::vector<Variable> parameters = {
-        {"src_depth", IntegralDivideRoundUp(attr.weights.shape.i, 4)},
+        {"src_depth", src_depth},
+        {"dst_depth", dst_depth},
     };
 
     // TODO(akulik): refactor indexed access to weights.
@@ -49,29 +58,53 @@ class FullyConnectedBuffers : public NodeShader {
         {"weights", MakeReadonlyObject(ConvertToPHWO4I4(attr.weights))}};
 
     std::string source = R"(
-  int offset = gid.z * $src_depth$ * 4;
-  for (int d = 0; d < $src_depth$; ++d, offset += 4) {
-      vec4 src = $input_data_0[0, 0, d]$;
-      value_0.x += dot(src, $weights[offset]$);
+  const int threads = int(gl_WorkGroupSize.y);
+  const int workers = int(gl_WorkGroupSize.x);
+  ivec3 tid = ivec3(gl_LocalInvocationID);
+
+  if (gid.x < $dst_depth$) {
+    int offset = 4 * gid.x * $src_depth$ + 4 * tid.y;
+    int iterations = ($src_depth$ + threads-1) / threads;
+    for (int d = 0; d < iterations; d++, offset += 4 * threads) {
+      vec4 src = $input_data_0[0, 0, d * threads + tid.y]$;
+      value_0.x += dot(src, $weights[offset + 0]$);
       value_0.y += dot(src, $weights[offset + 1]$);
       value_0.z += dot(src, $weights[offset + 2]$);
       value_0.w += dot(src, $weights[offset + 3]$);
+    }
+    sh_mem[workers * tid.y + tid.x] = value_0;
+  }
+  memoryBarrierShared();
+  barrier();
+
+  if (tid.y > 0 || gid.x >= $dst_depth$) {
+    return;
+  }
+
+  for (int t = 1; t < threads; t++) {
+    value_0 += sh_mem[workers * t + tid.x];
   }
 )";
     if (!attr.bias.data.empty()) {
-      source += "  value_0 += $bias[gid.z]$;\n";
+      source += "  value_0 += $bias[gid.x]$;\n";
       objects.push_back({"bias", MakeReadonlyObject(attr.bias.data)});
     }
+    source += "  $output_data_0[0, 0, gid.x] = value_0$;";
+
+    std::vector<Variable> shared_variables = {
+        // The actual size of sh_mem depends on the WorkgroupSize
+        {"sh_mem", std::vector<float4>(0)},
+    };
+
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
-        /*shared_variables=*/{},
-        /*workload=*/
-        uint3(1, 1, IntegralDivideRoundUp(attr.weights.shape.o, 4)),
-        /*workgroup=*/uint3(),
+        /*shared_variables=*/std::move(shared_variables),
+        /*workload=*/uint3(dst_depth, kWorkgroupHintY, 1),
+        /*workgroup=*/uint3(kWorkgroupHintX, kWorkgroupHintY, 1),
         /*source_code=*/std::move(source),
         /*input=*/IOStructure::ONLY_DEFINITIONS,
-        /*output=*/IOStructure::AUTO,
+        /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
     return OkStatus();
   }

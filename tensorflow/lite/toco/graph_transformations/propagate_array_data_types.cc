@@ -72,10 +72,16 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;
     case OperatorType::kRank:
-    case OperatorType::kShape:
       // These operators only produce int32 outputs.
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kInt32);
       break;
+    case OperatorType::kShape: {
+      // Shape op could produce int32 or int64 result. Set the output type
+      // based on the `output_data_type` field.
+      auto* shape_op = static_cast<TensorFlowShapeOperator*>(op);
+      SetDataTypeForAllOutputs(model, op, shape_op->output_data_type);
+      break;
+    }
     case OperatorType::kSplit:
     case OperatorType::kConcat:
     case OperatorType::kFill: {

@@ -68,6 +68,9 @@ class FailoverCompiler final : public Compiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
+  Compiler* GetPrimary() const { return primary_.get(); }
+  Compiler* GetSecondary() const { return secondary_.get(); }
+
  private:
   std::unique_ptr<Compiler> primary_;
   std::unique_ptr<Compiler> secondary_;

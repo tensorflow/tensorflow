@@ -146,6 +146,7 @@ struct ParsedModelFlags {
   Arg<string> graphviz_last_array;
   Arg<string> dump_graphviz;
   Arg<bool> dump_graphviz_video = Arg<bool>(false);
+  Arg<string> conversion_summary_dir;
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
   Arg<string> arrays_extra_info_file;

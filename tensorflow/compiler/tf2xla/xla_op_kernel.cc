@@ -31,7 +31,7 @@ limitations under the License.
 namespace tensorflow {
 
 XlaOpKernelContext::XlaOpKernelContext(OpKernelContext* context)
-    : context_(context) {}
+    : context_(context), dynamic_dimension_is_minus_one_(false) {}
 
 bool XlaOpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   return context_->ValidateInputsAreSameShape(op);
@@ -166,7 +166,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
     xla::Literal* constant_literal) {
   XlaExpression e = InputExpression(index);
   xla::StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(compiler()->client());
+      e.ResolveConstant(compiler()->client(), dynamic_dimension_is_minus_one_);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
     errors::AppendToMessage(&status, "while evaluating input ", index, " of ",

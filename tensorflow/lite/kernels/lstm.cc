@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
@@ -113,7 +114,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < 5; ++i) {
     // Calculate intermediate tensors.
     TfLiteTensor* intermediate =
         &context->tensors[node->intermediates->data[i]];
@@ -137,14 +138,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
   auto* proj_params = reinterpret_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    quantized_lstm_param->quantized_cell_clip =
-        static_cast<int32_t>(cell_clip / cell_params->scale->data[0]);
+    quantized_lstm_param->quantized_cell_clip = static_cast<int32_t>(
+        std::min(std::max(cell_clip / cell_params->scale->data[0], -32768.0f),
+                 32767.0f));
   } else {
     quantized_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    quantized_lstm_param->quantized_proj_clip =
-        static_cast<int32_t>(proj_clip / proj_params->scale->data[0]);
+    quantized_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+        std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     quantized_lstm_param->quantized_proj_clip = 0;
   }
@@ -229,7 +231,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   float layer_norm_cell_scale = default_scale;
   float layer_norm_output_scale = default_scale;
   float activation_scale = default_scale;
-  float cell_scale = default_scale;
+  int cell_scale = 1;
 
   // Effective scales.
   float effective_input_to_input_scale = default_scale;
@@ -244,6 +246,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   float effective_recurrent_to_output_scale = default_scale;
   float effective_cell_to_output_scale = default_scale;
   float effective_proj_scale = default_scale;
+  float effective_hidden_scale = default_scale;
 
   // Populate scales.
   if (!use_cifg) {
@@ -279,7 +282,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
   recurrent_to_forget_weight_scale = recurrent_to_forget_weights->params.scale;
   recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
   recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
-  cell_scale = std::pow(2, -11);
+
+  // Get cell state.
+  TfLiteTensor* cell_state =
+      &context->tensors[op_data->cell_state_tensor_index];
+  TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
+
+  // TODO(jianlijianli): remove this check once kernel has better tanh support.
+  TF_LITE_ENSURE(context, cell_scale == -11 || cell_scale == -15);
+  quantized_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
   // Calculate effective scales.
@@ -291,33 +302,40 @@ TfLiteStatus PopulateQuantizedLstmParams(
                                          intermediate_scale[0];
   }
   effective_input_to_forget_scale =
-      input_to_forget_weight_scale * input_scale / intermediate_scale[3];
+      input_to_forget_weight_scale * input_scale / intermediate_scale[1];
   effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
+                                        activation_scale /
+                                        intermediate_scale[1];
+
+  effective_input_to_cell_scale =
+      input_to_cell_weight_scale * input_scale / intermediate_scale[2];
+  effective_recurrent_to_cell_scale =
+      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[2];
+
+  effective_input_to_output_scale =
+      input_to_output_weight_scale * input_scale / intermediate_scale[3];
+  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
                                         activation_scale /
                                         intermediate_scale[3];
 
-  effective_input_to_cell_scale =
-      input_to_cell_weight_scale * input_scale / intermediate_scale[6];
-  effective_recurrent_to_cell_scale =
-      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[6];
+  effective_hidden_scale =
+      std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
-  effective_input_to_output_scale =
-      input_to_output_weight_scale * input_scale / intermediate_scale[9];
-  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
-                                        activation_scale /
-                                        intermediate_scale[9];
-  // Use (2, -7) as scale.
-  effective_proj_scale = proj_weight_scale * std::pow(2, -7) / activation_scale;
+  effective_proj_scale =
+      proj_weight_scale * intermediate_scale[4] / activation_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
-      effective_cell_to_input_scale =
-          cell_scale * cell_to_input_weight_scale / intermediate_scale[0];
+      effective_cell_to_input_scale = std::pow(2, cell_scale) *
+                                      cell_to_input_weight_scale /
+                                      intermediate_scale[0];
     }
-    effective_cell_to_forget_scale =
-        cell_scale * cell_to_forget_weight_scale / intermediate_scale[3];
-    effective_cell_to_output_scale =
-        cell_scale * cell_to_output_weight_scale / intermediate_scale[9];
+    effective_cell_to_forget_scale = std::pow(2, cell_scale) *
+                                     cell_to_forget_weight_scale /
+                                     intermediate_scale[1];
+    effective_cell_to_output_scale = std::pow(2, cell_scale) *
+                                     cell_to_output_weight_scale /
+                                     intermediate_scale[3];
   }
 
   // Decompose scales.
@@ -361,6 +379,9 @@ TfLiteStatus PopulateQuantizedLstmParams(
   QuantizeMultiplier(effective_proj_scale,
                      &quantized_lstm_param->effective_proj_scale_a,
                      &quantized_lstm_param->effective_proj_scale_b);
+  QuantizeMultiplier(effective_hidden_scale,
+                     &quantized_lstm_param->effective_hidden_scale_a,
+                     &quantized_lstm_param->effective_hidden_scale_b);
   QuantizeMultiplier(layer_norm_input_scale,
                      &quantized_lstm_param->layer_norm_input_scale_a,
                      &quantized_lstm_param->layer_norm_input_scale_b);
@@ -374,16 +395,19 @@ TfLiteStatus PopulateQuantizedLstmParams(
                      &quantized_lstm_param->layer_norm_output_scale_a,
                      &quantized_lstm_param->layer_norm_output_scale_b);
 
-  // TODO(jianlijianli): add support for cifg.
+  quantized_lstm_param->hidden_zp = intermediate_zp[4];
+
   // 10000 is used to make sure the kernel logic does not overflow.
-  quantized_lstm_param->inv_large_value[0] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+  if (!use_cifg) {
+    quantized_lstm_param->inv_large_value[0] =
+        std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+  }
   quantized_lstm_param->inv_large_value[1] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
   quantized_lstm_param->inv_large_value[2] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
   quantized_lstm_param->inv_large_value[3] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
   return kTfLiteOk;
 }
@@ -658,7 +682,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 }
 
 TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
-    TfLiteContext* context, int32_t zero_pint,
+    TfLiteContext* context, int32_t zero_point,
     const TfLiteTensor* weight_tensor, const TfLiteTensor* bias_tensor,
     std::unique_ptr<int32_t[]>* output) {
   if (weight_tensor == nullptr) {
@@ -667,19 +691,19 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
 
   const RuntimeShape& weight_shape = GetTensorShape(weight_tensor);
   TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
-  int row = weight_shape.Dims(0);
-  int col = weight_shape.Dims(1);
-  const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
-  const int32_t* bias =
-      bias_tensor == nullptr ? nullptr : GetTensorData<int32_t>(bias_tensor);
-  output->reset(new int32_t[row]);
-  for (int i = 0; i < row; ++i) {
-    int32_t accu = bias == nullptr ? 0 : bias[i];
-    for (int j = 0; j < col; ++j) {
-      int weight_val = weight[i * col + j];
-      accu += weight_val * zero_pint;
-    }
-    output->get()[i] = accu;
+  const int row = weight_shape.Dims(0);
+  const int col = weight_shape.Dims(1);
+  *output = absl::make_unique<int32_t[]>(row);
+  if (bias_tensor == nullptr) {
+    memset(output->get(), 0, row * sizeof(int32_t));
+  } else {
+    const int32_t* bias = GetTensorData<int32_t>(bias_tensor);
+    memcpy(output->get(), bias, row * sizeof(int32_t));
+  }
+  if (zero_point != 0) {
+    const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
+    tensor_utils::MatrixScalarMultiplyAccumulate(weight, zero_point, row, col,
+                                                 output->get());
   }
   return kTfLiteOk;
 }
@@ -720,56 +744,58 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   lstm_eval::QuantizedLstmParameter* quantized_lstm_params =
       &op_data->quantized_lstm_param;
 
+  const TfLiteTensor* intermediate =
+      &context->tensors[node->intermediates->data[4]];
+  const auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
+      intermediate->quantization.params);
+  const int32_t hidden_zp = params->zero_point->data[0];
+
   // Forget gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_forget_weights, nullptr,
-          &(quantized_lstm_params->input_to_forget_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_forget_weights, nullptr,
+                   &(quantized_lstm_params->input_to_forget_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_forget_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
   // Modulation gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_cell_weights, nullptr,
-                   &(quantized_lstm_params->input_to_cell_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_cell_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
   // Output gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_output_weights, nullptr,
-          &(quantized_lstm_params->input_to_output_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_output_weights, nullptr,
+                   &(quantized_lstm_params->input_to_output_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_output_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_output_effective_bias)));
   // Input gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_input_weights, nullptr,
-                   &(quantized_lstm_params->input_to_input_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_input_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
-                        context, 0, projection_weights, projection_bias,
-                        &(quantized_lstm_params->projection_bias_accu)));
+                        context, hidden_zp, projection_weights, projection_bias,
+                        &(quantized_lstm_params->projection_effective_bias)));
   return kTfLiteOk;
 }
 
@@ -864,7 +890,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (is_hybrid_op) {
     node->temporaries = TfLiteIntArrayCreate(7);
   } else if (is_fully_quantized) {
-    node->temporaries = TfLiteIntArrayCreate(5);
+    node->temporaries = TfLiteIntArrayCreate(6);
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
   }
@@ -985,16 +1011,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     PopulateQuantizedLstmParams(context, node, &op_data->quantized_lstm_param);
 
     // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
-    // and 1 8bit buffer with size n_batch * n_cell.
+    // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
+    // buffer with size n_batch * n_cell.
     //
     // TODO(jianlijianli): Handle cifg case as well, which might save one
     // buffer.
-    for (int scratch_index = 0; scratch_index < 5; ++scratch_index) {
+    for (int scratch_index = 0; scratch_index < 6; ++scratch_index) {
       node->temporaries->data[scratch_index] =
           op_data->scratch_tensor_index + scratch_index;
       TfLiteTensor* scratch_tensor =
           GetTemporary(context, node, /*index=*/scratch_index);
-      scratch_tensor->type = scratch_index == 4 ? kTfLiteInt8 : kTfLiteInt16;
+      scratch_tensor->type = kTfLiteInt16;
+      if (scratch_index == 4) {
+        scratch_tensor->type = kTfLiteInt8;
+      } else if (scratch_index == 5) {
+        scratch_tensor->type = kTfLiteInt32;
+      }
       scratch_tensor->allocation_type = kTfLiteArenaRw;
       const int scratch_dimension[2] = {n_batch, n_cell};
       if (!TfLiteIntArrayEqualsArray(scratch_tensor->dims, 2,
@@ -1152,6 +1184,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
         TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
         TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
+        TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
         return lstm_eval::EvalQuantized(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -1164,7 +1197,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_bias, output_gate_bias, projection_weights, projection_bias,
             params, &op_data->quantized_lstm_param, activation_state,
             cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4);
+            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
         return kTfLiteOk;
       }
     }

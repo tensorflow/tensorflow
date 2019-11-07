@@ -207,8 +207,8 @@ bool CheckErrorStats(const ErrorStats& error_stats, int accumulation_depth) {
     // compromise between something that works and something that's simple
     // enough code that doesn't feel too ad-hoc. As above in the float path,
     // abs_mean_diff is subject to a stricter requirement as it is a bias.
-    tolerated_relative_mean_abs_diff = std::sqrt(inverse_size);
-    tolerated_relative_abs_mean_diff = inverse_size;
+    tolerated_relative_mean_abs_diff = std::sqrt(inverse_size) * 0.5;
+    tolerated_relative_abs_mean_diff = inverse_size * 2.;
   }
 
   double tolerated_max_abs_diff =

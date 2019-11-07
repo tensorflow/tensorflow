@@ -21,13 +21,6 @@ from __future__ import print_function
 
 import keras_applications
 
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import engine
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import models
-from tensorflow.python.keras import utils
-from tensorflow.python.util import tf_inspect
-
 
 def keras_modules_injection(base_fun):
   """Decorator injecting tf.keras replacements for Keras modules.
@@ -39,34 +32,16 @@ def keras_modules_injection(base_fun):
       Decorated function that injects keyword argument for the tf.keras
       modules required by the Applications.
   """
+  from tensorflow.python.keras import backend
+  from tensorflow.python.keras import layers
+  from tensorflow.python.keras import models
+  from tensorflow.python.keras.utils import all_utils
 
   def wrapper(*args, **kwargs):
     kwargs['backend'] = backend
     if 'layers' not in kwargs:
       kwargs['layers'] = layers
     kwargs['models'] = models
-    kwargs['utils'] = utils
+    kwargs['utils'] = all_utils
     return base_fun(*args, **kwargs)
   return wrapper
-
-
-from tensorflow.python.keras.applications.densenet import DenseNet121
-from tensorflow.python.keras.applications.densenet import DenseNet169
-from tensorflow.python.keras.applications.densenet import DenseNet201
-from tensorflow.python.keras.applications.imagenet_utils import decode_predictions
-from tensorflow.python.keras.applications.imagenet_utils import preprocess_input
-from tensorflow.python.keras.applications.inception_resnet_v2 import InceptionResNetV2
-from tensorflow.python.keras.applications.inception_v3 import InceptionV3
-from tensorflow.python.keras.applications.mobilenet import MobileNet
-from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
-from tensorflow.python.keras.applications.nasnet import NASNetLarge
-from tensorflow.python.keras.applications.nasnet import NASNetMobile
-from tensorflow.python.keras.applications.resnet import ResNet50
-from tensorflow.python.keras.applications.resnet import ResNet101
-from tensorflow.python.keras.applications.resnet import ResNet152
-from tensorflow.python.keras.applications.resnet_v2 import ResNet50V2
-from tensorflow.python.keras.applications.resnet_v2 import ResNet101V2
-from tensorflow.python.keras.applications.resnet_v2 import ResNet152V2
-from tensorflow.python.keras.applications.vgg16 import VGG16
-from tensorflow.python.keras.applications.vgg19 import VGG19
-from tensorflow.python.keras.applications.xception import Xception

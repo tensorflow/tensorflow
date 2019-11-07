@@ -361,12 +361,14 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   common workflow. That said, this utility function is still useful for
   generating TF Serving request protos:
 
+  ```python
     request = tensorflow_serving.apis.predict_pb2.PredictRequest()
     request.model_spec.name = "my_model"
     request.model_spec.signature_name = "serving_default"
     request.inputs["images"].CopyFrom(tf.make_tensor_proto(X_new))
+  ```
 
-  make_tensor_proto accepts "values" of a python scalar, a python list, a
+  `make_tensor_proto` accepts "values" of a python scalar, a python list, a
   numpy ndarray, or a numpy scalar.
 
   If "values" is a python scalar or a python list, make_tensor_proto
@@ -376,9 +378,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   type with the given dtype.
 
   In either case above, the numpy ndarray (either the caller provided
-  or the auto converted) must have the compatible type with dtype.
+  or the auto-converted) must have the compatible type with dtype.
 
-  make_tensor_proto then converts the numpy array to a tensor proto.
+  `make_tensor_proto` then converts the numpy array to a tensor proto.
 
   If "shape" is None, the resulting tensor proto represents the numpy
   array precisely.
@@ -564,6 +566,17 @@ def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 
   Create a numpy ndarray with the same shape and data as the tensor.
+  
+  For example:
+  
+  ```python
+  # Tensor a has shape (2,3)
+  a = tf.constant([[1,2,3],[4,5,6]])
+  proto_tensor = tf.make_tensor_proto(a)  # convert `tensor a` to a proto tensor
+  tf.make_ndarray(proto_tensor) # output: array([[1, 2, 3],
+  #                                              [4, 5, 6]], dtype=int32)
+  # output has shape (2,3)
+  ```
 
   Args:
     tensor: A TensorProto.
@@ -737,6 +750,21 @@ def _ConstantValue(tensor, partial):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Unpack":
+    # We can't handle axis != 0 Unpacks at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
+    value = constant_value(tensor.op.inputs[0], partial)
+    if value is None:
+      return None
+    return value[tensor.value_index]
+  elif tensor.op.type == "Split":
+    dim = constant_value(tensor.op.inputs[0])
+    value = constant_value(tensor.op.inputs[1], partial)
+    if value is None or dim is None:
+      return None
+    split = np.split(value, tensor.op.get_attr("num_split"), dim)
+    return split[tensor.value_index]
   elif tensor.op.type == "Fill":
     fill_shape = tensor.shape
     fill_value = constant_value(tensor.op.inputs[1])
@@ -760,6 +788,8 @@ def _ConstantValue(tensor, partial):
     if value2 is None:
       return None
     return np.not_equal(value1, value2)
+  elif tensor.op.type == "StopGradient":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 

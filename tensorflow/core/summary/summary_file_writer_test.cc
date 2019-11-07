@@ -69,7 +69,7 @@ class SummaryFileWriterTest : public ::testing::Test {
         TF_CHECK_OK(env_.NewRandomAccessFile(io::JoinPath(testing::TmpDir(), f),
                                              &read_file));
         io::RecordReader reader(read_file.get(), io::RecordReaderOptions());
-        string record;
+        tstring record;
         uint64 offset = 0;
         TF_CHECK_OK(
             reader.ReadRecord(&offset,

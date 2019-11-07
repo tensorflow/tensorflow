@@ -649,7 +649,7 @@ class ParameterServerStrategyTest(
     else:
       def fn():
         dataset = dataset_ops.Dataset.range(100)
-        it = dataset.make_one_shot_iterator()
+        it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]
@@ -682,7 +682,7 @@ class ParameterServerStrategyTest(
     else:
       def fn():
         dataset = dataset_ops.Dataset.range(100)
-        it = dataset.make_one_shot_iterator()
+        it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]

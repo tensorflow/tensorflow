@@ -151,9 +151,6 @@ Status HeapSimulator::RunComputation(
 
   HloDataflowAnalysis& dataflow_analysis = alias_analysis.dataflow_analysis();
 
-  algorithm_->SetSchedules(&hlo_live_range->flattened_instruction_sequence(),
-                           &hlo_live_range->instruction_schedule());
-
   // Record the buffer define/free event for each time step. We free all
   // remaining buffers (entry parameter, etc) after the program has finished
   // running, so we set the size of to program_end_time + 1.
@@ -262,6 +259,13 @@ Status HeapSimulator::RunComputation(
             }
 
             if (IgnoreBuffer(operand_value)) {
+              continue;
+            }
+
+            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
+              // If the operand buffer is not being freed (either because it has
+              // existing users, or it has been reused by other buffers), don't
+              // consider the operand as a candidate of buffer sharing.
               continue;
             }
 
@@ -474,6 +478,54 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
+GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
+    int64 alignment, Type type)
+    : alignment_(alignment) {
+  if (type == kTemporal) {
+    buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
+  } else {
+    CHECK(type == kSpatial);
+    buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+  }
+}
+
+GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    int64 x_end = x.end;
+    for (auto colocation : GetTransitiveColocations(x)) {
+      x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
+    }
+
+    int64 y_end = y.end;
+    for (auto colocation : GetTransitiveColocations(y)) {
+      y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
+    }
+
+    if (x_end - x.start != y_end - y.start) {
+      return x_end - x.start > y_end - y.start;
+    }
+
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
+/*static*/ GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    if (x.end - x.start != y.end - y.start) {
+      return x.end - x.start > y.end - y.start;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
 void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
@@ -623,47 +675,7 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  if (type_ == kTemporal) {
-    // Sort by live-range. A live range is defined by the range between the
-    // start of the first buffer and the end of the last co-located
-    // buffer. There could be "holes" in the live ranges of each co-located
-    // buffers, but in this heuristics we think they are contiguous.
-    absl::c_sort(sorted_buffer_intervals, [&](const BufferInterval& x,
-                                              const BufferInterval& y) {
-      int64 x_end = x.end;
-      for (auto colocation : GetTransitiveColocations(x)) {
-        x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
-      }
-
-      int64 y_end = y.end;
-      for (auto colocation : GetTransitiveColocations(y)) {
-        y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
-      }
-
-      if (x_end - x.start != y_end - y.start) {
-        return x_end - x.start > y_end - y.start;
-      }
-
-      if (x.size != y.size) {
-        return x.size > y.size;
-      }
-      return x.buffer->id() < y.buffer->id();
-    });
-  } else {
-    // Sort by spatial size. We don't look at co-locates as they should have the
-    // same size.
-    CHECK(type_ == kSpatial);
-    absl::c_sort(sorted_buffer_intervals,
-                 [&](const BufferInterval& x, const BufferInterval& y) {
-                   if (x.size != y.size) {
-                     return x.size > y.size;
-                   }
-                   if (x.end - x.start != y.end - y.start) {
-                     return x.end - x.start > y.end - y.start;
-                   }
-                   return x.buffer->id() < y.buffer->id();
-                 });
-  }
+  absl::c_sort(sorted_buffer_intervals, buffer_interval_compare_);
 
   return sorted_buffer_intervals;
 }

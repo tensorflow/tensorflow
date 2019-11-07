@@ -51,8 +51,9 @@ struct AccumulatorType<Eigen::half> {
 // Definition of the GPU implementations declared in bias_op.cc.
 
 template <typename T>
-__global__ void BiasNHWCKernel(int32 nthreads, const T* input, const T* bias,
-                               T* output, int32 bias_size) {
+__global__ void BiasNHWCKernel(int32 nthreads, const T* __restrict__ input,
+                               const T* __restrict__ bias,
+                               T* __restrict__ output, int32 bias_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 bias_offset = index % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
@@ -60,8 +61,10 @@ __global__ void BiasNHWCKernel(int32 nthreads, const T* input, const T* bias,
 }
 
 template <typename T>
-__global__ void BiasNCHWKernel(int32 nthreads, const T* input, const T* bias,
-                               T* output, int32 bias_size, int32 image_size) {
+__global__ void BiasNCHWKernel(int32 nthreads, const T* __restrict__ input,
+                               const T* __restrict__ bias,
+                               T* __restrict__ output, int32 bias_size,
+                               int32 image_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 index2 = index / image_size;
     int32 bias_offset = index2 % bias_size;
@@ -97,8 +100,10 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNHWC_Naive(int32 nthreads, const T* output_backprop,
-                                   T* bias_backprop, int32 bias_size) {
+__global__ void BiasGradNHWC_Naive(int32 nthreads,
+                                   const T* __restrict__ output_backprop,
+                                   T* __restrict__ bias_backprop,
+                                   int32 bias_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 bias_offset = index % bias_size;
     GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
@@ -107,9 +112,10 @@ __global__ void BiasGradNHWC_Naive(int32 nthreads, const T* output_backprop,
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNCHW_Naive(int32 nthreads, const T* output_backprop,
-                                   T* bias_backprop, int32 bias_size,
-                                   int32 image_size) {
+__global__ void BiasGradNCHW_Naive(int32 nthreads,
+                                   const T* __restrict__ output_backprop,
+                                   T* __restrict__ bias_backprop,
+                                   int32 bias_size, int32 image_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 index2 = index / image_size;
     int32 bias_offset = index2 % bias_size;
@@ -117,11 +123,10 @@ __global__ void BiasGradNCHW_Naive(int32 nthreads, const T* output_backprop,
   }
 }
 
-
 template <typename T>
-__global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
-                                           const T* output_backprop,
-                                           T* bias_backprop, int32 bias_size) {
+__global__ void BiasGradNHWC_SharedAtomics(
+    int32 nthreads, const T* __restrict__ output_backprop,
+    T* __restrict__ bias_backprop, int32 bias_size) {
   typedef typename AccumulatorType<T>::type AccT;
   GPU_DYNAMIC_SHARED_MEM_DECL(8, char, s_buf);
   AccT* s_data = reinterpret_cast<AccT*>(s_buf);
@@ -143,10 +148,9 @@ __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
 }
 
 template <typename T>
-__global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
-                                           T* bias_backprop, int32 batch,
-                                           int32 bias_size, int32 image_size,
-                                           int group_size) {
+__global__ void BiasGradNCHW_SharedAtomics(
+    const T* __restrict__ output_backprop, T* __restrict__ bias_backprop,
+    int32 batch, int32 bias_size, int32 image_size, int group_size) {
   // Initialize the shared memory.
   typedef typename AccumulatorType<T>::type AccT;
   const int32 kSDataSize = 32;
@@ -284,6 +288,9 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
   template struct BiasGradGPU<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+
+// No BiasGrad kernel for int32.
+template struct BiasGPU<int32>;
 
 }  // end namespace tensorflow
 

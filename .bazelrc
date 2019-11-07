@@ -19,6 +19,20 @@ build:android_x86_64 --fat_apk_cpu=x86_64
 # Sets the default Apple platform to macOS.
 build --apple_platform_type=macos
 
+# iOS configs for each architecture and the fat binary builds.
+build:ios --apple_platform_type=ios
+build:ios --apple_bitcode=embedded --copt=-fembed-bitcode
+build:ios_armv7 --config=ios
+build:ios_armv7 --cpu=ios_armv7
+build:ios_armv7 --cops -Wno-c++11-narrowing
+build:ios_arm64 --config=ios
+build:ios_arm64 --cpu=ios_arm64
+build:ios_x86_64 --config=ios
+build:ios_x86_64 --cpu=ios_x86_64
+build:ios_fat --config=ios
+build:ios_fat --ios_multi_cpus=armv7,arm64,x86_64
+build:ios_fat --copt -Wno-c++11-narrowing
+
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
 # By default, TensorFlow will build with a dependence on
@@ -33,6 +47,10 @@ build --define framework_shared_object=true
 # Flags for open source build, always set to be true.
 build --define open_source_build=true
 test --define open_source_build=true
+
+# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
+build --java_toolchain=//third_party/toolchains/java:tf_java_toolchain
+build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -71,6 +89,7 @@ build:cuda --define=using_cuda_nvcc=true
 build:cuda_clang --config=using_cuda
 build:cuda_clang --define=using_cuda_clang=true
 build:cuda_clang --define=using_clang=true
+build:cuda_clang --action_env TF_CUDA_CLANG=1
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
@@ -92,17 +111,13 @@ build:sycl_nodouble --config=sycl
 build:sycl_trisycl --define=using_trisycl=true
 
 # Options extracted from configure script
-build:gdr --define=with_gdr_support=true
 build:ngraph --define=with_ngraph_support=true
-build:verbs --define=with_verbs_support=true
 build:numa --define=with_numa_support=true
 
 # Options to disable default on features
 build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
 build:nohdfs --define=no_hdfs_support=true
-build:nokafka --define=no_kafka_support=true
-build:noignite --define=no_ignite_support=true
 build:nonccl --define=no_nccl_support=true
 
 build --define=use_fast_cpp_protos=true
@@ -121,6 +136,9 @@ build --announce_rc
 
 # Other build flags.
 build --define=grpc_no_ares=true
+
+# Prevent regression of https://github.com/bazelbuild/bazel/issues/7362
+build --incompatible_remove_legacy_whole_archive
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
@@ -151,13 +169,21 @@ build:rbe --remote_cache=remotebuildexecution.googleapis.com
 build:rbe --remote_executor=remotebuildexecution.googleapis.com
 build:rbe --remote_local_fallback=false
 build:rbe --remote_timeout=600
-build:rbe --spawn_strategy=remote
-build:rbe --strategy=Genrule=remote
-build:rbe --strategy=Closure=remote
-build:rbe --strategy=Javac=remote
-build:rbe --strategy=TestRunner=remote
+build:rbe --spawn_strategy=remote,worker,sandboxed,local
+build:rbe --strategy=Genrule=remote,worker,sandboxed,local
+build:rbe --strategy=Closure=remote,worker,sandboxed,local
+build:rbe --strategy=Javac=remote,worker,sandboxed,local
+build:rbe --strategy=TestRunner=remote,worker,sandboxed,local
 build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
+
+# Options to build TensorFlow 1.x or 2.x.
+build:v1 --define=tf_api_version=1
+build:v2 --define=tf_api_version=2
+build:v1 --action_env=TF2_BEHAVIOR=0
+build:v2 --action_env=TF2_BEHAVIOR=1
+build --config=v2
+test --config=v2
 
 # Default options should come above this line
 

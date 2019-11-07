@@ -103,7 +103,7 @@ class TestSaveModel(test.TestCase):
 
     model.compile(
         loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        optimizer='rmsprop',
         metrics=[keras.metrics.categorical_accuracy])
 
     config = model.to_json()
@@ -145,7 +145,7 @@ class TestSaveModel(test.TestCase):
 
     model.compile(
         loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        optimizer='rmsprop',
         metrics=[keras.metrics.categorical_accuracy])
 
     config = model.to_json()

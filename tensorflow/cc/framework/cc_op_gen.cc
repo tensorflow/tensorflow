@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -292,11 +291,28 @@ string ToCamelCase(const string& str) {
   bool cap = true;
   while (i < str.size()) {
     const char c = str[i++];
-    if (c == joiner) {
+    if (c == '>') {
+      cap = true;
+    } else if (c == joiner) {
       cap = true;
     } else if (cap) {
       result += toupper(c);
       cap = false;
+    } else {
+      result += c;
+    }
+  }
+  return result;
+}
+
+string SeparateNamespaces(const string& str) {
+  string result;
+  const char joiner = '_';
+  size_t i = 0;
+  while (i < str.size()) {
+    const char c = str[i++];
+    if (c == '>') {
+      result += joiner;
     } else {
       result += c;
     }
@@ -549,7 +565,7 @@ struct OpInfo {
 OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
                const std::vector<string>& aliases)
     : graph_op_def(graph_op_def), api_def(api_def), aliases(aliases) {
-  op_name = api_def.endpoint(0).name();
+  op_name = SeparateNamespaces(api_def.endpoint(0).name());
   InferOpAttributes(graph_op_def, &inferred_input_attrs);
   has_optional_attrs = HasOptionalAttrs(api_def, inferred_input_attrs);
   arg_types.push_back("const ::tensorflow::Scope&");

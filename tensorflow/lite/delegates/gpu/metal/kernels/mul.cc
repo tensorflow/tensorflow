@@ -61,7 +61,7 @@ std::vector<ComputeTaskDescriptorPtr> Multiply(
   desc->output_buffer = {output_id};
   if (scalar) {
     std::vector<uint8_t> multiplier_bits =
-        VectorToUint8Vector(std::vector<float>{*multiplier});
+        GetByteBuffer(std::vector<float>{*multiplier});
     desc->uniform_buffers = {
         {"constant float&",
          [multiplier_bits](const std::map<ValueId, BHWC>& buffers) {
@@ -69,11 +69,9 @@ std::vector<ComputeTaskDescriptorPtr> Multiply(
          }},
     };
   } else {
-    auto coeffs = options.storage_precision == RuntimeOptions::Precision::FP32
-                      ? VectorToUint8Vector(mul_buffer->data)
-                      : VectorFloatToHalf(mul_buffer->data);
     desc->immutable_buffers = {
-        {"device FLT4* const", coeffs},
+        {"device FLT4* const",
+         GetByteBufferConverted(mul_buffer->data, options.storage_precision)},
     };
   }
   return {desc};

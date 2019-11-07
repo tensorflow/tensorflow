@@ -52,6 +52,7 @@ class ToDense(Layer):
   def __init__(self, default_value, **kwargs):
     super(ToDense, self).__init__(**kwargs)
     self._default_value = default_value
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
     if isinstance(inputs, ragged_tensor.RaggedTensor):
@@ -75,6 +76,7 @@ class ToRagged(Layer):
     super(ToRagged, self).__init__(**kwargs)
     self._padding = padding
     self._ragged_rank = ragged_rank
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
     return ragged_tensor.RaggedTensor.from_tensor(
@@ -510,7 +512,10 @@ class RaggedTensorInputTest(keras_parameterized.TestCase,
     # Prepare the model to test.
     input_name = get_input_name(use_dict)
     model_input = input_layer.Input(
-        shape=(None, None), ragged=True, name=input_name, dtype=dtypes.int32)
+        shape=(None, None), ragged=True, name=input_name, dtype=dtypes.int32,
+        batch_size=2)
+    self.assertIsInstance(model_input, ragged_tensor.RaggedTensor)
+    self.assertEqual(model_input.shape.as_list(), [2, None, None])
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
     model.compile(

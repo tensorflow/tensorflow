@@ -44,6 +44,12 @@ extern void __xla_cpu_runtime_EigenSingleThreadedMatMulF64(
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs);
 
+extern void __xla_cpu_runtime_EigenSingleThreadedMatMulS32(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    tensorflow::int32* out, tensorflow::int32* lhs, tensorflow::int32* rhs,
+    tensorflow::int64 m, tensorflow::int64 n, tensorflow::int64 k,
+    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs);
+
 }  // extern "C"
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_MATMUL_H_
