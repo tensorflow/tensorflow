@@ -613,12 +613,6 @@ def tf_additional_cupti_utils_cuda_deps():
 def tf_additional_cupti_test_flags():
     return []
 
-def tf_additional_rocdl_deps():
-    return ["@local_config_rocm//rocm:rocm_headers"]
-
-def tf_additional_rocdl_srcs():
-    return ["default/rocm_rocdl_path.cc"]
-
 def tf_additional_test_deps():
     return []
 
