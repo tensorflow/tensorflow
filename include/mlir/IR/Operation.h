@@ -184,9 +184,9 @@ public:
   void dropAllDefinedValueUses();
 
   /// Unlink this operation from its current block and insert it right before
-  /// `existingInst` which may be in the same or another block in the same
+  /// `existingOp` which may be in the same or another block in the same
   /// function.
-  void moveBefore(Operation *existingInst);
+  void moveBefore(Operation *existingOp);
 
   /// Unlink this operation from its current block and insert it right before
   /// `iterator` in the specified block.
