@@ -107,8 +107,6 @@ load(
     "tf_additional_all_protos",
     "tf_additional_core_deps",
     "tf_additional_lib_deps",
-    "tf_additional_libdevice_data",
-    "tf_additional_libdevice_deps",
     "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
     "tf_jspb_proto_library",
@@ -5211,18 +5209,9 @@ filegroup(
     ],
 )
 
-cc_library(
+alias(
     name = "cuda_libdevice_path",
-    srcs = [
-        "//tensorflow/core/platform:legacy_libdevice_srcs",
-    ],
-    copts = tf_copts(),
-    data = tf_additional_libdevice_data(),
-    textual_hdrs = ["//tensorflow/core/platform:cuda_libdevice_path.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-    ] + tf_additional_libdevice_deps(),
+    actual = "//tensorflow/core/platform:cuda_libdevice_path",
 )
 
 transitive_hdrs(

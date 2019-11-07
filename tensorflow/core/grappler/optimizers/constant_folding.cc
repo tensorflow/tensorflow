@@ -3023,6 +3023,9 @@ bool ConstantFolding::ConstantPushDownBiasAdd(GraphProperties* properties,
     input_to_swap = vector_idx;
   }
   if (input_to_swap == -1) return false;
+  const NodeDef* leaf_to_swap =
+      node_map_->GetNode(ctx.op_child->input(input_to_swap));
+  if (IsConstant(*leaf_to_swap)) return false;
 
   node_map_->UpdateInput(node->name(), node->input(const_idx),
                          ctx.op_child->input(input_to_swap));

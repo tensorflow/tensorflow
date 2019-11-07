@@ -98,6 +98,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":_pywrap_checkpoint_reader",
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
@@ -629,6 +630,32 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_checkpoint_reader",
+    srcs = ["util/py_checkpoint_reader_wrapper.cc"],
+    hdrs = [
+        "lib/core/ndarray_tensor.h",
+        "lib/core/safe_ptr.h",
+        ":py_exception_registry_hdr",
+        "//tensorflow/c:checkpoint_reader_hdrs",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
+    module_name = "_pywrap_checkpoint_reader",
+    deps = [
+        ":pybind11_lib",
+        ":pybind11_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
 filegroup(
     name = "py_exception_registry_hdr",
     srcs = [
@@ -996,6 +1023,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_checkpoint_reader",
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
@@ -4730,6 +4758,7 @@ py_library(
         ":math_ops",
         ":mixed_precision",
         ":platform",
+        ":py_checkpoint_reader",
         ":pywrap_tensorflow",
         ":random_ops",
         ":resource_variable_ops",
@@ -4782,6 +4811,17 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "py_checkpoint_reader",
+    srcs = ["training/py_checkpoint_reader.py"],
+    deps = [
+        ":_pywrap_checkpoint_reader",
+        ":dtypes",
+        ":errors",
+        ":util",
     ],
 )
 
@@ -5284,7 +5324,6 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "pywrap_tfe.i",
-        "util/py_checkpoint_reader.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5336,6 +5375,7 @@ tf_py_wrap_cc(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
@@ -5391,9 +5431,14 @@ genrule(
         "//tensorflow/core/profiler/internal:python_traceme",  # traceme
         "//tensorflow/core/profiler/internal:traceme_recorder",  # traceme
         ":py_exception_registry",  # py_exception_registry
-        ":kernel_registry",
+        ":kernel_registry",  # kernel_registry
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+        ":ndarray_tensor",  # checkpoint_reader
+        ":numpy_lib",  # checkpoint_reader
+        ":safe_ptr",  # checkpoint_reader
+        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
@@ -6211,7 +6256,6 @@ tf_py_test(
         ":io_ops",
         ":partitioned_variables",
         ":platform",
-        ":pywrap_tensorflow",
         ":resource_variable_ops",
         ":state_ops",
         ":training",

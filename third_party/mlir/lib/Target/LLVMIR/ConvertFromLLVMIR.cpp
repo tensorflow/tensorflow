@@ -571,15 +571,15 @@ mlir::translateLLVMIRToModule(std::unique_ptr<llvm::Module> llvmModule,
 
 // Deserializes the LLVM bitcode stored in `input` into an MLIR module in the
 // LLVM dialect.
-OwningModuleRef
-translateLLVMIRToModule(std::unique_ptr<llvm::MemoryBuffer> input,
-                        MLIRContext *context) {
+OwningModuleRef translateLLVMIRToModule(llvm::SourceMgr &sourceMgr,
+                                        MLIRContext *context) {
   LLVMDialect *dialect = context->getRegisteredDialect<LLVMDialect>();
   assert(dialect && "Could not find LLVMDialect?");
 
   llvm::SMDiagnostic err;
   std::unique_ptr<llvm::Module> llvmModule =
-      llvm::parseIR(*input, err, dialect->getLLVMContext(),
+      llvm::parseIR(*sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID()), err,
+                    dialect->getLLVMContext(),
                     /*UpgradeDebugInfo=*/true,
                     /*DataLayoutString=*/"");
   if (!llvmModule) {
@@ -593,7 +593,7 @@ translateLLVMIRToModule(std::unique_ptr<llvm::MemoryBuffer> input,
 }
 
 static TranslateToMLIRRegistration
-    fromLLVM("import-llvm", [](std::unique_ptr<llvm::MemoryBuffer> input,
-                               MLIRContext *context) {
-      return translateLLVMIRToModule(std::move(input), context);
-    });
+    fromLLVM("import-llvm",
+             [](llvm::SourceMgr &sourceMgr, MLIRContext *context) {
+               return translateLLVMIRToModule(sourceMgr, context);
+             });

@@ -602,6 +602,7 @@ do_configure_test() {
   for WITH_CUDA in 1 0
   do
     export TF_NEED_CUDA=${WITH_CUDA}
+    export CUDNN_INSTALL_PATH="/usr/local/cudnn"
     export PYTHON_BIN_PATH=$(which python)
     yes "" | ./configure
 

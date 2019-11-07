@@ -1063,8 +1063,10 @@ class TrtGraphConverterV2(object):
             filename=filename,
             delete_resource=True)
       except errors.NotFoundError:
-        # If user haven't run the function to populate the engine, it's fine,
-        # and we don't need to track any serialized TRT engines.
+        tf_logging.info("Could not find %s in TF-TRT cache. "
+                        "This can happen if build() is not called, "
+                        "which means TensorRT engines will be built "
+                        "and cached at runtime." % canonical_engine_name)
         return
 
       # TODO(laigd): add an option for the user to choose the device.

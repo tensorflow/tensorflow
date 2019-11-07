@@ -77,8 +77,13 @@ struct ReturnTypeOpMatch : public RewritePattern {
       values.reserve(op->getNumOperands());
       for (auto &operand : op->getOpOperands())
         values.push_back(operand.get());
-      (void)retTypeFn.inferReturnTypes(op->getLoc(), values, op->getAttrs(),
-                                       op->getRegions());
+      auto res = retTypeFn.inferReturnTypes(op->getLoc(), values,
+                                            op->getAttrs(), op->getRegions());
+      SmallVector<Type, 1> result_types(op->getResultTypes());
+      if (!retTypeFn.isCompatibleReturnTypes(res, result_types))
+        return op->emitOpError(
+                   "inferred type incompatible with return type of operation"),
+               matchFailure();
     }
     return matchFailure();
   }

@@ -345,7 +345,8 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+    if toco.inference_input_type in \
+        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
       if not quantized_input_stats:
         raise ValueError("std_dev and mean must be defined when "
                          "inference_input_type is QUANTIZED_UINT8.")

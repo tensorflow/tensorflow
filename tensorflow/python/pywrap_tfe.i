@@ -13,7 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
+
+%{
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
+%}
+
+
 %include "tensorflow/c/tf_datatype.h"
 %include "tensorflow/c/tf_status.h"
 

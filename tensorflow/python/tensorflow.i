@@ -17,8 +17,6 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/util/py_checkpoint_reader.i"
-
 %include "tensorflow/python/pywrap_tfe.i"
 
 

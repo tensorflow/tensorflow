@@ -2,11 +2,7 @@
 
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
-    "cc_proto_library",
-)
-load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
-    "if_static",
+    "tf_proto_library_cc",
 )
 load(
     "//tensorflow/core/platform:default/cuda_build_defs.bzl",
@@ -15,19 +11,14 @@ load(
 
 # xla_proto_library() is a convenience wrapper around cc_proto_library.
 def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 0, **kwargs):
-    if kwargs.get("use_grpc_plugin"):
+    if kwargs.pop("use_grpc_plugin", None):
         kwargs["use_grpc_namespace"] = True
-    cc_proto_library(
+        kwargs["cc_grpc_version"] = 1
+    tf_proto_library_cc(
         name = name,
         srcs = srcs,
-        # Append well-known proto dep. As far as I know this is the only way
-        # for xla_proto_library to access google.protobuf.{Any,Duration,...}.
-        deps = deps + ["@com_google_protobuf//:cc_wkt_protos"],
-        cc_libs = if_static(
-            ["@com_google_protobuf//:protobuf"],
-            otherwise = ["@com_google_protobuf//:protobuf_headers"],
-        ),
-        protoc = "@com_google_protobuf//:protoc",
+        protodeps = deps,
+        cc_api_version = 2,
         testonly = testonly,
         visibility = visibility,
         **kwargs

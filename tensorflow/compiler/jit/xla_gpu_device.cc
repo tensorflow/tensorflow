@@ -133,9 +133,9 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
     Status status = device->UseGpuDeviceInfo();
     if (!status.ok()) {
-      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
-                              " device number ", i);
-      return status;
+      LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
+                << " device. Device number is " << i << ", reason: " << status;
+      continue;
     }
 
     devices->push_back(std::move(device));

@@ -582,7 +582,8 @@ def run_main(_):
       if tflite_flags.conversion_summary_dir:
         if tflite_flags.experimental_new_converter:
           gen_html.gen_conversion_log_html(tflite_flags.conversion_summary_dir,
-                                           tflite_flags.post_training_quantize)
+                                           tflite_flags.post_training_quantize,
+                                           tflite_flags.output_file)
         else:
           warnings.warn(
               "Conversion summary will only be generated when enabling"

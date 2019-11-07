@@ -64,12 +64,11 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 }  // namespace
 
 mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
-    LOG(ERROR) << "Failed to load proto: "
-               << input->getBufferIdentifier().str();
+    LOG(ERROR) << "Failed to load proto";
     return nullptr;
   }
 
@@ -86,9 +85,9 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 }
 
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {

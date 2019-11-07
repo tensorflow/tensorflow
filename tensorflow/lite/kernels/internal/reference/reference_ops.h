@@ -2429,11 +2429,13 @@ inline void PadImpl(const tflite::PadParams& op_params,
   // we can pad them to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
   for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i] = op_params.left_padding[i];
+    left_padding_copy[i + 4 - op_params.left_padding_count] =
+        op_params.left_padding[i];
   }
   std::vector<int> right_padding_copy(4, 0);
   for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i] = op_params.right_padding[i];
+    right_padding_copy[i + 4 - op_params.right_padding_count] =
+        op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);

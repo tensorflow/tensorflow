@@ -26,6 +26,8 @@ source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
 
 readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
 
+TARGET=sparkfun_edge
+
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge third_party_downloads
-readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
+readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} micro_speech_bin

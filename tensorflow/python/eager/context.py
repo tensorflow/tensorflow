@@ -65,6 +65,12 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
+# TODO(b/143164764): Currently _KEEP_ALIVE_SECS is set to a very long time
+# (i.e. 30 days) because the server may deadlock when destroying the eager
+# context. This may cause memory leak in the headless TPU case, we should change
+# it back to 600 once the deadlock is fixed.
+_KEEP_ALIVE_SECS = 2592000
+
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
     "Counter for number of eager contexts created in Python.")
@@ -504,7 +510,8 @@ class Context(object):
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle, 600,
+        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle,
+                                                  _KEEP_ALIVE_SECS,
                                                   server_def_str)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
@@ -523,7 +530,7 @@ class Context(object):
   def get_server_def(self):
     return self._server_def
 
-  def set_server_def(self, server_def, keep_alive_secs=600):
+  def set_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Allow setting a server_def on the context.
 
     When a server def is replaced, it effectively clears a bunch of caches
@@ -556,7 +563,7 @@ class Context(object):
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
 
-  def update_server_def(self, server_def, keep_alive_secs=600):
+  def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.
 
     Args:

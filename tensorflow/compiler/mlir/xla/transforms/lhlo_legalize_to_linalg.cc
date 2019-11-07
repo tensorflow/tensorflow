@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include "absl/memory/memory.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
@@ -113,9 +114,68 @@ class LhloToLinalgOpConverter : public ConversionPattern {
   }
 };
 
+class IotaConverter : public OpConversionPattern<IotaOp> {
+ public:
+  using OpConversionPattern<IotaOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      IotaOp iotaOp, ArrayRef<Value*> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto resultMemrefType =
+        iotaOp.getOperand()->getType().dyn_cast<MemRefType>();
+    if (!resultMemrefType) return matchFailure();
+
+    auto resultElementType = resultMemrefType.getElementType();
+    if (!resultElementType.isIntOrFloat()) return matchFailure();
+
+    // Construct the indexing maps needed for linalg.generic ops.
+    unsigned nloops = resultMemrefType.getRank();
+    SmallVector<Attribute, 2> indexingMaps;
+    indexingMaps.emplace_back(
+        AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
+
+    // Pointwise-ops have all surrounding loops parallel, so the loop triple is
+    // [argDim, 0, 0].
+    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
+                                         rewriter.getI64IntegerAttr(0),
+                                         rewriter.getI64IntegerAttr(0)};
+    // Define the number of input memref/output memrefs.
+    SmallVector<Attribute, 2> nmemrefs{rewriter.getI64IntegerAttr(0),
+                                       rewriter.getI64IntegerAttr(1)};
+
+    auto loc = iotaOp.getLoc();
+    auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
+        loc, args, rewriter.getArrayAttr(indexingMaps),
+        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+
+    // Add a block to the region.
+    auto* region = &linalgOp.region();
+    auto* block = rewriter.createBlock(region, region->end());
+    for (unsigned i = 0; i < nloops; ++i) {
+      block->addArgument(rewriter.getIndexType());
+    }
+    block->addArguments(llvm::makeArrayRef(resultElementType));
+
+    rewriter.setInsertionPointToEnd(block);
+    Operation* castOp = rewriter.create<IndexCastOp>(
+        loc, block->getArgument(iotaOp.iota_dimension().getZExtValue()),
+        rewriter.getIntegerType(resultElementType.getIntOrFloatBitWidth()));
+    if (resultElementType.isa<FloatType>()) {
+      castOp = rewriter.create<SIToFPOp>(loc, castOp->getResult(0),
+                                         resultElementType);
+    }
+    rewriter.create<linalg::YieldOp>(loc, castOp->getResult(0));
+    rewriter.eraseOp(iotaOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
-  patterns->insert<LhloToLinalgOpConverter<xla_lhlo::AddOp>,
+  // clang-format off
+  patterns->insert<IotaConverter,
+                   LhloToLinalgOpConverter<xla_lhlo::AddOp>,
                    LhloToLinalgOpConverter<xla_lhlo::AndOp>,
                    LhloToLinalgOpConverter<xla_lhlo::CompareOp>,
                    LhloToLinalgOpConverter<xla_lhlo::DivOp>,
@@ -125,6 +185,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    LhloToLinalgOpConverter<xla_lhlo::MulOp>,
                    LhloToLinalgOpConverter<xla_lhlo::SelectOp>,
                    LhloToLinalgOpConverter<xla_lhlo::SubOp>>(context);
+  // clang-format on
 }
 
 // Converts LHLO ops to Linalg generic.

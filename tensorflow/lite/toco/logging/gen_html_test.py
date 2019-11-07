@@ -60,7 +60,8 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
 
     html_generator.generate(toco_conversion_log_before,
                             toco_conversion_log_after, True,
-                            "digraph  {a -> b}", "digraph  {a -> b}")
+                            "digraph  {a -> b}", "digraph  {a -> b}", "",
+                            "/path/to/flatbuffer")
 
     with _file_io.FileIO(export_path, "r") as f_export, _file_io.FileIO(
         resource_loader.get_path_to_datafile("testdata/generated.html"),
@@ -86,7 +87,7 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
     shutil.copy(dot_after, export_path)
 
     # Generate HTML content based on files in the test folder.
-    gen_html.gen_conversion_log_html(export_path, True)
+    gen_html.gen_conversion_log_html(export_path, True, "/path/to/flatbuffer")
 
     result_html = os.path.join(export_path, "toco_conversion_summary.html")
 

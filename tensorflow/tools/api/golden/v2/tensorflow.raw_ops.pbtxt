@@ -1593,6 +1593,10 @@ tf_module {
     argspec: "args=[\'params\', \'indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
+    name: "GenerateBoundingBoxProposals"
+    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'nms_threshold\', \'pre_nms_topn\', \'min_size\', \'post_nms_topn\', \'name\'], varargs=None, keywords=None, defaults=[\'300\', \'None\'], "
+  }
+  member_method {
     name: "GenerateVocabRemapping"
     argspec: "args=[\'new_vocab_file\', \'old_vocab_file\', \'new_vocab_offset\', \'num_new_vocab\', \'old_vocab_size\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }

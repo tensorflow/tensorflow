@@ -114,7 +114,8 @@ class HTMLGenerator(object):
                post_training_quant_enabled,
                dot_before,
                dot_after,
-               toco_err_log=""):
+               toco_err_log="",
+               tflite_graph_path=""):
     """Generates the HTML report and writes it to local directory.
 
     This function uses the fields in `toco_conversion_log_before` and
@@ -137,6 +138,7 @@ class HTMLGenerator(object):
       toco_err_log: A string, the logs emitted by TOCO during conversion. Caller
         need to ensure that this string is properly anoynimized (any kind of
         user data should be eliminated).
+      tflite_graph_path: A string, the filepath to the converted TFLite model.
 
     Raises:
       RuntimeError: When error occurs while generating the template.
@@ -183,7 +185,12 @@ class HTMLGenerator(object):
     html_dict["<!--REPEAT_TABLE2_ROWS-->"] = post_op_profile
     html_dict["<!--DOT_BEFORE_CONVERT-->"] = dot_before
     html_dict["<!--DOT_AFTER_CONVERT-->"] = dot_after
-    html_dict["<!--TOCO_ERROR_LOG-->"] = html_escape(toco_err_log)
+    if toco_err_log:
+      html_dict["<!--TOCO_INFO_LOG-->"] = html_escape(toco_err_log)
+    else:
+      success_info = ("TFLite graph conversion successful. You can preview the "
+                      "converted model at: ") + tflite_graph_path
+      html_dict["<!--TOCO_INFO_LOG-->"] = html_escape(success_info)
 
     # Replace each marker (as keys of html_dict) with the actual text (as values
     # of html_dict) in the HTML template string.
@@ -198,7 +205,8 @@ class HTMLGenerator(object):
       f.write(template)
 
 
-def gen_conversion_log_html(conversion_log_dir, quantization_enabled):
+def gen_conversion_log_html(conversion_log_dir, quantization_enabled,
+                            tflite_graph_path):
   """Generates an HTML report about the conversion process.
 
   Args:
@@ -210,6 +218,7 @@ def gen_conversion_log_html(conversion_log_dir, quantization_enabled):
         `toco_tflite_graph.dot`.
     quantization_enabled: A boolean, passed from the tflite converter to
       indicate whether post-training quantization is enabled during conversion.
+    tflite_graph_path: A string, the filepath to the converted TFLite model.
 
   Raises:
     IOError: When any of the required files doesn't exist.
@@ -256,4 +265,5 @@ def gen_conversion_log_html(conversion_log_dir, quantization_enabled):
 
   html_generator.generate(toco_conversion_log_before, toco_conversion_log_after,
                           quantization_enabled, dot_before, dot_after,
-                          toco_conversion_log_after.toco_err_logs)
+                          toco_conversion_log_after.toco_err_logs,
+                          tflite_graph_path)

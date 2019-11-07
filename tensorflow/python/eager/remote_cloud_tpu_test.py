@@ -56,16 +56,18 @@ class RemoteCloudTPUTest(absltest.TestCase):
   """Test that we can connect to a real Cloud TPU."""
 
   def test_connect(self):
-    self.assertCountEqual(EXPECTED_DEVICES_PRE_CONNECT,
-                          config.list_logical_devices())
+    self.assertCountEqual(
+        EXPECTED_DEVICES_PRE_CONNECT,
+        [device.name for device in config.list_logical_devices()])
 
     resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project
     )
     remote.connect_to_cluster(resolver)
 
-    self.assertCountEqual(EXPECTED_DEVICES_AFTER_CONNECT,
-                          config.list_logical_devices())
+    self.assertCountEqual(
+        EXPECTED_DEVICES_AFTER_CONNECT,
+        [device.name for device in config.list_logical_devices()])
 
     tpu_strategy_util.initialize_tpu_system(resolver)
 
