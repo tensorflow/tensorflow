@@ -367,7 +367,7 @@ class MklQuantizeV2Op : public OpKernel {
     const float input_max_range = ctx->input(2).flat<float>()(0);
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
-    OP_REQUIRES(ctx, !(input_max_range < input_min_range),
+    OP_REQUIRES(ctx, (input_max_range >= input_min_range),
                 errors::InvalidArgument(
                     "input_max_range must be larger than input_min_range."));
 
@@ -400,7 +400,7 @@ class MklQuantizeV2Op : public OpKernel {
     memory::format dst_layout_type;
     switch (src_tf_shape.dims()) {
       case 0:
-        Compute_Scalar(ctx, min_range, max_range);
+        ComputeScalar(ctx, min_range, max_range);
         return;
       case 1:
         dst_layout_type = memory::format::x;
@@ -439,7 +439,7 @@ class MklQuantizeV2Op : public OpKernel {
       const Eigen::TensorOpCost cost(
           sizeof(float), /*load bytes*/
           sizeof(float), /*saved bytes*/
-          Eigen::TensorOpCost::AddCost<float>()/*sub cost */);
+          Eigen::TensorOpCost::AddCost<float>() /*sub cost*/);
 
       const CPUDevice& d = ctx->eigen_device<CPUDevice>();
       auto ParallelSub = [&](int64 start, int64 end) {
