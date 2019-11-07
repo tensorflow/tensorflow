@@ -362,10 +362,11 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
   let verifier = [{ return ::verify(*this); }];
 }
 
-def GenericOp : LinalgLibraryBase_Op<"generic", []> {
+class GenericOpBase<string mnemonic> : LinalgLibraryBase_Op<mnemonic, []> {
   let description = [{
-    Generic Linalg op form where the key properties of the computation are
-    specified as attributes. In pretty form, a linalg.generic op is written as:
+    Base class for Generic and Indexed Generic Linalg ops. Key properties of
+    the computation are specified as attributes. In pretty form, a
+    linalg.generic op is written as:
 
       ```
         linalg.generic #trait_attribute %A, %B, %C {other-attributes} :
@@ -527,7 +528,15 @@ def GenericOp : LinalgLibraryBase_Op<"generic", []> {
     }
   }];
   let printer = [{ return ::print(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let parser = [{ return ::parseGenericOp(parser, result); }];
 }
+
+def GenericOp : GenericOpBase<"generic"> {
+  let verifier = [{ return ::verify(*this); }];
+}
+
+def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
+  let verifier = [{ return ::verify(*this); }];
+}
+
 #endif // LINALG_LIBRARY_OPS

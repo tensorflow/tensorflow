@@ -288,6 +288,16 @@ public:
   }
 };
 
+template <> class LinalgScopedEmitter<IndexedGenericOp> {
+public:
+  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+                                       IndexedGenericOp genericOp,
+                                       OperationFolder *folder) {
+    // This is just a shim to make Linalg compile.
+    // TODO(pifon): Implement lowering after IndexedGenericOp def is submitted.
+  }
+};
+
 template <typename ConcreteOp>
 class LinalgRewritePattern : public RewritePattern {
 public:
