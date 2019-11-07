@@ -63,16 +63,16 @@ static cl::opt<enum Action> emitAction(
 
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
       llvm::MemoryBuffer::getFileOrSTDIN(filename);
-  if (std::error_code EC = FileOrErr.getError()) {
-    llvm::errs() << "Could not open input file: " << EC.message() << "\n";
+  if (std::error_code ec = fileOrErr.getError()) {
+    llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return nullptr;
   }
-  auto buffer = FileOrErr.get()->getBuffer();
+  auto buffer = fileOrErr.get()->getBuffer();
   LexerBuffer lexer(buffer.begin(), buffer.end(), filename);
   Parser parser(lexer);
-  return parser.ParseModule();
+  return parser.parseModule();
 }
 
 int dumpMLIR() {

@@ -91,7 +91,7 @@ private:
   mlir::ModuleOp theModule;
 
   /// The builder is a helper class to create IR inside a function. The builder
-  /// is stateful, in particular it keeeps an "insertion point": this is where
+  /// is stateful, in particular it keeps an "insertion point": this is where
   /// the next operations will be introduced.
   mlir::OpBuilder builder;
 
@@ -143,7 +143,7 @@ private:
     // In MLIR the entry block of the function is special: it must have the same
     // argument list as the function itself.
     auto &entryBlock = *function.addEntryBlock();
-    auto &protoArgs = funcAST.getProto()->getArgs();
+    auto protoArgs = funcAST.getProto()->getArgs();
 
     // Declare all the function arguments in the symbol table.
     for (const auto &name_value :

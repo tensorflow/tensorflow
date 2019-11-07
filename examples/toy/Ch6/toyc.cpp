@@ -85,20 +85,20 @@ static cl::opt<enum Action> emitAction(
         clEnumValN(RunJIT, "jit",
                    "JIT the code and run it by invoking the main function")));
 
-static cl::opt<bool> EnableOpt("opt", cl::desc("Enable optimizations"));
+static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
 
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
       llvm::MemoryBuffer::getFileOrSTDIN(filename);
-  if (std::error_code EC = FileOrErr.getError()) {
-    llvm::errs() << "Could not open input file: " << EC.message() << "\n";
+  if (std::error_code ec = fileOrErr.getError()) {
+    llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return nullptr;
   }
-  auto buffer = FileOrErr.get()->getBuffer();
+  auto buffer = fileOrErr.get()->getBuffer();
   LexerBuffer lexer(buffer.begin(), buffer.end(), filename);
   Parser parser(lexer);
-  return parser.ParseModule();
+  return parser.parseModule();
 }
 
 int loadMLIR(mlir::MLIRContext &context, mlir::OwningModuleRef &module) {
@@ -142,7 +142,7 @@ int loadAndProcessMLIR(mlir::MLIRContext &context,
   bool isLoweringToAffine = emitAction >= Action::DumpMLIRAffine;
   bool isLoweringToLLVM = emitAction >= Action::DumpMLIRLLVM;
 
-  if (EnableOpt || isLoweringToAffine) {
+  if (enableOpt || isLoweringToAffine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::toy::createDeadFunctionEliminationPass());
@@ -164,7 +164,7 @@ int loadAndProcessMLIR(mlir::MLIRContext &context,
     optPM.addPass(mlir::createCSEPass());
 
     // Add optimizations if enabled.
-    if (EnableOpt) {
+    if (enableOpt) {
       optPM.addPass(mlir::createLoopFusionPass());
       optPM.addPass(mlir::createMemRefDataFlowOptPass());
     }
@@ -208,7 +208,7 @@ int dumpLLVMIR(mlir::ModuleOp module) {
 
   /// Optionally run an optimization pipeline over the llvm module.
   auto optPipeline = mlir::makeOptimizingTransformer(
-      /*optLevel=*/EnableOpt ? 3 : 0, /*sizeLevel=*/0,
+      /*optLevel=*/enableOpt ? 3 : 0, /*sizeLevel=*/0,
       /*targetMachine=*/nullptr);
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
@@ -225,7 +225,7 @@ int runJit(mlir::ModuleOp module) {
 
   // An optimization pipeline to use within the execution engine.
   auto optPipeline = mlir::makeOptimizingTransformer(
-      /*optLevel=*/EnableOpt ? 3 : 0, /*sizeLevel=*/0,
+      /*optLevel=*/enableOpt ? 3 : 0, /*sizeLevel=*/0,
       /*targetMachine=*/nullptr);
 
   // Create an MLIR execution engine. The execution engine eagerly JIT-compiles

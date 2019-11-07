@@ -89,13 +89,13 @@ public:
   /// Return the current identifier (prereq: getCurToken() == tok_identifier)
   llvm::StringRef getId() {
     assert(curTok == tok_identifier);
-    return IdentifierStr;
+    return identifierStr;
   }
 
   /// Return the current number (prereq: getCurToken() == tok_number)
   double getValue() {
     assert(curTok == tok_number);
-    return NumVal;
+    return numVal;
   }
 
   /// Return the location for the beginning of the current token.
@@ -135,56 +135,58 @@ private:
   ///  Return the next token from standard input.
   Token getTok() {
     // Skip any whitespace.
-    while (isspace(LastChar))
-      LastChar = Token(getNextChar());
+    while (isspace(lastChar))
+      lastChar = Token(getNextChar());
 
     // Save the current location before reading the token characters.
     lastLocation.line = curLineNum;
     lastLocation.col = curCol;
 
-    if (isalpha(LastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9_]*
-      IdentifierStr = (char)LastChar;
-      while (isalnum((LastChar = Token(getNextChar()))) || LastChar == '_')
-        IdentifierStr += (char)LastChar;
+    // Identifier: [a-zA-Z][a-zA-Z0-9_]*
+    if (isalpha(lastChar)) {
+      identifierStr = (char)lastChar;
+      while (isalnum((lastChar = Token(getNextChar()))) || lastChar == '_')
+        identifierStr += (char)lastChar;
 
-      if (IdentifierStr == "return")
+      if (identifierStr == "return")
         return tok_return;
-      if (IdentifierStr == "def")
+      if (identifierStr == "def")
         return tok_def;
-      if (IdentifierStr == "var")
+      if (identifierStr == "var")
         return tok_var;
       return tok_identifier;
     }
 
-    if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
-      std::string NumStr;
+    // Number: [0-9.]+
+    if (isdigit(lastChar) || lastChar == '.') {
+      std::string numStr;
       do {
-        NumStr += LastChar;
-        LastChar = Token(getNextChar());
-      } while (isdigit(LastChar) || LastChar == '.');
+        numStr += lastChar;
+        lastChar = Token(getNextChar());
+      } while (isdigit(lastChar) || lastChar == '.');
 
-      NumVal = strtod(NumStr.c_str(), nullptr);
+      numVal = strtod(numStr.c_str(), nullptr);
       return tok_number;
     }
 
-    if (LastChar == '#') {
+    if (lastChar == '#') {
       // Comment until end of line.
-      do
-        LastChar = Token(getNextChar());
-      while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+      do {
+        lastChar = Token(getNextChar());
+      } while (lastChar != EOF && lastChar != '\n' && lastChar != '\r');
 
-      if (LastChar != EOF)
+      if (lastChar != EOF)
         return getTok();
     }
 
     // Check for end of file.  Don't eat the EOF.
-    if (LastChar == EOF)
+    if (lastChar == EOF)
       return tok_eof;
 
     // Otherwise, just return the character as its ascii value.
-    Token ThisChar = Token(LastChar);
-    LastChar = Token(getNextChar());
-    return ThisChar;
+    Token thisChar = Token(lastChar);
+    lastChar = Token(getNextChar());
+    return thisChar;
   }
 
   /// The last token read from the input.
@@ -194,15 +196,15 @@ private:
   Location lastLocation;
 
   /// If the current Token is an identifier, this string contains the value.
-  std::string IdentifierStr;
+  std::string identifierStr;
 
   /// If the current Token is a number, this contains the value.
-  double NumVal = 0;
+  double numVal = 0;
 
   /// The last value returned by getNextChar(). We need to keep it around as we
   /// always need to read ahead one character to decide when to end a token and
   /// we can't put it back in the stream after reading from it.
-  Token LastChar = Token(' ');
+  Token lastChar = Token(' ');
 
   /// Keep track of the current line number in the input stream
   int curLineNum = 0;

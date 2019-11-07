@@ -66,20 +66,20 @@ static cl::opt<enum Action> emitAction(
     cl::values(clEnumValN(DumpMLIRAffine, "mlir-affine",
                           "output the MLIR dump after affine lowering")));
 
-static cl::opt<bool> EnableOpt("opt", cl::desc("Enable optimizations"));
+static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
 
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
       llvm::MemoryBuffer::getFileOrSTDIN(filename);
-  if (std::error_code EC = FileOrErr.getError()) {
-    llvm::errs() << "Could not open input file: " << EC.message() << "\n";
+  if (std::error_code ec = fileOrErr.getError()) {
+    llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return nullptr;
   }
-  auto buffer = FileOrErr.get()->getBuffer();
+  auto buffer = fileOrErr.get()->getBuffer();
   LexerBuffer lexer(buffer.begin(), buffer.end(), filename);
   Parser parser(lexer);
-  return parser.ParseModule();
+  return parser.parseModule();
 }
 
 int loadMLIR(llvm::SourceMgr &sourceMgr, mlir::MLIRContext &context,
@@ -128,7 +128,7 @@ int dumpMLIR() {
   // Check to see what granularity of MLIR we are compiling to.
   bool isLoweringToAffine = emitAction >= Action::DumpMLIRAffine;
 
-  if (EnableOpt || isLoweringToAffine) {
+  if (enableOpt || isLoweringToAffine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::toy::createDeadFunctionEliminationPass());
@@ -150,7 +150,7 @@ int dumpMLIR() {
     optPM.addPass(mlir::createCSEPass());
 
     // Add optimizations if enabled.
-    if (EnableOpt) {
+    if (enableOpt) {
       optPM.addPass(mlir::createLoopFusionPass());
       optPM.addPass(mlir::createMemRefDataFlowOptPass());
     }
