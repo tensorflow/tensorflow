@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
@@ -41,6 +42,12 @@ struct ProfileEvent {
   uint64_t begin_timestamp_us;
   // Timestamp in microseconds when the event ended.
   uint64_t end_timestamp_us;
+
+  // The memory usage when the event begins.
+  memory::MemoryUsage begin_mem_usage;
+  // The memory usage when the event ends.
+  memory::MemoryUsage end_mem_usage;
+
   // The field containing the type of event. This must be one of the event types
   // in EventType.
   EventType event_type;
@@ -77,6 +84,9 @@ class ProfileBuffer {
     event_buffer_[index].event_metadata = event_metadata;
     event_buffer_[index].begin_timestamp_us = timestamp;
     event_buffer_[index].end_timestamp_us = 0;
+    if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[index].begin_mem_usage = memory::GetMemoryUsage();
+    }
     current_index_++;
     return index;
   }
@@ -101,6 +111,10 @@ class ProfileBuffer {
 
     int event_index = event_handle % max_size;
     event_buffer_[event_index].end_timestamp_us = time::NowMicros();
+    if (event_buffer_[event_index].event_type !=
+        Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
+    }
   }
 
   // Returns the size of the buffer.

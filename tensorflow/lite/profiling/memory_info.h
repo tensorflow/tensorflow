@@ -35,7 +35,7 @@ struct MemoryUsage {
   // Total allocated space in bytes. This is an alias to mallinfo::uordblks.
   int total_allocated_bytes;
 
-  MemoryUsage operator+(MemoryUsage const &obj) {
+  MemoryUsage operator+(MemoryUsage const &obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb + obj.max_rss_kb;
     res.total_allocated_bytes =
@@ -43,7 +43,7 @@ struct MemoryUsage {
     return res;
   }
 
-  MemoryUsage operator-(MemoryUsage const &obj) {
+  MemoryUsage operator-(MemoryUsage const &obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb - obj.max_rss_kb;
     res.total_allocated_bytes =

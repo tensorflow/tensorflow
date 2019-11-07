@@ -479,6 +479,7 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
