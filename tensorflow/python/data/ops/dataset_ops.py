@@ -1532,23 +1532,26 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> def g(x):
     ...   return tf.constant(37.0), tf.constant(["Foo", "Bar", "Baz"])
     >>> result = dataset.map(g)
-    >>> result
-    <MapDataset shapes: ((), (3,)), types: (tf.float32, tf.string)>
+    >>> result.element_spec
+    (TensorSpec(shape=(), dtype=tf.float32, name=None), TensorSpec(shape=(3,), \
+dtype=tf.string, name=None))
     >>> # Python primitives, lists, and NumPy arrays are implicitly converted to
     >>> # `tf.Tensor`.
     >>> def h(x):
     ...   return 37.0, ["Foo", "Bar"], np.array([1.0, 2.0], dtype=np.float64)
     >>> result = dataset.map(h)
-    >>> result
-    <MapDataset shapes: ((), (2,), (2,)), \
-types: (tf.float32, tf.string, tf.float64)>
+    >>> result.element_spec
+    (TensorSpec(shape=(), dtype=tf.float32, name=None), TensorSpec(shape=(2,), \
+dtype=tf.string, name=None), TensorSpec(shape=(2,), dtype=tf.float64, \
+name=None))
     >>> # `map_func` can return nested structures.
     >>> def i(x):
-    ...   return {"a": 37.0, "b": [42, 16]}, "foo"
+    ...   return (37.0, [42, 16]), "foo"
     >>> result = dataset.map(i)
-    >>> result
-    <MapDataset shapes: ({a: (), b: (2,)}, ()), \
-types: ({a: tf.float32, b: tf.int32}, tf.string)>
+    >>> result.element_spec
+    ((TensorSpec(shape=(), dtype=tf.float32, name=None),
+      TensorSpec(shape=(2,), dtype=tf.int32, name=None)),
+     TensorSpec(shape=(), dtype=tf.string, name=None))
 
     `map_func` can accept as arguments and return any type of dataset element.
 
