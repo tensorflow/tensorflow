@@ -35,6 +35,19 @@ namespace mlir {
 
 #include "mlir/Analysis/InferTypeOpInterface.h.inc"
 
+namespace OpTrait {
+template <typename ConcreteType>
+class TypeOpInterfaceDefault
+    : public TraitBase<ConcreteType, TypeOpInterfaceDefault> {
+public:
+  /// Returns whether two arrays are equal as strongest check for compatibility
+  /// by default.
+  static bool isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+    return lhs == rhs;
+  };
+};
+} // namespace OpTrait
+
 } // namespace mlir
 
 #endif // MLIR_ANALYSIS_INFERTYPEOPINTERFACE_H_

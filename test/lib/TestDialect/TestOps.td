@@ -395,8 +395,9 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
 
-def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpInterfaceDefault]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
 }
