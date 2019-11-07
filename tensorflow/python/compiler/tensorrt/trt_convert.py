@@ -246,7 +246,7 @@ def _check_conversion_params(conversion_params, is_v2=False):
       not conversion_params.is_dynamic_op):
     tf_logging.warn((
         "Building TensorRT engines at runtime is not supported "
-        "if is_dynamic_op=False, therefore assuming"
+        "if is_dynamic_op=False, therefore assuming "
         "allow_build_at_runtime=False. If building TensorRT engines "
         "at runtime is desired, set is_dynamic_op=True."))
 
