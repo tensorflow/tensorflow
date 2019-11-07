@@ -813,7 +813,17 @@ class Network(base_layer.Layer):
     # the future and 2) Keras is a major user of Network.  If you don't
     # use masking, it does not interfere with regular behavior at all and you
     # can ignore it.
-    inputs = nest.flatten(inputs)
+
+    if isinstance(inputs, dict) and isinstance(self._nested_inputs,
+                                               (list, tuple)):
+      # Backwards compat: Allows passing a dict to a Model constructed with a
+      # list. Matches dict keys to input names.
+      inputs = [
+          inputs[inp._keras_history.layer.name] for inp in self._nested_inputs
+      ]
+    else:
+      inputs = nest.flatten(inputs)
+
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
