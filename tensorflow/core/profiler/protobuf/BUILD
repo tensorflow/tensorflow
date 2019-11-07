@@ -10,3 +10,12 @@ tf_proto_library(
     srcs = ["op_metrics.proto"],
     cc_api_version = 2,
 )
+
+tf_proto_library(
+    name = "op_stats_proto",
+    srcs = ["op_stats.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":op_metrics_proto",
+    ],
+)
