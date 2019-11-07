@@ -837,6 +837,14 @@ class Network(base_layer.Layer):
 
     for x, y in zip(self.inputs, inputs):
       tensor_dict[str(id(x))] = y
+      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+        try:
+          y.set_shape(y.shape.merge_with(x.shape))
+        except ValueError:
+          logging.warning(
+              'Model was constructed with shape {} for input {}, but it was '
+              're-called on a Tensor with incompatible shape {}.'
+              .format(x, x.shape, y.shape))
 
     depth_keys = list(self._nodes_by_depth.keys())
     depth_keys.sort(reverse=True)

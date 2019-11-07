@@ -540,8 +540,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         extract_tensors_from_dataset=True)
 
   inputs = training_utils.ModelInputs(inputs).as_list()
-  targets = targets or []
-  sample_weights = sample_weights or []
+  targets = list(targets or [])
+  sample_weights = list(sample_weights or [])
   ins = inputs + targets + sample_weights
   if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
                                                int):
