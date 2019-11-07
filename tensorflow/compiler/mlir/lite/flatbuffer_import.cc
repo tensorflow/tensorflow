@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
@@ -861,8 +862,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(
-    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
+static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
+                                                 MLIRContext* context) {
+  const llvm::MemoryBuffer* input =
+      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
@@ -884,4 +887,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir", FlatBufferFileToMlirTrans);
+    "tflite-flatbuffer-to-mlir",
+    [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
+      return FlatBufferFileToMlirTrans(&source_mgr, context);
+    });
