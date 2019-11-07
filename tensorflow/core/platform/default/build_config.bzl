@@ -611,15 +611,6 @@ def tf_additional_cupti_utils_cuda_deps():
 def tf_additional_cupti_test_flags():
     return []
 
-def tf_additional_libdevice_data():
-    return []
-
-def tf_additional_libdevice_deps():
-    return ["@local_config_cuda//cuda:cuda_headers"]
-
-def tf_additional_libdevice_srcs():
-    return ["default/cuda_libdevice_path.cc"]
-
 def tf_additional_rocdl_deps():
     return ["@local_config_rocm//rocm:rocm_headers"]
 

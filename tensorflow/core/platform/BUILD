@@ -12,7 +12,6 @@ load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_libdevice_srcs",
     "tf_additional_monitoring_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
@@ -831,12 +830,6 @@ filegroup(
 filegroup(
     name = "legacy_test_srcs",
     srcs = tf_additional_test_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_libdevice_srcs",
-    srcs = tf_additional_libdevice_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
