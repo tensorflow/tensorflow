@@ -42,7 +42,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 ## Build GPU pip package
 ########################
 bazel build --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
 PIP_WHL_DIR=whl
