@@ -53,7 +53,7 @@ ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
-
+ops.NotDifferentiable('GenerateBoundingBoxProposals')
 
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
@@ -4018,3 +4018,31 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     A `Tensor`. Has the same type as `images`.
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
+
+
+@tf_export('image.generate_bounding_box_proposals')
+def generate_bounding_box_proposals(scores,
+                                    bbox_deltas,
+                                    image_info,
+                                    anchors,
+                                    nms_threshold=0.7,
+                                    pre_nms_topn=6000,
+                                    min_size=16,
+                                    post_nms_topn=300,
+                                    name=None):
+  """ Generate bounding box proposals from encoded bounding boxes.
+
+  Returns:
+    rois: Region of interest boxes sorted by their scores.
+    roi_probabilities: scores of the roi boxes in the rois tensor.
+  """
+  return gen_image_ops.generate_bounding_box_proposals(
+      scores=scores,
+      bbox_deltas=bbox_deltas,
+      image_info=image_info,
+      anchors=anchors,
+      nms_threshold=nms_threshold,
+      pre_nms_topn=pre_nms_topn,
+      min_size=min_size,
+      post_nms_topn=post_nms_topn,
+      name=Name)
