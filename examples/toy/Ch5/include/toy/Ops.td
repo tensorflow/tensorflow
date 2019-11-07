@@ -79,15 +79,13 @@ def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // using `builder.create<ConstantOp>(...)`.
   let builders = [
     // Build a constant with a given constant tensor value.
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"Builder *builder, OperationState &state, "
               "DenseElementsAttr value", [{
-      build(builder, result, value.getType(), value);
+      build(builder, state, value.getType(), value);
     }]>,
 
     // Build a constant with a given constant floating-point value.
-    OpBuilder<"Builder *builder, OperationState &result, double value", [{
-      buildConstantOp(builder, result, value);
-    }]>
+    OpBuilder<"Builder *builder, OperationState &state, double value">
   ];
 
   // Invoke a static verify method to verify this constant operation.
@@ -107,10 +105,8 @@ def AddOp : Toy_Op<"add",
 
   // Allow building an AddOp with from the two input operands.
   let builders = [
-    OpBuilder<"Builder *b, OperationState &result, Value *lhs, Value *rhs", [{
-      buildAddOp(b, result, lhs, rhs);
-    }]
-  >];
+    OpBuilder<"Builder *b, OperationState &state, Value *lhs, Value *rhs">
+  ];
 }
 
 def CastOp : Toy_Op<"cast",
@@ -159,11 +155,8 @@ def GenericCallOp : Toy_Op<"generic_call",
 
   // Add custom build methods for the generic call operation.
   let builders = [
-    // Build a constant with a given constant tensor value.
-    OpBuilder<"Builder *builder, OperationState &result, "
-              "StringRef callee, ArrayRef<Value *> arguments", [{
-      buildGenericCallOp(builder, result, callee, arguments);
-    }]>
+    OpBuilder<"Builder *builder, OperationState &state, "
+              "StringRef callee, ArrayRef<Value *> arguments">
   ];
 }
 
@@ -180,10 +173,8 @@ def MulOp : Toy_Op<"mul",
 
   // Allow building a MulOp with from the two input operands.
   let builders = [
-    OpBuilder<"Builder *b, OperationState &result, Value *lhs, Value *rhs", [{
-      buildMulOp(b, result, lhs, rhs);
-    }]
-  >];
+    OpBuilder<"Builder *b, OperationState &state, Value *lhs, Value *rhs">
+  ];
 }
 
 def PrintOp : Toy_Op<"print"> {
@@ -238,7 +229,7 @@ def ReturnOp : Toy_Op<"return", [Terminator, HasParent<"FuncOp">]> {
 
   // Allow building a ReturnOp with no return operand.
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result", [{ build(b, result, llvm::None); }]
+    "Builder *b, OperationState &state", [{ build(b, state, llvm::None); }]
   >];
 
   // Provide extra utility definitions on the c++ operation class definition.
@@ -258,12 +249,10 @@ def TransposeOp : Toy_Op<"transpose",
   let results = (outs F64Tensor);
   let hasCanonicalizer = 1;
 
-  // Allow building a TransposeOp with from the two input operands.
+  // Allow building a TransposeOp with from the input operand.
   let builders = [
-    OpBuilder<"Builder *b, OperationState &result, Value *input", [{
-      buildTransposeOp(b, result, input);
-    }]
-  >];
+    OpBuilder<"Builder *b, OperationState &state, Value *input">
+  ];
 
   // Invoke a static verify method to verify this transpose operation.
   let verifier = [{ return ::verify(*this); }];
