@@ -268,6 +268,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
