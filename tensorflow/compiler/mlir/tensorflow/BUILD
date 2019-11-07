@@ -771,7 +771,6 @@ cc_library(
         ":convert_type",
         ":error_util",
         ":tensorflow_passes",
-        ":tf_dialect_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
