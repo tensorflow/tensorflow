@@ -25,6 +25,9 @@ This tutorial is divided in the following chapters:
 -   [Chapter #6](Ch-6.md): Lowering to LLVM and code generation. Here we'll
     target LLVM IR for code generation, and detail more of the lowering
     framework.
+-   [Chapter #7](Ch-7.md): Extending Toy: Adding support for a composite type.
+    We'll demonstrate how to add a custom type to MLIR, and how it fits in the
+    existing pipeline.
 
 ## The Language
 
@@ -87,7 +90,7 @@ def main() {
 
   # Finally, calling into `multiply_transpose` with incompatible shape will
   # trigger a shape inference error.
-  var e = multiply_transpose(transpose(a), c);
+  var f = multiply_transpose(transpose(a), c);
 }
 ```
 

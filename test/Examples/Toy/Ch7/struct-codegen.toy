@@ -1,0 +1,44 @@
+# RUN: toyc-ch7 %s -emit=mlir 2>&1
+# RUN: toyc-ch7 %s -emit=mlir -opt 2>&1 | FileCheck %s --check-prefix=OPT
+
+struct Struct {
+  var a;
+  var b;
+}
+
+# User defined generic function may operate on struct types as well.
+def multiply_transpose(Struct value) {
+  # We can access the elements of a struct via the '.' operator.
+  return transpose(value.a) * transpose(value.b);
+}
+
+def main() {
+  # We initialize struct values using a composite initializer.
+  Struct value = {[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]};
+
+  # We pass these arguments to functions like we do with variables.
+  var c = multiply_transpose(value);
+  print(c);
+}
+
+# CHECK-LABEL:   func @multiply_transpose(
+# CHECK-SAME:                             [[VAL_0:%.*]]: !toy.struct<tensor<*xf64>, tensor<*xf64>>) -> tensor<*xf64>
+# CHECK-NEXT:      [[VAL_1:%.*]] = "toy.struct_access"([[VAL_0]]) {index = 0 : i64} : (!toy.struct<tensor<*xf64>, tensor<*xf64>>) -> tensor<*xf64>
+# CHECK-NEXT:      [[VAL_2:%.*]] = "toy.transpose"([[VAL_1]]) : (tensor<*xf64>) -> tensor<*xf64>
+# CHECK-NEXT:      [[VAL_3:%.*]] = "toy.struct_access"([[VAL_0]]) {index = 1 : i64} : (!toy.struct<tensor<*xf64>, tensor<*xf64>>) -> tensor<*xf64>
+# CHECK-NEXT:      [[VAL_4:%.*]] = "toy.transpose"([[VAL_3]]) : (tensor<*xf64>) -> tensor<*xf64>
+# CHECK-NEXT:      [[VAL_5:%.*]] = "toy.mul"([[VAL_2]], [[VAL_4]]) : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
+# CHECK-NEXT:      "toy.return"([[VAL_5]]) : (tensor<*xf64>) -> ()
+
+# CHECK-LABEL:   func @main()
+# CHECK-NEXT:      [[VAL_6:%.*]] = "toy.struct_constant"() {value = [dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>, dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>]} : () -> !toy.struct<tensor<*xf64>, tensor<*xf64>>
+# CHECK-NEXT:      [[VAL_7:%.*]] = "toy.generic_call"([[VAL_6]]) {callee = @multiply_transpose} : (!toy.struct<tensor<*xf64>, tensor<*xf64>>) -> tensor<*xf64>
+# CHECK-NEXT:      "toy.print"([[VAL_7]]) : (tensor<*xf64>) -> ()
+# CHECK-NEXT:      "toy.return"() : () -> ()
+
+# OPT-LABEL:   func @main()
+# OPT-NEXT:      [[VAL_0:%.*]] = "toy.constant"() {value = dense<{{\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
+# OPT-NEXT:      [[VAL_1:%.*]] = "toy.transpose"([[VAL_0]]) : (tensor<2x3xf64>) -> tensor<3x2xf64>
+# OPT-NEXT:      [[VAL_2:%.*]] = "toy.mul"([[VAL_1]], [[VAL_1]]) : (tensor<3x2xf64>, tensor<3x2xf64>) -> tensor<3x2xf64>
+# OPT-NEXT:      "toy.print"([[VAL_2]]) : (tensor<3x2xf64>) -> ()
+# OPT-NEXT:      "toy.return"() : () -> ()

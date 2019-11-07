@@ -1,0 +1,61 @@
+# RUN: toyc-ch7 %s -emit=ast 2>&1 | FileCheck %s
+
+struct Struct {
+  var a;
+  var b;
+}
+
+# User defined generic function may operate on struct types as well.
+def multiply_transpose(Struct value) {
+  # We can access the elements of a struct via the '.' operator.
+  return transpose(value.a) * transpose(value.b);
+}
+
+def main() {
+  # We initialize struct values using a composite initializer.
+  Struct value = {[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]};
+
+  # We pass these arguments to functions like we do with variables.
+  var c = multiply_transpose(value);
+  print(c);
+}
+
+# CHECK:  Module:
+# CHECK-NEXT:    Struct: Struct @{{.*}}struct-ast.toy:3:1
+# CHECK-NEXT:  Variables: [
+# CHECK-NEXT:    VarDecl a<> @{{.*}}struct-ast.toy:4:3
+# CHECK-NEXT:    VarDecl b<> @{{.*}}struct-ast.toy:5:3
+# CHECK-NEXT:  ]
+# CHECK-NEXT:Function
+# CHECK-NEXT:  Proto 'multiply_transpose' @{{.*}}struct-ast.toy:9:1'
+# CHECK-NEXT:  Params: [value]
+# CHECK-NEXT:  Block {
+# CHECK-NEXT:    Return
+# CHECK-NEXT:      BinOp: * @{{.*}}struct-ast.toy:11:31
+# CHECK-NEXT:        Call 'transpose' [ @{{.*}}struct-ast.toy:11:10
+# CHECK-NEXT:          BinOp: . @{{.*}}struct-ast.toy:11:26
+# CHECK-NEXT:            var: value @{{.*}}struct-ast.toy:11:20
+# CHECK-NEXT:            var: a @{{.*}}struct-ast.toy:11:26
+# CHECK-NEXT:        ]
+# CHECK-NEXT:        Call 'transpose' [ @{{.*}}struct-ast.toy:11:31
+# CHECK-NEXT:          BinOp: . @{{.*}}struct-ast.toy:11:47
+# CHECK-NEXT:            var: value @{{.*}}struct-ast.toy:11:41
+# CHECK-NEXT:            var: b @{{.*}}struct-ast.toy:11:47
+# CHECK-NEXT:        ]
+# CHECK-NEXT:  }
+# CHECK-NEXT:Function
+# CHECK-NEXT:  Proto 'main' @{{.*}}struct-ast.toy:14:1'
+# CHECK-NEXT:  Params: []
+# CHECK-NEXT:  Block {
+# CHECK-NEXT:    VarDecl value<Struct> @{{.*}}struct-ast.toy:16:3
+# CHECK-NEXT:      Struct Literal:             Literal: <2, 3>[ <3>[ 1.000000e+00, 2.000000e+00, 3.000000e+00], <3>[ 4.000000e+00, 5.000000e+00, 6.000000e+00]] @{{.*}}struct-ast.toy:16:19
+# CHECK-NEXT:        Literal: <2, 3>[ <3>[ 1.000000e+00, 2.000000e+00, 3.000000e+00], <3>[ 4.000000e+00, 5.000000e+00, 6.000000e+00]] @{{.*}}struct-ast.toy:16:43
+# CHECK-NEXT:       @{{.*}}struct-ast.toy:16:18
+# CHECK-NEXT:    VarDecl c<> @{{.*}}struct-ast.toy:19:3
+# CHECK-NEXT:      Call 'multiply_transpose' [ @{{.*}}struct-ast.toy:19:11
+# CHECK-NEXT:        var: value @{{.*}}struct-ast.toy:19:30
+# CHECK-NEXT:      ]
+# CHECK-NEXT:    Print [ @{{.*}}struct-ast.toy:20:3
+# CHECK-NEXT:      var: c @{{.*}}struct-ast.toy:20:9
+# CHECK-NEXT:    ]
+# CHECK-NEXT:  }
