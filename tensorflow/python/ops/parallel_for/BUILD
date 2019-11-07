@@ -120,7 +120,6 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:util",
     ],
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
