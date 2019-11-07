@@ -51,18 +51,18 @@ module {
 //       CHECK:         %[[vC:.*]] = linalg.subview {{.*}} : memref<?x?xf32, #[[strided2D]]>
 ///
 //       CHECK:         %[[tmpA:.*]] = alloc() : memref<32xi8>
-//       CHECK:         %[[fullA:.*]] = std.view %[[tmpA]][{{.*}}][] : memref<32xi8> to memref<?x?xf32>
-//     DYNAMIC:         std.view %{{.*}}[{{.*}}][] : memref<?xi8> to memref<?x?xf32>
+//       CHECK:         %[[fullA:.*]] = std.view %[[tmpA]][][{{.*}}] : memref<32xi8> to memref<?x?xf32>
+//     DYNAMIC:         std.view %{{.*}}[][{{.*}}] : memref<?xi8> to memref<?x?xf32>
 //       CHECK:         %[[partialA:.*]] = linalg.slice %[[fullA]][%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, memref<?x?xf32, #[[strided2DnoOffset]]>
 ///
 //       CHECK:         %[[tmpB:.*]] = alloc() : memref<48xi8>
-//       CHECK:         %[[fullB:.*]] = std.view %[[tmpB]][{{.*}}][] : memref<48xi8> to memref<?x?xf32>
-//     DYNAMIC:         std.view %{{.*}}[{{.*}}][] : memref<?xi8> to memref<?x?xf32>
+//       CHECK:         %[[fullB:.*]] = std.view %[[tmpB]][][{{.*}}] : memref<48xi8> to memref<?x?xf32>
+//     DYNAMIC:         std.view %{{.*}}[][{{.*}}] : memref<?xi8> to memref<?x?xf32>
 //       CHECK:         %[[partialB:.*]] = linalg.slice %[[fullB]][%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, memref<?x?xf32, #[[strided2DnoOffset]]>
 ///
 //       CHECK:         %[[tmpC:.*]] = alloc() : memref<24xi8>
-//       CHECK:         %[[fullC:.*]] = std.view %[[tmpC]][{{.*}}][] : memref<24xi8> to memref<?x?xf32>
-//     DYNAMIC:         std.view %{{.*}}[{{.*}}][] : memref<?xi8> to memref<?x?xf32>
+//       CHECK:         %[[fullC:.*]] = std.view %[[tmpC]][][{{.*}}] : memref<24xi8> to memref<?x?xf32>
+//     DYNAMIC:         std.view %{{.*}}[][{{.*}}] : memref<?xi8> to memref<?x?xf32>
 //       CHECK:         %[[partialC:.*]] = linalg.slice %[[fullC]][%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, memref<?x?xf32, #[[strided2DnoOffset]]>
 
 //       CHECK:         linalg.fill(%[[fullA]], {{.*}}) : memref<?x?xf32>, f32

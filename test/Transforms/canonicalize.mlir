@@ -1,8 +1,8 @@
 // RUN: mlir-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
-#TEST_VIEW_MAP0 = (d0, d1)[s0, s1] -> (d0 * s0 + d1 + s1)
-#TEST_VIEW_MAP1 = (d0, d1, d2)[s0, s1] -> (d0 * s0 + d1 * s1 + d2)
-#TEST_VIEW_MAP2 = (d0, d1)[s0, s1] -> (d0 * 4 + d1 + s1)
+#TEST_VIEW_MAP0 = (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)
+#TEST_VIEW_MAP1 = (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * s0 + d2)
+#TEST_VIEW_MAP2 = (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
 
 // CHECK-DAG: #[[VIEW_MAP0:map[0-9]+]] = (d0, d1) -> (d0 * 11 + d1 + 15)
 // CHECK-DAG: #[[VIEW_MAP1:map[0-9]+]] = (d0, d1)[s0] -> (d0 * 11 + s0 + d1)
@@ -599,28 +599,31 @@ func @view(%arg0 : index) {
 
   // Test: fold constant sizes and offset, update map with static stride/offset.
   // CHECK: std.view %0[][] : memref<2048xi8> to memref<7x11xf32, #[[VIEW_MAP0]]>
-  %1 = view %0[%c7, %c11][%c15]
+  %1 = view %0[%c15][%c7, %c11]
     : memref<2048xi8> to memref<?x?xf32, #TEST_VIEW_MAP0>
+
   // Test: fold constant sizes but not offset, update map with static stride.
   // Test that we do not a fold dynamic dim which is not produced by a constant.
-  // CHECK: std.view %0[][%arg0] : memref<2048xi8> to memref<7x11xf32, #[[VIEW_MAP1]]>
-  %2 = view %0[%c7, %c11][%arg0]
+  // CHECK: std.view %0[%arg0][] : memref<2048xi8> to memref<7x11xf32, #[[VIEW_MAP1]]>
+  %2 = view %0[%arg0][%c7, %c11]
     : memref<2048xi8> to memref<?x?xf32, #TEST_VIEW_MAP0>
+
   // Test: fold constant offset but not sizes, update map with constant offset.
   // Test that we fold constant offset but not dynamic dims.
-  // CHECK: std.view %0[%arg0, %arg0][] : memref<2048xi8> to memref<?x?xf32, #[[VIEW_MAP2]]>
-  %3 = view %0[%arg0, %arg0][%c15]
+  // CHECK: std.view %0[][%arg0, %arg0] : memref<2048xi8> to memref<?x?xf32, #[[VIEW_MAP2]]>
+  %3 = view %0[%c15][%arg0, %arg0]
     : memref<2048xi8> to memref<?x?xf32,  #TEST_VIEW_MAP0>
+
   // Test: fold one constant dim, no offset, should update with constant
   // stride on dim 1, but leave dynamic stride on dim 0.
-  // CHECK: std.view %0[%arg0, %arg0][] : memref<2048xi8> to memref<?x?x7xf32, #[[VIEW_MAP3]]>
-  %4 = view %0[%arg0, %arg0, %c7][]
+  // CHECK: std.view %0[][%arg0, %arg0] : memref<2048xi8> to memref<?x?x7xf32, #[[VIEW_MAP3]]>
+  %4 = view %0[][%arg0, %arg0, %c7]
     : memref<2048xi8> to memref<?x?x?xf32, #TEST_VIEW_MAP1>
 
   // Test: preserve an existing static dim size while folding a dynamic
   // dimension and offset.
   // CHECK: std.view %0[][] : memref<2048xi8> to memref<7x4xf32, #[[VIEW_MAP4]]>
-  %5 = view %0[%c7][%c15]
+  %5 = view %0[%c15][%c7]
     : memref<2048xi8> to memref<?x4xf32, #TEST_VIEW_MAP2>
 
   return
