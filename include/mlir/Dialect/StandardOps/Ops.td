@@ -1192,7 +1192,8 @@ def ViewOp : Std_Op<"view"> {
               operand_begin() + 1 + getType().getNumDynamicDims()};
     }
   }];
-  // TODO(andydavis) Add canonicalizer to fold constants into shape and map.
+
+  let hasCanonicalizer = 1;
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
