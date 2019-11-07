@@ -465,6 +465,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);
+      NoAttributeCase(kXor, XorOp);
       // TODO(b/129422361) Copy needs special handling because it is not defined
       // in tensorflow/compiler/xla/client/xla_builder.h.
       // See operation semantics in

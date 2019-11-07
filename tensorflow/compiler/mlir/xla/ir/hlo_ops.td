@@ -249,7 +249,6 @@ def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
-
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
@@ -266,6 +265,7 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
 
 def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
 def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
+def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.

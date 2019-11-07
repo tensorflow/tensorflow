@@ -621,3 +621,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT: return %0 : tensor<i64>
   ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
 }
+
+// CHECK-LABEL:   func @test_xor
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi1>, [[VAL_1:%.*]]: tensor<4xi1>) -> tensor<4xi1>
+%test_xor (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
+  %Arg_0.1 = pred[4] parameter(0)
+  %Arg_1.2 = pred[4] parameter(1)
+
+  // CHECK:  [[VAL_2:%.*]] = xla_hlo.xor [[VAL_0]], [[VAL_1]]
+  // CHECK:  return [[VAL_2]] : tensor<4xi1>
+  ROOT %xor.3 = pred[4] xor(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
+}
