@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/memory_helpers.h"
 #include "tensorflow/lite/experimental/micro/memory_planner/greedy_memory_planner.h"
 #include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
@@ -37,6 +39,27 @@ struct TensorInfo {
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
+// For common data structures that doesn't need SIMD extensions.
+constexpr int kDefaultAlignment = sizeof(int);
+
+class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
+ public:
+  explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
+      : memory_allocator_(memory_allocator) {}
+
+  void* Allocate(size_t size) override {
+    return memory_allocator_->AllocateFromTail(size, kDefaultAlignment);
+  }
+  void Deallocate(void* data) override {
+    // Do not deallocate, builtin data needs to be available for the life time
+    // of the model.
+  }
+
+ private:
+  SimpleMemoryAllocator* memory_allocator_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+};
 
 }  // namespace
 
@@ -61,13 +84,15 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   context_->tensors_size = tensors_->size();
   context_->tensors =
       reinterpret_cast<TfLiteTensor*>(memory_allocator_.AllocateFromTail(
-          sizeof(TfLiteTensor) * context_->tensors_size, 4));
+          sizeof(TfLiteTensor) * context_->tensors_size, kDefaultAlignment));
 
   // Null all inputs so we can later perform a null check to avoid re-allocating
   // registered pre-allocated inputs.
   for (size_t i = 0; i < context_->tensors_size; ++i) {
     context_->tensors[i].data.raw = nullptr;
   }
+
+  active_ = true;
 }
 
 TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
@@ -87,7 +112,95 @@ TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
                                  &context_->tensors[tensor_index], buffer);
 }
 
-TfLiteStatus MicroAllocator::AllocateTensors() {
+TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
+    const OpResolver& op_resolver,
+    NodeAndRegistration** node_and_registrations) {
+  if (!active_) {
+    return kTfLiteError;
+  }
+
+  auto* output =
+      reinterpret_cast<NodeAndRegistration*>(memory_allocator_.AllocateFromTail(
+          sizeof(NodeAndRegistration) * operators_->size(), kDefaultAlignment));
+  if (output == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for node_and_registrations.");
+    return kTfLiteError;
+  }
+  TfLiteStatus status = kTfLiteOk;
+  auto* opcodes = model_->operator_codes();
+  MicroBuiltinDataAllocator builtin_data_allocator(&memory_allocator_);
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    const auto* op = operators_->Get(i);
+    size_t index = op->opcode_index();
+    if (index < 0 || index >= opcodes->size()) {
+      error_reporter_->Report("Missing registration for opcode_index %d\n",
+                              index);
+      return kTfLiteError;
+    }
+    auto* opcode = (*opcodes)[index];
+    status = GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
+                                       &(output[i].registration));
+    if (status != kTfLiteOk) {
+      error_reporter_->Report("Failed to get registration from op code % d\n ",
+                              opcode);
+      return status;
+    }
+    const auto* registration = output[i].registration;
+    if (registration == nullptr) {
+      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
+      return kTfLiteError;
+    }
+    BuiltinOperator op_type =
+        static_cast<BuiltinOperator>(registration->builtin_code);
+
+    if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
+      error_reporter_->Report(
+          "Unsupported behavior: found builtin operator %s with custom "
+          "options.\n",
+          EnumNameBuiltinOperator(op_type));
+      return kTfLiteError;
+    }
+
+    const char* custom_data = nullptr;
+    size_t custom_data_size = 0;
+    unsigned char* builtin_data = nullptr;
+    if (op->custom_options()) {
+      custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
+      custom_data_size = op->custom_options()->size();
+    } else {
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &builtin_data_allocator,
+                                        (void**)(&builtin_data)));
+    }
+
+    // Disregard const qualifier to workaround with existing API.
+    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
+
+    TfLiteNode* node = &(output[i].node);
+    node->inputs = inputs_array;
+    node->outputs = outputs_array;
+    // This is OK for now as temporary array is not in used.
+    // TODO(wangtz): Support scratch buffers.
+    node->temporaries = nullptr;
+    node->user_data = nullptr;  // Will be filled in after `init`
+    node->builtin_data = reinterpret_cast<void*>(builtin_data);
+    node->custom_initial_data = custom_data;
+    node->custom_initial_data_size = custom_data_size;
+    node->delegate = nullptr;
+  }
+  *node_and_registrations = output;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::FinishTensorAllocation() {
+  if (!active_) {
+    return kTfLiteError;
+  }
+
   const size_t tensors_size = tensors_->size();
 
   const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
@@ -204,8 +317,9 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
                                                    error_reporter_));
       size_t aligned_bytes_required =
           AlignSizeUp(bytes_required, kBufferAlignment);
-      planner.AddBuffer(error_reporter_, aligned_bytes_required,
-                        current->first_created, current->last_used);
+      TF_LITE_ENSURE_STATUS(
+          planner.AddBuffer(error_reporter_, aligned_bytes_required,
+                            current->first_created, current->last_used));
     }
   }
 
@@ -250,6 +364,7 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     }
   }
 
+  active_ = false;
   return kTfLiteOk;
 }
 
@@ -258,6 +373,10 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result,
     uint8_t* preallocated_buffer) {
+  if (!active_) {
+    return kTfLiteError;
+  }
+
   // Make sure the serialized type is one we know how to deal with, and convert
   // it from a flatbuffer enum into a constant used by the kernel C API.
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
@@ -318,7 +437,7 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
   result->dims =
       reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
           sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1),
-          sizeof(int)));
+          kDefaultAlignment));
   result->dims->size = flatbuffer_tensor.shape()->Length();
   for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
@@ -344,13 +463,13 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     TfLiteAffineQuantization* quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             memory_allocator_.AllocateFromTail(sizeof(TfLiteAffineQuantization),
-                                               sizeof(int)));
+                                               kDefaultAlignment));
     int* zero_point_array =
         reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
-            channels * sizeof(int) + sizeof(int), sizeof(int)));
+            channels * sizeof(int) + sizeof(int), kDefaultAlignment));
     int* scale_array =
         reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
-            channels * sizeof(float) + sizeof(int), sizeof(int)));
+            channels * sizeof(float) + sizeof(int), kDefaultAlignment));
     zero_point_array[0] = channels;
     scale_array[0] = channels;
     int* zero_point_data = &zero_point_array[1];

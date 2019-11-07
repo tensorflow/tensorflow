@@ -80,6 +80,8 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
+  NodeAndRegistration* node_and_registrations_;
+
   const Model* model_;
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
