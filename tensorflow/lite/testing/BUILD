@@ -13,7 +13,6 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
