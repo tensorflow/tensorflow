@@ -773,7 +773,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // exact shape and possibly create a new engine if it is not in cache.
   if (!cache.count(engine_input_shapes)) {
     if (!allow_build_at_runtime_) {
-      LOG(WARNING) << "Found no suitable engine in cache. "
+      LOG(WARNING) << "Found no engine in cache matching input shapes. "
                    << "Not building a new engine because "
                    << "allow_build_at_runtime=False. "
                    << "The native segment will be used instead.";
