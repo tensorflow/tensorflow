@@ -74,6 +74,7 @@ py_library(
         ":op_callbacks_common",
         ":source_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
         "//third_party/py/numpy",
     ],

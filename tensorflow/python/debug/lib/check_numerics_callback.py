@@ -23,10 +23,13 @@ import threading
 
 import numpy as np
 
+from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import op_callbacks
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -207,6 +210,13 @@ def get_check_numerics_error_message(slot,
   return message
 
 
+def _debug_summary(x):
+  return gen_debug_ops.debug_numeric_summary_v2(
+      x,
+      tensor_debug_mode=(
+          debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS))
+
+
 def _check_numerics_callback(op_type,
                              inputs,
                              attrs,
@@ -216,6 +226,7 @@ def _check_numerics_callback(op_type,
   """Eager-function unified callback for checking numerics."""
   del attrs, op_name  # Unused
   op_type_bytes = compat.as_bytes(op_type)
+  is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
   if (op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS or
       op_type_bytes in SAFE_OPS):
     return
@@ -226,12 +237,23 @@ def _check_numerics_callback(op_type,
       if (output.dtype.is_floating and
           (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
         checked_output = array_ops.check_numerics(
-            output,
+            # TF v2 has automatic control dependencies added to stateful async
+            # ops, which allows us to run check_numerics asynchronously.
+            # In the above case we use debug_summary to reduce all output
+            # tensors asynchronously from the op being checked and then process
+            # the tensor summary with check_numerics.
+            output if is_v1_graph_mode else _debug_summary(output),
             get_check_numerics_error_message(
-                slot, len(outputs), op_type, output, inputs,
-                graph=graph, traceback=output.op.traceback))
+                slot,
+                len(outputs),
+                op_type,
+                output,
+                inputs,
+                graph=graph,
+                traceback=output.op.traceback))
         _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
-        instrumented_outputs.append(checked_output)
+        instrumented_outputs.append(
+            checked_output if is_v1_graph_mode else output)
       else:
         instrumented_outputs.append(output)
     return instrumented_outputs
