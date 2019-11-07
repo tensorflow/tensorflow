@@ -1,0 +1,76 @@
+##this is in response to issue #34030
+
+#ISSUE-how to set speific gpu for particular actions in GPU.
+
+##solution
+
+
+TF would allocate all available memory on each visible GPU if not told otherwise. Here are 5 ways to stick to just one (or a few) GPUs.
+
+#Bash solution.
+Set CUDA_VISIBLE_DEVICES=0,1 in your terminal/console before starting python or jupyter notebook:
+
+$CUDA_VISIBLE_DEVICES=0,1 python script.py
+
+
+#Python solution. run next 2 lines of code before constructing a session
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
+
+Automated solution. 
+Method below will automatically detect GPU devices that are not used by other scripts and set CUDA_VISIBLE_DEVICES for you.
+You have to call mask_unused_gpus before constructing a session. It will filter out GPUs by current memory usage. This way you can run multiple instances of your script at once without changing your code or setting console parameters.
+
+The function:
+import subprocess as sp
+import os
+
+def mask_unused_gpus(leave_unmasked=1):
+  ACCEPTABLE_AVAILABLE_MEMORY = 1024
+  COMMAND = "nvidia-smi --query-gpu=memory.free --format=csv"
+
+  try:
+    _output_to_list = lambda x: x.decode('ascii').split('\n')[:-1]
+    memory_free_info = _output_to_list(sp.check_output(COMMAND.split()))[1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    available_gpus = [i for i, x in enumerate(memory_free_values) if x > ACCEPTABLE_AVAILABLE_MEMORY]
+
+    if len(available_gpus) < leave_unmasked: raise ValueError('Found only %d usable GPUs in the system' % len(available_gpus))
+    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, available_gpus[:leave_unmasked]))
+  except Exception as e:
+    print('"nvidia-smi" is probably not installed. GPUs are not masked', e)
+
+mask_unused_gpus(2)
+
+
+
+
+#Tensorflow 2.0 suggest yet another method:
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+  # Restrict TensorFlow to only use the first GPU
+  try:
+    tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
+  except RuntimeError as e:
+    # Visible devices must be set at program startup
+    print(e)
+    
+    
+#Tensorflow/Keras also allows to specify gpu to be used with session config. 
+I can recommend it only if setting environment variable is not an options (i.e. an MPI run). Because it tend to be the least reliable of all methods, especially with keras.
+
+config = tf.ConfigProto()
+config.gpu_options.visible_device_list = "0,1"
+with tf.Session(config) as sess:
+#or K.set_session(tf.Session(config))
+
+
+
+above five methods can help to allocate specific gpu in tensorflow.
+
+
+also this might be useful-do check it out
+https://jhui.github.io/2017/03/07/TensorFlow-GPU/
+https://medium.com/@liyin2015/tensorflow-cpus-and-gpus-configuration-9c223436d4ef
