@@ -72,48 +72,64 @@
 
 <h2>Operator Profile</h2>
 
-<div class="container">
-  <!-- You can constrain the columns if you want -->
-  <div class="row">
-    <!-- The table class adds nice spacing and the other classes add additional style -->
-    <table class="table table-bordered table-striped table-hover">
-    <thead>
-    <tr>
-    <td colspan="4"><b>Pre-conversion Op Profile</b></td>
-    </tr>
-    </thead>
-    <tbody>
-
-    <tr>
-    <!-- Use text alignment like text-center or text-right -->
-    <th class="text-center">Operations Used</td>
-    <th class="text-center">Input Types</td>
-    </tr>
-    <tr><td>Conv1</td><td></td></tr><tr><td>Conv2</td><td></td></tr><tr><td>Identity</td><td></td></tr><tr><td>Reshape</td><td></td></tr><tr><td>Dense</td><td></td></tr><tr><td>Dense</td><td></td></tr><tr><td>CustomOp</td><td></td></tr><tr><td>AvgPool3D</td><td></td></tr><tr><td>Softmax</td><td></td></tr>
-    </tbody>
-    </table>
+<div class="panel-group">
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <h4 class="panel-title">
+        <a data-toggle="collapse" href="#collapse1"><b>Pre-conversion Op Profile</b></a>
+      </h4>
+    </div>
+    <div id="collapse1" class="panel-collapse collapse in">
+      <div class="panel-body">
+        <div class="flex-container">
+        <!-- You can constrain the columns if you want -->
+          <div class="row">
+          <!-- The table class adds nice spacing and the other classes add additional style -->
+            <table class="table table-bordered table-striped table-hover">
+              <thead></thead>
+              <tbody>
+              <tr>
+              <!-- Use text alignment like text-center or text-right -->
+              <th class="text-center">Operations Used</td>
+              <th class="text-center">Input Types</td>
+              </tr>
+              <tr><td>Conv1</td><td></td></tr><tr><td>Conv2</td><td></td></tr><tr><td>Identity</td><td></td></tr><tr><td>Reshape</td><td></td></tr><tr><td>Dense</td><td></td></tr><tr><td>Dense</td><td></td></tr><tr><td>CustomOp</td><td></td></tr><tr><td>AvgPool3D</td><td></td></tr><tr><td>Softmax</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="container">
-  <div class="row">
-    <!-- The table class adds nice spacing and the other classes add additional style -->
-    <table class="table table-bordered table-striped table-hover">
-    <thead>
-    <tr>
-    <td colspan="4"><b>Post-conversion Op Profile</b></td>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-
-    <!-- Use text alignment like text-center or text-right -->
-    <th class="text-center">Operations Used</td>
-    <th class="text-center">Supported</td>
-    </tr>
-    <tr><td>Conv1</td><td>BUILT-IN</td></tr><tr><td>Conv2</td><td>BUILT-IN</td></tr><tr><td>Dense</td><td>BUILT-IN</td></tr><tr><td>Dense</td><td>BUILT-IN</td></tr><tr><td>CustomOp</td><td>CUSTOM OP</td></tr><tr><td>AvgPool3D</td><td>SELECT OP</td></tr><tr><td>Softmax</td><td>BUILT-IN</td></tr>
-    </tbody>
-    </table>
+<div class="panel-group">
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <h4 class="panel-title">
+        <a data-toggle="collapse" href="#collapse2"><b>Post-conversion Op Profile</b></a>
+      </h4>
+    </div>
+    <div id="collapse2" class="panel-collapse collapse in">
+      <div class="panel-body">
+        <div class="flex-container">
+          <div class="row">
+          <!-- The table class adds nice spacing and the other classes add additional style -->
+            <table class="table table-bordered table-striped table-hover">
+              <thead></thead>
+              <tbody>
+              <tr>
+              <!-- Use text alignment like text-center or text-right -->
+              <th class="text-center">Operations Used</td>
+              <th class="text-center">Supported</td>
+              </tr>
+              <tr><td>Conv1</td><td>BUILT-IN</td></tr><tr><td>Conv2</td><td>BUILT-IN</td></tr><tr><td>Dense</td><td>BUILT-IN</td></tr><tr><td>Dense</td><td>BUILT-IN</td></tr><tr><td>CustomOp</td><td>CUSTOM OP</td></tr><tr><td>AvgPool3D</td><td>SELECT OP</td></tr><tr><td>Softmax</td><td>BUILT-IN</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
