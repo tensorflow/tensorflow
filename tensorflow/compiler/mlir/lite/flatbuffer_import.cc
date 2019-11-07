@@ -654,6 +654,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   Value* maybe_optional_arg_marker = nullptr;
 
   // Get or construct MLIR values for each input
+  llvm::SmallVector<std::string, 4> input_names;
   for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
     auto input_tensor = subgraph.inputs[i];
     const auto& tensor = *subgraph.tensors.at(input_tensor);
@@ -668,6 +669,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       auto op = op_builder.create<tfl::InputOp>(loc, input);
       input_value = op.output();
     } else {
+      if (is_entry_point) input_names.push_back(tensor.name);
       input_value = func.getArgument(i);
     }
 
@@ -680,6 +682,16 @@ StatusOr<FuncOp> ConvertSubgraph(
     } else {
       vals_map[input_tensor] = input_value;
     }
+  }
+
+  // TODO(lyandy): Check if output names should be also stored.
+  if (!add_pseudo_input_nodes && is_entry_point && !input_names.empty()) {
+    std::string s;
+    llvm::raw_string_ostream ss(s);
+    mlir::interleave(input_names, ss, ",");
+    auto inputs =
+        builder.getNamedAttr("inputs", builder.getStringAttr(ss.str()));
+    func.setAttr("tf.entry_function", builder.getDictionaryAttr({inputs}));
   }
 
   // Construct MLIR operators from TFLite operators
