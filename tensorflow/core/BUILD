@@ -2023,7 +2023,7 @@ tf_pyclif_proto_library(
             name = "framework/%s_pyclif" % proto_name,
             proto_lib = ":protos_all",
             proto_srcfile = "framework/%s.proto" % proto_name,
-            visibility = ["//visibility:public"],
+            visibility = ["//visibility:private"],
         ),
     ]
     for proto_name in [
