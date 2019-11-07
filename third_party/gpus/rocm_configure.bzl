@@ -18,6 +18,7 @@ load(
     "make_copy_dir_rule",
     "make_copy_files_rule",
     "to_list_of_strings",
+    "verify_build_defines",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -33,33 +34,21 @@ _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
 
-def verify_build_defines(params):
-    """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
+def _get_win_rocm_defines(repository_ctx):
+    """Return CROSSTOOL defines for Windows"""
 
-    Args:
-      params: dict of variables that will be passed to the BUILD.tpl template.
-    """
-    missing = []
-    for param in [
-        "cxx_builtin_include_directories",
-        "extra_no_canonical_prefixes_flags",
-        "host_compiler_path",
-        "host_compiler_prefix",
-        "linker_bin_path",
-        "linker_files",
-        "unfiltered_compile_flags",
-    ]:
-        if ("%{" + param + "}") not in params:
-            missing.append(param)
-
-    if missing:
-        auto_configure_fail(
-            "BUILD.rocm.tpl template is missing these variables: " +
-            str(missing) +
-            ".\nWe only got: " +
-            str(params) +
-            ".",
-        )
+    # Return fake vaules for Windows specific fields.
+    # This ensures the CROSSTOOL file parser is happy.
+    return {
+        "%{msvc_env_tmp}": "msvc_not_used",
+        "%{msvc_env_path}": "msvc_not_used",
+        "%{msvc_env_include}": "msvc_not_used",
+        "%{msvc_env_lib}": "msvc_not_used",
+        "%{msvc_cl_path}": "msvc_not_used",
+        "%{msvc_ml_path}": "msvc_not_used",
+        "%{msvc_link_path}": "msvc_not_used",
+        "%{msvc_lib_path}": "msvc_not_used",
+    }
 
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
@@ -149,12 +138,6 @@ def auto_configure_fail(msg):
     no_color = "\033[0m"
     fail("\n%sROCm Configuration Error:%s %s\n" % (red, no_color, msg))
 
-def auto_configure_warning(msg):
-    """Output warning message during auto configuration."""
-    yellow = "\033[1;33m"
-    no_color = "\033[0m"
-    print("\n%sAuto-Configuration Warning:%s %s\n" % (yellow, no_color, msg))
-
 # END cc_configure common functions (see TODO above).
 
 def _host_compiler_includes(repository_ctx, cc):
@@ -242,11 +225,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
 def _enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
         enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
-        if enable_rocm == "1":
-            if _cpu_value(repository_ctx) != "Linux":
-                auto_configure_warning("ROCm configure is only supported on Linux")
-                return False
-            return True
+        return enable_rocm == "1"
     return False
 
 def _rocm_toolkit_path(repository_ctx):
@@ -377,27 +356,40 @@ def _cpu_value(repository_ctx):
     result = repository_ctx.execute(["uname", "-s"])
     return result.stdout.strip()
 
-def _lib_name(lib, version = "", static = False):
-    """Constructs the name of a library on Linux.
+def _lib_name(lib, cpu_value, version = "", static = False):
+    """Constructs the platform-specific name of a library.
 
     Args:
       lib: The name of the library, such as "hip"
+      cpu_value: The name of the host operating system.
       version: The version of the library.
       static: True the library is static or False if it is a shared object.
 
     Returns:
       The platform-specific name of the library.
     """
-    if static:
-        return "lib%s.a" % lib
-    else:
-        if version:
+    if cpu_value in ("Linux", "FreeBSD"):
+        if static:
+            return "lib%s.a" % lib
+        else:
+            if version:
+                version = ".%s" % version
+            return "lib%s.so%s" % (lib, version)
+    elif cpu_value == "Windows":
+        return "%s.lib" % lib
+    elif cpu_value == "Darwin":
+        if static:
+            return "lib%s.a" % lib
+        elif version:
             version = ".%s" % version
-        return "lib%s.so%s" % (lib, version)
+        return "lib%s%s.dylib" % (lib, version)
+    else:
+        auto_configure_fail("Invalid cpu_value: %s" % cpu_value)
 
 def _find_rocm_lib(
         lib,
         repository_ctx,
+        cpu_value,
         basedir,
         version = "",
         static = False):
@@ -406,6 +398,7 @@ def _find_rocm_lib(
     Args:
       lib: The name of the library, such as "hip"
       repository_ctx: The repository context.
+      cpu_value: The name of the host operating system.
       basedir: The install directory of ROCm.
       version: The version of the library.
       static: True if static library, False if shared object.
@@ -415,19 +408,20 @@ def _find_rocm_lib(
         file_name: The basename of the library found on the system.
         path: The full path to the library.
     """
-    file_name = _lib_name(lib, version, static)
+    file_name = _lib_name(lib, cpu_value, version, static)
+    if cpu_value == "Linux":
+        path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
+        if path.exists:
+            return struct(file_name = file_name, path = str(path.realpath))
+        path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
+        if path.exists:
+            return struct(file_name = file_name, path = str(path.realpath))
+        path = repository_ctx.path(
+            "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name),
+        )
+        if path.exists:
+            return struct(file_name = file_name, path = str(path.realpath))
 
-    path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path(
-        "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name),
-    )
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
     path = repository_ctx.path("%s/lib/%s" % (basedir, file_name))
     if path.exists:
         return struct(file_name = file_name, path = str(path.realpath))
@@ -448,35 +442,42 @@ def _find_libs(repository_ctx, rocm_config):
       Map of library names to structs of filename and path as returned by
       _find_rocm_lib.
     """
+    cpu_value = rocm_config.cpu_value
     return {
         "hip": _find_rocm_lib(
             "hip_hcc",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path,
         ),
         "rocblas": _find_rocm_lib(
             "rocblas",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path + "/rocblas",
         ),
         "rocfft": _find_rocm_lib(
             "rocfft",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path + "/rocfft",
         ),
         "hiprand": _find_rocm_lib(
             "hiprand",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path + "/hiprand",
         ),
         "miopen": _find_rocm_lib(
             "MIOpen",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path + "/miopen",
         ),
         "rccl": _find_rocm_lib(
             "rccl",
             repository_ctx,
+            cpu_value,
             rocm_config.rocm_toolkit_path + "/rccl",
         ),
     }
@@ -491,11 +492,14 @@ def _get_rocm_config(repository_ctx):
       A struct containing the following fields:
         rocm_toolkit_path: The ROCm toolkit installation directory.
         amdgpu_targets: A list of the system's AMDGPU targets.
+        cpu_value: The name of the host operating system.
     """
+    cpu_value = _cpu_value(repository_ctx)
     rocm_toolkit_path = _rocm_toolkit_path(repository_ctx)
     return struct(
         rocm_toolkit_path = rocm_toolkit_path,
         amdgpu_targets = _amdgpu_targets(repository_ctx),
+        cpu_value = cpu_value,
     )
 
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
@@ -540,6 +544,8 @@ error_gpu_disabled()
 """
 
 def _create_dummy_repository(repository_ctx):
+    cpu_value = _cpu_value(repository_ctx)
+
     # Set up BUILD file for rocm/.
     _tpl(
         repository_ctx,
@@ -553,12 +559,12 @@ def _create_dummy_repository(repository_ctx):
         repository_ctx,
         "rocm:BUILD",
         {
-            "%{hip_lib}": _lib_name("hip"),
-            "%{rocblas_lib}": _lib_name("rocblas"),
-            "%{miopen_lib}": _lib_name("miopen"),
-            "%{rccl_lib}": _lib_name("rccl"),
-            "%{rocfft_lib}": _lib_name("rocfft"),
-            "%{hiprand_lib}": _lib_name("hiprand"),
+            "%{hip_lib}": _lib_name("hip", cpu_value),
+            "%{rocblas_lib}": _lib_name("rocblas", cpu_value),
+            "%{miopen_lib}": _lib_name("miopen", cpu_value),
+            "%{rccl_lib}": _lib_name("rccl", cpu_value),
+            "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
+            "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -790,20 +796,28 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
+    # # Enable a few more warnings that aren't part of -Wall.
+    # compiler_flag: "-Wunused-but-set-parameter"
+
+    # # But disable some that are problematic.
+    # compiler_flag: "-Wno-free-nonheap-object" # has false positives
+
+    rocm_defines["%{host_compiler_warnings}"] = to_list_of_strings(["-Wunused-but-set-parameter", "-Wno-free-nonheap-object"])
+
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
                                                                             _rocm_include_path(repository_ctx, rocm_config))
 
     rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
+    rocm_defines["%{win_linker_files}"] = ":empty"
+
+    # Add the dummy defines for windows...requried to pass the "verify_build_defines" check
+    rocm_defines.update(_get_win_rocm_defines(repository_ctx))
+
     verify_build_defines(rocm_defines)
 
     # Only expand template variables in the BUILD file
-    _tpl(
-        repository_ctx,
-        "crosstool:BUILD.rocm",
-        rocm_defines,
-        out = "crosstool/BUILD",
-    )
+    _tpl(repository_ctx, "crosstool:BUILD", rocm_defines)
 
     # No templating of cc_toolchain_config - use attributes and templatize the
     # BUILD file.
