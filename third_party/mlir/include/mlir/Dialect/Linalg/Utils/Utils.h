@@ -173,9 +173,10 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
-                                                    ArrayRef<Value *> subViews,
-                                                    OperationFolder *folder);
+llvm::SmallVector<PromotionInfo, 8>
+promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
+                bool promoteSubViews = false,
+                OperationFolder *folder = nullptr);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

@@ -1430,10 +1430,7 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
     SmallVector<int64_t, 4> strides;
     auto successStrides = getStridesAndOffset(viewMemRefType, strides, offset);
     if (failed(successStrides))
-      return op->emitWarning("Cannot cast to non-strided shape"),
-             matchFailure();
-    if (strides.back() != 1)
-      return op->emitWarning("Cannot cast to non-contiguous shape"),
+      return op->emitWarning("cannot cast to non-strided shape"),
              matchFailure();
 
     // Create the descriptor.
@@ -1466,7 +1463,14 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
         rewriter.getI64ArrayAttr(
             LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
 
+    // Early exit for 0-D corner case.
+    if (viewMemRefType.getRank() == 0)
+      return rewriter.replaceOp(op, desc), matchSuccess();
+
     // Update sizes and strides.
+    if (strides.back() != 1)
+      return op->emitWarning("cannot cast to non-contiguous shape"),
+             matchFailure();
     Value *stride = nullptr, *nextSize = nullptr;
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       // Update size.
