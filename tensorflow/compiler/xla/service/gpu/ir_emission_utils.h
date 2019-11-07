@@ -166,7 +166,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  DimensionVector dimensions;
+  std::array<int64, 3> dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
