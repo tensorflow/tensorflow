@@ -2923,13 +2923,13 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
 ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     const HloInstruction* unnested_hlo, const HloInstruction* first_reduce) {
   const Shape& input_shape = first_reduce->operand(0)->shape();
-  bool is_row_reduction;
-  DimensionVector dims_in_elem;
-  std::tie(is_row_reduction, dims_in_elem) =
+  ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(input_shape,
                                               first_reduce->dimensions());
-  VLOG(10) << "is_row_reduction " << is_row_reduction << " " << dims_in_elem[0]
-           << " " << dims_in_elem[1] << " " << dims_in_elem[2];
+  VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
+           << " " << reduction_dimensions.dimensions[0] << " "
+           << reduction_dimensions.dimensions[1] << " "
+           << reduction_dimensions.dimensions[2];
 
   int64 tile_size_x = 1;
   int64 tile_size_y = 1;
@@ -2937,20 +2937,20 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int64 num_threads_x = 1;
   int64 num_threads_y = 1;
   bool dilated_x = true;
-  if (is_row_reduction) {
+  if (reduction_dimensions.is_row_reduction) {
     num_threads_x = kWarpSize;
-    if (dims_in_elem[1] == 1) {
+    if (reduction_dimensions.dimensions[1] == 1) {
       // Scalar reduction is handled differently than the other kind of row
       // reduction.
-      CHECK_EQ(dims_in_elem[0], 1);
+      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       tile_size_x = kWarpSize * 16;
     } else {
-      if (dims_in_elem[2] % (kWarpSize * 64) == 0) {
+      if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
         tile_size_x = kWarpSize * 64;
       } else {
         tile_size_x = kWarpSize * 8;
         block_size_z = 8;
-        while (dims_in_elem[0] % block_size_z != 0) {
+        while (reduction_dimensions.dimensions[0] % block_size_z != 0) {
           block_size_z -= 1;
         }
       }
@@ -2964,24 +2964,27 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     // num_threads_x and tile_size_x to allow a bigger hardware thread block.
     int64 hw_threads_per_block_limit =
         ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    if (IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
-                                             dims_in_elem[2])) {
+    if (IsUnrollingColumnReductionBeneficial(
+            unnested_hlo, input_shape, reduction_dimensions.dimensions[2])) {
       // Vectorized loads: two elements per thread.
-      tile_size_x = std::min(2 * hw_threads_per_block_limit, dims_in_elem[2]);
+      tile_size_x = std::min(2 * hw_threads_per_block_limit,
+                             reduction_dimensions.dimensions[2]);
       num_threads_x = tile_size_x / 2;
       dilated_x = false;
     } else {
       // One element per thread.
-      tile_size_x = std::min(hw_threads_per_block_limit, dims_in_elem[2]);
+      tile_size_x = std::min(hw_threads_per_block_limit,
+                             reduction_dimensions.dimensions[2]);
       num_threads_x = tile_size_x;
     }
     tile_size_y = 128;
   }
 
-  KernelMappingScheme mapping_scheme(dims_in_elem, tile_size_y, tile_size_x,
-                                     block_size_z, num_threads_y, num_threads_x,
-                                     dilated_x);
-  return ReductionCodegenInfo(mapping_scheme, is_row_reduction);
+  KernelMappingScheme mapping_scheme(reduction_dimensions.dimensions,
+                                     tile_size_y, tile_size_x, block_size_z,
+                                     num_threads_y, num_threads_x, dilated_x);
+  return ReductionCodegenInfo(mapping_scheme,
+                              reduction_dimensions.is_row_reduction);
 }
 
 Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(

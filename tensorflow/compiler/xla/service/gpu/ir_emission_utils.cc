@@ -206,26 +206,24 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
     return false;
   }
 
-  bool is_row_reduction;
-  DimensionVector dims_in_elem;
-  std::tie(is_row_reduction, dims_in_elem) =
+  ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(input->shape(),
                                               reduce.dimensions());
 
-  if (is_row_reduction) {
+  if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return dims_in_elem[2] >= kWarpSize;
+    return reduction_dimensions.dimensions[2] >= kWarpSize;
   }
 
   // For column reduction, the tile block is tile_size_y x tile_size_x, and we
   // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
-  return dims_in_elem[1] >= kWarpSize;
+  return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
+ReductionDimensions GetReductionKindAndContiguousComponents(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
   DimensionVector dims_to_keep;
   for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
@@ -235,8 +233,8 @@ std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
   }
 
   if (dims_to_keep.empty()) {
-    return std::make_pair(
-        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
+    return {/*is_row_reduction=*/true,
+            {1, 1, ShapeUtil::ElementsIn(input_shape)}};
   }
 
   if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
@@ -245,15 +243,14 @@ std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
     std::tie(num_reduced_major, num_kept, num_reduced_minor) =
         PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
     if (num_kept == 1) {
-      return std::make_pair(
-          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
+      return {/*is_row_reduction=*/true,
+              {1, 1, num_reduced_minor * num_reduced_major}};
     }
     if (num_reduced_minor == 1) {
-      return std::make_pair(false,
-                            DimensionVector{1, num_reduced_major, num_kept});
+      return {/*is_row_reduction=*/false, {1, num_reduced_major, num_kept}};
     }
-    return std::make_pair(
-        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
+    return {/*is_row_reduction=*/true,
+            {num_reduced_major, num_kept, num_reduced_minor}};
   }
 
   int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
@@ -262,11 +259,10 @@ std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
           input_shape,
           DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
   if (num_kept_minor == 1) {
-    return std::make_pair(true,
-                          DimensionVector{1, num_kept_major, num_reduced});
+    return {/*is_row_reduction=*/true, {1, num_kept_major, num_reduced}};
   }
-  return std::make_pair(
-      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
+  return {/*is_row_reduction=*/false,
+          {num_kept_major, num_reduced, num_kept_minor}};
 }
 
 // This emits a device-side call to
