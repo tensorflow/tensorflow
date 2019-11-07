@@ -1,7 +1,9 @@
 // RUN: mlir-opt %s | mlir-opt | FileCheck %s
 
+// TODO(pifon): Re-enable LLVM lowering test after IndexedGenericOp is lowered.
+//
 // Test that we can lower all the way to LLVM without crashing, don't check results here.
-// RUN: mlir-opt %s --convert-linalg-to-llvm -o=/dev/null 2>&1
+// DISABLED: mlir-opt %s --convert-linalg-to-llvm -o=/dev/null 2>&1
 
 // CHECK-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
@@ -234,5 +236,19 @@ func @generic_region(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1
 // CHECK-LABEL: func @generic_region
 //       CHECK:   linalg.generic {indexing_maps = [#{{.*}}, #{{.*}}], library_call = "some_external_function_name_2", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {
 //       CHECK:    ^{{.*}}(%{{.*}}: vector<3x4xi4>, %{{.*}}: f32):    // no predecessors
+//       CHECK:      linalg.yield %{{.*}} : f32
+//       CHECK:    } {foo = 1 : i64}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>, memref<?x?x?xf32, #[[strided3D]]>
+
+func @indexed_generic(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>,
+                      %arg1: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>) {
+  linalg.indexed_generic #trait2 %arg0, %arg1 {
+  ^bb(%i: index, %j: index, %k: index, %a: vector<3x4xi4>, %b: f32) :
+      linalg.yield %b : f32
+  } {foo = 1}: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>, memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>
+  return
+}
+// CHECK-LABEL: func @indexed_generic
+//       CHECK:   linalg.indexed_generic {indexing_maps = [#{{.*}}, #{{.*}}], library_call = "some_external_function_name_2", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {
+//       CHECK:    ^{{.*}}(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: vector<3x4xi4>, %{{.*}}: f32):
 //       CHECK:      linalg.yield %{{.*}} : f32
 //       CHECK:    } {foo = 1 : i64}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>, memref<?x?x?xf32, #[[strided3D]]>

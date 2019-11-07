@@ -147,10 +147,11 @@ static ParseResult parseBufferSizeOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
-// GenericOp
+// GenericOps
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, GenericOp op) {
+template <typename GenericOpType>
+static void printGenericOp(OpAsmPrinter &p, GenericOpType op) {
   auto attrNames = op.linalgTraitAttrNames();
   llvm::StringSet<> linalgTraitAttrsSet;
   linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
@@ -167,6 +168,12 @@ static void print(OpAsmPrinter &p, GenericOp op) {
   p.printOptionalAttrDict(op.getAttrs(), attrNames);
   p << ": ";
   interleaveComma(op.getOperandTypes(), p);
+}
+
+static void print(OpAsmPrinter &p, GenericOp op) { printGenericOp(p, op); }
+
+static void print(OpAsmPrinter &p, IndexedGenericOp op) {
+  printGenericOp(p, op);
 }
 
 static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
@@ -196,8 +203,60 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
                                 parser.getCurrentLocation(), result.operands);
 }
 
-static LogicalResult verify(GenericOp op) {
+template <typename GenericOpType>
+LogicalResult verifyBlockArgs(GenericOpType op, Block &block, unsigned nViews,
+                              unsigned nLoops, unsigned nInputViews);
+
+template <>
+LogicalResult verifyBlockArgs(GenericOp op, Block &block, unsigned nViews,
+                              unsigned nLoops, unsigned nInputViews) {
+  if (block.getNumArguments() != nViews)
+    return op.emitError(
+        "op expected number of block arguments to match number of views");
+
+  for (unsigned i = 0; i < nViews; ++i) {
+    auto viewType = op.getViewType(i);
+    if (viewType.getElementType() != block.getArgument(i)->getType())
+      return op.emitError("op expected block argument ")
+             << i << " of the same type as elemental type of "
+             << ((i < nInputViews) ? "input " : "output ")
+             << "view: " << viewType;
+  }
+  return success();
+}
+
+template <>
+LogicalResult verifyBlockArgs(IndexedGenericOp op, Block &block,
+                              unsigned nViews, unsigned nLoops,
+                              unsigned nInputViews) {
+  if (block.getNumArguments() != nViews + nLoops)
+    return op.emitError(
+        "op expected number of block arguments to match number of views + "
+        "number of loops");
+
+  for (unsigned i = 0; i < nLoops; ++i) {
+    if (!block.getArgument(i)->getType().isIndex())
+      return op.emitError("op expected block argument ")
+             << i << " to be of IndexType";
+  }
+
+  for (unsigned i = 0; i < nViews; ++i) {
+    unsigned memrefArgIndex = i + nLoops;
+    auto viewType = op.getViewType(i);
+    if (viewType.getElementType() !=
+        block.getArgument(memrefArgIndex)->getType())
+      return op.emitError("op expected block argument ")
+             << memrefArgIndex << " of the same type as elemental type of "
+             << ((i < nInputViews) ? "input " : "output ")
+             << "view: " << viewType;
+  }
+  return success();
+}
+
+template <typename GenericOpType>
+LogicalResult verifyGenericOp(GenericOpType op) {
   auto nInputViews = op.getNumInputs();
+  auto nLoops = op.getNumLoops();
   auto nViews = op.getNumInputsAndOutputs();
   if (nViews != llvm::size(op.views()))
     return op.emitError("op expected exactly ") << nViews << " view operands";
@@ -210,17 +269,8 @@ static LogicalResult verify(GenericOp op) {
       return op.emitError("op expected region with 1 block");
 
     auto &block = region.getBlocks().front();
-    if (block.getNumArguments() != nViews)
-      return op.emitError(
-          "op expected number of block arguments to match number of views");
-
-    for (unsigned i = 0; i < nViews; ++i) {
-      auto viewType = op.getViewType(i);
-      if (viewType.getElementType() != block.getArgument(i)->getType())
-        return op.emitError("op expected block argument ")
-               << i << " of the same type as elemental type of "
-               << ((i < nInputViews) ? "input " : "output ")
-               << "view: " << viewType;
+    if (failed(verifyBlockArgs(op, block, nViews, nLoops, nInputViews))) {
+      return failure();
     }
   } else {
     if (!funOp || !funOp.getType())
@@ -233,12 +283,11 @@ static LogicalResult verify(GenericOp op) {
           "op expected fun results to match number of output views");
   }
 
-  auto nLoops = op.getNumLoops();
   SmallVector<AffineMap, 4> indexingMaps;
   indexingMaps.reserve(op.indexing_maps().size());
   for (auto en : llvm::enumerate(op.indexing_maps())) {
     auto idx = en.index();
-    auto m = en.value().cast<AffineMapAttr>().getValue();
+    auto m = en.value().template cast<AffineMapAttr>().getValue();
     indexingMaps.push_back(m); // Save reference to map for further checks.
     auto view = (idx < nInputViews) ? op.getInputViewType(idx)
                                     : op.getOutputViewType(idx - nInputViews);
@@ -253,7 +302,7 @@ static LogicalResult verify(GenericOp op) {
              << " dim(s) to match the number of loops";
 
     if (m.getNumResults() == 1 && view.getRank() == 0) {
-      auto cst = m.getResult(0).dyn_cast<AffineConstantExpr>();
+      auto cst = m.getResult(0).template dyn_cast<AffineConstantExpr>();
       if (!cst || cst.getValue() != 0)
         return op.emitError("op expected indexing_map #")
                << idx << " to be 0 to match 0-D view: " << view;
@@ -285,6 +334,9 @@ static LogicalResult verify(GenericOp op) {
 
   return success();
 }
+
+static LogicalResult verify(GenericOp op) { return verifyGenericOp(op); }
+static LogicalResult verify(IndexedGenericOp op) { return verifyGenericOp(op); }
 
 //===----------------------------------------------------------------------===//
 // RangeOp
@@ -591,16 +643,8 @@ static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
                  parser.resolveOperands(opInfo, types, loc, result.operands));
 }
 
-static LogicalResult verify(YieldOp op) {
-  auto *parentOp = op.getParentOp();
-  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
-    return op.emitOpError("op expected single non-empty parent region");
-
-  auto genericOp = dyn_cast<GenericOp>(parentOp);
-  if (!genericOp)
-    return op.emitOpError("op expected '")
-           << GenericOp::getOperationName() << "' parent op";
-
+template <typename GenericOpType>
+LogicalResult verifyYield(YieldOp op, GenericOpType genericOp) {
   // The operand number and types must match the view element types.
   auto nOutputViews = genericOp.getNumOutputs();
   if (op.getNumOperands() != nOutputViews)
@@ -615,6 +659,24 @@ static LogicalResult verify(YieldOp op) {
              << ") doesn't match view element type (" << elementType << ")";
   }
   return success();
+}
+
+static LogicalResult verify(YieldOp op) {
+  auto *parentOp = op.getParentOp();
+  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
+    return op.emitOpError("op expected single non-empty parent region");
+
+  auto genericOp = dyn_cast<GenericOp>(parentOp);
+  if (genericOp)
+    return verifyYield(op, genericOp);
+
+  auto indexedGenericOp = dyn_cast<IndexedGenericOp>(parentOp);
+  if (indexedGenericOp)
+    return verifyYield(op, indexedGenericOp);
+
+  return op.emitOpError("expected '")
+         << GenericOp::getOperationName() << "' or '"
+         << IndexedGenericOp::getOperationName() << "' parent op";
 }
 
 /////// Operations corresponding to library calls defined with Tablegen ////////

@@ -116,7 +116,7 @@ func @view_num_ranges(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %st
 // -----
 
 func @yield_parent(%arg0: memref<?xf32, (i)[off]->(off + i)>) {
-  // expected-error @+1 {{op expected 'linalg.generic' parent op}}
+  // expected-error @+1 {{op expected 'linalg.generic' or 'linalg.indexed_generic' parent op}}
   linalg.yield %arg0: memref<?xf32, (i)[off]->(off + i)>
 }
 
@@ -332,6 +332,45 @@ func @generic_block_arg_type(%arg0: memref<f32>) {
     n_loop_types = [0, 0, 0]
   } %arg0 {
     ^bb(%i: i1):
+  }: memref<f32>
+}
+
+// -----
+
+func @indexed_generic_block_arg_count(%arg0: memref<f32>) {
+  // expected-error @+1 {{op expected number of block arguments to match number of views + number of loops}}
+  linalg.indexed_generic {
+    indexing_maps =  [ (d0) -> (d0) ],
+    n_views = [0, 1],
+    n_loop_types = [1, 0, 0]
+  } %arg0 {
+    ^bb(%f: f32):
+  }: memref<f32>
+}
+
+// -----
+
+func @indexed_generic_block_induction_var_arg_type(%arg0: memref<f32>) {
+  // expected-error @+1 {{op expected block argument 0 to be of IndexType}}
+  linalg.indexed_generic {
+    indexing_maps =  [ (d0) -> (d0) ],
+    n_views = [0, 1],
+    n_loop_types = [1, 0, 0]
+  } %arg0 {
+    ^bb(%i: f64, %f: f32):
+  }: memref<f32>
+}
+
+// -----
+
+func @indexed_generic_block_arg_type(%arg0: memref<f32>) {
+  // expected-error @+1 {{op expected block argument 1 of the same type as elemental type of output view: 'memref<f32>'}}
+  linalg.indexed_generic {
+    indexing_maps =  [ (d0) -> (d0) ],
+    n_views = [0, 1],
+    n_loop_types = [1, 0, 0]
+  } %arg0 {
+    ^bb(%i: index, %f: i1):
   }: memref<f32>
 }
 
