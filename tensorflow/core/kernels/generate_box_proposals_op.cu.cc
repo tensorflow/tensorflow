@@ -444,7 +444,6 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
         nboxes_to_generate, (char*)dev_boxes_keep_flags.flat<int8>().data()));
     const int nboxes_generated = nboxes_to_generate;
     const int roi_cols = box_dim;
-    const int max_postnms_nboxes = std::min(nboxes_generated, post_nms_topn_);
     Tensor dev_image_prenms_boxes;
     Tensor dev_image_prenms_scores;
     Tensor dev_image_boxes_keep_list;
