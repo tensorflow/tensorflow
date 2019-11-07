@@ -375,9 +375,9 @@ bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
       for (auto *user : result->getUsers()) {
         // If an ancestor operation doesn't lie in the block of forOp,
         // there is no shift to check.
-        if (auto *ancInst = forBody->findAncestorInstInBlock(*user)) {
-          assert(forBodyShift.count(ancInst) > 0 && "ancestor expected in map");
-          if (shift != forBodyShift[ancInst])
+        if (auto *ancOp = forBody->findAncestorOpInBlock(*user)) {
+          assert(forBodyShift.count(ancOp) > 0 && "ancestor expected in map");
+          if (shift != forBodyShift[ancOp])
             return false;
         }
       }
