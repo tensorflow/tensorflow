@@ -1626,7 +1626,7 @@ class MklQuantizedConv2DOp
       }
 
       if (!scaled_bias_buf)
-        AllocTmpBuffer<Tbias>(context, &scaled_bias_tensor,
+        AllocTmpBuffer<Tbias>(context, &scaled_bias_tensor_,
                               conv_fwd_pd->bias_primitive_desc(),
                               &scaled_bias_buf);
       if (!scaled_bias_) {
@@ -1657,7 +1657,7 @@ class MklQuantizedConv2DOp
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
 
-  Tensor scaled_bias_tensor;
+  Tensor scaled_bias_tensor_;
   void* scaled_bias_buf = nullptr;
 
  private:
