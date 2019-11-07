@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// An example Op.
-
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
@@ -82,8 +80,7 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
       // box_conv_index : # of the same box, but indexed in the
       // scores from the conv layer, of shape (height,width,num_anchors) the
       // num_images dimension was already removed box_conv_index =
-      // a*image_stride + h*width
-      // + w
+      // a*image_stride + h*width + w
       const int box_conv_index =
           d_sorted_scores_keys[image_index * image_stride + ibox];
 
