@@ -3160,7 +3160,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "bonus_tests",
     srcs = [
         "adjust_contrast_op_test.cc",
