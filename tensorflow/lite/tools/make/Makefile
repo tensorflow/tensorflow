@@ -218,9 +218,9 @@ LABEL_IMAGE_SRCS := $(filter-out \
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
-# # These delegate-specific makefiles should modify options like
-# # CXXFLAGS or LIBS and include files to the tensorflow sources like
-# # TF_LITE_CC_SRCS to enable a given delegate.
+# These delegate-specific makefiles should modify options like
+# CXXFLAGS or LIBS and include files to the tensorflow sources like
+# TF_LITE_CC_SRCS to enable a given delegate.
 include $(wildcard $(MAKEFILE_DIR)/delegates/*_makefile.inc)
 
 ALL_SRCS := \
