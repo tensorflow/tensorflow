@@ -157,6 +157,7 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/string_type.h \
 tensorflow/lite/string_util.h \
+tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \

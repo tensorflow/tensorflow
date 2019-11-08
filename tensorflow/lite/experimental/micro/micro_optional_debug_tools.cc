@@ -16,12 +16,14 @@ limitations under the License.
 
 #include "tensorflow/lite/schema/schema_generated.h"
 namespace tflite {
+namespace {
 
 std::vector<int> flatbuffersVector2StdVector(
-    const flatbuffers::Vector<int32_t>* fVector) {
+    const flatbuffers::Vector<int32_t>& fVector) {
   std::vector<int> stdVector;
-  for (size_t i = 0; i < fVector->size(); i++) {
-    stdVector.push_back(fVector->Get(i));
+  stdVector.reserve(fVector.size());
+  for (size_t i = 0; i < fVector.size(); i++) {
+    stdVector.push_back(fVector.Get(i));
   }
   return stdVector;
 }
@@ -87,6 +89,7 @@ const char* AllocTypeName(TfLiteAllocationType type) {
   }
   return "(invalid)";
 }
+}  // namespace
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(MicroInterpreter* interpreter) {
