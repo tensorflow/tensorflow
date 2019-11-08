@@ -200,25 +200,32 @@ std::string Exporter::UniqueName(Operation* op) {
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument* arg, unsigned index, llvm::StringRef name) {
+  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(UniqueName(arg->getParentRegion()
-                                      ->getParentOfType<mlir::FuncOp>()
-                                      .getName()
-                                      .str()));
+    node_def->set_name(UniqueName(func.getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
+
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
+
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
+    *node_def->mutable_device() = device_attr.getValue().str();
+  }
+
   return node_def;
 }
 
