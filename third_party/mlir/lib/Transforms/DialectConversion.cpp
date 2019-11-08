@@ -1498,7 +1498,7 @@ auto TypeConverter::convertBlockSignature(Block *block)
 /// Register a legality action for the given operation.
 void ConversionTarget::setOpAction(OperationName op,
                                    LegalizationAction action) {
-  legalOperations[op] = {action};
+  legalOperations[op] = {action, /*isRecursivelyLegal=*/false};
 }
 
 /// Register a legality action for the given dialects.
