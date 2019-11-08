@@ -38,6 +38,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import nest
 
 
 UNSPECIFIED = object()
@@ -396,6 +397,11 @@ def any_(iterable):
 # as tf.data's filter+take is done in pipeline so it will stop
 # as soon as `take(1)` returns.
 def _tf_dataset_any(iterable):
+  specs = nest.flatten(iterable.element_spec)
+  if not all([spec.dtype == dtypes.bool for spec in specs]):
+    raise ValueError(
+        'in graph mode, the "any" builtin only supports datasets '
+        'that return bool scalars; got: {}'.format(iterable.element_spec))
   ds = iterable.filter(lambda x: x)
   ds = ds.take(1)
   ds = ds.reduce(constant_op.constant(False, dtype=dtypes.bool), lambda _, y: y)
