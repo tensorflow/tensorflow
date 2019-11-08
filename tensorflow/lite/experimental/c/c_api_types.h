@@ -261,12 +261,14 @@ typedef struct {
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
 
-// A union of pointers that points to memory for a given tensor.
+/* A union of pointers that points to memory for a given tensor. */
 typedef union {
+  /* Do not access these members directly, if possible, use
+   * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
+   * members are deprecated. */
   int32_t* i32;
   int64_t* i64;
   float* f;
-  // Placeholder for 16b float type. Use uint16* in the pointer union for now.
   TfLiteFloat16* f16;
   char* raw;
   const char* raw_const;
@@ -275,6 +277,8 @@ typedef union {
   int16_t* i16;
   TfLiteComplex64* c64;
   int8_t* int8;
+  /* Only use this member. */
+  void* data;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
