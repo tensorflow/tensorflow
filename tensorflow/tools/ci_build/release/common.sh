@@ -24,7 +24,17 @@ LATEST_BAZEL_VERSION=0.29.1
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
 
-# LINT.IfChange
+# Run flaky functions with retries.
+# run_with_retry cmd
+function run_with_retry {
+  eval "$1"
+  # If the command fails retry again in 60 seconds.
+  if [[ $? -ne 0 ]]; then
+    sleep 60
+    eval "$1"
+  fi
+}
+
 function die() {
   echo "$@" 1>&2 ; exit 1;
 }
@@ -39,25 +49,12 @@ function readable_run {
   echo "Command completed successfully at $(date)"
   set -x
 }
-# LINT.ThenChange(
-# ) # common_.sh
 
 # LINT.IfChange
 # Redirect bazel output dir b/73748835
 function set_bazel_outdir {
   mkdir -p /tmpfs/bazel_output
   export TEST_TMPDIR=/tmpfs/bazel_output
-}
-
-# Run flaky functions with retries.
-# run_with_retry cmd
-function run_with_retry {
-  eval "$1"
-  # If the command fails retry again in 60 seconds.
-  if [[ $? -ne 0 ]]; then
-    sleep 60
-    eval "$1"
-  fi
 }
 
 # Install the given bazel version on linux
