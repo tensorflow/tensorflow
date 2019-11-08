@@ -228,6 +228,9 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_AddOp;
 
+def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
+
 def HLO_DivOp : HLO_BinaryElementwiseOp<"div",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
 
@@ -245,6 +248,15 @@ def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
+
+def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftLeftOp;
+
+def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightArithmeticOp;
+
+def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;

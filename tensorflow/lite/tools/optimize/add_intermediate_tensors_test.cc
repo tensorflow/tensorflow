@@ -73,6 +73,29 @@ TEST(LstmPreprocess, Add2Tensors) {
               ElementsAreArray({0}));
   EXPECT_THAT(model->subgraphs[0]->operators[0]->intermediates,
               ElementsAreArray({1, 2, 3, 4, 5}));
+
+  // Call AddIntemediateTensorsToFusedOp again and expect no change in model.
+  tflite::optimize::AddIntemediateTensorsToFusedOp(&builder, model.get());
+
+  // Verify results.
+  EXPECT_EQ(model->operator_codes.size(), 1);
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 6);
+  EXPECT_EQ(model->buffers.size(), 1);
+
+  EXPECT_EQ(model->operator_codes[0]->builtin_code, BuiltinOperator_LSTM);
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->name, "lstm_tensor0");
+  EXPECT_EQ(model->subgraphs[0]->tensors[1]->name, "intermediate_0_0");
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->name, "intermediate_0_1");
+  EXPECT_EQ(model->subgraphs[0]->tensors[3]->name, "intermediate_0_2");
+  EXPECT_EQ(model->subgraphs[0]->tensors[4]->name, "intermediate_0_3");
+  EXPECT_EQ(model->subgraphs[0]->tensors[5]->name, "intermediate_0_4");
+  EXPECT_THAT(model->subgraphs[0]->operators[0]->inputs, ElementsAreArray({0}));
+  EXPECT_THAT(model->subgraphs[0]->operators[0]->outputs,
+              ElementsAreArray({0}));
+  EXPECT_THAT(model->subgraphs[0]->operators[0]->intermediates,
+              ElementsAreArray({1, 2, 3, 4, 5}));
 }
 
 }  // namespace

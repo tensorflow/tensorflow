@@ -2023,7 +2023,7 @@ tf_pyclif_proto_library(
             name = "framework/%s_pyclif" % proto_name,
             proto_lib = ":protos_all",
             proto_srcfile = "framework/%s.proto" % proto_name,
-            visibility = ["//visibility:public"],
+            visibility = ["//visibility:private"],
         ),
     ]
     for proto_name in [
@@ -4468,11 +4468,18 @@ tf_cc_test(
     srcs = ["framework/run_handler_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":core_cpu",
+        ":direct_session_internal",
         ":framework_internal",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
+        ":tensor_testutil",
         ":test",
         ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",

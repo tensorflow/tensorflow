@@ -6,9 +6,9 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
     "tf_proto_library_py",
 )
 
@@ -20,16 +20,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xrt_proto",
     srcs = ["xrt.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
+    cc_api_version = 2,
+    protodeps = [
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(

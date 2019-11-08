@@ -52,6 +52,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import tf_export
 
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
@@ -389,7 +390,8 @@ class TrtGraphConverter(object):
       RuntimeError: if this class is used in TF 2.0.
     """
     if context.executing_eagerly():
-      raise RuntimeError("Please use TrtGraphConverterV2 in TF 2.0.")
+      raise RuntimeError(
+          "Please use tf.experimental.tensorrt.Converter in TF 2.0.")
 
     if input_graph_def and input_saved_model_dir:
       raise ValueError(
@@ -778,8 +780,11 @@ class _TRTEngineResource(tracking.TrackableResource):
         max_cached_engines_count=self._maximum_cached_engines)
 
 
+@tf_export("experimental.tensorrt.Converter", v1=[])
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
+
+  Currently this is not available on Windows platform.
 
   Note that in V2, is_dynamic_op=False is not supported, meaning TRT engines
   will be built only when the corresponding TRTEngineOp is executed. But we
@@ -793,7 +798,7 @@ class TrtGraphConverterV2(object):
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
          precision_mode='FP16')
-     converter = TrtGraphConverterV2(
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
      converter.save(output_saved_model_dir)
@@ -811,7 +816,7 @@ class TrtGraphConverterV2(object):
          precision_mode='FP16',
          # Set this to a large enough number so it can cache all the engines.
          maximum_cached_engines=16)
-     converter = TrtGraphConverterV2(
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
 
@@ -844,7 +849,7 @@ class TrtGraphConverterV2(object):
          # Currently only one INT8 engine is supported in this mode.
          maximum_cached_engines=1,
          use_calibration=True)
-     converter = TrtGraphConverterV2(
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
 
      # Define a generator function that yields input data, and run INT8

@@ -164,7 +164,8 @@ def run_one_epoch(model,
           batch_logs['size'] = data_batch_size
           current_batch_size = data_batch_size
       else:
-        batch_outs = _aggregate_predict_results(strategy, batch_outs, model)
+        batch_outs = training_v2_utils._aggregate_predict_results(
+            strategy, batch_outs, model)
 
       if step == 0:
         aggregator.create(batch_outs)
@@ -435,6 +436,8 @@ class Loop(training_utils.TrainingLoop):
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
+      if mode == ModeKeys.PREDICT:
+        dataset = training_v2_utils._add_batch_index_to_element(dataset)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
       execution_function = training_v2_utils._get_or_make_execution_function(
@@ -706,18 +709,6 @@ def _get_total_number_of_samples(adapter):
   if adapter.has_partial_batch():
     total_sample -= (adapter.batch_size() - adapter.partial_batch_size())
   return total_sample
-
-
-def _aggregate_predict_results(strategy, batch_outs, model):
-  if not isinstance(batch_outs, list):
-    batch_outs = [batch_outs]
-  total_batch_outs = []
-  for i in range(len(model.outputs)):
-    num_replicas = strategy.num_replicas_in_sync
-    nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
-    total_batch_outs.append(
-        dist_utils.concat_along_batch_dimension(nest.flatten(nested_outs)))
-  return total_batch_outs
 
 
 def _print_train_info(total_samples, steps, val_total_samples, val_steps):

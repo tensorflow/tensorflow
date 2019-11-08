@@ -216,7 +216,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(
     const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
-  if (ctx->LazilyCopyFunctionRemoteInputs()) {
+  if (ctx->LazyCopyFunctionRemoteInputs()) {
     return new EagerClusterFunctionLibraryRuntime(
         context_id, ctx, worker_session->remote_device_mgr());
   } else {

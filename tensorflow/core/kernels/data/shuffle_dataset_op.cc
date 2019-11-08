@@ -325,6 +325,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       }
       buffer_ = absl::make_unique<std::vector<Tensor>[]>(
           this->dataset()->buffer_size_);
+      slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
         TF_RETURN_IF_ERROR(
@@ -384,6 +385,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     int64 epoch_ GUARDED_BY(mu_);
     int64 num_elements_ GUARDED_BY(mu_);
+    // Indices into `buffer_` indicating which data belongs to which epoch.
+    // The slice at the front of the deque references data from the earliest
+    // buffered epoch. It is an invariant that all slices reference
+    // non-overlapping sections of `buffer_`.
     std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);
     random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
@@ -393,6 +398,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   const DatasetBase* const input_;
   const int64 buffer_size_;
+  // The number of epochs to run for. Normally this is just 1, but sometimes we
+  // fuse shuffle and repeat together, and make the shuffle dataset op
+  // responsible for repeating as well.
   const int64 count_;
 };
 

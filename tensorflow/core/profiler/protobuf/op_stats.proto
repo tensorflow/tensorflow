@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import "tensorflow/core/profiler/protobuf/op_metrics.proto";
+
+// Operator Statistics.
+message OpStats {
+  // The database for the op metrics collected from the host over the entire
+  // profiling session including incomplete steps.
+  OpMetricsDb host_op_metrics_db = 1;
+  // The database for the op metrics collected from the device over the entire
+  // profiling session including incomplete steps.
+  OpMetricsDb device_op_metrics_db = 2;
+}

@@ -121,6 +121,7 @@ class EagerContext : public core::RefCounted {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,
+               const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                const CustomKernelCreator* custom_kernel_creator,
@@ -168,7 +169,7 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  bool LazilyCopyFunctionRemoteInputs() const;
+  bool LazyCopyFunctionRemoteInputs() const;
 
   bool FindFunctionByName(const string& name);
 
@@ -461,7 +462,7 @@ class EagerContext : public core::RefCounted {
 
   // EagerContext owns the DistributedFunctionLibraryRuntime(
   // EagerClusterFunctionLibraryRuntime) if using EagerService for remote
-  // function execution (lazily_copy_function_remote_inputs_=true).
+  // function execution (lazy_copy_function_remote_inputs_=true).
   OwnedOrUnownedHelper<DistributedFunctionLibraryRuntime> cluster_flr_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
@@ -553,7 +554,12 @@ class EagerContext : public core::RefCounted {
   bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
-  bool lazily_copy_function_remote_inputs_;
+  // For a multi device function, the target device of each input is unknown
+  // until the function is instantiated on the default function device.
+  // If false, eagerly copy all remote inputs to the default function device;
+  // if true, lazily copy remote inputs to their target devices to avoid
+  // redundant copies.
+  bool lazy_copy_function_remote_inputs_ = false;
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
 

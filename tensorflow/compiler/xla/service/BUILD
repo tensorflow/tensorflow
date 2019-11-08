@@ -2300,6 +2300,7 @@ xla_test(
     deps = [
         ":dynamic_padder",
         ":hlo",
+        ":hlo_dce",
         ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
@@ -2309,6 +2310,7 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",

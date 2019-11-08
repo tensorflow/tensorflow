@@ -90,6 +90,11 @@ message CreateContextRequest {
   // The view ID of the context.
   fixed64 context_view_id = 8;
 
+  // For a multi device function, if false, eagerly copy all remote inputs to
+  // the default function device; if true, lazily copy remote inputs to their
+  // target devices after function instantiation to avoid redundant copies.
+  bool lazy_copy_remote_function_inputs = 9;
+
   reserved 5;
 }
 

@@ -29,6 +29,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_android",
     "tf_copts",  # @unused
 )
 load(
@@ -636,7 +637,6 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
-        ":rocm_rocdl_path",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -653,7 +653,7 @@ cc_binary(
         ":threadpool_options",
         ":tstring",
         ":types",
-    ],
+    ] + if_not_android([":rocm_rocdl_path"]),
 )
 
 # --------------------------------------------------------------------------

@@ -36,6 +36,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -462,6 +463,19 @@ class PyFuncTest(PyFuncTestBase):
         pass
 
       self.verifyExceptionHandling(WeirdError, errors.UnknownError)
+
+  def testFunctionReferencesAreKept(self):
+    g = ops.Graph()
+    with g.as_default():
+      c = constant_op.constant([1.], dtypes.float32)
+      @batch_ops.batch_function(1, 10, 100000)
+      def fn(x):
+        # Upon exiting this function, the py_func holds the sole reference
+        # to this lambda, without which it would be garbage collected.
+        return script_ops.py_func(lambda x: x, [x], [dtypes.float32])
+      result = fn(c)
+      gc.collect()
+      self.evaluate(result)
 
 
 class PyFuncAndEagerPyFuncTest(PyFuncTestBase):

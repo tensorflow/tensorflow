@@ -867,6 +867,7 @@ class _MirroredReplicaThread(threading.Thread):
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
     self.record_thread_local_summary_state()
+    self.record_thread_local_eager_context_state()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))  # pylint: disable=protected-access
@@ -892,6 +893,7 @@ class _MirroredReplicaThread(threading.Thread):
       if self.coord.should_stop():
         return
       self.restore_thread_local_summary_state()
+      self.restore_thread_local_eager_context_state()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -920,7 +922,6 @@ class _MirroredReplicaThread(threading.Thread):
     self._summary_recording = summary_state.is_recording
     self._summary_recording_distribution_strategy = (
         summary_state.is_recording_distribution_strategy)
-    # TODO(b/125892694): record other fields in EagerContext.
 
   def restore_thread_local_summary_state(self):
     """Restore thread local summary state from self."""
@@ -931,7 +932,18 @@ class _MirroredReplicaThread(threading.Thread):
     summary_state.is_recording = self._summary_recording
     summary_state.is_recording_distribution_strategy = (
         self._summary_recording_distribution_strategy)
-    # TODO(b/125892694): restore other fields in EagerContext.
+
+  def record_thread_local_eager_context_state(self):
+    ctx = context.context()
+    eager_context_state = ctx._thread_local_data  # pylint: disable=protected-access
+    self._eager_context_op_callbacks = eager_context_state.op_callbacks
+    # TODO(b/125892694): record other fields in EagerContext.
+
+  def restore_thread_local_eager_context_state(self):
+    ctx = context.context()
+    eager_context_state = ctx._thread_local_data  # pylint: disable=protected-access
+    eager_context_state.op_callbacks = self._eager_context_op_callbacks
+    # TODO(b/125892694): record other fields in EagerContext.
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):

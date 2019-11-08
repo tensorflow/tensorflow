@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_allocator.h"
+#include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -60,19 +61,26 @@ class MicroInterpreter {
 
   TfLiteTensor* input(size_t index);
   size_t inputs_size() const { return subgraph_->inputs()->Length(); }
+  const flatbuffers::Vector<int32_t>* inputs() { return subgraph_->inputs(); }
 
   TfLiteTensor* output(size_t index);
   size_t outputs_size() const { return subgraph_->outputs()->Length(); }
+  const flatbuffers::Vector<int32_t>* outputs() { return subgraph_->outputs(); }
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
+
+  size_t operators_size() const { return operators_->size(); }
+  struct pairTfLiteNodeAndRegistration node_and_registration(int node_index);
 
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
 
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
+
+  NodeAndRegistration* node_and_registrations_;
 
   const Model* model_;
   const OpResolver& op_resolver_;

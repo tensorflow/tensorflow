@@ -32,6 +32,7 @@ from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
@@ -288,22 +289,24 @@ def _internal_py_func(func,
   # i.e., when the current graph is destroyed, we remove its py funcs.
   graph = ops.get_default_graph()
 
-  # pylint: disable=protected-access
-  while isinstance(graph, function._FuncGraph):
-    # If the py_func was declared inside a _FuncGraph, its lifetime should be
-    # bound to that of the outer graph instead.
-    graph = graph._outer_graph
+  while True:
+    current_graph = graph
+    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
+    elif isinstance(graph, func_graph.FuncGraph):
+      graph = graph.outer_graph
+    if graph is current_graph:
+      break
 
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
   if not hasattr(graph, "_py_funcs_used_in_graph"):
-    graph._py_funcs_used_in_graph = []
+    graph._py_funcs_used_in_graph = []  # pylint: disable=protected-access
 
   # Store a reference to the function in the graph to ensure it stays alive
   # as long as the graph lives. When the graph is destroyed, the function
   # is left to the garbage collector for destruction as well.
-  graph._py_funcs_used_in_graph.append(func)
-  # pylint: enable=protected-access
+  graph._py_funcs_used_in_graph.append(func)  # pylint: disable=protected-access
 
   if eager:
     result = gen_script_ops.eager_py_func(

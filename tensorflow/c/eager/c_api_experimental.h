@@ -336,6 +336,10 @@ TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
 TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
     TFE_Context*);
 
+// Sets whether to copy the remote inputs of a function lazily.
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
+    TFE_ContextOptions*, bool lazy_copy);
+
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
 

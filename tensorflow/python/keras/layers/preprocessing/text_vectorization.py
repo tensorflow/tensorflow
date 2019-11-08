@@ -52,6 +52,11 @@ INT = "int"
 BINARY = "binary"
 COUNT = "count"
 
+# This is an explicit regex of all the tokens that will be stripped if
+# LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
+# stripping, a Callable should be passed into the 'standardize' arg.
+DEFAULT_STRIP_REGEX = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
+
 # The string tokens in the extracted vocabulary
 _VOCAB_NAME = "vocab"
 # The inverse-document-frequency weights
@@ -140,6 +145,46 @@ class TextVectorization(CombinerPreprocessingLayer):
       the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
       vocabulary size. Defaults to True.
+
+  Example:
+  This example instantiates a TextVectorization layer that lowercases text,
+  splits on whitespace, strips punctuation, and outputs integer vocab indices.
+  ```
+  max_features = 5000  # Maximum vocab size.
+  max_len = 40  # Sequence length to pad the outputs to.
+
+  # Create the layer.
+  vectorize_layer = text_vectorization.TextVectorization(
+    max_tokens=max_features,
+    output_mode='int',
+    output_sequence_length=max_len)
+
+  # Now that the vocab layer has been created, call `adapt` on the text-only
+  # dataset to create the vocabulary. You don't have to batch, but for large
+  # datasets this means we're not keeping spare copies of the dataset in memory.
+  vectorize_layer.adapt(text_dataset.batch(64))
+
+  # Create the model that uses the vectorize text layer
+  model = tf.keras.models.Sequential()
+
+  # Start by creating an explicit input layer. It needs to have a shape of (1,)
+  # (because we need to guarantee that there is exactly one string input per
+  # batch), and the dtype needs to be 'string'.
+  model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
+
+  # The first layer in our model is the vectorization layer. After this layer,
+  # we have a tensor of shape (batch_size, max_len) containing vocab indices.
+  model.add(vectorize_layer)
+
+  # Next, we add a layer to map those vocab indices into a space of
+  # dimensionality 'embedding_dims'. Note that we're using max_features+1 here,
+  # since there's an OOV token that gets added to the vocabulary in
+  # vectorize_layer.
+  model.add(tf.keras.layers.Embedding(max_features+1, embedding_dims))
+
+  # At this point, you have embedded float data representing your tokens, and
+  # can add whatever other layers you need to create your model.
+  ```
   """
   # TODO(momernick): Add an examples section to the docstring.
 
@@ -213,11 +258,6 @@ class TextVectorization(CombinerPreprocessingLayer):
     # token) so we don't account for it here.
     self._max_vocab_size = max_tokens - 1 if max_tokens is not None else None
 
-    # This is an explicit regex of all the tokens that will be stripped if
-    # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
-    # stripping, a Callable should be passed into the 'standardize' arg.
-    self._strip_regex = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
-
     self._standardize = standardize
     self._split = split
     self._ngrams_arg = ngrams
@@ -241,6 +281,11 @@ class TextVectorization(CombinerPreprocessingLayer):
         value_dtype=dtypes.int64,
         default_value=self._oov_value,
         name=(self._name + "_index_table"))
+
+    def fail(_):
+      raise NotImplementedError(
+          "Saving is not yet supported for TextVectorization layers.")
+    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
 
     self._add_trackable(self._table, trainable=False)
 
@@ -266,7 +311,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     return (keys.numpy(), values.numpy())
 
   def _get_table_size(self):
-    return self._table.size()
+    return self._table.size().numpy()
 
   def _clear_table(self):
     keys, _ = self._table.export()
@@ -333,9 +378,18 @@ class TextVectorization(CombinerPreprocessingLayer):
     # on an implicit call to `build` in the base layer's `adapt`, since
     # preprocessing changes the input shape.
     if isinstance(data, np.ndarray):
+      if data.ndim == 1:
+        data = np.expand_dims(data, axis=-1)
       self.build(data.shape)
       preprocessed_inputs = self._to_numpy(self._preprocess(data))
     elif isinstance(data, dataset_ops.DatasetV2):
+      # TODO(momernick): Replace this with a more V2-friendly API.
+      shape = dataset_ops.get_legacy_output_shapes(data)
+      if not isinstance(shape, tensor_shape.TensorShape):
+        raise ValueError("The dataset passed to 'adapt' must contain a single "
+                         "tensor value.")
+      if shape.rank == 1:
+        data = data.map(lambda tensor: array_ops.expand_dims(tensor, -1))
       self.build(dataset_ops.get_legacy_output_shapes(data))
       preprocessed_inputs = data.map(self._preprocess)
     else:
@@ -479,6 +533,7 @@ class TextVectorization(CombinerPreprocessingLayer):
           "dimension of the input array must be 1, got shape "
           "{}".format(input_shape))
 
+    self._final_vocab_size = self._get_table_size()
     super(TextVectorization, self).build(input_shape)
 
   def _set_state_variables(self, updates):
@@ -493,7 +548,8 @@ class TextVectorization(CombinerPreprocessingLayer):
   def _preprocess(self, inputs):
     if self._standardize is LOWER_AND_STRIP_PUNCTUATION:
       lowercase_inputs = gen_string_ops.string_lower(inputs)
-      inputs = string_ops.regex_replace(lowercase_inputs, self._strip_regex, "")
+      inputs = string_ops.regex_replace(lowercase_inputs, DEFAULT_STRIP_REGEX,
+                                        "")
     elif callable(self._standardize):
       inputs = self._standardize(inputs)
     elif self._standardize is not None:
@@ -556,33 +612,41 @@ class TextVectorization(CombinerPreprocessingLayer):
         dense_data = indexed_data
 
       if self._output_sequence_length is None:
+        dense_data.set_shape(tensor_shape.TensorShape((None, None)))
         return dense_data
       else:
         sequence_len = K.shape(dense_data)[1]
         pad_amt = self._output_sequence_length - sequence_len
         pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
         slice_fn = lambda: dense_data[:, :self._output_sequence_length]
-        return control_flow_ops.cond(
+        output_tensor = control_flow_ops.cond(
             sequence_len < self._output_sequence_length,
             true_fn=pad_fn,
             false_fn=slice_fn)
+        output_tensor.set_shape(
+            tensor_shape.TensorShape((None, self._output_sequence_length)))
+        return output_tensor
 
-    out_depth = self._max_tokens if self._pad_to_max else math_ops.cast(
-        (self._get_table_size() + self._reserved_values), dtypes.int32)
+    out_depth = self._max_tokens if self._pad_to_max else (
+        self._final_vocab_size + self._reserved_values)
 
     if self._output_mode == BINARY:
       bool_one_hot_data = array_ops.one_hot(
           indexed_data, depth=out_depth, on_value=True, off_value=False)
       reduced_bool_data = math_ops.reduce_any(bool_one_hot_data, axis=1)
       binary_data = math_ops.cast(reduced_bool_data, dtypes.int64)
+      binary_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
       return binary_data
 
     one_hot_data = array_ops.one_hot(indexed_data, depth=out_depth)
     counts = math_ops.reduce_sum(one_hot_data, axis=1)
     if self._output_mode == COUNT:
-      return math_ops.cast(counts, dtypes.int64)
+      count_data = math_ops.cast(counts, dtypes.int64)
+      count_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
+      return count_data
 
     tf_idf_data = math_ops.multiply(counts, self._tf_idf_weights)
+    tf_idf_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
     if self._output_mode == TFIDF:
       return tf_idf_data
 

@@ -775,9 +775,11 @@ cuda_py_test(
         ":def_function",
         ":test",
         ":remote",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
+    shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

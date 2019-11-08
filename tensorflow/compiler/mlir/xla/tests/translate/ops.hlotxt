@@ -53,6 +53,17 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %and.3 = pred[4] and(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:   func @test_atan2
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_atan2 (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
+  %Arg_0.1 = s32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+
+  // CHECK:  [[VAL_2:%.*]] = xla_hlo.atan2 [[VAL_0]], [[VAL_1]]
+  // CHECK:  return [[VAL_2]] : tensor<4xi32>
+  ROOT %atan2 = s32[4] atan2(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+}
+
 // CHECK-LABEL: func @test_broadcast_in_dim
 %test_broadcast_in_dim {
   %Arg_0.1 = f32[1, 2] parameter(0)
@@ -631,4 +642,37 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  [[VAL_2:%.*]] = xla_hlo.xor [[VAL_0]], [[VAL_1]]
   // CHECK:  return [[VAL_2]] : tensor<4xi1>
   ROOT %xor.3 = pred[4] xor(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:   func @test_shiftleft
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_shiftleft (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
+  %Arg_0.1 = s32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+
+  // CHECK:  [[VAL_2:%.*]] = xla_hlo.shift_left [[VAL_0]], [[VAL_1]]
+  // CHECK:  return [[VAL_2]] : tensor<4xi32>
+  ROOT %shiftleft = s32[4] shift-left(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:   func @test_shiftright_arithmetic
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_shiftright_arithmetic (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
+  %Arg_0.1 = s32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+
+  // CHECK:  [[VAL_2:%.*]] = xla_hlo.shift_right_arithmetic [[VAL_0]], [[VAL_1]]
+  // CHECK:  return [[VAL_2]] : tensor<4xi32>
+  ROOT %shiftright.arithmetic = s32[4] shift-right-arithmetic(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:   func @test_shiftright_logical
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_shiftright_logical (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
+  %Arg_0.1 = s32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+
+  // CHECK:  [[VAL_2:%.*]] = xla_hlo.shift_right_logical [[VAL_0]], [[VAL_1]]
+  // CHECK:  return [[VAL_2]] : tensor<4xi32>
+  ROOT %shiftright.logical = s32[4] shift-right-logical(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
