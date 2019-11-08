@@ -396,10 +396,10 @@ def any_(iterable):
 # as tf.data's filter+take is done in pipeline so it will stop
 # as soon as `take(1)` returns.
 def _tf_dataset_any(iterable):
-  return iterable.filter(
-      lambda x: x).take(1).reduce(
-          constant_op.constant(False, dtype=dtypes.bool),
-          lambda x, y: math_ops.logical_or(x, y))
+  ds = iterable.filter(lambda x: x)
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(False, dtype=dtypes.bool), lambda _, y: y)
+  return ds
 
 
 def _py_any(iterable):
