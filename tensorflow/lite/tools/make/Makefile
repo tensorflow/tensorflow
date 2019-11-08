@@ -179,28 +179,6 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
-# Enable ArmNN delegate
-BUILD_WITH_ARMNN ?= false
-ifeq ($(BUILD_WITH_ARMNN),true)
-    # Extend flags
-    CXXFLAGS += --std=c++14
-
-    # Add includes
-    INCLUDES += \
-    -I$(ARMNN_DIR) \
-    -I$(ARMNN_DIR)/src \
-    -I$(ARMNN_DIR)/src/armnn \
-    -I$(ARMNN_DIR)/src/backends \
-    -I$(ARMNN_DIR)/include
-
-    # Add core files
-    CORE_CC_ALL_SRCS += $(wildcard tensorflow/lite/delegates/armnn/*.cc)
-
-    # Add libs
-    LIBS += -L$(ARMNN_BUILD_PATH)
-    LIBS += -larmnn
-endif
-
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
@@ -239,6 +217,11 @@ LABEL_IMAGE_SRCS := $(filter-out \
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+
+# # These delegate-specific makefiles should modify options like
+# # CXXFLAGS or LIBS and include files to the tensorflow sources like
+# # TF_LITE_CC_SRCS to enable a given delegate.
+include $(wildcard $(MAKEFILE_DIR)/delegates/*_makefile.inc)
 
 ALL_SRCS := \
 	$(MINIMAL_SRCS) \
