@@ -162,7 +162,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   xla::HloProto hlo_proto;
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
                                                /*use_tuple_args=*/true,
-                                               /*always_return_tuple=*/true));
+                                               /*always_return_tuple=*/false));
   *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
   return Status::OK();
 }
