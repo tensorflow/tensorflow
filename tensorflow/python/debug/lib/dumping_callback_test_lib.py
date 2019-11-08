@@ -23,6 +23,7 @@ import shutil
 import socket
 import tempfile
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import dumping_callback
@@ -137,8 +138,12 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         self.assertIn(stack_frame_id, stack_frame_by_id)
     return context_ids, op_types, op_name_to_op_type
 
-  def _readAndCheckExecutionFile(self):
+  def _readAndCheckExecutionFile(self, dump_root=None):
     """Read and verify the content of the .execution debug-event file.
+
+    Args:
+      dump_root: Optional argument that can be used to override the default
+        dump root to read the data from.
 
     Returns:
       executed_op_types: Types of ops that are created, as a `list` of `str`.
@@ -153,7 +158,8 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         execution event. Each item of the inner `list` corresponds to one
         output tensor slot of the executed op or Function.
     """
-    reader = debug_events_reader.DebugEventsReader(self.dump_root)
+    dump_root = self.dump_root if dump_root is None else dump_root
+    reader = debug_events_reader.DebugEventsReader(dump_root)
     execution_iter = reader.execution_iterator()
     prev_wall_time = 1
     executed_op_types = []
@@ -213,7 +219,10 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       self.assertIn(graph_execution_trace.tfdbg_context_id, context_ids)
       output_slots.append(graph_execution_trace.output_slot)
       dtype = dtypes.DType(graph_execution_trace.tensor_proto.dtype)
-      if dtype.is_numpy_compatible:  # pylint:disable=protected-access
+      if (dtype.is_numpy_compatible and
+          dtype._type_enum != types_pb2.DT_STRING):  # pylint:disable=protected-access
+        # TODO(cais): Figure out how to properly convert string tensor proto to
+        # numpy representation.
         tensor_values.append(
             tensor_util.MakeNdarray(graph_execution_trace.tensor_proto))
       else:
