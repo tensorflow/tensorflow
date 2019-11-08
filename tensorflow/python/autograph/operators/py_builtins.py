@@ -384,8 +384,26 @@ def _py_filter(function, iterable):
   return filter(function, iterable)
 
 
+def any_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_any(iterable)
+  return _py_any(iterable)
+
+
+# any() operation is essentially a "if first True element exist".
+# For that it could be translated to `filter(True)` to filter out
+# only `True` element, and then `take(1)`. This works in tf.data
+# as tf.data's filter+take is done in pipeline so it will stop
+# as soon as `take(1)` returns.
+def _tf_dataset_any(iterable):
+    return iterable.filter(lambda x: x).take(1).reduce(constant_op.constant(False, dtype=dtypes.bool), lambda x, y: math_ops.logical_or(x, y))
+
+
+def _py_any(iterable):
+  return any(iterable)
+
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
-                      filter)
+                      filter, any)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -403,4 +421,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'zip': zip_,
     'map': map_,
     'filter': filter_,
+    'any': any_,
 }
