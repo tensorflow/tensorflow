@@ -110,6 +110,14 @@ void createTPUBridge(OpPassManager& pm);
 
 }  // namespace TFTPU
 
+namespace tf_saved_model {
+
+// Creates a pass that uses tf_saved_model dialect linkage information
+// to delete unused func's.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
+
+}  // namespace tf_saved_model
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_

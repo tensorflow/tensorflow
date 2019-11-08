@@ -234,5 +234,11 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
   return ret;
 }
 
+bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+
+bool HasTfSavedModelSemantics(ModuleOp module) {
+  return module.getAttr("tf_saved_model.semantics") != nullptr;
+}
+
 }  // namespace tf_saved_model
 }  // namespace mlir
