@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests Keras multi worker callbacks."""
+"""Tests for Keras callbacks in multi-worker training with TF1."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +24,6 @@ import threading
 
 from absl.testing import parameterized
 
-# pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
@@ -115,6 +114,9 @@ def generate_callback_test_function(custom_callable):
 
 class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                                    parameterized.TestCase):
+  """TODO(rchao): Migrate all tests in this class to
+  `multi_worker_callback_tf2_test`.
+  """
 
   # The callables of the actual testing content to be run go below.
   @staticmethod
