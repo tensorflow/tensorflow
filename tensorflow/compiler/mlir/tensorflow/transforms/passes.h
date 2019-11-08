@@ -126,6 +126,9 @@ namespace tf_saved_model {
 // to delete unused func's.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
 
+// Creates a pass that optimizes tf_saved_model.global_tensor ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
+
 }  // namespace tf_saved_model
 
 }  // namespace mlir
