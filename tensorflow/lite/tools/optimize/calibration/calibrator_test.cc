@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 
 namespace {
-tensorflow::string* g_test_model_file = nullptr;
+tensorflow::string* g_test_model_dir = nullptr;
 }  // namespace
 
 namespace tflite {
@@ -34,15 +34,13 @@ namespace optimize {
 namespace calibration {
 namespace {
 
-std::unique_ptr<FlatBufferModel> ReadModel() {
-  if (g_test_model_file) {
-    return FlatBufferModel::BuildFromFile(g_test_model_file->c_str());
-  }
-  return nullptr;
+std::unique_ptr<FlatBufferModel> ReadModel(const string& model_name) {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model_name);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 TEST(CalibratorTest, CalibrationStatsAreCollected) {
-  auto model = ReadModel();
+  auto model = ReadModel("multi_add.bin");
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   std::unique_ptr<CalibrationReader> reader;
@@ -120,7 +118,7 @@ TEST(CalibratorTest, CalibrationStatsAreCollected) {
 }
 
 TEST(CalibratorTest, MultipleInvokes) {
-  auto model = ReadModel();
+  auto model = ReadModel("multi_add.bin");
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   std::unique_ptr<CalibrationReader> reader;
@@ -192,7 +190,7 @@ TEST(CalibratorTest, MultipleInvokes) {
 }
 
 TEST(CalibratorTest, UpdateMinMax) {
-  auto flatbuffer_model = ReadModel();
+  auto flatbuffer_model = ReadModel("multi_add.bin");
   ASSERT_TRUE(flatbuffer_model);
   std::unique_ptr<Interpreter> interpreter;
   std::unique_ptr<CalibrationReader> reader;
@@ -276,6 +274,75 @@ TEST(CalibratorTest, UpdateMinMax) {
   }
 }
 
+TEST(CalibratorTest, LSTM) {
+  auto flatbuffer_model = ReadModel("lstm.bin");
+  ASSERT_TRUE(flatbuffer_model);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status = BuildLoggingInterpreter(*flatbuffer_model,
+                                        ops::builtin::BuiltinOpResolver{},
+                                        &interpreter, &reader);
+  EXPECT_EQ(kTfLiteOk, status);
+
+  auto readonly_model = flatbuffer_model->GetModel();
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+
+  ASSERT_TRUE(interpreter);
+  ASSERT_TRUE(reader);
+  status = interpreter->AllocateTensors();
+
+  EXPECT_EQ(kTfLiteOk, status);
+  const std::vector<float> lstm_input = {
+      0.3, 0.2, 0.9, 0.8, 0.1,  //
+      0.1, 0.5, 0.2, 0.4, 0.2,  //
+      0.6, 0.9, 0.2, 0.5, 0.7,  //
+  };
+  int input_tensor_idx = interpreter->inputs()[0];
+  TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+  for (size_t j = 0; j < lstm_input.size(); j++) {
+    tensor->data.f[j] = lstm_input[j];
+  }
+
+  // Invoke with update == true.
+  status = interpreter->Invoke();
+  ASSERT_EQ(kTfLiteOk, status);
+
+  std::unordered_map<int, CalibrationReader::CalibrationStats> stats;
+  status = reader->GetTensorStatsAsMap(&stats);
+  EXPECT_EQ(kTfLiteOk, status);
+
+  // Check the results.
+  const float eps = 1e-6f;
+  const std::unordered_map<int, CalibrationReader::CalibrationStats>
+      expected_calibration_result = {
+          // Input.
+          {0, {0.200000, 0.300000}},
+          // State.
+          {18, {0.000000, 0.468415}},
+          // State.
+          {19, {0.000000, 0.424350}},
+          // Output.
+          {24, {0.265968, 0.468415}},
+          // Intemediate_0.
+          {25, {0.080045, 0.170588}},
+          // Intemediate_1.
+          {26, {0.080045, 0.170588}},
+          // Intemediate_2.
+          {27, {0.080045, 0.170588}},
+          // Intemediate_3.
+          {28, {0.080045, 0.170588}},
+          // Intemediate_4.
+          {29, {0.000000, 0.270944}},
+      };
+  EXPECT_EQ(expected_calibration_result.size(), stats.size());
+  for (const auto& e : stats) {
+    auto expected_result = expected_calibration_result.at(e.first);
+    EXPECT_NEAR(e.second.min, expected_result.min, eps);
+    EXPECT_NEAR(e.second.max, expected_result.max, eps);
+  }
+}
+
 }  // namespace
 }  // namespace calibration
 }  // namespace optimize
@@ -293,7 +360,8 @@ int main(int argc, char** argv) {
     std::cerr << "Required test_model_file\n";
     std::abort();
   }
-  g_test_model_file = new tensorflow::string(model_file);
+  g_test_model_dir =
+      new tensorflow::string(tensorflow::io::Dirname(model_file));
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }
