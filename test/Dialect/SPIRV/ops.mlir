@@ -203,6 +203,30 @@ func @cast3(%arg0 : i64) {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.BitCount
+//===----------------------------------------------------------------------===//
+
+func @bitcount(%arg: i32) -> i32 {
+  // CHECK: spv.BitCount {{%.*}} : i32
+  %0 = spv.BitCount %arg : i32
+  spv.ReturnValue %0 : i32
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.BitReverse
+//===----------------------------------------------------------------------===//
+
+func @bitreverse(%arg: i32) -> i32 {
+  // CHECK: spv.BitReverse {{%.*}} : i32
+  %0 = spv.BitReverse %arg : i32
+  spv.ReturnValue %0 : i32
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.CompositeExtractOp
 //===----------------------------------------------------------------------===//
 
@@ -858,6 +882,18 @@ func @memory_barrier_2() -> () {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.Not
+//===----------------------------------------------------------------------===//
+
+func @not(%arg: i32) -> i32 {
+  // CHECK: spv.Not {{%.*}} : i32
+  %0 = spv.Not %arg : i32
+  spv.ReturnValue %0 : i32
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.SelectOp
 //===----------------------------------------------------------------------===//
 
@@ -957,6 +993,50 @@ func @select_op(%arg1: vector<4xi1>) -> () {
   // expected-error @+1 {{op result type and false value type must be the same}}
   %2 = "spv.Select"(%arg1, %1, %0) : (vector<4xi1>, vector<3xi32>, vector<3xf32>) -> vector<3xi32>
   return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.ShiftLeftLogical
+//===----------------------------------------------------------------------===//
+
+func @shift_left_logical(%arg0: i32, %arg1 : i16) -> i32 {
+  // CHECK: {{%.*}} = spv.ShiftLeftLogical {{%.*}}, {{%.*}} : i32, i16
+  %0 = spv.ShiftLeftLogical %arg0, %arg1: i32, i16
+  spv.ReturnValue %0 : i32
+}
+
+// -----
+
+func @shift_left_logical_invalid_result_type(%arg0: i32, %arg1 : i16) -> i16 {
+  // expected-error @+1 {{expected the same type for the first operand and result, but provided 'i32' and 'i16'}}
+  %0 = "spv.ShiftLeftLogical" (%arg0, %arg1) : (i32, i16) -> (i16)
+  spv.ReturnValue %0 : i16
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.ShiftRightArithmetic
+//===----------------------------------------------------------------------===//
+
+func @shift_right_aritmethic(%arg0: vector<4xi32>, %arg1 : vector<4xi8>) -> vector<4xi32> {
+  // CHECK: {{%.*}} = spv.ShiftRightArithmetic {{%.*}}, {{%.*}} : vector<4xi32>, vector<4xi8>
+  %0 = spv.ShiftRightArithmetic %arg0, %arg1: vector<4xi32>, vector<4xi8>
+  spv.ReturnValue %0 : vector<4xi32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.ShiftRightLogical
+//===----------------------------------------------------------------------===//
+
+func @shift_right_logical(%arg0: vector<2xi32>, %arg1 : vector<2xi8>) -> vector<2xi32> {
+  // CHECK: {{%.*}} = spv.ShiftRightLogical {{%.*}}, {{%.*}} : vector<2xi32>, vector<2xi8>
+  %0 = spv.ShiftRightLogical %arg0, %arg1: vector<2xi32>, vector<2xi8>
+  spv.ReturnValue %0 : vector<2xi32>
 }
 
 // -----
