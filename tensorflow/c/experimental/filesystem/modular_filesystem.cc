@@ -142,8 +142,14 @@ Status ModularFileSystem::CopyFile(const std::string& src,
 }
 
 std::string ModularFileSystem::TranslateName(const std::string& name) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return "Modular filesystem stub not implemented yet";
+  if (ops_->translate_name == nullptr) return FileSystem::TranslateName(name);
+
+  char* p = ops_->translate_name(filesystem_.get(), name.c_str());
+  CHECK(p != nullptr) << "TranslateName(" << name << ") returned nullptr";
+
+  std::string ret(p);
+  free(p);
+  return ret;
 }
 
 void ModularFileSystem::FlushCaches() {

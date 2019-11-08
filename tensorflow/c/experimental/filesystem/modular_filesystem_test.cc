@@ -72,7 +72,7 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   //
   // We trade in one extra initialization for readability.
   ModularFileSystemTest() {
-    const std::string& test_name = tensorflow::str_util::StringReplace(
+    const std::string test_name = tensorflow::str_util::StringReplace(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(), "/",
         "_", /*replace_all=*/true);
     root_dir_ = tensorflow::io::JoinPath(
@@ -94,6 +94,32 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     }
   }
 
+  // Converts path reference to URI reference.
+  //
+  // If URI scheme is empty, URI reference is `path` relative to current test
+  // root directory. Otherwise, we need to add the `<scheme>://` in front of
+  // this path.
+  //
+  // TODO(mihaimaruseac): Note that some filesystem might require a different
+  // approach here, for example they might require the root directory path to
+  // be in a special format, etc. When we get there, we might decide to move
+  // this class to `modular_filesystem_test.h` and extend the instantiation to
+  // also take as argument an implementation for this method/a subclass factory
+  // (see
+  // https://github.com/google/googletest/blob/master/googletest/docs/advanced.md#creating-value-parameterized-abstract-tests)
+  std::string GetURIForPath(StringPiece path) {
+    const std::string translated_name =
+        tensorflow::io::JoinPath(root_dir_, path);
+    if (GetParam().empty()) return translated_name;
+
+    return tensorflow::strings::StrCat(GetParam(), "://", translated_name);
+  }
+
+  // Converts absolute paths to paths relative to root_dir_.
+  StringPiece GetRelativePath(StringPiece absolute_path) {
+    return tensorflow::str_util::StripPrefix(absolute_path, root_dir_);
+  }
+
   // Initializes the randomness used to ensure test isolation.
   static void InitializeTestRNG() {
     std::random_device rd;
@@ -112,7 +138,42 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
 
 int ModularFileSystemTest::rng_val_;
 
-// TODO(mihaimaruseac): Tests will come in next CL.
+TEST_P(ModularFileSystemTest, TestTranslateName) {
+  const std::string generic_path = GetURIForPath("some_path");
+  FileSystem* fs = nullptr;
+  Status s = env_->GetFileSystemForFile(generic_path, &fs);
+  if (fs == nullptr || !s.ok()) GTEST_SKIP();
+
+  // First, test some interesting corner cases concerning empty URIs
+  if (GetParam().empty()) {
+    EXPECT_EQ(fs->TranslateName(""), "");
+    EXPECT_EQ(fs->TranslateName("/"), "/");
+    EXPECT_EQ(fs->TranslateName("//"), "/");
+    // Empty scheme also allows relative paths
+    EXPECT_EQ(fs->TranslateName("a_file"), "a_file");
+    EXPECT_EQ(fs->TranslateName("a_dir/.."), ".");
+  } else {
+    EXPECT_EQ(fs->TranslateName(tensorflow::strings::StrCat(GetParam(), "://")),
+              "/");
+    EXPECT_EQ(
+        fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":///")),
+        "/");
+    EXPECT_EQ(
+        fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":////")),
+        "/");
+  }
+
+  // Now test several paths/URIs
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("a_file"))),
+            "/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("a_dir/a_file"))),
+            "/a_dir/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("./a_file"))),
+            "/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(
+                GetURIForPath("a/convoluted/../path/./to/.//.///a/file"))),
+            "/a/path/to/a/file");
+}
 
 // The URI schemes that need to be tested are provided by the user via flags
 // (or, if none is supplied, all existing schemes are used). As a scheme can

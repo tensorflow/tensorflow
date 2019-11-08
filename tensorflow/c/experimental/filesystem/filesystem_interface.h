@@ -591,7 +591,8 @@ typedef struct TF_FilesystemOps {
   /// implemented by a filesystem registered to handle the `fs://` scheme.
   ///
   /// A new `char*` buffer must be allocated by this method. Core TensorFlow
-  /// manages the lifetime of the buffer after the call.
+  /// manages the lifetime of the buffer after the call. Thus, all callers of
+  /// this method must take ownership of the returned pointer.
   ///
   /// The implementation should clean up paths, including but not limited to,
   /// removing duplicate `/`s, and resolving `..` and `.`.
@@ -602,8 +603,7 @@ typedef struct TF_FilesystemOps {
   /// arguments for all other methods in the filesystem API.
   ///
   /// DEFAULT IMPLEMENTATION: Uses `io::CleanPath` and `io::ParseURI`.
-  const char* (*translate_name)(const TF_Filesystem* filesystem,
-                                const char* uri);
+  char* (*translate_name)(const TF_Filesystem* filesystem, const char* uri);
 
   /// Finds all entries in the directory given by `path`.
   ///
