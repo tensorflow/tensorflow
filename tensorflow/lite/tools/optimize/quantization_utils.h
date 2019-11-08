@@ -129,6 +129,12 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index, ErrorReporter* error_reporter);
 
+// Get effective scale by combining input scale, intermediate scale and factors.
+float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
+                        std::vector<int> input_index,
+                        std::vector<int> intermediate_index,
+                        std::vector<float> factors);
+
 // Quantize activation.
 void QuantizeActivation(TensorT* tensor);
 

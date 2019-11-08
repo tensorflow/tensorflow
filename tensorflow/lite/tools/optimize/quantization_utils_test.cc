@@ -711,6 +711,27 @@ TEST_F(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
+TEST_F(QuantizationUtilsTest, GetEffectiveScale) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto op = absl::make_unique<OperatorT>();
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor->quantization->scale.push_back(3.0);
+  op->inputs.push_back(0);
+
+  // Wire the model.
+  subgraph->operators.push_back(std::move(op));
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+
+  // Call and verify.
+  EXPECT_EQ(GetEffectiveScale(model.get(), model->subgraphs[0].get(), 0, {0},
+                              {}, {5.0}),
+            15.0);
+}
+
 TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
