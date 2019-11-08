@@ -121,7 +121,7 @@ def assert_proper_iterable(values):
         'Expected argument "values" to be iterable.  Found: %s' % type(values))
 
 
-@tf_export('debugging._negative', v1=[])
+@tf_export('debugging.assert_negative', v1=[])
 def assert_negative_v2(x, message=None, summarize=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
 
