@@ -19,3 +19,11 @@ tf_proto_library(
         ":op_metrics_proto",
     ],
 )
+
+# This proto is deprecating and not guarenteed to be compatible across versions.
+# Please don't refer in new project unless you are double confirmed.
+tf_proto_library(
+    name = "tf_stats_proto",
+    srcs = ["tf_stats.proto"],
+    cc_api_version = 2,
+)
