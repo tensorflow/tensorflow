@@ -710,8 +710,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false,
-      device_mgr_.get(), false, rendezvous, GetDefaultCustomKernelCreator());
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
+      /*lazy_copy_function_remote_inputs=*/false, device_mgr_.get(), false,
+      rendezvous, GetDefaultCustomKernelCreator());
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.

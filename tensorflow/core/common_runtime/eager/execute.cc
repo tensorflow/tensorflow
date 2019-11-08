@@ -212,7 +212,7 @@ Status ValidateInputTypeAndPlacement(
                                    " inputs, got ", n_inputs);
   }
   const bool skip_remote_copy =
-      ctx->LazilyCopyFunctionRemoteInputs() && kernel->IsFunction();
+      ctx->LazyCopyFunctionRemoteInputs() && kernel->IsFunction();
   for (int i = 0; i < n_inputs; ++i) {
     TensorHandle* handle = op->Inputs()[i];
     Device* expected_device = kernel->InputDevice(i);
@@ -499,14 +499,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
-    // When LazilyCopyFunctionRemoteInputs is disabled, all inputs need to be on
+    // When LazyCopyFunctionRemoteInputs is disabled, all inputs need to be on
     // local devices, since we execute a remote function through worker service,
     // which doesn't accept remote inputs.
-    // TODO(b/134094971): Make resource_dtypes_and_shapes avaliable without
-    // remote tensor copy.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (!ctx->LazilyCopyFunctionRemoteInputs() && input->IsRemote()) {
+      if (!ctx->LazyCopyFunctionRemoteInputs() && input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, &executor, device == nullptr ? ctx->HostCPU() : device,
@@ -603,7 +601,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                << ". Full node_def=" << ndef.DebugString();
       std::function<int64()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
-      if (ctx->LazilyCopyFunctionRemoteInputs()) {
+      if (ctx->LazyCopyFunctionRemoteInputs()) {
         get_op_id = [ctx]() { return ctx->RemoteMgr()->NextOpId(); };
       }
 #endif  // IS_MOBILE_PLATFORM
@@ -750,7 +748,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
     const bool eagerly_copy_function_remote_inputs =
-        !ctx->LazilyCopyFunctionRemoteInputs() || !op->is_function();
+        !ctx->LazyCopyFunctionRemoteInputs() || !op->is_function();
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = input->device();
@@ -834,12 +832,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     }
   }
 
-  if (ctx->LazilyCopyFunctionRemoteInputs()) {
+  if (ctx->LazyCopyFunctionRemoteInputs()) {
     // Store the data type and shape of a remote resource variable on the
     // corresponding remote TensorHandle (output of 'VarHandleOp').
     // If the variable is an input of a remote function, the function may need
     // the type and shape during function instantiation. When
-    // LazilyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
+    // LazyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
     // handle (contains the type and shape) of the variable to the default
     // function device. Instead, we store the type and shape on eager master
     // and sent them to the default function device along with the
