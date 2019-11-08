@@ -218,6 +218,7 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
