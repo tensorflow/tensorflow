@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import errors
 from tensorflow.python.pywrap_tensorflow import TransformGraphWithStringInputs
 from tensorflow.python.util import compat
 
