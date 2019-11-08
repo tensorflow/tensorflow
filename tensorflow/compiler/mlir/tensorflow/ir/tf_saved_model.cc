@@ -151,6 +151,10 @@ static LogicalResult VerifySavedModelModule(
   }
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(module);
+  if (!symbol_uses.hasValue()) {
+    return module.emitError() << "modules with 'tf_saved_model.semantics' must "
+                                 "have analyzable symbol uses";
+  }
   for (auto symbol_use : *symbol_uses) {
     auto func =
         symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());

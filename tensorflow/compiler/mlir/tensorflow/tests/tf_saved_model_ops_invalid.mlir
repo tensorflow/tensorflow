@@ -192,3 +192,16 @@ module attributes {tf_saved_model.semantics} {
 
 }
 
+// -----
+
+// expected-error@+1 {{modules with 'tf_saved_model.semantics' must have analyzable symbol uses}}
+module attributes {tf_saved_model.semantics} {
+
+  func @root() attributes {tf_saved_model.exported_names = ["root"]} {
+    "some_unregistered_dialect.maybe_a_symbol_table"() ({
+      return
+    }) : () -> ()
+    return
+  }
+
+}
