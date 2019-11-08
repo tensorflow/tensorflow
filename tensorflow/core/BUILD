@@ -367,6 +367,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cudnn_scratch_allocator",
+    srcs = ["util/cudnn_scratch_allocator.cc"],
+    hdrs = ["util/cudnn_scratch_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/stream_executor:scratch_allocator",
+    ],
+)
+
 filegroup(
     name = "util_port_hdrs",
     srcs = [
@@ -2885,6 +2895,7 @@ tf_cuda_library(
             "util/version_info.cc",
             "util/env_var.cc",
             "util/port.cc",
+            "util/cudnn_scratch_allocator.cc",
         ],
     ) + select({
         "//tensorflow:windows": [],

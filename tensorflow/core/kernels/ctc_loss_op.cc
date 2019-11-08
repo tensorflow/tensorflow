@@ -32,6 +32,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/core/util/cudnn_scratch_allocator.h"
 #endif // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -41,14 +42,11 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 using GPUDevice = Eigen::GpuDevice;
 
 namespace {
-using se::DeviceMemory;
 using se::Stream;
 using se::StreamExecutor;
-using se::ScratchAllocator;
 using se::dnn::CtcLossDescriptor;
 using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
-using se::port::StatusOr;
 
 template<typename T>
 void DoHistogram(OpKernelContext* ctx, const Tensor* labels_indices,
@@ -56,56 +54,11 @@ void DoHistogram(OpKernelContext* ctx, const Tensor* labels_indices,
                  std::vector<int> *labels_lengths) {
   const T* h_in = labels_indices->flat<T>().data();
   for(int i = 0; i < num_indices; i++) {
-    T key = h_in[i * 2];
+    const T& key = h_in[i * 2];
     (*labels_lengths)[key]++;
   }
 }
 
-// A helper to allocate temporary scratch memory for cudnnCTCLoss ops. It
-// takes the ownership of the underlying memory. The expectation is that the
-// memory should be alive for the span of the cudnnCTCLoss itself.
-template <typename T>
-class CudnnCtcLossAllocatorInTemp : public ScratchAllocator {
- public:
-  ~CudnnCtcLossAllocatorInTemp() override = default;
-
-  explicit CudnnCtcLossAllocatorInTemp(OpKernelContext* context)
-      : context_(context) {}
-
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
-  }
-
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
-    Tensor temporary_memory;
-    const DataType tf_data_type = DataTypeToEnum<T>::v();
-    int64 allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
-    Status allocation_status(context_->allocate_temp(
-        tf_data_type, TensorShape({allocate_count}), &temporary_memory));
-    if (!allocation_status.ok()) {
-      return allocation_status;
-    }
-    // Hold the reference of the allocated tensors until the end of the
-    // allocator.
-    allocated_tensors_.push_back(temporary_memory);
-    total_byte_size_ += byte_size;
-    return DeviceMemory<uint8>::MakeFromByteSize(
-        temporary_memory.template flat<T>().data(),
-        temporary_memory.template flat<T>().size() * sizeof(T));
-  }
-
-  int64 TotalByteSize() const { return total_byte_size_; }
-
-  Tensor get_allocated_tensor(int index) const {
-    return allocated_tensors_[index];
-  }
-
- private:
-  int64 total_byte_size_ = 0;
-  OpKernelContext* context_;  // not owned
-  std::vector<Tensor> allocated_tensors_;
-};
 } // end namespace
 #endif // GOOGLE_CUDA
 
@@ -389,7 +342,7 @@ class CTCLossOpGPU : public OpKernel {
     auto costs_data = StreamExecutorUtil::AsDeviceMemory<float>(*loss);
     auto grads_data = StreamExecutorUtil::AsDeviceMemory<float>(*gradient);
 
-    CudnnCtcLossAllocatorInTemp<uint8> workspace_allocator(ctx);
+    CudnnAllocatorInTemp workspace_allocator(ctx);
 
     Stream* stream = ctx->op_device_context()->stream();
     bool cudnn_launch_status =

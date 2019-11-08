@@ -2298,6 +2298,7 @@ tf_kernel_library(
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
     ] + if_cuda([
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core:cudnn_scratch_allocator",
     ]),
 )
 
