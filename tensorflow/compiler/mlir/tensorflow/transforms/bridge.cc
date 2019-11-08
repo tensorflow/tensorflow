@@ -33,6 +33,8 @@ void createTPUBridge(OpPassManager &pm) {
 
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPURewritePass());
+  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
+  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
 }
 

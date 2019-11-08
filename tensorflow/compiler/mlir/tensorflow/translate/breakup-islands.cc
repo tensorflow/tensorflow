@@ -109,6 +109,10 @@ void BreakUpIslands::BreakUpIsland(tf_executor::IslandOp op) {
   }
 }
 
+std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass() {
+  return std::make_unique<BreakUpIslands>();
+}
+
 }  // namespace mlir
 
 static mlir::PassRegistration<mlir::BreakUpIslands> pass(

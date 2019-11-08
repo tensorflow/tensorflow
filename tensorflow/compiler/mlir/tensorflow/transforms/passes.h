@@ -21,6 +21,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 
 namespace mlir {
+
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op.
+std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass();
+
+// Creates a pass that converts mlir functions consisting of mlir ops into a
+// tf_executor dialect as a single island.
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateFunctionalToExecutorDialectConversionPass();
+
 namespace TF {
 // Transforms functional control flow operations in the standard TensorFlow
 // dialect to MLIR Control Flow Graph (CFG) form.
