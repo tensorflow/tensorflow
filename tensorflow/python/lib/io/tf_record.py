@@ -62,7 +62,7 @@ class TFRecordOptions(object):
     # pylint: disable=line-too-long
     """Creates a `TFRecordOptions` instance.
 
-    Options only effect TFRecordWriter when compression_type is not `None`.
+    Options only affect TFRecordWriter when compression_type is not `None`.
     Documentation, details, and defaults can be found in
     [`zlib_compression_options.h`](https://www.tensorflow.org/code/tensorflow/core/lib/io/zlib_compression_options.h)
     and in the [zlib manual](http://www.zlib.net/manual.html).
