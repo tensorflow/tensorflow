@@ -31,8 +31,8 @@ using stream_executor::port::Status;
 using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
+static llvm::cl::opt<bool> emit_use_tuple_arg_for_entry_function(
+    "emit-use-tuple-args-for-entry-function",
     llvm::cl::desc("Emit HLO modules using tuples as args"),
     llvm::cl::init(false));
 
@@ -113,7 +113,8 @@ static mlir::LogicalResult MlirHloToHloTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg_for_entry_function,
+      emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -138,7 +139,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg_for_entry_function,
+      emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
