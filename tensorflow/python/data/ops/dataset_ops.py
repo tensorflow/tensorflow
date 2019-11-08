@@ -1441,19 +1441,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     [[ 6  7 -1]
      [ 8 -1 -1]]
     >>> # Components of nested elements can be padded independently.
-    >>> elements = [{'v1': [1, 2, 3], 'v2': [10]},
-    ...             {'v1': [4, 5], 'v2': [11, 12]}]
+    >>> elements = [([1, 2, 3], [10]),
+    ...             ([4, 5], [11, 12])]
     >>> dataset = tf.data.Dataset.from_generator(
-    ...     lambda: iter(elements), {'v1': tf.int32, 'v2': tf.int32})
-    >>> # Pad 'val1' to length 4, and 'val2' to the smallest size that fits.
+    ...     lambda: iter(elements), (tf.int32, tf.int32))
+    >>> # Pad the first component of the tuple to length 4, and the second
+    >>> # component to the smallest size that fits.
     >>> dataset = dataset.padded_batch(2,
-    ...     padded_shapes={'v1': [4], 'v2': [None]},
-    ...     padding_values={'v1': -1, 'v2': 100})
+    ...     padded_shapes=([4], [None]),
+    ...     padding_values=(-1, 100))
     >>> list(dataset.as_numpy_iterator())
-    [{'v1': array([[ 1,  2,  3, -1],
-           [ 4,  5, -1, -1]], dtype=int32), 'v2': array([[ 10, 100],
-           [ 11,  12]], dtype=int32)}]
-
+    [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
+      array([[ 10, 100], [ 11,  12]], dtype=int32))]
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.SparseTensor`.
