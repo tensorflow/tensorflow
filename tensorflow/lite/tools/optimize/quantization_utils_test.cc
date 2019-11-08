@@ -743,6 +743,12 @@ TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
+TEST_F(QuantizationUtilsTest, ExtendToPowerOfTwo) {
+  EXPECT_EQ(GetPowerOfTwoScale(-1.0, 1.0), 0);
+  EXPECT_EQ(GetPowerOfTwoScale(-10.0, 10.0), 4);
+  EXPECT_EQ(GetPowerOfTwoScale(3.0, 10.0), 4);
+}
+
 }  // namespace
 }  // namespace utils
 }  // namespace optimize

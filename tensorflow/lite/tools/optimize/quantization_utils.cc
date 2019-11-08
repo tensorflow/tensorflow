@@ -626,6 +626,17 @@ void QuantizeActivation(TensorT* tensor) {
   tensor->type = TensorType_INT8;
 }
 
+int GetPowerOfTwoScale(float min, float max) {
+  const float range = std::max(std::abs(min), std::abs(max));
+  int pot = 0;
+  for (int i = 0; i < 10; i++) {
+    if (std::pow(2, pot) < range) {
+      pot++;
+    }
+  }
+  return pot;
+}
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

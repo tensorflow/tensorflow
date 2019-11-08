@@ -132,6 +132,9 @@ TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
 // Quantize activation.
 void QuantizeActivation(TensorT* tensor);
 
+// Get the power of two scale for min and max for symmetric quantization case.
+int GetPowerOfTwoScale(float min, float max);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
