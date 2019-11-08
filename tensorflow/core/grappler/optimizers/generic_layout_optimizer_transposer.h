@@ -525,13 +525,14 @@ class UnaryGradTransposer : public LayoutAgnosticOpTransposer {
 // Permutes elements according to permutation and replaces the original values.
 // Permutation and values must have same size.
 template <typename T>
-Status PermuteSingle(absl::Span<const int> permutation, T* values) {
+Status PermuteSingle(absl::string_view location,
+                     absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size()) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
-                               permutation.size(), "."));
+                               permutation.size(), " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());
@@ -545,13 +546,14 @@ Status PermuteSingle(absl::Span<const int> permutation, T* values) {
 // Permutes two elements at a time according to permutation and replaces the
 // original values. Values must be twice the size of permutation.
 template <typename T>
-Status PermuteDouble(absl::Span<const int> permutation, T* values) {
+Status PermuteDouble(absl::string_view location,
+                     absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size() * 2) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
-                               permutation.size(), "."));
+                               permutation.size(), " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());

@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/trmul.h"
 
+#include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/block_map.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
+#include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/thread_pool.h"
 #include "tensorflow/lite/experimental/ruy/trace.h"
+#include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
 
@@ -236,17 +245,26 @@ void AllocatePMatrix(Allocator* allocator, PMatrix* packed) {
 }
 
 int GetThreadCount(Context* context, int rows, int cols, int depth) {
+#if RUY_PLATFORM(EMSCRIPTEN)
+  // b/139927184, std::thread constructor raises exception
+  return 1;
+#endif
   // Empirically determined rule for reasonable number of
   // threads to use. This is proportional to the number of arithmetic ops
   // in this Mul (product of the 3 sizes).
-  int guess = (std::uint64_t(rows) * cols * depth) >> 13;
-  return clamp(guess, 1, context->max_num_threads);
+  static constexpr int kDivisorLog2 = 15;
+  const int guess_log2 = std::max(
+      0, ceil_log2(rows) + ceil_log2(cols) + ceil_log2(depth) - kDivisorLog2);
+  return std::min(1 << guess_log2, context->max_num_threads);
 }
 
-LoopStructure GetLoopStructure(int thread_count, int rows, int cols, int depth,
+LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
+                               int depth,
                                int cache_friendly_traversal_threshold) {
-  if (thread_count == 1 &&
-      (rows + cols) * depth < cache_friendly_traversal_threshold) {
+  if (cols == 1) {  // Use a simple loop for the GEMV case.
+    return LoopStructure::kSimple;
+  } else if (tentative_thread_count == 1 &&
+             (rows + cols) * depth < cache_friendly_traversal_threshold) {
     return LoopStructure::kSimple;
   }
   return LoopStructure::kGeneral;
@@ -266,9 +284,9 @@ void TrMul(TrMulParams* params, Context* context) {
   const int cols = rhs.layout.cols;
   const int depth = lhs.layout.rows;
 
-  int thread_count = GetThreadCount(context, rows, cols, depth);
+  const int tentative_thread_count = GetThreadCount(context, rows, cols, depth);
   const auto loop_structure =
-      GetLoopStructure(thread_count, rows, cols, depth,
+      GetLoopStructure(tentative_thread_count, rows, cols, depth,
                        params->cache_friendly_traversal_threshold);
   Allocator* allocator = context->GetMainAllocator();
 
@@ -311,10 +329,11 @@ void TrMul(TrMulParams* params, Context* context) {
   MakeBlockMap(packed_lhs.layout.cols, packed_rhs.layout.cols, depth,
                packed_lhs.layout.kernel.cols, packed_rhs.layout.kernel.cols,
                packed_lhs.data_type.size, packed_rhs.data_type.size,
+               tentative_thread_count, params->path,
                params->cache_friendly_traversal_threshold, &block_map);
 
   // Initialize per-thread state.
-  thread_count = clamp(thread_count, 1, NumBlocks(block_map));
+  const int thread_count = block_map.thread_count;
   const bool need_atomics = thread_count > 1;
   context->EnsureNPerThreadStates(thread_count);
   for (auto& per_thread_state : context->per_thread_states) {
@@ -357,7 +376,7 @@ void TrMul(TrMulParams* params, Context* context) {
   }
 
   // Do the computation.
-  TraceRecordExecute(block_map, thread_count, trace);
+  TraceRecordExecute(block_map, trace);
   context->workers_pool.Execute(thread_count, tasks);
 
   // Finish up.

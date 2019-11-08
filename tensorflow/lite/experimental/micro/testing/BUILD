@@ -13,6 +13,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro:micro_utils",
     ],
 )

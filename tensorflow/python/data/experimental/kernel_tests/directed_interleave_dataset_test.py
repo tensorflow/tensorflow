@@ -22,6 +22,8 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -136,6 +138,14 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(1)
       ], choice_dataset=dataset_ops.Dataset.from_tensors([1.0]))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "out of range"):
+      dataset = interleave_ops.choose_from_datasets(
+          [dataset_ops.Dataset.from_tensors(0)],
+          choice_dataset=dataset_ops.Dataset.from_tensors(
+              constant_op.constant(1, dtype=dtypes.int64)))
+      next_element = self.getNext(dataset)
+      self.evaluate(next_element())
 
 
 if __name__ == "__main__":

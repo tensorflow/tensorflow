@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_TRACE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TRACE_H_
 
-#include <algorithm>
 #include <cstdint>
-#include <cstdio>
-#include <vector>
 
 #include "tensorflow/lite/experimental/ruy/block_map.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
 
@@ -50,8 +48,7 @@ void TraceRecordBlockFinished(std::uint32_t thread_id, std::uint32_t block_id,
                               Trace* trace);
 void TraceRecordThreadEnd(std::uint32_t thread_id, Trace* trace);
 void TraceRecordStart(Trace* trace);
-void TraceRecordExecute(const BlockMap& block_map, int thread_count,
-                        Trace* trace);
+void TraceRecordExecute(const BlockMap& block_map, Trace* trace);
 void TraceRecordEnd(Trace* trace);
 
 #else
@@ -66,7 +63,7 @@ inline void TraceRecordBlockPacked(std::uint32_t, Side, int, Trace*) {}
 inline void TraceRecordBlockFinished(std::uint32_t, std::uint32_t, Trace*) {}
 inline void TraceRecordThreadEnd(std::uint32_t, Trace*) {}
 inline void TraceRecordStart(Trace*) {}
-inline void TraceRecordExecute(const BlockMap&, int, Trace*) {}
+inline void TraceRecordExecute(const BlockMap&, Trace*) {}
 inline void TraceRecordEnd(Trace*) {}
 
 #endif

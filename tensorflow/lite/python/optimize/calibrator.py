@@ -55,7 +55,7 @@ class Calibrator(object):
       raise ValueError("Failed to parse the model.")
 
   def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
-                             allow_float):
+                             allow_float, enable_mlir_quantizer=False):
     """Calibrates the model with specified generator and then quantizes it.
 
     Returns:
@@ -69,10 +69,39 @@ class Calibrator(object):
                    computation, useful when targeting an integer-only backend.
                    If False, an error will be thrown if an operation cannot be
                    quantized, otherwise the model will fallback to float ops.
+      enable_mlir_quantizer: A boolean. True if wants to use mlir quantizer to
+                             quantize the calibrated model.
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
       self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float,
+        enable_mlir_quantizer)
+
+  def calibrate_and_quantize_single(self, dataset_gen, input_type, output_type,
+                                    allow_float, op_output_name):
+    """Calibrates the model with specified generator and then quantizes it.
+
+    Only the single op with output op_output_name will be quantized.
+
+    Returns:
+      A quantized model.
+
+    Args:
+      dataset_gen: A generator that generates calibration samples.
+      input_type: A tf.dtype representing the desired real-value input type.
+      output_type: A tf.dtype representing the desired real-value output type.
+      allow_float: A boolean. False if the resulting model cannot perform float
+        computation, useful when targeting an integer-only backend. If False, an
+        error will be thrown if an operation cannot be quantized, otherwise the
+        model will fallback to float ops.
+      op_output_name: A string, only this op will be quantized.
+    """
+    self._calibrator.Prepare()
+    for calibration_sample in dataset_gen():
+      self._calibrator.FeedTensor(calibration_sample)
+    return self._calibrator.QuantizeModel(
+        np.dtype(input_type.as_numpy_dtype()).num,
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)

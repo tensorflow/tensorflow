@@ -75,6 +75,7 @@ LIB_NAME := libtensorflow-lite.a
 # Benchmark static library and binary
 BENCHMARK_LIB_NAME := benchmark-lib.a
 BENCHMARK_BINARY_NAME := benchmark_model
+BENCHMARK_PERF_OPTIONS_BINARY_NAME := benchmark_model_performance_options
 
 # A small example program that shows how to link against the library.
 MINIMAL_SRCS := \
@@ -84,7 +85,9 @@ MINIMAL_SRCS := \
 # build files.
 
 PROFILER_SRCS := \
+  tensorflow/lite/profiling/memory_info.cc \
 	tensorflow/lite/profiling/time.cc
+
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
 	tensorflow/core/util/stats_calculator.cc
@@ -98,21 +101,8 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-tensorflow/lite/experimental/resource_variable/*.cc \
-tensorflow/lite/experimental/ruy/allocator.cc \
-tensorflow/lite/experimental/ruy/block_map.cc \
-tensorflow/lite/experimental/ruy/blocking_counter.cc \
-tensorflow/lite/experimental/ruy/context.cc \
-tensorflow/lite/experimental/ruy/detect_dotprod.cc \
-tensorflow/lite/experimental/ruy/kernel_arm32.cc \
-tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack_arm.cc \
-tensorflow/lite/experimental/ruy/pmu.cc \
-tensorflow/lite/experimental/ruy/thread_pool.cc \
-tensorflow/lite/experimental/ruy/trace.cc \
-tensorflow/lite/experimental/ruy/trmul.cc \
-tensorflow/lite/experimental/ruy/tune.cc \
-tensorflow/lite/experimental/ruy/wait.cc
+$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -123,16 +113,22 @@ $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
+CORE_CC_ALL_SRCS += \
+	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -168,6 +164,7 @@ ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
   CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
+	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_util.cc
 	LIBS += -lrt
 else
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc
@@ -190,14 +187,19 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
-BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
+BENCHMARK_ALL_SRCS := \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
 	$(CMD_LINE_TOOLS_SRCS) \
 	$(EVALUATION_UTILS_SRCS)
 
-BENCHMARK_SRCS := $(filter-out \
+BENCHMARK_MAIN_SRC := $(BENCHMARK_SRCS_DIR)/benchmark_main.cc
+BENCHMARK_PERF_OPTIONS_SRC := \
+	$(BENCHMARK_SRCS_DIR)/benchmark_tflite_performance_options_main.cc
+BENCHMARK_LIB_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
+	$(BENCHMARK_MAIN_SRC) \
+	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
@@ -212,7 +214,7 @@ ALL_SRCS := \
 	$(PROFILER_SRCS) \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
-	$(BENCHMARK_SRCS) \
+	$(BENCHMARK_LIB_SRCS) \
   $(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
@@ -224,6 +226,7 @@ LIBDIR := $(GENDIR)lib/
 LIB_PATH := $(LIBDIR)$(LIB_NAME)
 BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
+BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
 MINIMAL_BINARY := $(BINDIR)minimal
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
@@ -236,8 +239,14 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
 
-BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(BENCHMARK_SRCS)))))
+BENCHMARK_MAIN_OBJ := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_MAIN_SRC))))
+
+BENCHMARK_PERF_OPTIONS_OBJ := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_PERF_OPTIONS_SRC))))
+
+BENCHMARK_LIB_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_LIB_SRCS))))
 
 # For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -252,7 +261,7 @@ $(OBJDIR)%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)
+all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
 
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
@@ -276,19 +285,25 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 
 minimal: $(MINIMAL_BINARY)
 
-$(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_OBJS)
+$(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_OBJS)
+	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_LIB_OBJS)
 
 benchmark_lib: $(BENCHMARK_LIB)
 
-$(BENCHMARK_BINARY) : $(BENCHMARK_LIB)
+$(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(BENCHMARK_BINARY) \
+	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
 	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
 
-benchmark: $(BENCHMARK_BINARY)
+$(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(BENCHMARK_PERF_OPTIONS_BINARY) $(BENCHMARK_PERF_OPTIONS_OBJ) \
+	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
+
+benchmark: $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
 
 libdir:
 	@echo $(LIBDIR)

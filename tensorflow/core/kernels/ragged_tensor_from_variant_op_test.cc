@@ -601,7 +601,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
       {component_split_1_1}, TensorShape({1}), component_values_1);
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<string, int64>(
+  BuildDecodeRaggedTensorGraph<tstring, int64>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),

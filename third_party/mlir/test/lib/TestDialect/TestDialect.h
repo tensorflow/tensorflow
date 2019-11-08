@@ -23,11 +23,14 @@
 #ifndef MLIR_TESTDIALECT_H
 #define MLIR_TESTDIALECT_H
 
+#include "mlir/Analysis/CallInterfaces.h"
+#include "mlir/Analysis/InferTypeOpInterface.h"
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 
@@ -38,6 +41,14 @@ public:
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName() { return "test"; }
+
+  LogicalResult verifyRegionArgAttribute(Operation *, unsigned regionIndex,
+                                         unsigned argIndex,
+                                         NamedAttribute) override;
+
+  LogicalResult verifyRegionResultAttribute(Operation *, unsigned regionIndex,
+                                            unsigned resultIndex,
+                                            NamedAttribute) override;
 };
 
 #define GET_OP_CLASSES

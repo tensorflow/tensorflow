@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/QuantOps/UniformSupport.h"
 #include "mlir/IR/StandardTypes.h"
+#include <numeric>
 
 using namespace mlir;
 using namespace mlir::quant;
@@ -25,32 +26,31 @@ static bool isQuantizablePrimitiveType(Type inputType) {
   return inputType.isa<FloatType>();
 }
 
-const ExpressedToUniformQuantizedConverter
-ExpressedToUniformQuantizedConverter::forInputType(Type inputType) {
+const ExpressedToQuantizedConverter
+ExpressedToQuantizedConverter::forInputType(Type inputType) {
   switch (inputType.getKind()) {
   default:
     if (isQuantizablePrimitiveType(inputType)) {
       // Supported primitive type (which just is the expressed type).
-      return ExpressedToUniformQuantizedConverter{inputType, inputType};
+      return ExpressedToQuantizedConverter{inputType, inputType};
     }
     // Unsupported.
-    return ExpressedToUniformQuantizedConverter{inputType, nullptr};
+    return ExpressedToQuantizedConverter{inputType, nullptr};
   case StandardTypes::RankedTensor:
   case StandardTypes::UnrankedTensor:
   case StandardTypes::Vector: {
     Type elementType = inputType.cast<ShapedType>().getElementType();
     if (!isQuantizablePrimitiveType(elementType)) {
       // Unsupported.
-      return ExpressedToUniformQuantizedConverter{inputType, nullptr};
+      return ExpressedToQuantizedConverter{inputType, nullptr};
     }
-    return ExpressedToUniformQuantizedConverter{
+    return ExpressedToQuantizedConverter{
         inputType, inputType.cast<ShapedType>().getElementType()};
   }
   }
 }
 
-Type ExpressedToUniformQuantizedConverter::convert(
-    UniformQuantizedType elementalType) const {
+Type ExpressedToQuantizedConverter::convert(QuantizedType elementalType) const {
   assert(expressedType && "convert() on unsupported conversion");
 
   switch (inputType.getKind()) {
@@ -70,4 +70,42 @@ Type ExpressedToUniformQuantizedConverter::convert(
     return VectorType::get(inputType.cast<VectorType>().getShape(),
                            elementalType);
   }
+}
+
+ElementsAttr
+UniformQuantizedPerAxisValueConverter::convert(Attribute realValue) {
+  if (auto attr = realValue.dyn_cast<DenseFPElementsAttr>()) {
+    return convert(attr);
+  }
+  // TODO(fengliuai): handles sparse elements attribute
+  return nullptr;
+}
+
+DenseElementsAttr
+UniformQuantizedPerAxisValueConverter::convert(DenseFPElementsAttr attr) {
+  // Creates the converter for each chunk. Normally the size of the
+  // quantization dim is 3, so we can cache all the converters.
+  ShapedType type = attr.getType();
+  size_t dimSize = type.getDimSize(quantizationDim);
+  if (dimSize != scales.size()) {
+    return {};
+  }
+  SmallVector<UniformQuantizedValueConverter, 4> converters;
+  converters.reserve(dimSize);
+  for (int i = 0, e = dimSize; i != e; ++i) {
+    converters.push_back(getPerChunkConverter(i));
+  }
+
+  // Scan the elements of the dense elements attributes and quantize them by
+  // using the right quantization parameters.
+  int64_t flattenIndex = 0;
+  auto shape = type.getShape();
+  int64_t chunkSize =
+      std::accumulate(std::next(shape.begin(), quantizationDim + 1),
+                      shape.end(), 1, std::multiplies<int64_t>());
+  Type newElementType = IntegerType::get(storageBitWidth, attr.getContext());
+  return attr.mapValues(newElementType, [&](const APFloat &old) {
+    int chunkIndex = (flattenIndex++) / chunkSize;
+    return converters[chunkIndex % dimSize].quantizeFloatToInt(old);
+  });
 }

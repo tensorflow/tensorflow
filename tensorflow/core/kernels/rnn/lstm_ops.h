@@ -25,6 +25,16 @@ limitations under the License.
 namespace tensorflow {
 class OpKernelContext;
 
+enum GateLayout { ICFO, IFCO };
+
+constexpr int gate_c_offset(GateLayout gate_layout, int cell_size) {
+  return (gate_layout == ICFO) ? cell_size : cell_size * 2;
+}
+
+constexpr int gate_f_offset(GateLayout gate_layout, int cell_size) {
+  return (gate_layout == ICFO) ? cell_size * 2 : cell_size;
+}
+
 namespace functor {
 
 template <typename Device, typename T>
@@ -107,12 +117,14 @@ struct LSTMBlockCell {
     return {0, 0};
   }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> gates_c_offsets() const {
-    return {0, cell_size_};
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_c_offsets(
+      const GateLayout gate_layout) const {
+    return {0, gate_c_offset(gate_layout, cell_size_)};
   }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> gates_f_offsets() const {
-    return {0, cell_size_ * 2};
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_f_offsets(
+      const GateLayout gate_layout) const {
+    return {0, gate_f_offset(gate_layout, cell_size_)};
   }
 
   inline Eigen::array<Eigen::DenseIndex, 2> gates_o_offsets() const {
@@ -147,7 +159,7 @@ struct LSTMBlockCell {
 
 // See lstm_ops.cc for CPUDevice implementation and lstm_ops_gpu.cu.cc for
 // GPUDevice implementation.
-template <typename Device, typename T, bool USE_CUBLAS>
+template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 struct LSTMBlockCellFprop : public LSTMBlockCell {
   LSTMBlockCellFprop(const int batch_size, const int input_size,
                      const int cell_size)
@@ -172,7 +184,7 @@ struct LSTMBlockCellFprop : public LSTMBlockCell {
 
 // See lstm_ops.cc for CPUDevice implementation and lstm_ops_gpu.cu.cc for
 // GPUDevice implementation.
-template <typename Device, typename T, bool USE_CUBLAS>
+template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 struct LSTMBlockCellBprop : public LSTMBlockCell {
   LSTMBlockCellBprop(const int batch_size, const int input_size,
                      const int cell_size)
@@ -197,7 +209,7 @@ struct LSTMBlockCellBprop : public LSTMBlockCell {
       typename TTypes<T>::Vec wcf_grad, typename TTypes<T>::Vec wco_grad);
 };
 
-template <typename Device, typename T, bool USE_CUBLAS>
+template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 struct BlockLSTMBprop : public LSTMBlockCell {
   BlockLSTMBprop(const int batch_size, const int input_size,
                  const int cell_size)
@@ -248,8 +260,8 @@ struct BlockLSTMBprop : public LSTMBlockCell {
     di.device(d) = i * (i.constant(T(1)) - i) * dcs * ci;
 
     dgates.slice(gates_i_offsets(), cell_extents()).device(d) = di;
-    dgates.slice(gates_c_offsets(), cell_extents()).device(d) = dci;
-    dgates.slice(gates_f_offsets(), cell_extents()).device(d) = df;
+    dgates.slice(gates_c_offsets(gate_layout), cell_extents()).device(d) = dci;
+    dgates.slice(gates_f_offsets(gate_layout), cell_extents()).device(d) = df;
     dgates.slice(gates_o_offsets(), cell_extents()).device(d) = do_;
 
     cs_prev_grad.device(d) = dcs * f;

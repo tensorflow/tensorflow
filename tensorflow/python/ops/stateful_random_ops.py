@@ -193,25 +193,31 @@ class Generator(tracking.AutoTrackable):
       copy_from: a generator to be copied from.
       state: a vector of dtype STATE_TYPE representing the initial state of the
         RNG, whose length and semantics are algorithm-specific.
-      alg: the RNG algorithm. Possible values are RNG_ALG_PHILOX for the
-        Philox algorithm and RNG_ALG_THREEFRY for the ThreeFry
+      alg: the RNG algorithm. Possible values are `RNG_ALG_PHILOX` for the
+        Philox algorithm and `RNG_ALG_THREEFRY` for the ThreeFry
         algorithm (see paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
+        Note `RNG_ALG_PHILOX` guarantees the same numbers are produced (given
+        the same random state) across all architextures (CPU, GPU, XLA etc).
     """
     if copy_from is not None:
       # All other arguments should be None
       assert (alg or state) is None
       self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE,
                                            trainable=False)
-      self._alg_var = copy_from.algorithm
+      self._alg = copy_from.algorithm
 
     else:
       assert alg is not None and state is not None
-      state = _convert_to_state_tensor(state)
-      state.shape.assert_is_compatible_with([_get_state_size(alg)])
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE,
-                                           trainable=False)
-      self._alg_var = alg
+      if isinstance(state, variables.Variable):
+        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        self._state_var = state
+      else:
+        state = _convert_to_state_tensor(state)
+        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        self._state_var = variables.Variable(state, dtype=STATE_TYPE,
+                                             trainable=False)
+      self._alg = alg
 
   @classmethod
   def from_state(cls, state, alg):
@@ -347,7 +353,7 @@ class Generator(tracking.AutoTrackable):
   @property
   def algorithm(self):
     """The RNG algorithm."""
-    return self._alg_var
+    return self._alg
 
   def _standard_normal(self, shape, dtype):
     return gen_stateful_random_ops.stateful_standard_normal_v2(
@@ -680,7 +686,8 @@ global_generator = None
 def get_global_generator():
   global global_generator
   if global_generator is None:
-    global_generator = Generator.from_non_deterministic_state()
+    with ops.init_scope():
+      global_generator = Generator.from_non_deterministic_state()
   return global_generator
 
 

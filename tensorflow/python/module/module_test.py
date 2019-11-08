@@ -524,10 +524,10 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
 
     variable_list = m.variables
     self.assertLen(variable_list, 4)
-    self.assertEqual(variable_list[0], m.a.kernel)
-    self.assertEqual(variable_list[1], m.a.bias)
-    self.assertEqual(variable_list[2], m.b.kernel)
-    self.assertEqual(variable_list[3], m.b.bias)
+    self.assertIs(variable_list[0], m.a.kernel)
+    self.assertIs(variable_list[1], m.a.bias)
+    self.assertIs(variable_list[2], m.b.kernel)
+    self.assertIs(variable_list[3], m.b.bias)
 
   def test_model_discover_submodule(self):
     m = models.Sequential(layers=[layers.Dense(1),

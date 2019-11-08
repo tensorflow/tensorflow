@@ -121,8 +121,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  bool IsStateful() const override {
-    return captured_func_->IsStateful() || input_->IsStateful();
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
   }
 
  protected:
@@ -230,6 +231,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (auto& worker : workers_) {
         worker.cond_var.notify_all();
       }
+    }
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_,
+                             ",deterministic=", !dataset()->sloppy_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -715,7 +723,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // CHECKPOINT_MARKER_C
           // Non-OK iterator creation status has been notified to the
           // client.
-          workers_[thread_index].cond_var.notify_one();
+          if (dataset()->sloppy_) {
+            sloppy_cond_var_.notify_one();
+          } else {
+            workers_[thread_index].cond_var.notify_one();
+          }
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {
@@ -982,7 +994,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
-        string error_message;
+        tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name(strings::StrCat(prefix, "_", KMessage)), &error_message));
         *status = Status(code, error_message);

@@ -14,7 +14,7 @@ package(
 
 exports_files(["LICENSE"])
 
-LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
+LINKER_SCRIPT = "jni/version_script.lds"
 
 # libtensorflow_demo.so contains the native code for image colorspace conversion
 # and object tracking used by the demo. It does not require TF as a dependency
@@ -53,7 +53,7 @@ cc_library(
     name = "tensorflow_native_libs",
     srcs = [
         ":libtensorflow_demo.so",
-        "//tensorflow/contrib/android:libtensorflow_inference.so",
+        "//tensorflow/tools/android/inference_interface:libtensorflow_inference.so",
     ],
     tags = [
         "manual",
@@ -84,7 +84,7 @@ android_binary(
     ],
     deps = [
         ":tensorflow_native_libs",
-        "//tensorflow/contrib/android:android_tensorflow_inference_java",
+        "//tensorflow/tools/android/inference_interface:android_tensorflow_inference_java",
     ],
 )
 
@@ -118,4 +118,6 @@ filegroup(
     srcs = glob(["res/**"]),
 )
 
-exports_files(["AndroidManifest.xml"])
+exports_files([
+    "AndroidManifest.xml",
+])

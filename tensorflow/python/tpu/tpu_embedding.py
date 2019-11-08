@@ -26,6 +26,7 @@ import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as elc
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -475,7 +476,7 @@ class TPUEmbedding(object):
     ```
   """
 
-  # TODO(shizhiw): Consider addign a field to FeatureConfig that indicates that
+  # TODO(shizhiw): Consider adding a field to FeatureConfig that indicates that
   # the feature should not be used to update embedding table (cr/204852758,
   # cr/204940540). Also, this can support different combiners for different
   # features within the same table.
@@ -757,7 +758,7 @@ class TPUEmbedding(object):
         A dictionary mapping from string of table name to AdagradSlotVariable,
          AdamSlotVariables etc with slot variables,
         A function which returns a list of ops to load embedding and slot
-         variables from TPU to CPU.
+         variables from CPU to TPU.
         A function which returns a list of ops to retrieve embedding and slot
          variables from TPU to CPU.
     """
@@ -765,7 +766,8 @@ class TPUEmbedding(object):
     slot_variables_by_table = {}
     load_op_fns = []
     retrieve_op_fns = []
-    for table in self._table_to_config_dict:
+
+    for i, table in enumerate(self._table_to_config_dict):
       if embedding_variable_name_by_table:
         embedding_variable_name = embedding_variable_name_by_table[table]
       else:
@@ -776,8 +778,15 @@ class TPUEmbedding(object):
         slot_variable_names = (
             self._optimizer_handler.get_default_slot_variable_names(table))
 
-      device_fn = _create_device_fn(self._hosts)
-      with ops.device(device_fn):
+      # TODO(b/139144091): Multi-host support for mid-level API in
+      #  eager context (TF 2.0)
+      # Workaround below allows single-host use case in TF 2.0
+      if context.executing_eagerly():
+        device = ''
+      else:
+        device = _create_device_fn(self._hosts)
+
+      with ops.device(device):
         table_variables = _create_partitioned_variables(
             name=embedding_variable_name,
             num_hosts=self._num_hosts,
@@ -787,11 +796,13 @@ class TPUEmbedding(object):
             collections=[ops.GraphKeys.GLOBAL_VARIABLES])
         embedding_variables_by_table[table] = table_variables
 
+        # Only loads embedding config to load/retrieve nodes for the first table
+        # on the first host, other nodes would use config from the first node.
+        config = None if i else self.config_proto.SerializeToString()
         slot_variables_for_table, load_ops_fn, retrieve_ops_fn = (
             self._optimizer_handler.create_variables_and_ops(
                 table, slot_variable_names, self._num_hosts,
-                self._table_to_config_dict[table], table_variables)
-        )
+                self._table_to_config_dict[table], table_variables, config))
         slot_variables_by_table[table] = slot_variables_for_table
         load_op_fns.append(load_ops_fn)
         retrieve_op_fns.append(retrieve_ops_fn)
@@ -879,29 +890,29 @@ class TPUEmbedding(object):
                                i, feature, combiner))
 
         if (enqueue_data.sample_indices is not None and
-            enqueue_data.sample_indices.op.device !=
-            enqueue_data.embedding_indices.op.device):
+            enqueue_data.sample_indices.device !=
+            enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of sample_indices does not agree with '
               'that of emebdding_indices for feature {}.'.format(feature))
         if (enqueue_data.aggregation_weights is not None and
-            enqueue_data.aggregation_weights.op.device !=
-            enqueue_data.embedding_indices.op.device):
+            enqueue_data.aggregation_weights.device !=
+            enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of aggregation_weights does not agree with '
               'that of emebdding_indices for feature {}.'.format(feature))
         # Check all features are on the same device.
         if device is None:
-          device = enqueue_data.embedding_indices.op.device
+          device = enqueue_data.embedding_indices.device
           device_feature = feature
         else:
-          if device != enqueue_data.embedding_indices.op.device:
+          if device != enqueue_data.embedding_indices.device:
             raise ValueError('Devices are different between features in '
                              '`enqueue_datas_list[{}]`; '
                              'devices: {}, {}; features: {}, {}.'.format(
                                  i, device,
-                                 enqueue_data.embedding_indices.op.device,
-                                 feature, device_feature))
+                                 enqueue_data.embedding_indices.device, feature,
+                                 device_feature))
 
       if i % self._num_cores_per_host:
         if device != contiguous_device:
@@ -1106,7 +1117,7 @@ class _OptimizerHandler(object):
     raise NotImplementedError()
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     raise NotImplementedError()
 
 
@@ -1124,7 +1135,7 @@ class _AdagradHandler(_OptimizerHandler):
     return AdagradSlotVariableName('{}/{}'.format(table, 'Adagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     accumulator_initializer = init_ops.constant_initializer(
         self._optimization_parameters.initial_accumulator)
     accumulator_variables = _create_partitioned_variables(
@@ -1142,9 +1153,10 @@ class _AdagradHandler(_OptimizerHandler):
       Returns:
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
+      config = config_proto
       load_op_list = []
-      for host_id, table_variable, accumulator_variable in (zip(
-          range(num_hosts), table_variables, accumulator_variables)):
+      for host_id, table_variable, accumulator_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables):
         with ops.colocate_with(table_variable):
           load_parameters_op = (
               tpu_ops.load_tpu_embedding_adagrad_parameters(
@@ -1152,7 +1164,9 @@ class _AdagradHandler(_OptimizerHandler):
                   accumulators=accumulator_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1162,6 +1176,7 @@ class _AdagradHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
+      config = config_proto
       retrieve_op_list = []
       for host_id, table_variable, accumulator_variable in (zip(
           range(num_hosts), table_variables, accumulator_variables)):
@@ -1170,10 +1185,12 @@ class _AdagradHandler(_OptimizerHandler):
               tpu_ops.retrieve_tpu_embedding_adagrad_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table),
               state_ops.assign(accumulator_variable, retrieved_accumulator))
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 
@@ -1205,7 +1222,7 @@ class _AdamHandler(_OptimizerHandler):
                                  '{}/{}/v'.format(table, 'Adam'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     m_initializer = init_ops.zeros_initializer()
     m_variables = _create_partitioned_variables(
         name=slot_variable_names.m,
@@ -1231,6 +1248,7 @@ class _AdamHandler(_OptimizerHandler):
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
       load_op_list = []
+      config = config_proto
       for host_id, table_variable, m_variable, v_variable in (zip(
           range(num_hosts), table_variables,
           m_variables, v_variables)):
@@ -1242,7 +1260,11 @@ class _AdamHandler(_OptimizerHandler):
                   velocities=v_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
+        # Set config to None to enforce that config is only loaded to the first
+        # table.
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1252,8 +1274,8 @@ class _AdamHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
-
       retrieve_op_list = []
+      config = config_proto
       for host_id, table_variable, m_variable, v_variable in (zip(
           range(num_hosts), table_variables,
           m_variables, v_variables)):
@@ -1262,12 +1284,13 @@ class _AdamHandler(_OptimizerHandler):
               tpu_ops.retrieve_tpu_embedding_adam_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table),
               state_ops.assign(m_variable, retrieved_m),
               state_ops.assign(v_variable, retrieved_v))
-
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 
@@ -1285,7 +1308,7 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
     return None
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
-                               table_config, table_variables):
+                               table_config, table_variables, config_proto):
     del table_config
 
     def load_ops_fn():
@@ -1295,17 +1318,18 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
         A list of ops to load embedding and slot variables from CPU to TPU.
       """
       load_op_list = []
+      config = config_proto
       for host_id, table_variable in (zip(
           range(num_hosts), table_variables)):
         with ops.colocate_with(table_variable):
           load_parameters_op = (
-              tpu_ops
-              .load_tpu_embedding_stochastic_gradient_descent_parameters(
+              tpu_ops.load_tpu_embedding_stochastic_gradient_descent_parameters(
                   parameters=table_variable,
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
-
+                  shard_id=host_id,
+                  config=config))
+        config = None
         load_op_list.append(load_parameters_op)
       return load_op_list
 
@@ -1315,8 +1339,8 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
       Returns:
         A list of ops to retrieve embedding and slot variables from TPU to CPU.
       """
-
       retrieve_op_list = []
+      config = config_proto
       for host_id, table_variable in (zip(
           range(num_hosts), table_variables)):
         with ops.colocate_with(table_variable):
@@ -1325,10 +1349,11 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
               .retrieve_tpu_embedding_stochastic_gradient_descent_parameters(
                   table_name=table,
                   num_shards=num_hosts,
-                  shard_id=host_id))
+                  shard_id=host_id,
+                  config=config))
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table))
-
+        config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
 

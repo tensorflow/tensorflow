@@ -250,15 +250,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
         return status;
       }
       const auto* op_name = opcode->custom_code()->c_str();
-      TfLiteRegistration unresolved_op{nullptr,
-                                       nullptr,
-                                       nullptr,
-                                       /*invoke*/ &UnresolvedOpInvoke,
-                                       nullptr,
-                                       BuiltinOperator_CUSTOM,
-                                       op_name,
-                                       1};
-      unresolved_custom_ops_.push_back(unresolved_op);
+      unresolved_custom_ops_.push_back(CreateUnresolvedCustomOp(op_name));
       registration = &unresolved_custom_ops_.back();
       has_flex_op_ |= IsFlexOp(op_name);
       status = kTfLiteOk;

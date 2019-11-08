@@ -29,7 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.ops.linalg import linalg_impl as linalg
 
 
 ################################################################################
@@ -91,11 +90,11 @@ def convert_nonref_to_tensor(value, dtype=None, dtype_hint=None, name=None):
   tf.is_tensor(y)
   # ==> True
 
-  x = tfp.util.DeferredTensor(lambda x: x, 13.37)
+  x = tfp.util.DeferredTensor(13.37, lambda x: x)
   y = convert_nonref_to_tensor(x)
   x is y
   # ==> True
-  tf.is_tensor
+  tf.is_tensor(y)
   # ==> False
   tf.equal(y, 13.37)
   # ==> True
@@ -239,7 +238,7 @@ def assert_compatible_matrix_dimensions(operator, x):
 
 def assert_is_batch_matrix(tensor):
   """Static assert that `tensor` has rank `2` or higher."""
-  sh = tensor.get_shape()
+  sh = tensor.shape
   if sh.ndims is not None and sh.ndims < 2:
     raise ValueError(
         "Expected [batch] matrix to have at least two dimensions.  Found: "
@@ -327,14 +326,14 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     # x.shape =    [2, j, k]  (batch shape =    [2])
     # y.shape = [3, 1, l, m]  (batch shape = [3, 1])
     # ==> bcast_batch_shape = [3, 2]
-    bcast_batch_shape = batch_matrices[0].get_shape()[:-2]
+    bcast_batch_shape = batch_matrices[0].shape[:-2]
     for mat in batch_matrices[1:]:
       bcast_batch_shape = array_ops.broadcast_static_shape(
           bcast_batch_shape,
-          mat.get_shape()[:-2])
+          mat.shape[:-2])
     if bcast_batch_shape.is_fully_defined():
       for i, mat in enumerate(batch_matrices):
-        if mat.get_shape()[:-2] != bcast_batch_shape:
+        if mat.shape[:-2] != bcast_batch_shape:
           bcast_shape = array_ops.concat(
               [bcast_batch_shape.as_list(), array_ops.shape(mat)[-2:]], axis=0)
           batch_matrices[i] = array_ops.broadcast_to(mat, bcast_shape)
@@ -489,13 +488,13 @@ def _reshape_for_efficiency(a,
   # Any transposes/adjoints will happen here explicitly, rather than in calling
   # code.  Why?  To avoid having to write separate complex code for each case.
   if adjoint_a:
-    a = linalg.adjoint(a)
+    a = array_ops.matrix_transpose(a, conjugate=True)
   elif transpose_a:
-    a = linalg.transpose(a)
+    a = array_ops.matrix_transpose(a, conjugate=False)
   if adjoint_b:
-    b = linalg.adjoint(b)
-  elif transpose_b:
-    b = linalg.transpose(b)
+    b = array_ops.matrix_transpose(b, conjugate=True)
+  elif transpose_a:
+    b = array_ops.matrix_transpose(b, conjugate=False)
   still_need_to_transpose = False
 
   # Recompute shapes, since the transpose/adjoint may have changed them.

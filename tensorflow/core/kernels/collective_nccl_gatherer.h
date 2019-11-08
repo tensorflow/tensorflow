@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/collective_nccl.h"
 
 namespace tensorflow {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class NcclGatherer : public NcclBase {
  public:
@@ -29,7 +29,7 @@ class NcclGatherer : public NcclBase {
   void Run(StatusCallback done) override;
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_GATHERER_H_

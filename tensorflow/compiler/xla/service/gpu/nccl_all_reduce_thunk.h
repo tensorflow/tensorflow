@@ -48,9 +48,6 @@ class NcclAllReduceThunk : public Thunk {
   // clear how you *could* use it for anything other than tests.)
   static absl::flat_hash_set<int> DevicesWithOpenNcclChannels();
 
-  // TODO(b/125951860): Plumb more datatypes / reduction operators. Initial
-  // implementation is simply F32 summation.
-  //
   // TODO(b/125951860): Support all-reduces with replica groups, i.e.
   // all-reduces that compute multiple sums across subsets of all replicas.
   NcclAllReduceThunk(int64 replica_count, int64 element_count,
@@ -60,6 +57,10 @@ class NcclAllReduceThunk : public Thunk {
   ~NcclAllReduceThunk() override;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // Returns whether the given instruction can be lowered to a nccl all-reduce
+  // call.
+  static bool CanImplement(const HloInstruction* crs);
 
  private:
   // Extra data stored in NcclAllReduceThunk whose types we don't want exposed

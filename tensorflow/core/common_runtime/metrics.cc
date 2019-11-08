@@ -30,6 +30,12 @@ auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
 
+auto* graph_optimization_usecs =
+    monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
+                                "The total time spent running each graph "
+                                "optimization pass in microseconds.",
+                                "kind", "name");
+
 auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
      "The wall-clock time spent on executing graphs in microseconds."},
@@ -58,8 +64,23 @@ auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
+auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
+
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
+
+auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/dense_feature",
+    "The number of dense features parsed by ops for parsing tf.Example.");
+
+auto* parse_sparse_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/sparse_feature",
+    "The number of sparse features parsed by ops for parsing tf.Example.");
+
+auto* parse_ragged_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/ragged_feature",
+    "The number of ragged features parsed by ops for parsing tf.Example.");
 
 auto* build_graph_calls = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_build_calls",
@@ -87,6 +108,10 @@ auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
+auto* mlir_import_failure_count = monitoring::Counter<0>::New(
+    "/tensorflow/mlir/import_failure_count",
+    "The number of jobs that failed during mlir import or verification.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -101,8 +126,24 @@ void RecordTFDataElements(const string& name, int64 num_elements) {
   tf_data_elements_counter->GetCell(name)->IncrementBy(num_elements);
 }
 
+void RecordTFDataFingerprint(const string& name) {
+  tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
+}
+
 void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
+}
+
+void RecordParseDenseFeature(int64 num_features) {
+  parse_dense_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseSparseFeature(int64 num_features) {
+  parse_sparse_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseRaggedFeature(int64 num_features) {
+  parse_ragged_feature_counter->GetCell()->IncrementBy(num_features);
 }
 
 void RecordGraphInputTensors(const size_t size) {
@@ -121,6 +162,22 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateGraphOptimizationPassTime(const string& pass_name,
+                                     const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("GraphOptimizationPass", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateGrapplerPassTime(const string& pass_name,
+                            const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("Grappler", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
 void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     build_graph_calls->GetCell()->IncrementBy(1);
@@ -133,6 +190,10 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
     xla_compilations->GetCell()->IncrementBy(1);
     xla_compilation_time_usecs->GetCell()->IncrementBy(compilation_time_usecs);
   }
+}
+
+void IncrementMLIRImportFailureCount() {
+  mlir_import_failure_count->GetCell()->IncrementBy(1);
 }
 
 }  // namespace metrics

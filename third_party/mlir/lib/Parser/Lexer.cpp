@@ -30,7 +30,7 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-// Returns true if 'c' is an allowable puncuation character: [$._-]
+// Returns true if 'c' is an allowable punctuation character: [$._-]
 // Returns false otherwise.
 static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
@@ -106,6 +106,8 @@ Token Lexer::lexToken() {
     return formToken(Token::colon, tokStart);
   case ',':
     return formToken(Token::comma, tokStart);
+  case '.':
+    return lexEllipsis(tokStart);
   case '(':
     return formToken(Token::l_paren, tokStart);
   case ')':
@@ -172,33 +174,30 @@ Token Lexer::lexToken() {
   }
 }
 
-/// Lex a comment line, starting with a semicolon.
+/// Lex an '@foo' identifier.
 ///
-///   TODO: add a regex for comments here and to the spec.
+///   symbol-ref-id ::= `@` (bare-id | string-literal)
 ///
-Token Lexer::lexComment() {
-  // Advance over the second '/' in a '//' comment.
-  assert(*curPtr == '/');
-  ++curPtr;
+Token Lexer::lexAtIdentifier(const char *tokStart) {
+  char cur = *curPtr++;
 
-  while (true) {
-    switch (*curPtr++) {
-    case '\n':
-    case '\r':
-      // Newline is end of comment.
-      return lexToken();
-    case 0:
-      // If this is the end of the buffer, end the comment.
-      if (curPtr - 1 == curBuffer.end()) {
-        --curPtr;
-        return lexToken();
-      }
-      LLVM_FALLTHROUGH;
-    default:
-      // Skip over other characters.
-      break;
-    }
+  // Try to parse a string literal, if present.
+  if (cur == '"') {
+    Token stringIdentifier = lexString(curPtr);
+    if (stringIdentifier.is(Token::error))
+      return stringIdentifier;
+    return formToken(Token::at_identifier, tokStart);
   }
+
+  // Otherwise, these always start with a letter or underscore.
+  if (!isalpha(cur) && cur != '_')
+    return emitError(curPtr - 1,
+                     "@ identifier expected to start with letter or '_'");
+
+  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_' ||
+         *curPtr == '$' || *curPtr == '.')
+    ++curPtr;
+  return formToken(Token::at_identifier, tokStart);
 }
 
 /// Lex a bare identifier or keyword that starts with a letter.
@@ -232,21 +231,93 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
   return Token(kind, spelling);
 }
 
-/// Lex an '@foo' identifier.
+/// Lex a comment line, starting with a semicolon.
 ///
-///   symbol-ref-id ::= `@` bare-id
+///   TODO: add a regex for comments here and to the spec.
 ///
-Token Lexer::lexAtIdentifier(const char *tokStart) {
-  // These always start with a letter or underscore.
-  auto cur = *curPtr++;
-  if (!isalpha(cur) && cur != '_')
-    return emitError(curPtr - 1,
-                     "@ identifier expected to start with letter or '_'");
+Token Lexer::lexComment() {
+  // Advance over the second '/' in a '//' comment.
+  assert(*curPtr == '/');
+  ++curPtr;
 
-  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_' ||
-         *curPtr == '$' || *curPtr == '.')
+  while (true) {
+    switch (*curPtr++) {
+    case '\n':
+    case '\r':
+      // Newline is end of comment.
+      return lexToken();
+    case 0:
+      // If this is the end of the buffer, end the comment.
+      if (curPtr - 1 == curBuffer.end()) {
+        --curPtr;
+        return lexToken();
+      }
+      LLVM_FALLTHROUGH;
+    default:
+      // Skip over other characters.
+      break;
+    }
+  }
+}
+
+/// Lex an ellipsis.
+///
+///   ellipsis ::= '...'
+///
+Token Lexer::lexEllipsis(const char *tokStart) {
+  assert(curPtr[-1] == '.');
+
+  if (curPtr == curBuffer.end() || *curPtr != '.' || *(curPtr + 1) != '.')
+    return emitError(curPtr, "expected three consecutive dots for an ellipsis");
+
+  curPtr += 2;
+  return formToken(Token::ellipsis, tokStart);
+}
+
+/// Lex a number literal.
+///
+///   integer-literal ::= digit+ | `0x` hex_digit+
+///   float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
+///
+Token Lexer::lexNumber(const char *tokStart) {
+  assert(isdigit(curPtr[-1]));
+
+  // Handle the hexadecimal case.
+  if (curPtr[-1] == '0' && *curPtr == 'x') {
+    // If we see stuff like 0xi32, this is a literal `0` followed by an
+    // identifier `xi32`, stop after `0`.
+    if (!isxdigit(curPtr[1]))
+      return formToken(Token::integer, tokStart);
+
+    curPtr += 2;
+    while (isxdigit(*curPtr))
+      ++curPtr;
+
+    return formToken(Token::integer, tokStart);
+  }
+
+  // Handle the normal decimal case.
+  while (isdigit(*curPtr))
     ++curPtr;
-  return formToken(Token::at_identifier, tokStart);
+
+  if (*curPtr != '.')
+    return formToken(Token::integer, tokStart);
+  ++curPtr;
+
+  // Skip over [0-9]*([eE][-+]?[0-9]+)?
+  while (isdigit(*curPtr))
+    ++curPtr;
+
+  if (*curPtr == 'e' || *curPtr == 'E') {
+    if (isdigit(static_cast<unsigned char>(curPtr[1])) ||
+        ((curPtr[1] == '-' || curPtr[1] == '+') &&
+         isdigit(static_cast<unsigned char>(curPtr[2])))) {
+      curPtr += 2;
+      while (isdigit(*curPtr))
+        ++curPtr;
+    }
+  }
+  return formToken(Token::floatliteral, tokStart);
 }
 
 /// Lex an identifier that starts with a prefix followed by suffix-id.
@@ -256,6 +327,7 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
 ///   block-id      ::= '^' suffix-id
 ///   type-id       ::= '!' suffix-id
 ///   suffix-id     ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
+///   id-punct      ::= `$` | `.` | `_` | `-`
 ///
 Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   Token::Kind kind;
@@ -298,52 +370,6 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   return formToken(kind, tokStart);
 }
 
-/// Lex a number literal.
-///
-///   integer-literal ::= digit+ | `0x` hex_digit+
-///   float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
-///
-Token Lexer::lexNumber(const char *tokStart) {
-  assert(isdigit(curPtr[-1]));
-
-  // Handle the hexadecimal case.
-  if (curPtr[-1] == '0' && *curPtr == 'x') {
-    // If we see stuff like 0xi32, this is a literal `0` follwed by an
-    // identifier `xi32`, stop after `0`.
-    if (!isxdigit(curPtr[1]))
-      return formToken(Token::integer, tokStart);
-
-    curPtr += 2;
-    while (isxdigit(*curPtr))
-      ++curPtr;
-
-    return formToken(Token::integer, tokStart);
-  }
-
-  // Handle the normal decimal case.
-  while (isdigit(*curPtr))
-    ++curPtr;
-
-  if (*curPtr != '.')
-    return formToken(Token::integer, tokStart);
-  ++curPtr;
-
-  // Skip over [0-9]*([eE][-+]?[0-9]+)?
-  while (isdigit(*curPtr))
-    ++curPtr;
-
-  if (*curPtr == 'e' || *curPtr == 'E') {
-    if (isdigit(static_cast<unsigned char>(curPtr[1])) ||
-        ((curPtr[1] == '-' || curPtr[1] == '+') &&
-         isdigit(static_cast<unsigned char>(curPtr[2])))) {
-      curPtr += 2;
-      while (isdigit(*curPtr))
-        ++curPtr;
-    }
-  }
-  return formToken(Token::floatliteral, tokStart);
-}
-
 /// Lex a string literal.
 ///
 ///   string-literal ::= '"' [^"\n\f\v\r]* '"'
@@ -352,7 +378,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 Token Lexer::lexString(const char *tokStart) {
   assert(curPtr[-1] == '"');
 
-  while (1) {
+  while (true) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);

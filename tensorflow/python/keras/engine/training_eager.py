@@ -157,6 +157,7 @@ def _model_loss(model,
             weights = mask
           else:
             # Update dimensions of weights to match with mask if possible.
+            weights = math_ops.cast(weights, outs[i].dtype)
             mask, _, weights = (
                 tf_losses_utils.squeeze_or_expand_dimensions(
                     mask, sample_weight=weights))
@@ -258,7 +259,7 @@ def _process_single_batch(model,
       else:
         scaled_total_loss = total_loss
     if training:
-      trainable_weights = model._unique_trainable_weights
+      trainable_weights = model.trainable_weights
       if trainable_weights:
         # TODO(tanzheny) b/132690565: Provide mechanism for user to override
         # model.train_on_batch.
@@ -294,7 +295,11 @@ def train_on_batch(model,
         loss values.
 
   Returns:
-      total loss and the loss associated with each output.
+      Dict with three items:
+        'total_loss': list with a single tensor for overall loss,
+        'output_losses': list of tensors for loss corresponding to each of the
+          model output. Could be a empty list when model has only one output.
+        'metrics': list of tensors for metric specified.
   """
   inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
   outs, total_loss, output_losses, masks = (
@@ -310,9 +315,9 @@ def train_on_batch(model,
   metrics_results = _eager_metrics_fn(
       model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  results = total_loss + output_losses + metrics_results
-
-  return results
+  return {'total_loss': total_loss,
+          'output_losses': output_losses,
+          'metrics': metrics_results}
 
 
 def test_on_batch(model,
@@ -331,7 +336,11 @@ def test_on_batch(model,
         loss values.
 
   Returns:
-      total loss, loss and metrics associated with each output.
+      Dict with three items:
+        'total_loss': single tensor for overall loss,
+        'output_losses': list of tensors for loss corresponding to each of the
+          model output. Could be a empty list when model has only one output.
+        'metrics': list of tensors for metric specified.
   """
   inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
 
@@ -349,6 +358,7 @@ def test_on_batch(model,
   metrics_results = _eager_metrics_fn(
       model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  results = total_loss + output_losses + metrics_results
 
-  return results
+  return {'total_loss': total_loss,
+          'output_losses': output_losses,
+          'metrics': metrics_results}

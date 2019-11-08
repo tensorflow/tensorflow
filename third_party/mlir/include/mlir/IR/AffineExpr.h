@@ -88,6 +88,8 @@ public:
 
   bool operator==(AffineExpr other) const { return expr == other.expr; }
   bool operator!=(AffineExpr other) const { return !(*this == other); }
+  bool operator==(int64_t v) const;
+  bool operator!=(int64_t v) const { return !(*this == v); }
   explicit operator bool() const { return expr; }
 
   bool operator!() const { return expr == nullptr; }

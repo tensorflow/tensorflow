@@ -42,7 +42,7 @@ class IteratorGetDeviceOp : public OpKernel {
     // NOTE(mrry): Since the operation's input is a resource, we must be
     // colocated with it, and so we can simply return the current device's
     // name without looking at the input.
-    device_name_t->scalar<string>()() = ctx->device()->name();
+    device_name_t->scalar<tstring>()() = ctx->device()->name();
   }
 };
 

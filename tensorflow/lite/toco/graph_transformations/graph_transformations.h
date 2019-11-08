@@ -144,7 +144,7 @@ DECLARE_GRAPH_TRANSFORMATION(GroupDynamicBidirectionalSequenceRnn)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Normalization)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Pool)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyLstmCell)
-// TODO(b/131260336): Add IdentifyHardSwish
+DECLARE_GRAPH_TRANSFORMATION(IdentifyHardSwish)
 DECLARE_GRAPH_TRANSFORMATION(SplitLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeReshapeIntoPrecedingTranspose)
@@ -215,6 +215,7 @@ DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 DECLARE_GRAPH_TRANSFORMATION(ShuffleFCWeights)
 DECLARE_GRAPH_TRANSFORMATION(ResolveFakeQuantArgsFromVars)
 DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
+DECLARE_GRAPH_TRANSFORMATION(IdentifyNearestUpsample)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:

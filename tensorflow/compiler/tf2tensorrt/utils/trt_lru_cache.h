@@ -142,19 +142,7 @@ struct EngineContext {
 // Contains the context required to build the calibration data.
 class CalibrationContext {
  public:
-  void SetCalibrationTable() {
-    calibration_table_ = calibrator_->getCalibrationTableAsString();
-  }
-
-  Status SerializeToString(string* serialized) {
-    calibrator_->waitAndSetDone();
-    thr_->join();
-    *serialized = calibration_table_;
-    if (serialized->empty()) {
-      return errors::Unknown("Calibration table is empty.");
-    }
-    return Status::OK();
-  }
+  string TerminateCalibration();
 
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
@@ -162,12 +150,16 @@ class CalibrationContext {
   // Temporary staging areas for calibration inputs.
   std::vector<PersistentTensor> device_tensors_;
 
-  string calibration_table_;
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;
+
+ private:
+  mutex mu_;
+  bool terminated_ GUARDED_BY(mu_) = false;
+  std::string calibration_table_ GUARDED_BY(mu_);
 };
 
 ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;

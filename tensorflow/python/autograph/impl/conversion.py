@@ -307,6 +307,10 @@ def convert(entity, program_ctx):
   """Converts an entity into an equivalent entity."""
 
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
+    if not hasattr(entity, '__code__'):
+      raise ValueError('Cannot apply autograph to a function that doesn\'t '
+                       'expose a __code__ object. If this is a @tf.function,'
+                       ' try passing f.python_function instead.')
     free_nonglobal_var_names = entity.__code__.co_freevars
   else:
     free_nonglobal_var_names = ()

@@ -16,16 +16,16 @@
 // =============================================================================
 
 #include "mlir/Analysis/VectorAnalysis.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -182,7 +182,7 @@ AffineMap mlir::makePermutationMap(
 
 bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
                                              VectorType subVectorType) {
-  // First, extract the vector type and ditinguish between:
+  // First, extract the vector type and distinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector.transfer_read,
   //      vector.transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).
@@ -194,10 +194,10 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   bool mustDivide = false;
   (void)mustDivide;
   VectorType superVectorType;
-  if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
+  if (auto read = dyn_cast<vector::VectorTransferReadOp>(op)) {
     superVectorType = read.getResultType();
     mustDivide = true;
-  } else if (auto write = dyn_cast<VectorTransferWriteOp>(op)) {
+  } else if (auto write = dyn_cast<vector::VectorTransferWriteOp>(op)) {
     superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (op.getNumResults() == 0) {

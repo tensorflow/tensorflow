@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -280,7 +281,35 @@ class ParametricDotTest : public DotOperationTest,
  protected:
   template <typename NativeT>
   void TestImpl();
+
+  template <typename NativeT>
+  void ComputeAndCompareR2WithError(XlaBuilder* builder,
+                                    const Array2D<NativeT>& expected,
+                                    absl::Span<GlobalData* const> arguments);
 };
+
+template <typename NativeT>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<NativeT>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
+    XlaBuilder* builder, const Array2D<Eigen::half>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 5e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<int32>(
+    XlaBuilder* builder, const Array2D<int32>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
 
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
@@ -353,11 +382,7 @@ void ParametricDotTest::TestImpl() {
   if (param.has_addend) {
     args.push_back(addend_handle.get());
   }
-  ErrorSpec error_spec(0.3, 3e-3);
-  if (std::is_same<Eigen::half, NativeT>::value) {
-    error_spec = ErrorSpec(0.3, 5e-3);
-  }
-  ComputeAndCompareR2<NativeT>(&builder, *expected, args, error_spec);
+  ComputeAndCompareR2WithError<NativeT>(&builder, *expected, args);
 }
 
 std::vector<DotTestParam> CreateDotTestParameters() {
@@ -391,6 +416,7 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -646,8 +672,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
 
@@ -681,7 +705,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
       this->error_spec_);
 }
 
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
   using T = TypeParam;
 
@@ -714,7 +737,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
       /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
       this->error_spec_);
 }
-#endif  // XLA_TEST_BACKEND_CPU
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
@@ -1180,7 +1202,12 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
           .ValueOrDie(),
       &builder);
-  Einsum(x, y, std::get<2>(GetParam()));
+  auto config = std::get<2>(GetParam());
+  if (config.find(",") == config.npos) {
+    Einsum(x, config);
+  } else {
+    Einsum(x, y, config);
+  }
   ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
 }
 
@@ -1207,6 +1234,42 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
       p{v{5, 19}, v{}, "ab,->ab"},
       p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf->bhqk"},
+      p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn->...mn"},
+      p{v{5, 6}, v{6, 7}, "...mk,...kn->...mn"},
+      p{v{5, 6}, v{6, 7}, "...mk,kn->...mn"},
+      p{v{6, 6}, v{7, 7}, "mm,nn->mn"},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->n"},
+      p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb...->ba...ij"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6, 11}, v{6, 11, 7}, "mkB,kBn"},
+      p{v{5, 6}, v{6, 7}, "ab,cd"},
+      p{v{6}, v{6, 7}, "b,bc"},
+      p{v{5, 6, 7}, v{5, 6, 7}, "abc,abc"},
+      p{v{5, 6, 7}, v{7, 6, 5}, "abc,cba"},
+      p{v{77}, v{77}, "a,a"},
+      p{v{77}, v{77, 55}, "a,ab"},
+      p{v{2, 3, 77}, v{77, 2, 3, 55}, "ija,aijb"},
+      p{v{55}, v{}, "a"},
+      p{v{11, 111}, v{11}, "ab,a"},
+      p{v{16, 34}, v{16, 34}, "ab,ab"},
+      p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac"},
+      p{v{5, 19}, v{}, "ab"},
+      p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf"},
+      p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn"},
+      p{v{5, 6}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "m...k"},
+      p{v{5, 6, 12, 13}, v{}, "mk..."},
+      p{v{5, 6}, v{6, 7}, "...mk->km..."},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn"},
+      p{v{16, 16, 16}, v{}, "iii"},
+      p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb..."},
   };
   return test_cases;
 }
@@ -1361,7 +1424,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuIntegerDotCodegen)) {
+XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1376,7 +1439,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput
@@ -1406,7 +1469,9 @@ ENTRY MatrixVectorComplex {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
 }
 
 // Regression test for b/138155357, where we were incorrectly creating a dot-add

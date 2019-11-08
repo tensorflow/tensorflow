@@ -253,10 +253,10 @@ class LSTMOpModel : public SingleOpModel {
   int cell_to_forget_weights_;
   int cell_to_output_weights_;
 
-  int input_layer_norm_coefficients_;
-  int forget_layer_norm_coefficients_;
-  int cell_layer_norm_coefficients_;
-  int output_layer_norm_coefficients_;
+  int input_layer_norm_coefficients_ = kOptionalTensor;
+  int forget_layer_norm_coefficients_ = kOptionalTensor;
+  int cell_layer_norm_coefficients_ = kOptionalTensor;
+  int output_layer_norm_coefficients_ = kOptionalTensor;
 
   int input_gate_bias_;
   int forget_gate_bias_;

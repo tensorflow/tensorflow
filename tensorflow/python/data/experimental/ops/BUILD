@@ -53,12 +53,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:errors",
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -350,6 +348,7 @@ py_library(
         "snapshot.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",

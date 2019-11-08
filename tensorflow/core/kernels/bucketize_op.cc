@@ -67,8 +67,10 @@ class BucketizeOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
     auto output = output_tensor->template flat<int32>();
-    OP_REQUIRES_OK(context, functor::BucketizeFunctor<Device, T>::Compute(
-                                context, input, boundaries_, output));
+    if (input.size() > 0) {
+      OP_REQUIRES_OK(context, functor::BucketizeFunctor<Device, T>::Compute(
+                                  context, input, boundaries_, output));
+    }
   }
 
  private:

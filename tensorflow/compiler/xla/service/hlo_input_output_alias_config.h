@@ -117,6 +117,9 @@ class HloInputOutputAliasConfig {
 
   Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
 
+  // Returns the shape of the output of the alias config.
+  const Shape& shape() const;
+
   string ToString() const;
 
  private:

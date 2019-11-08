@@ -105,8 +105,8 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       HloInstruction* operand, int64 feature_index,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    auto elements_per_feature_u32 = add_instruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
+    auto elements_per_feature_s32 = add_instruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
     for (int64 i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {
@@ -114,15 +114,15 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       }
       auto dynamic_dimension_size =
           add_instruction(HloInstruction::CreateGetDimensionSize(
-              ShapeUtil::MakeShape(U32, {}), operand, i));
-      elements_per_feature_u32 = add_instruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(U32, {}), HloOpcode::kMultiply,
-          dynamic_dimension_size, elements_per_feature_u32));
+              ShapeUtil::MakeShape(S32, {}), operand, i));
+      elements_per_feature_s32 = add_instruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
+          dynamic_dimension_size, elements_per_feature_s32));
     }
 
     return HloInstruction::CreateConvert(
         ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-        elements_per_feature_u32);
+        elements_per_feature_s32);
   }
 
   // Current HloComputation instance the BatchNormExpander is
@@ -310,7 +310,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
   TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
-      operand_shape,
+      feature_shape,
       computation_->AddInstruction(
           HloInstruction::CreateConstant(std::move(epsilon_literal))),
       {}));
@@ -334,42 +334,25 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
                         HloInstruction* a, HloInstruction* b) {
     return add(HloInstruction::CreateBinary(shape, opcode, a, b));
   };
+  auto feature_broadcast = [&](HloInstruction* a) {
+    return add(
+        HloInstruction::CreateBroadcast(operand_shape, a, {feature_index}));
+  };
+
   int64 instruction_count_before = computation_->instruction_count();
+  auto true_scale = add_binary(
+      feature_shape, HloOpcode::kMultiply, scale,
+      add(Rsqrt(add_binary(feature_shape, HloOpcode::kAdd, var, epsilon),
+                add)));
+  auto true_shift = add_binary(
+      feature_shape, HloOpcode::kSubtract, offset,
+      add_binary(feature_shape, HloOpcode::kMultiply, mean, true_scale));
 
-  auto scale_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
-
-  auto offset_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
-
-  auto mean_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
-
-  auto var_broadcasted =
-      add(HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
-
-  // Var[X] + epsilon.
-  auto var_add_epsilon =
-      add_binary(operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon);
-
-  // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon, add));
-
-  // X - E[X].
-  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
-                                       operand, mean_broadcasted);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon].
-  auto normalized = add_binary(operand_shape, HloOpcode::kMultiply,
-                               operand_minus_mean, rsqrt_var_add_epsilon);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
-  auto scaled_normalized = add_binary(operand_shape, HloOpcode::kMultiply,
-                                      normalized, scale_broadcasted);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
-  auto shifted_normalized = HloInstruction::CreateBinary(
-      operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted);
+  auto shifted_normalized =
+      add_binary(operand_shape, HloOpcode::kAdd,
+                 add_binary(operand_shape, HloOpcode::kMultiply, operand,
+                            feature_broadcast(true_scale)),
+                 feature_broadcast(true_shift));
 
   int64 instruction_count_after = computation_->instruction_count();
   CHECK_EQ(instruction_count_after,
@@ -390,8 +373,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
     }
     shifted_normalized->set_sharding(sharding);
   }
-  TF_CHECK_OK(
-      ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
+  TF_CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
   return Status::OK();
 }
 

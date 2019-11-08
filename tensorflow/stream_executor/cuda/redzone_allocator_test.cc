@@ -15,12 +15,12 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -53,7 +53,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  cuda::PtxCompilationOptions opts;
+  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
 
   Stream stream(stream_exec);
@@ -128,7 +128,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  cuda::PtxCompilationOptions opts;
+  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   Stream stream(stream_exec);
   stream.Init();

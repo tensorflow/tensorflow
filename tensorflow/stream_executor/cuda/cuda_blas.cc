@@ -2794,6 +2794,18 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
 }
 
+port::Status CUDABlas::GetVersion(string *version) {
+  absl::MutexLock lock(&mu_);
+
+  int v;
+  auto status = cublasGetVersion(blas_, &v);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::InternalError(ToString(status));
+  }
+  *version = std::to_string(v);
+  return port::Status::OK();
+}
+
 }  // namespace gpu
 
 void initialize_cublas() {

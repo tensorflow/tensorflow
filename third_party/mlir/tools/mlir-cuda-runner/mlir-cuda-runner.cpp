@@ -29,9 +29,10 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/JitRunner.h"
@@ -42,24 +43,25 @@
 using namespace mlir;
 
 inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
-                            CUresult error, FuncOp &function) {
-  function.emitError(message.concat(" failed with error code ")
-                         .concat(llvm::Twine{error})
-                         .concat("[")
-                         .concat(buffer)
-                         .concat("]"));
+                            CUresult error, Location loc) {
+  emitError(loc, message.concat(" failed with error code ")
+                     .concat(llvm::Twine{error})
+                     .concat("[")
+                     .concat(buffer)
+                     .concat("]"));
 }
 
 #define RETURN_ON_CUDA_ERROR(expr, msg)                                        \
   {                                                                            \
     auto _cuda_error = (expr);                                                 \
     if (_cuda_error != CUDA_SUCCESS) {                                         \
-      emit_cuda_error(msg, jitErrorBuffer, _cuda_error, function);             \
+      emit_cuda_error(msg, jitErrorBuffer, _cuda_error, loc);                  \
       return {};                                                               \
     }                                                                          \
   }
 
-OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
+OwnedCubin compilePtxToCubin(const std::string ptx, Location loc,
+                             StringRef name) {
   char jitErrorBuffer[4096] = {0};
 
   RETURN_ON_CUDA_ERROR(cuInit(0), "cuInit");
@@ -85,10 +87,10 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   RETURN_ON_CUDA_ERROR(
       cuLinkAddData(linkState, CUjitInputType::CU_JIT_INPUT_PTX,
                     const_cast<void *>(static_cast<const void *>(ptx.c_str())),
-                    ptx.length(), function.getName().data(), /* kernel name */
-                    0,       /* number of jit options */
-                    nullptr, /* jit options */
-                    nullptr  /* jit option values */
+                    ptx.length(), name.data(), /* kernel name */
+                    0,                         /* number of jit options */
+                    nullptr,                   /* jit options */
+                    nullptr                    /* jit option values */
                     ),
       "cuLinkAddData");
 
@@ -98,8 +100,8 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
                        "cuLinkComplete");
 
   char *cubinAsChar = static_cast<char *>(cubinData);
-  OwnedCubin result = llvm::make_unique<std::vector<char>>(
-      cubinAsChar, cubinAsChar + cubinSize);
+  OwnedCubin result =
+      std::make_unique<std::vector<char>>(cubinAsChar, cubinAsChar + cubinSize);
 
   // This will also destroy the cubin data.
   RETURN_ON_CUDA_ERROR(cuLinkDestroy(linkState), "cuLinkDestroy");
@@ -107,48 +109,21 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   return result;
 }
 
-namespace {
-struct GPULaunchFuncOpLowering : public LLVMOpLowering {
-public:
-  explicit GPULaunchFuncOpLowering(LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(gpu::LaunchFuncOp::getOperationName(),
-                       lowering_.getDialect()->getContext(), lowering_) {}
-
-  // Convert the kernel arguments to an LLVM type, preserve the rest.
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.clone(*op)->setOperands(operands);
-    return rewriter.replaceOp(op, llvm::None), matchSuccess();
-  }
-};
-} // end anonymous namespace
-
 static LogicalResult runMLIRPasses(ModuleOp m) {
-  // As we gradually lower, the IR is inconsistent between passes. So do not
-  // verify inbetween.
-  PassManager pm(/*verifyPasses=*/false);
+  PassManager pm(m.getContext());
+  applyPassManagerCLOptions(pm);
 
   pm.addPass(createGpuKernelOutliningPass());
-  pm.addPass(createConvertToLLVMIRPass([](LLVMTypeConverter &converter,
-                                          OwningRewritePatternList &patterns) {
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    patterns.insert<GPULaunchFuncOpLowering>(converter);
-  }));
-  pm.addPass(createLowerGpuOpsToNVVMOpsPass());
-  pm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
-  pm.addPass(createGenerateCubinAccessorPass());
+  auto &kernelPm = pm.nest<ModuleOp>();
+  kernelPm.addPass(createLowerGpuOpsToNVVMOpsPass());
+  kernelPm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
+  pm.addPass(createLowerToLLVMPass());
   pm.addPass(createConvertGpuLaunchFuncToCudaCallsPass());
 
-  if (failed(pm.run(m)))
-    return failure();
-
-  if (failed(m.verify()))
-    return failure();
-
-  return success();
+  return pm.run(m);
 }
 
 int main(int argc, char **argv) {
+  registerPassManagerCLOptions();
   return mlir::JitRunnerMain(argc, argv, &runMLIRPasses);
 }

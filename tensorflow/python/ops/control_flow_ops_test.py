@@ -1189,7 +1189,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def make_func(bi):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
-    branches = {array_ops.constant(i): make_func(i) for i in range(5)}
+    branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
     with self.assertRaisesRegexp(TypeError, "must be a Python `int`"):
       control_flow_ops.switch_case(array_ops.constant(1), branches)
 
@@ -1262,10 +1262,8 @@ class CaseTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testCase_dict(self):
     x = constant_op.constant(2)
-    conditions = {
-        math_ops.equal(x, 1): lambda: constant_op.constant(2),
-        math_ops.equal(x, 2): lambda: constant_op.constant(4)
-    }
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
     output = control_flow_ops.case(conditions, exclusive=True)
     self.assertEqual(4, self.evaluate(output))
 

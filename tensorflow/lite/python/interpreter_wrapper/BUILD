@@ -28,9 +28,11 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -60,6 +62,7 @@ tf_py_wrap_cc(
     srcs = [
         "interpreter_wrapper.i",
     ],
+    copts = ["-fexceptions"],
     deps = [
         ":interpreter_wrapper_lib",
         "//third_party/python_runtime:headers",

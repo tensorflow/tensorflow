@@ -12,8 +12,8 @@ package(
 package_group(
     name = "experimental",
     packages = [
-        "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
+        "//third_party/dart/tflite_native/...",  # whitelisted
     ],
 )
 
@@ -63,7 +63,6 @@ cc_library(
         "c_api_types.h",
     ],
     copts = tflite_copts(),
-    tags = ["swift_module=TensorFlowLiteC"],
     visibility = [
         ":experimental",
     ],

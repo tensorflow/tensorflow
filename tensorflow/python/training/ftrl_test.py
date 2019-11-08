@@ -363,8 +363,8 @@ class FtrlOptimizerTest(test.TestCase):
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
-      self.assertAllCloseAccordingToType(val0, val2)
-      self.assertAllCloseAccordingToType(val1, val3)
+      self.assertAllCloseAccordingToType(val0, val2, half_rtol=2e-3)
+      self.assertAllCloseAccordingToType(val1, val3, half_rtol=2e-3)
 
   @test_util.run_deprecated_v1
   def testEquivSparseAdagradwithoutRegularization(self):

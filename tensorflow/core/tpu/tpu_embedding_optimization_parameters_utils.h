@@ -101,7 +101,7 @@ Status RegisterPerTableRetrieveOpsForAlgorithmBody(
     OpRegistrationData *op_reg_data);
 
 // Returns whether an optimization algorithm is only supported internally.
-// Returns an error if the algorithm is not recongized at all.
+// Returns an error if the algorithm is not recognized at all.
 Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
                                        bool *internal);
 

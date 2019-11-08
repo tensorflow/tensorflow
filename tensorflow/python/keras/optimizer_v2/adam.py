@@ -119,16 +119,19 @@ class Adam(optimizer_v2.OptimizerV2):
       amsgrad: boolean. Whether to apply AMSGrad variant of this algorithm from
         the paper "On the Convergence of Adam and beyond".
       name: Optional name for the operations created when applying gradients.
-        Defaults to "Adam".  @compatibility(eager) When eager execution is
-        enabled, `learning_rate`, `beta_1`, `beta_2`, and `epsilon` can each be
-        a callable that takes no arguments and returns the actual value to use.
-        This can be useful for changing these values across different
-        invocations of optimizer functions. @end_compatibility
+        Defaults to "Adam".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
         `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
         gradients by value, `decay` is included for backward compatibility to
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `beta_1`, `beta_2`,
+    and `epsilon` can each be a callable that takes no arguments and
+    returns the actual value to use. This can be useful for changing these
+    values across different invocations of optimizer functions.
+    @end_compatibility
     """
 
     super(Adam, self).__init__(name, **kwargs)

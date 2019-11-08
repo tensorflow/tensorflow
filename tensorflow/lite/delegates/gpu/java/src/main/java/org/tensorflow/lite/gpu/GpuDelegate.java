@@ -17,9 +17,18 @@ package org.tensorflow.lite.gpu;
 
 import java.io.Closeable;
 import org.tensorflow.lite.Delegate;
-import org.tensorflow.lite.Tensor;
 
-/** {@link Delegate} for GPU inference. */
+/**
+ * {@link Delegate} for GPU inference.
+ *
+ * <p>Note: When calling {@code Interpreter.modifyGraphWithDelegate()}/
+ * {@code Interpreter.Options.addDelegate()} and {@code Interpreter.run()}, the caller must have an
+ * {@code EGLContext} in the <b>current thread</b> and {@code Interpreter.run()} must be called from
+ * the same {@code EGLContext}. If an {@code EGLContext} does not exist, the delegate will
+ * internally create one, but then the developer must ensure that {@code Interpreter.run()} is
+ * always called from the same thread in which {@code Interpreter.modifyGraphWithDelegate()} was
+ * called.
+ */
 public class GpuDelegate implements Delegate, Closeable {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
@@ -27,19 +36,19 @@ public class GpuDelegate implements Delegate, Closeable {
 
   private long delegateHandle;
 
-  /** Shader compilation options. */
-  public static final class CompileOptions {
-    public CompileOptions() {}
+  /** Delegate options. */
+  public static final class Options {
+    public Options() {}
 
-    /** Delegate chooses fastest GL object type to represent tensors (default). */
-    public static final int GL_OBJECT_TYPE_FASTEST = 0;
     /**
-     * Delegate uses GL textures to represent tensors, which works faster on Adreno-based devices,
-     * but may use more memory.
+     * Delegate will be used only once, therefore, bootstrap/init time should be taken into account.
      */
-    public static final int GL_OBJECT_TYPE_TEXTURE = 1;
-    /** Delegate uses GL shader storage buffer objects to represent tensors. */
-    public static final int GL_OBJECT_TYPE_BUFFER = 2;
+    public static final int INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0;
+
+    /**
+     * Prefer maximizing the throughput. Same delegate will be used repeatedly on multiple inputs.
+     */
+    public static final int INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
 
     /**
      * Sets whether precision loss is allowed.
@@ -48,89 +57,32 @@ public class GpuDelegate implements Delegate, Closeable {
      *     values, process in FP16. When `false`, computations are carried out in 32-bit floating
      *     point.
      */
-    public CompileOptions setPrecisionLossAllowed(boolean precisionLossAllowed) {
+    public Options setPrecisionLossAllowed(boolean precisionLossAllowed) {
       this.precisionLossAllowed = precisionLossAllowed;
       return this;
     }
 
     /**
-     * Sets whether dynamic batch is enabled.
+     * Sets the inference preference for precision/compilation/runtime tradeoffs.
      *
-     * @param dynamicBatchEnabled When `false` (default), dynamic batching is disabled and
-     *     input/output tensors must have a batch size of 1 (probably what you want, unless you use
-     *     LSTMs). When `true`, enables dynamic batching and input/output tensor can have a batch
-     *     size greater than 1.
+     * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
+     *     `INFERENCE_PREFERENCE_SUSTAINED_SPEED`.
      */
-    public CompileOptions setDynamicBatchEnabled(boolean dynamicBatchEnabled) {
-      this.dynamicBatchEnabled = dynamicBatchEnabled;
-      return this;
-    }
-
-    /**
-     * Sets the preferred GL object type for tensor representation
-     *
-     * @param preferredGlObjectType One of `GL_OBJECT_TYPE_FASTEST` (default),
-     *     `GL_OBJECT_TYPE_TEXTURE`, `GL_OBJECT_TYPE_BUFFER`.
-     */
-    public CompileOptions setPreferredGlObjectType(int preferredGlObjectType) {
-      this.preferredGlObjectType = preferredGlObjectType;
+    public Options setInferencePreference(int preference) {
+      this.inferencePreference = preference;
       return this;
     }
 
     boolean precisionLossAllowed = true;
-    boolean dynamicBatchEnabled = false;
-    int preferredGlObjectType = GL_OBJECT_TYPE_FASTEST;
-  }
-
-  /** Delegate options. */
-  public static final class Options {
-    public Options() {}
-
-    private static final CompileOptions DEFAULT_COMPILE_OPTIONS = new CompileOptions();
-
-    /**
-     * Sets the shader compilation options to be used by the delegate.
-     *
-     * @param compileOptions the {@link CompileOptions} to use.
-     */
-    public Options setCompileOptions(CompileOptions compileOptions) {
-      this.compileOptions = compileOptions != null ? compileOptions : DEFAULT_COMPILE_OPTIONS;
-      return this;
-    }
-
-    CompileOptions compileOptions = DEFAULT_COMPILE_OPTIONS;
+    int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
   }
 
   public GpuDelegate(Options options) {
-    delegateHandle =
-        createDelegate(
-            options.compileOptions.precisionLossAllowed,
-            options.compileOptions.dynamicBatchEnabled,
-            options.compileOptions.preferredGlObjectType);
+    delegateHandle = createDelegate(options.precisionLossAllowed, options.inferencePreference);
   }
 
   public GpuDelegate() {
     this(new Options());
-  }
-
-  /**
-   * Advanced: Binds a GL SSBO to an input or an output tensor in the initialized delegate.
-   *
-   * <p>The bound buffer should have sufficient storage to accommodate all elements of the tensor.
-   *
-   * <p><b>Note:</b> This method must be called *before* calling the delegate instance is installed
-   * in the {@link Interpreter}.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
-   * @param tensor The input or output {@link Tensor} to bind to the buffer object.
-   * @param ssbo The GL buffer object to bind to the tensor. See also {@link
-   *     Interpreter.Options#setAllowBufferHandleOutput()} for details on allowing zero-copy output
-   *     when GL textures are bound to output tensors.
-   * @return Whether the operation succeeded.
-   */
-  public boolean bindGlBufferToTensor(Tensor tensor, int ssbo) {
-    return bindGlBufferToTensor(delegateHandle, tensor.index(), ssbo);
   }
 
   @Override
@@ -155,11 +107,7 @@ public class GpuDelegate implements Delegate, Closeable {
     System.loadLibrary(TFLITE_GPU_LIB);
   }
 
-  private static native long createDelegate(
-      boolean precisionLossAllowed, boolean dynamicBatchEnabled, int preferredGlObjectType);
+  private static native long createDelegate(boolean precisionLossAllowed, int preference);
 
   private static native void deleteDelegate(long delegateHandle);
-
-  private static native boolean bindGlBufferToTensor(
-      long delegateHandle, int tensorIndex, int ssbo);
 }

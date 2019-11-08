@@ -42,8 +42,10 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     call_fn are added to the layer losses.
   """
   expects_training_arg = layer._expects_training_arg   # pylint: disable=protected-access
-  if hasattr(call_fn, 'original_call'):
+  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
     original_call = call_fn.original_call
+    # In Python 3, callable objects are not compatible with inspect.getargspec
+    call_fn = call_fn.__call__
   else:
     original_call = call_fn
   fn, arg_spec = maybe_add_training_arg(
@@ -113,18 +115,27 @@ def maybe_add_training_arg(
   # Create arg spec for decorated function. If 'training' is not defined in the
   # args of the original arg spec, then add it to kwonlyargs.
   arg_spec = tf_inspect.getfullargspec(original_call)
+  defaults = list(arg_spec.defaults) if arg_spec.defaults is not None else []
 
   kwonlyargs = arg_spec.kwonlyargs
   kwonlydefaults = arg_spec.kwonlydefaults or {}
+  # Add training arg if it does not exist, or set the default training value.
   if 'training' not in arg_spec.args:
     kwonlyargs.append('training')
     kwonlydefaults['training'] = default_training_value
+  else:
+    index = arg_spec.args.index('training')
+    training_default_index = len(arg_spec.args) - index
+    if (arg_spec.defaults and
+        len(arg_spec.defaults) >= training_default_index and
+        defaults[-training_default_index] is None):
+      defaults[-training_default_index] = default_training_value
 
   decorator_argspec = tf_inspect.FullArgSpec(
       args=arg_spec.args,
       varargs=arg_spec.varargs,
       varkw=arg_spec.varkw,
-      defaults=arg_spec.defaults,
+      defaults=defaults,
       kwonlyargs=kwonlyargs,
       kwonlydefaults=kwonlydefaults,
       annotations=arg_spec.annotations)

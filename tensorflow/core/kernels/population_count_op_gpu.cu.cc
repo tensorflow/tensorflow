@@ -33,14 +33,16 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <typename T>
-__global__ void PopulationCountKernel(const int size, const T* input,
-                                      uint8* output) {
+__global__ void PopulationCountKernel(const int size,
+                                      const T* __restrict__ input,
+                                      uint8* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popc(ldg(input + i)); }
 }
 
 template <>
-__global__ void PopulationCountKernel(const int size, const int8* input,
-                                      uint8* output) {
+__global__ void PopulationCountKernel(const int size,
+                                      const int8* __restrict__ input,
+                                      uint8* __restrict__ output) {
   // For some reason, __popc on a negative int8 gets confused.
   GPU_1D_KERNEL_LOOP(i, size) {
     output[i] = __popc(ldg(reinterpret_cast<const uint8*>(input + i)));
@@ -48,8 +50,9 @@ __global__ void PopulationCountKernel(const int size, const int8* input,
 }
 
 template <>
-__global__ void PopulationCountKernel(const int size, const int16* input,
-                                      uint8* output) {
+__global__ void PopulationCountKernel(const int size,
+                                      const int16* __restrict__ input,
+                                      uint8* __restrict__ output) {
   // For some reason, __popc on a negative int16 gets confused.
   GPU_1D_KERNEL_LOOP(i, size) {
     output[i] = __popc(ldg(reinterpret_cast<const uint16*>(input + i)));
@@ -57,8 +60,9 @@ __global__ void PopulationCountKernel(const int size, const int16* input,
 }
 
 template <>
-__global__ void PopulationCountKernel<int64>(const int size, const int64* input,
-                                             uint8* output) {
+__global__ void PopulationCountKernel<int64>(const int size,
+                                             const int64* __restrict__ input,
+                                             uint8* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
 }
 

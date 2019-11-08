@@ -16,21 +16,51 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+
 namespace mlir {
-class FunctionPassBase;
 
-namespace XLA {
+class FuncOp;
+class Operation;
+template <typename T>
+class OpPassBase;
 
-/// Lowers from TF dialect to XLA dialect.
-FunctionPassBase *createLegalizeTFPass();
+namespace xla_hlo {
 
-/// Lowers XLA control flow ops to the Standard dialect.
-FunctionPassBase *createLegalizeControlFlowPass();
+/// Lowers from TF dialect to HLO dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
 
-/// Lowers from XLA dialect to Standard dialect.
-FunctionPassBase *createLegalizeToStdPass();
+/// Converts the provided Operation as well as all nested operations into HLO
+/// dialect using the conversion patterns registered by the HLO dialect.
+LogicalResult legalizeTF(Operation* op);
 
-}  // end namespace XLA
-}  // end namespace mlir
+/// Lowers HLO control flow ops to the Standard dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
+
+/// Lowers from HLO dialect to Standard dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
+
+// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
+// buffers if necessary.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+
+}  // namespace xla_hlo
+
+namespace xla_lhlo {
+
+// Lowers from LHLO dialect to Affine dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
+
+// Lowers from LHLO dialect to Linalg dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+// Fuses linalg ops obtained after LHLO lowering.
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
+
+}  // namespace xla_lhlo
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_

@@ -16,12 +16,10 @@ limitations under the License.
 // This is the definition file for the TensorFlow Executor Dialect.
 //
 
-#ifdef TF_EXECUTOR_DIALECT
-#else
+#ifndef TF_EXECUTOR_DIALECT
 #define TF_EXECUTOR_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -62,8 +60,7 @@ def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 // TensorFlow Executor Type Constraint
 //===----------------------------------------------------------------------===//
 
-// Predicate to verify that the opId'th operand can be broadcasted to the type
-// of the  resId'th result.
+// Predicate to verify all control inputs appear after any non-control inputs.
 def ControlOperandsAfterAllData :
     PredOpTrait<"all control inputs must appear after any non-control input",
                 CPred<"succeeded(VerifyControlOperandsAfterAllData(&$_op))">>;
@@ -122,11 +119,12 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCanonicalizer = 1;
-
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    FetchOp GetFetch();
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
@@ -145,7 +143,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -205,7 +203,12 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    YieldOp GetYield();
   }];
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TfExecutor_YieldOp : TfExecutor_Op<"yield",
@@ -220,7 +223,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -267,8 +270,8 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
   );
 
   let results = (outs
-    AnyType: $trueOutput,
     AnyType: $falseOutput,
+    AnyType: $trueOutput,
     TfeControlType: $control
   );
 
@@ -304,7 +307,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 
   let arguments = (ins
     AnyType:$data,
-    I32:$index,
+    TensorOf<[I32]>:$index,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs,
     I64Attr:$num_outs
@@ -346,7 +349,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 
   let results = (outs
     AnyTensor:$output,
-    TensorOf<[I32]>:$valueIndex,
+    TensorOf<[I32]>:$value_index,
     TfeControlType:$control
   );
 }
@@ -447,15 +450,22 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Type result_type, "
+    "Builder *builder, OperationState &result, Type result_type, "
     "ArrayRef<NamedAttribute> attributes = {}",
     [{
       Type token_type = TokenType::get(builder->getContext());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = { result_type, token_type, control_type };
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = { result_type, token_type, control_type };
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let extraClassDeclaration = [{
+    NextIterationSinkOp GetSink() {
+      return cast<NextIterationSinkOp>(*token()->user_begin());
+    }
+  }];
+
 }
 
 
@@ -506,15 +516,15 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *token, "
+    "Builder *builder, OperationState &result, Value *token, "
     "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
              "expects at least one operand");
-      result->operands.push_back(token);
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.push_back(token);
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }
@@ -582,17 +592,19 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 
   let verifier = ?;
 
+  let hasCanonicalizer = 1;
+
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, "
+    "Builder *builder, OperationState &result, "
     "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = {control_type};
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = {control_type};
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }

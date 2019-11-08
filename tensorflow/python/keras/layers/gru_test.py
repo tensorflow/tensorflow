@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
 
@@ -43,6 +44,7 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_v2_only
   def test_float64_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -85,6 +87,11 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_recurrent_dropout_with_implementation_restriction(self):
+    layer = keras.layers.GRU(2, recurrent_dropout=0.1, implementation=2)
+    # The implementation is force to 1 due to the limit of recurrent_dropout.
+    self.assertEqual(layer.implementation, 1)
+
   @parameterized.parameters([0, 1, 2])
   def test_implementation_mode_GRU(self, implementation_mode):
     num_samples = 2
@@ -108,7 +115,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(timesteps, embedding_dim),
         num_classes=units)
-    y_train = keras.utils.to_categorical(y_train, units)
+    y_train = np_utils.to_categorical(y_train, units)
 
     inputs = keras.layers.Input(shape=[timesteps, embedding_dim])
     gru_layer = keras.layers.GRU(units,

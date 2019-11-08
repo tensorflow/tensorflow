@@ -229,26 +229,26 @@ TestCase TestCase4() {
 // Test case 5: cycle_length = 2, block_length = 2, sloppy = false
 // buffer_output_elements = 2, prefetch_input_elements = 2
 TestCase TestCase5() {
-  return {
-      /*input_tensors=*/
-      {CreateTensor<string>(TensorShape{3, 3, 1},
-                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
-      /*cycle_length=*/2,
-      /*block_length=*/2,
-      /*sloppy=*/false,
-      /*buffer_output_elements=*/2,
-      /*prefetch_input_elements=*/2,
-      /*func=*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_STRING}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
-      /*expected_outputs*/
-      ConvertToTensorVec<string>({"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({1})},
-      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-      /*breakpoints*/ {0, 4, 11}};
+  return {/*input_tensors=*/
+          {CreateTensor<tstring>(TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e",
+                                                        "f", "g", "h", "i"})},
+          /*cycle_length=*/2,
+          /*block_length=*/2,
+          /*sloppy=*/false,
+          /*buffer_output_elements=*/2,
+          /*prefetch_input_elements=*/2,
+          /*func=*/
+          MakeTensorSliceDatasetFunc(
+              DataTypeVector({DT_STRING}),
+              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+          /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+          /*expected_outputs*/
+          ConvertToTensorVec<tstring>(
+              {"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({1})},
+          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+          /*breakpoints*/ {0, 4, 11}};
 }
 
 TestCase InvalidCycleLengthTestCase() {
@@ -567,46 +567,6 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Cardinality) {
 
   EXPECT_EQ(parallel_interleave_dataset->Cardinality(),
             test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> parallel_interleave_dataset_kernel;
-  TF_ASSERT_OK(CreateParallelInterleaveDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &parallel_interleave_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor),
-       TensorValue(&test_case.cycle_length),
-       TensorValue(&test_case.block_length), TensorValue(&test_case.sloppy),
-       TensorValue(&test_case.buffer_output_elements),
-       TensorValue(&test_case.prefetch_input_elements)});
-  std::unique_ptr<OpKernelContext> parallel_interleave_dataset_context;
-  TF_ASSERT_OK(CreateParallelInterleaveDatasetContext(
-      parallel_interleave_dataset_kernel.get(), &inputs,
-      &parallel_interleave_dataset_context));
-  DatasetBase* parallel_interleave_dataset;
-  TF_ASSERT_OK(CreateDataset(parallel_interleave_dataset_kernel.get(),
-                             parallel_interleave_dataset_context.get(),
-                             &parallel_interleave_dataset));
-  core::ScopedUnref scoped_unref_dataset(parallel_interleave_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      parallel_interleave_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, IteratorOutputDtypes) {

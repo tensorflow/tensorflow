@@ -88,7 +88,7 @@ public:
 
   /// Gets the minimum possible stored by a storageType. storageTypeMin must
   /// be greater than or equal to this value.
-  static int64_t getDefaultMininumForInteger(bool isSigned,
+  static int64_t getDefaultMinimumForInteger(bool isSigned,
                                              unsigned integralWidth) {
     if (isSigned) {
       return llvm::minIntN(integralWidth);
@@ -98,7 +98,7 @@ public:
 
   /// Gets the maximum possible stored by a storageType. storageTypeMax must
   /// be less than or equal to this value.
-  static int64_t getDefaultMaxinumForInteger(bool isSigned,
+  static int64_t getDefaultMaximumForInteger(bool isSigned,
                                              unsigned integralWidth) {
     if (isSigned) {
       return llvm::maxIntN(integralWidth);

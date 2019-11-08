@@ -1356,7 +1356,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
       dst_ptr = tensor->flat<int8>().data();
       break;
     case DT_STRING:
-      dst_ptr = tensor->flat<string>().data();
+      dst_ptr = tensor->flat<tstring>().data();
       break;
     case DT_INT64:
       dst_ptr = tensor->flat<int64>().data();

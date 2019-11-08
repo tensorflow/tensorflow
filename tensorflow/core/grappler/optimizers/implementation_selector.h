@@ -79,6 +79,8 @@ class ImplementationSelector : public CustomGraphOptimizer {
     return "implementation_selector";
   }
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   // This call is not thread-safe.
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;

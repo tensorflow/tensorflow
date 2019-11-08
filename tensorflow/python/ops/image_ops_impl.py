@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -54,7 +53,7 @@ ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
-
+ops.NotDifferentiable('GenerateBoundingBoxProposals')
 
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
@@ -218,14 +217,14 @@ def _CheckAtLeast3DImage(image, require_static=True):
     raise ValueError("'image' must be at least three-dimensional.")
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
-  if any(x == 0 for x in image_shape):
-    raise ValueError('all dims of \'image.shape\' must be > 0: %s' %
+  if any(x == 0 for x in image_shape[-3:]):
+    raise ValueError('inner 3 dims of \'image.shape\' must be > 0: %s' %
                      image_shape)
-  if not image_shape.is_fully_defined():
+  if not image_shape[-3:].is_fully_defined():
     return [
         check_ops.assert_positive(
-            array_ops.shape(image),
-            ["all dims of 'image.shape' "
+            array_ops.shape(image)[-3:],
+            ["inner 3 dims of 'image.shape' "
              'must be > 0.']),
         check_ops.assert_greater_equal(
             array_ops.rank(image),
@@ -326,6 +325,26 @@ def random_flip_up_down(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the first
   dimension, which is `height`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
+    [[[3], [4]], [[1], [2]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
+    [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -347,6 +366,25 @@ def random_flip_left_right(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the
   second dimension, which is `width`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
+    [[[2], [1]], [[4], [3]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
+    [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1964,7 +2002,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `max_jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: 3D image. Size of the last dimension must be 1 or 3.
     min_jpeg_quality: Minimum jpeg encoding quality to use.
     max_jpeg_quality: Maximum jpeg encoding quality to use.
     seed: An operation-specific seed. It will be used in conjunction with the
@@ -1985,37 +2023,32 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  if compat.forward_compatible(2019, 4, 4):
-    jpeg_quality = random_ops.random_uniform([],
-                                             min_jpeg_quality,
-                                             max_jpeg_quality,
-                                             seed=seed,
-                                             dtype=dtypes.int32)
-  else:
-    np.random.seed(seed)
-    jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  jpeg_quality = random_ops.random_uniform([],
+                                           min_jpeg_quality,
+                                           max_jpeg_quality,
+                                           seed=seed,
+                                           dtype=dtypes.int32)
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
 @tf_export('image.adjust_jpeg_quality')
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
-  """Adjust jpeg encoding quality of an RGB image.
+  """Adjust jpeg encoding quality of an image.
 
-  This is a convenience method that adjusts jpeg encoding quality of an
-  RGB image.
+  This is a convenience method that converts an image to uint8 representation,
+  encodes it to jpeg with `jpeg_quality`, decodes it, and then converts back
+  to the original data type.
 
-  `image` is an RGB image.  The image's encoding quality is adjusted
-  to `jpeg_quality`.
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
+    image: 3D image. Size of the last dimension must be None, 1 or 3.
+    jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
-    Adjusted image(s), same shape and DType as `image`.
-  
+    Adjusted image, same shape and DType as `image`.
+
   Usage Example:
     ```python
     >> import tensorflow as tf
@@ -2026,24 +2059,18 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     InvalidArgumentError: quality must be in [0,100]
     InvalidArgumentError: image must have 1 or 3 channels
   """
-  with ops.name_scope(name, 'adjust_jpeg_quality', [image]) as name:
+  with ops.name_scope(name, 'adjust_jpeg_quality', [image]):
     image = ops.convert_to_tensor(image, name='image')
+    channels = image.shape.as_list()[-1]
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
-    # Encode image to jpeg with given jpeg quality
-    if compat.forward_compatible(2019, 4, 4):
-      if not _is_tensor(jpeg_quality):
-        # If jpeg_quality is a int (not tensor).
-        jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
-      image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
-    else:
-      image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    if not _is_tensor(jpeg_quality):
+      # If jpeg_quality is a int (not tensor).
+      jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
+    image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
-    # Decode jpeg image
-    image = gen_image_ops.decode_jpeg(image)
-    # Convert back to original dtype and return
+    image = gen_image_ops.decode_jpeg(image, channels=channels)
     return convert_image_dtype(image, orig_dtype)
 
 
@@ -2790,17 +2817,9 @@ def non_max_suppression_padded(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    if compat.forward_compatible(2018, 8, 7) or pad_to_max_output_size:
-      return gen_image_ops.non_max_suppression_v4(boxes, scores,
-                                                  max_output_size,
-                                                  iou_threshold,
-                                                  score_threshold,
-                                                  pad_to_max_output_size)
-    else:
-      return gen_image_ops.non_max_suppression_v3(boxes, scores,
-                                                  max_output_size,
-                                                  iou_threshold,
-                                                  score_threshold)
+    return gen_image_ops.non_max_suppression_v4(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold,
+                                                pad_to_max_output_size)
 
 
 @tf_export('image.non_max_suppression_overlaps')
@@ -3434,7 +3453,40 @@ def image_gradients(image):
   Returns:
     Pair of tensors (dy, dx) holding the vertical and horizontal image
     gradients (1-step finite difference).
-
+    
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 5
+    IMAGE_WIDTH = 5
+    CHANNELS = 1
+    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS, 
+      delta=1, dtype=tf.float32), 
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    dx, dy = tf.image.image_gradients(image)
+    print(image[0, :,:,0])
+    tf.Tensor(
+      [[ 0.  1.  2.  3.  4.]
+      [ 5.  6.  7.  8.  9.]
+      [10. 11. 12. 13. 14.]
+      [15. 16. 17. 18. 19.]
+      [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
+    print(dx[0, :,:,0])
+    tf.Tensor(
+      [[5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
+    print(dy[0, :,:,0])
+    tf.Tensor(
+      [[1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
+    ```
+    
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
@@ -3628,6 +3680,26 @@ def crop_and_resize_v2(image,
 
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+
+  Example:
+
+  ```python
+  import tensorflow as tf
+  BATCH_SIZE = 1
+  NUM_BOXES = 5
+  IMAGE_HEIGHT = 256
+  IMAGE_WIDTH = 256
+  CHANNELS = 3
+  CROP_SIZE = (24, 24)
+
+  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
+  CHANNELS) )
+  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
+  maxval=BATCH_SIZE, dtype=tf.int32)
+  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  output.shape  #=> (5, 24, 24, 3)
+  ```
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)
@@ -3946,3 +4018,31 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     A `Tensor`. Has the same type as `images`.
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
+
+
+@tf_export('image.generate_bounding_box_proposals')
+def generate_bounding_box_proposals(scores,
+                                    bbox_deltas,
+                                    image_info,
+                                    anchors,
+                                    nms_threshold=0.7,
+                                    pre_nms_topn=6000,
+                                    min_size=16,
+                                    post_nms_topn=300,
+                                    name=None):
+  """ Generate bounding box proposals from encoded bounding boxes.
+
+  Returns:
+    rois: Region of interest boxes sorted by their scores.
+    roi_probabilities: scores of the roi boxes in the rois tensor.
+  """
+  return gen_image_ops.generate_bounding_box_proposals(
+      scores=scores,
+      bbox_deltas=bbox_deltas,
+      image_info=image_info,
+      anchors=anchors,
+      nms_threshold=nms_threshold,
+      pre_nms_topn=pre_nms_topn,
+      min_size=min_size,
+      post_nms_topn=post_nms_topn,
+      name=Name)

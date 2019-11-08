@@ -13,14 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
+# Placeholder for Google-internal load statements.
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_py",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 proto_library(

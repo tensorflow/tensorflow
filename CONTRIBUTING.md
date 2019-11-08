@@ -84,6 +84,10 @@ TensorFlow coding style.
     [tensorflow/addons](https://github.com/tensorflow/addons) to get some
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
+*   As every PR requires several CPU/GPU hours of CI testing, we discourage
+    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    same issue at the file level at least (e.g.: fix all typos in a file, fix
+    all compiler warning in a file, etc.)
 
 #### License
 
@@ -124,19 +128,16 @@ diff <my_cc_file> /tmp/my_cc_file.cc
 Changes to TensorFlow Python code should conform to
 [Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
 
-Use `pylint` to check your Python changes. To install `pylint` and
-retrieve TensorFlow's custom style definition:
+Use `pylint` to check your Python changes. To install `pylint` and check a file
+with `pylint` against TensorFlow's custom style definition:
 
 ```bash
 pip install pylint
-wget -O /tmp/pylintrc https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/ci_build/pylintrc
+pylint --rcfile=tensorflow/tools/ci_build/pylintrc myfile.py
 ```
 
-To check a file with `pylint`:
-
-```bash
-pylint --rcfile=/tmp/pylintrc myfile.py
-```
+Note `pylint --rcfile=tensorflow/tools/ci_build/pylintrc` should run from the
+top level tensorflow directory.
 
 #### Coding style for other languages
 

@@ -18,12 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import operator
+
 import os
 import os.path
 import sys
 
+import numpy as np
+import six
+
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
@@ -37,17 +41,19 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import analytics
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tensor_tracer_flags
 from tensorflow.python.tpu import tensor_tracer_report
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training import training_util
-from tensorflow.python.ops import nn_impl
-
 
 _DEVICE_TYPE_TPU = 'tpu'
 _DEVICE_TYPE_CPU = 'cpu'
@@ -75,19 +81,100 @@ _TRACE_FILE_NAME = 'trace.all'
 _COMPACT_TRACE_FILE_PREFIX = 'compact_trace.'
 _COMPACT_TRACE_ENTRY_INIT_VALUE = -1.0
 _TENSOR_TRACER_STORAGE = 'tensor_tracer_storage'
-_TENSOR_VALUES_CACHE = 'tensor_values_cache'
+_TT_SNAPSHOT = 'tensor_tracer_snapshot'
 _REPLICA_ID_TAG = '#replica-id: '
 
-_TT_SUMMARY_NORM = 'tensor_tracer_norm'
-_TT_SUMMARY_MAX = 'tensor_tracer_max'
-_TT_SUMMARY_MIN = 'tensor_tracer_min'
-_TT_SUMMARY_MEAN = 'tensor_tracer_mean'
-_TT_SUMMARY_VAR = 'tensor_tracer_var'
-_TT_SUMMARY_SIZE = 'tensor_tracer_size'
+_TT_SUMMARY_NORM = tensor_tracer_flags.TT_SUMMARY_NORM
+_TT_SUMMARY_MAX = tensor_tracer_flags.TT_SUMMARY_MAX
+_TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
+_TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
+_TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
+_TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
+_TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
+_TT_HOSTCALL_KEY = 'tensor_tracer_host_call'
+_TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 
 _TT_SUMMARY_MAX_QUEUE = 100
+
+
+def op_priority(op_type):
+  """Returns the priority of the op.
+
+  If the priority of the op is k, it will be traced if trace_level>=k.
+  Args:
+    op_type: String name of the operation type.
+  Returns:
+    Integer value corresponding the priority of the op.
+  """
+  if op_type in ('Const', 'Shape', 'BroadcastGradientArgs', 'Range',
+                 'VariableShape', 'Fill', 'OneHot', 'ShapeN'):
+    # Lowest priority ops, e.g., constant ops accross different steps,
+    # They will be traced only if trace_level>=7
+    return 7
+
+  if op_type in ('Identity', 'Cast', 'Reshape', 'ExpandDims', 'StopGradient',
+                 'PreventGradient', 'Squeeze'):
+    # Operations without numerical effects.
+    # They will be only if trace_level>=6
+    return 6
+  if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile',
+                 'CollectivePermute', 'SplitV'):
+    # Operations that merge or slice an input, will be traced if trace_level>=5
+    return 5
+  if op_type in ('Pad', 'RandomUniformInt', 'GreaterEqual'):
+    # Operations less likely to provide useful information,
+    # will be traced if trace_level>=4
+    return 4
+  if op_type in ('Sum', 'AddV2', 'Add', 'AddN', 'BiasAdd', 'CrossReplicaSum'):
+    # Add operations that are less likely create any issues, will be traced
+    # if trace_level>=3 (default=3)
+    return 3
+  if op_type in ('Neg', 'Sub'):
+    # Sub operations that are less likely create any issues, will be traced
+    # trace_level>=2
+    return 2
+  if op_type in ('Mul', 'Square', 'MatMul', 'RandomUniform', 'Select',
+                 'Maximum', 'Mean', 'Variance'):
+    # Multiplication and some other operations, will be traced if trace_level>=1
+    return 1
+  return 0
+
+
+def read_tensor_tracer_event_file(event_file):
+  """Reads the event file written by tensor tracer.
+
+  Args:
+    event_file: Path to the event file that contains only tensor tracer events.
+  Returns:
+    An event dictionary in the form of
+    {step_number: {tensor_name: tensor_content}}
+  Raises:
+    ValueError: If an unexpected trace is found.
+  """
+  event_dict = {}
+  for trace_event in summary_iterator.summary_iterator(event_file):
+    # First event is an event with file_version: "brain.Event:2"
+    if not trace_event.HasField('summary'):
+      continue
+    step = trace_event.step
+    if step not in event_dict:
+      event_dict[step] = {}
+
+    if len(trace_event.summary.value) != 1:
+      raise ValueError('Single step contains %d summary values,'
+                       ' expected 1.' % len(trace_event.summary.value))
+    tensor_value = trace_event.summary.value[0]
+    tensor_name = tensor_value.tag
+
+    real_shape = [d.size for d in tensor_value.tensor.tensor_shape.dim]
+    tensor_content = np.frombuffer(
+        tensor_value.tensor.tensor_content,
+        dtypes.DType(tensor_value.tensor.dtype).as_numpy_dtype()
+        ).reshape(real_shape)
+    event_dict[step][tensor_name] = tensor_content
+  return event_dict
 
 
 def tensor_tracepoint(tensor, checkpoint_name):
@@ -188,7 +275,7 @@ class TensorTracer(object):
   def check_device_type(device_type):
     """Checks if the given device type is valid."""
 
-    if device_type not in [_DEVICE_TYPE_TPU, _DEVICE_TYPE_CPU]:
+    if device_type not in (_DEVICE_TYPE_TPU, _DEVICE_TYPE_CPU):
       raise ValueError('Invalid device_type "%s"'%device_type)
 
   @staticmethod
@@ -201,7 +288,8 @@ class TensorTracer(object):
     Raises:
       ValueError: If the given trace mode is not supported for the device.
     """
-    if trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
+    if trace_mode in (tensor_tracer_flags.TRACE_MODE_SUMMARY,
+                      tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
       if device_type != _DEVICE_TYPE_TPU:
         raise ValueError('Device_type "%s" is not yet supported for '
                          'trace mode "%s"' % (device_type, trace_mode))
@@ -237,7 +325,7 @@ class TensorTracer(object):
       return True
     # Reasons for not including following op types:
     #    Assign: cause incorrect result with CPU tracing.
-    if op.type in ['Assign']:
+    if op.type == 'Assign':
       return True
     return False
 
@@ -254,27 +342,26 @@ class TensorTracer(object):
     """Return true if scalar output tensor from Op is not safe to be traced."""
 
     # Tracing the following causes cycle in the graph on TPU.
-    if op.type in ['LoopCond', 'Enter', 'Merge', 'Const',
-                   'Switch', 'Less', 'ReadVariableOp']:
+    if op.type in ('LoopCond', 'Enter', 'Merge', 'Const',
+                   'Switch', 'Less', 'ReadVariableOp'):
       return True
     # Tracing the following will cause casting-issue
     # with the norm tracing mode or other compilation issues on CPU.
-    if op.type in ['VarHandleOp', 'IteratorToStringHandle',
+    if op.type in ('VarHandleOp', 'IteratorToStringHandle',
                    'IteratorGetNext', 'OneShotIterator',
                    'IteratorV2', 'MakeIterator',
                    'BatchDatasetV2', 'MapDataset',
                    'FixedLengthRecordDataset', 'TakeDataset', 'ZipDataset',
-                   'Placeholder', 'PlaceholderWithDefault', 'StridedSlice']:
+                   'Placeholder', 'PlaceholderWithDefault', 'StridedSlice'):
       return True
     return False
 
-  def _less_interesting_op(self, op):
+  def _is_interesting_op(self, op):
     """Returns True if the given op is not an interesting one to be traced."""
     # If flag is set to include less interesting ops, then include everything.
     if self._parameters.include_less_interesting_ops:
-      return False
-    # Following ops are highly unlikey to cause bugs.
-    return op.type in ['Const', 'Identity', 'Cast', 'Shape']
+      return True
+    return op_priority(op.type) <= self._parameters.trace_level
 
   @staticmethod
   def reason(op_idx, details):
@@ -292,45 +379,51 @@ class TensorTracer(object):
     self._parameters = tensor_tracer_flags.TTParameters()
     self._included_op_full_names = set()
     self._host_call_fn = {}
-    self._cache_tensors = {}
+    self._cache_variables = {}
+
+  def _get_all_cache_variables(self):
+    return self._cache_variables
 
   def _create_or_get_tensor_values_cache(self, cache_name, graph=None,
-                                         num_tensors=None,
-                                         num_signatures=None):
+                                         shape=None, dtype=dtypes.float32):
     """Creates a variable as the cache to store intermediate tensor values.
 
     Args:
       cache_name: Name to be given to the cache (an instance of tf.variable).
       graph: Tensorflow graph.
-      num_tensors: The number of traced tensors.
-      num_signatures: The number of signatures, statistics to be collected.
+      shape: A list of dimensions.
+      dtype: Data type of created cache.
     Returns:
-      A ref to newly created or existing cache with dimensions
-      num_tensors x num_signatures
+      A ref to newly created or existing cache with the given dimensions.
     Raises:
       ValueError: If missing a parameter to create the cache.
     """
-    if cache_name not in self._cache_tensors:
+    def _escape_namescopes(variable_name):
+      # TODO(deveci): This might cause name collisions as in "foo/bar/mytensor"
+      # and "foo_bar/mytensor".
+      return variable_name.replace('/', '_').replace(':', '_')
+
+    if cache_name not in self._cache_variables:
       if graph is None:
         raise ValueError('Graph must be provided at cache creation.')
-      if num_tensors is None:
-        raise ValueError('num_tensors must be provided at cache creation.')
-      if num_signatures is None:
-        raise ValueError('num_signatures must be provided at cache creation.')
+      if shape is None:
+        raise ValueError('shape must be provided at cache creation.')
       graph = graph or ops.get_default_graph()
+      if dtype.is_integer:
+        init_val = int(_COMPACT_TRACE_ENTRY_INIT_VALUE)
+      else:
+        init_val = _COMPACT_TRACE_ENTRY_INIT_VALUE
 
       # Create in proper graph and base name_scope.
       with graph.as_default() as g, g.name_scope(None):
-        self._cache_tensors[cache_name] = variable_scope.get_variable(
-            cache_name + '_' + _TENSOR_VALUES_CACHE,
-            shape=[num_tensors, num_signatures],
-            dtype=dtypes.float32,
-            initializer=init_ops.constant_initializer(
-                _COMPACT_TRACE_ENTRY_INIT_VALUE),
+        self._cache_variables[cache_name] = variable_scope.get_variable(
+            _TT_SNAPSHOT + '_' + _escape_namescopes(cache_name),
+            shape=shape, dtype=dtype,
+            initializer=init_ops.constant_initializer(init_val),
             trainable=False,
             use_resource=True,
             collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
-    return self._cache_tensors[cache_name]
+    return self._cache_variables[cache_name]
 
   def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
@@ -417,8 +510,7 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return {self._parameters.trace_mode: 0}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
-      return {_TT_SUMMARY_NORM: 0, _TT_SUMMARY_MAX: 1, _TT_SUMMARY_MIN: 2,
-              _TT_SUMMARY_MEAN: 3, _TT_SUMMARY_VAR: 4, _TT_SUMMARY_SIZE: 5}
+      return self._parameters.summary_signatures
     return {}
 
   def _num_signature_dimensions(self):
@@ -426,6 +518,9 @@ class TensorTracer(object):
 
   def _use_tensor_values_cache(self):
     """Returns True if immediate tensors should be first saved to a cache."""
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
+      # For summary tace mode only compact format is supported.
+      return True
 
     if self._parameters.trace_mode not in set([
         tensor_tracer_flags.TRACE_MODE_NAN_INF,
@@ -438,6 +533,11 @@ class TensorTracer(object):
         _trace_files_need_precreated(self._parameters.trace_dir)):
       return True
     return self._parameters.use_compact_trace
+
+  def _use_tensor_buffer(self):
+    """Returns true if the whole tensor needs to be cached/buffered in memory."""
+    return (self._parameters.trace_mode ==
+            tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)
 
   def _save_tensor_value_to_cache_op(self, cache_idx, updates):
     """Returns an op that will save the given updates to an entry in the cache.
@@ -452,15 +552,34 @@ class TensorTracer(object):
     # Make a compact array by concantating different signatures, and update
     # them all together.
     sorted_update = []
-    signature_indices = self._signature_types()
-    for _, val in sorted(updates.items(),
-                         key=lambda item: signature_indices[item[0]]):
-      sorted_update.append(val)
-    cache = self._create_or_get_tensor_values_cache(self._parameters.trace_mode)
+    if self._num_signature_dimensions() > 1:
+      signature_indices = self._signature_types()
+      for _, val in sorted(updates.items(),
+                           key=lambda item: signature_indices[item[0]]):
+        sorted_update.append(val)
+      updates = array_ops.stack(sorted_update, axis=0)
+      updates = array_ops.reshape(updates, [1,
+                                            self._num_signature_dimensions()])
+    else:
+      (_, val), = updates.items()
+      updates = array_ops.reshape(val, [1, self._num_signature_dimensions()])
     indices = constant_op.constant([cache_idx])
-    updates = array_ops.concat(sorted_update, axis=0)
-    updates = array_ops.reshape(updates, [1, self._num_signature_dimensions()])
+    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
     return state_ops.scatter_update(cache, indices, updates).op
+
+  def _snapshot_tensor(self, tensor):
+    """Creates a new tf.Variable and a new tf.Operation that assigns the value of the tensor to this variable.
+
+    Args:
+      tensor: tensor whose values will be stored in a new tf.Variable.
+    Returns:
+      An assignment operation.
+    """
+
+    snapshot_variable = self._create_or_get_tensor_values_cache(
+        tensor.name, tensor.op.graph,
+        tensor.shape.as_list(), tensor.dtype)
+    return state_ops.assign(snapshot_variable, tensor).op
 
   def _preprocess_traced_tensor(self, tensor):
     """Computes NAN/Norm/Max on TPUs before sending to CPU.
@@ -480,21 +599,22 @@ class TensorTracer(object):
         mask = math_ops.reduce_any(
             gen_math_ops.logical_or(
                 gen_math_ops.is_nan(tensor), gen_math_ops.is_inf(tensor)))
-        output_tensor = control_flow_ops.cond(mask,
-                                              lambda: constant_op.constant(1.0),
-                                              lambda: constant_op.constant(0.0))
+        output_tensor = control_flow_ops.cond(
+            mask,
+            lambda: constant_op.constant([1.0]),
+            lambda: constant_op.constant([0.0]))
       else:
-        output_tensor = constant_op.constant(0.0)
-      # The shape has to be 1. Set it if it does not have the information.
-      output_tensor = array_ops.reshape(output_tensor, [1])
+        output_tensor = constant_op.constant([0.0])
       return output_tensor
 
     def _compute_signature(tensor, tf_op, cast_to_f32=True):
       if cast_to_f32:
         tensor = math_ops.cast(tensor, dtypes.float32)
       output_tensor = tf_op(tensor)
-      # The shape has to be 1. Set it if it does not have the information.
-      output_tensor = array_ops.reshape(output_tensor, [1])
+      # Return type should be scalar. Set it if it does not have the
+      # information.
+      if not output_tensor.get_shape().is_fully_defined():
+        output_tensor = array_ops.reshape(output_tensor, [])
       return output_tensor
 
     def _show_size(tensor):
@@ -520,13 +640,16 @@ class TensorTracer(object):
       return _compute_signature(tensor, linalg_ops.norm, cast_to_f32)
 
     def _show_mean_and_variance(tensor, cast_to_f32=True):
+      """Returns the mean and variance of the given tensor."""
       if cast_to_f32:
         tensor = math_ops.cast(tensor, dtypes.float32)
       # returns nan for empty tensor
       mean, var = nn_impl.moments(array_ops.reshape(tensor, [-1]), axes=[0])
       # The shape has to be 1. Set it if it does not have the information.
-      mean = array_ops.reshape(mean, [1])
-      var = array_ops.reshape(var, [1])
+      if not mean.get_shape().is_fully_defined():
+        mean = array_ops.reshape(mean, [])
+      if not var.get_shape().is_fully_defined():
+        var = array_ops.reshape(var, [])
       return mean, var
 
     def _show_max_abs(tensor):
@@ -563,23 +686,44 @@ class TensorTracer(object):
     if (self._parameters.trace_mode ==
         tensor_tracer_flags.TRACE_MODE_PART_TENSOR):
       return {self._parameters.trace_mode: tensor}
-    if (self._parameters.trace_mode ==
-        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR):
+    if (self._parameters.trace_mode in (
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR,
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)):
       return {self._parameters.trace_mode: tensor}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NORM:
-      return {self._parameters.trace_mode: _show_norm(tensor)}
+      return {self._parameters.trace_mode: array_ops.reshape(
+          _show_norm(tensor), [1])}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return {self._parameters.trace_mode: _show_max_abs(tensor)}
+
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
       tensor = math_ops.cast(tensor, dtypes.float32)
-      tsize = _show_size(tensor)
-      tnorm = _show_norm(tensor, cast_to_f32=False)
-      tmax = _show_max(tensor, cast_to_f32=False)
-      tmin = _show_min(tensor, cast_to_f32=False)
-      tmean, tvar = _show_mean_and_variance(tensor, cast_to_f32=False)
-      return {_TT_SUMMARY_NORM: tnorm, _TT_SUMMARY_MAX: tmax,
-              _TT_SUMMARY_MIN: tmin, _TT_SUMMARY_MEAN: tmean,
-              _TT_SUMMARY_VAR: tvar, _TT_SUMMARY_SIZE: tsize}
+      result_dict = {}
+      # Call mean and variance computation here to avoid adding the same nodes
+      # twice.
+      if (_TT_SUMMARY_MEAN in self._signature_types() or
+          _TT_SUMMARY_VAR in self._signature_types()):
+        mean, variance = _show_mean_and_variance(tensor, cast_to_f32=False)
+
+      for signature_name, _ in sorted(self._signature_types().items(),
+                                      key=lambda x: x[1]):
+        if signature_name == _TT_SUMMARY_NORM:
+          signature_result_tensor = _show_norm(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MAX:
+          signature_result_tensor = _show_max(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MIN:
+          signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SIZE:
+          signature_result_tensor = _show_size(tensor)
+        elif signature_name == _TT_SUMMARY_MEAN:
+          signature_result_tensor = mean
+        elif signature_name == _TT_SUMMARY_VAR:
+          signature_result_tensor = variance
+        else:
+          raise ValueError('Unknown signature type :%s.' % signature_name)
+
+        result_dict[signature_name] = signature_result_tensor
+      return result_dict
 
     raise RuntimeError(
         'Tensor trace fun for %s is not yet implemented'
@@ -684,13 +828,13 @@ class TensorTracer(object):
     # TRACE_MODE_NORM, and TRACE_MODE_MAX_ABS, as related computations are
     # performed within TPUs and only their results are transferred to CPU.
     # Simply, print the full tensor for these trace modes.
-    if self._parameters.trace_mode in [
+    if self._parameters.trace_mode in (
         tensor_tracer_flags.TRACE_MODE_NAN_INF,
         tensor_tracer_flags.TRACE_MODE_NORM,
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR,
         tensor_tracer_flags.TRACE_MODE_MAX_ABS,
         tensor_tracer_flags.TRACE_MODE_SUMMARY
-    ]:
+        ):
       return _show_full_tensor
 
     raise RuntimeError('Tensor trace fun for %s is not yet implemented'
@@ -724,18 +868,19 @@ class TensorTracer(object):
           op, TensorTracer.reason(op_id, _REASON_NOT_EXECUTED))
       return True
 
-    if not self._inside_op_range(op_id):
-      report_handler.instrument_op(
-          op, TensorTracer.reason(op_id, _REASON_OUTSIDE_OP_RANGE))
-      return True
-    if self._less_interesting_op(op):
-      report_handler.instrument_op(
-          op, TensorTracer.reason(op_id, _REASON_LESS_INTERESTING_OP))
-      return True
     if self._is_user_included_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_INCLUDED))
       return False
+
+    if not self._inside_op_range(op_id):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_OUTSIDE_OP_RANGE))
+      return True
+    if not self._is_interesting_op(op):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_LESS_INTERESTING_OP))
+      return True
     if self._is_user_excluded_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_EXCLUDED))
@@ -781,12 +926,12 @@ class TensorTracer(object):
     if not out_tensor.get_shape().is_fully_defined():
       # If trace mode is nan-inf, norm or max, then the tensor will be reduced
       # to a scalar before the outside compilation call.
-      if self._parameters.trace_mode in [
+      if self._parameters.trace_mode in (
           tensor_tracer_flags.TRACE_MODE_NAN_INF,
           tensor_tracer_flags.TRACE_MODE_NORM,
           tensor_tracer_flags.TRACE_MODE_MAX_ABS,
           tensor_tracer_flags.TRACE_MODE_SUMMARY
-      ]:
+          ):
         report_handler.instrument_tensor(
             out_tensor, TensorTracer.reason(op_id, _REASON_TENSOR_GET_TRACED))
         return False
@@ -937,11 +1082,13 @@ class TensorTracer(object):
                                                                traced_tensors)
     num_signatures = self._num_signature_dimensions()
     if num_signatures:
-      self._create_or_get_tensor_values_cache(self._parameters.trace_mode,
+      self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG,
                                               graph,
-                                              len(traced_tensors),
-                                              num_signatures)
-    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
+                                              [len(traced_tensors),
+                                               num_signatures])
+    if self._parameters.trace_mode in (
+        tensor_tracer_flags.TRACE_MODE_SUMMARY,
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
       report_proto = report_handler.create_report_proto(self._tt_config,
                                                         self._parameters,
                                                         tensor_trace_order,
@@ -954,7 +1101,9 @@ class TensorTracer(object):
     return tensor_trace_order
 
   def _create_host_call(self):
-    return self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY
+    return self._parameters.trace_mode in (
+        tensor_tracer_flags.TRACE_MODE_SUMMARY,
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)
 
   def _generate_flush_cache_op(self, num_replicas, on_tpu):
     """Generates an Op that will flush the cache to file.
@@ -1008,8 +1157,7 @@ class TensorTracer(object):
       # only known during tf runtime, and we cannot create dynamic filenames.
       return control_flow_ops.case(flush_op_cases, exclusive=True)
 
-    cache = self._create_or_get_tensor_values_cache(
-        self._parameters.trace_mode)
+    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
     if on_tpu:
       flush_op = tpu.outside_compilation(_flush_fun,
                                          cache.value(), self._replica_id)
@@ -1126,43 +1274,105 @@ class TensorTracer(object):
       raise ValueError('Provide a trace_dir for tensor tracer in summary mode. '
                        '--trace_dir=/model/dir')
 
-    def _write_cache(concatenated_cache_tensor, step):
-      """Writes the cache as tensor summary."""
+    def _write_cache(step, **kwargs):
+      """Writes the given caches as tensor summary.
 
-      summary_metadata = summary_pb2.SummaryMetadata(
-          display_name=_TT_SUMMARY_TAG,
-          summary_description='',
-          plugin_data=summary_pb2.SummaryMetadata.PluginData(
-              plugin_name='tensor_tracer'))
+      Args:
+        step: Step tensor with dimension [num_cores].
+        **kwargs: The dictionary of tensors that needs to be written as
+          summaries. Key and value pairs within kwargs correspond to the tag
+          name, and tensor content that will be written using summary.write.
+          The trace_modes that use this function are:
+            - summary: In summary mode, kwargs includes a single (tag, content)
+            pair which are, _TT_SUMMARY_TAG and a tf.float32 signature_cache
+            variable. The dimension of the signature_cache is:
+              num_cores x num_traced_tensors x num_signatures.
+            - full_tensor_summary: kwargs will include all traced tensors. Tag
+            and content correspond to the name of the tensor, and its actual
+            content.
+      Returns:
+        A tf.Operation that needs to be executed for the host call dependencies.
+      Raises:
+        RuntimeError: if there is no aggregate function defined for a signature.
+      """
 
       # TODO(deveci): Parametrize max_queue, so that flushing op can be called
       # less frequently.
       # Setting max_queue to 100 appears to be safe even when the number of
-      # iterations are much lower, as the destructor of the writer will flushes
-      # it.
+      # iterations are much lower, as the destructor of the writer flushes it.
+      summary_write_ops = []
       with summary.create_file_writer_v2(
           self._parameters.trace_dir,
+          filename_suffix=_TT_EVENT_FILE_SUFFIX,
           max_queue=_TT_SUMMARY_MAX_QUEUE).as_default():
-        return summary.write(
-            _TT_SUMMARY_TAG,
-            concatenated_cache_tensor,
-            metadata=summary_metadata,
-            step=step[0])
+        summary_metadata = summary_pb2.SummaryMetadata(
+            plugin_data=summary_pb2.SummaryMetadata.PluginData(
+                plugin_name=_TT_TENSORBOARD_PLUGIN_NAME))
+        for key, value in kwargs.items():
+          # Check whether we need to compute aggregated statistics that merge
+          # all cores statistics.
+          if not self._parameters.collect_summary_per_core:
+            # Merge only statistics tensor, if it is any other tensor we simply,
+            # concatenate them.
+            if key == _TT_SUMMARY_TAG:
+              agg_fn_map = self._parameters.get_signature_to_agg_fn_map()
+              signature_idx_map = self._signature_types()
+              aggregation_result = []
+              for signature, idx in sorted(signature_idx_map.items(),
+                                           key=operator.itemgetter(1)):
+                if signature not in agg_fn_map:
+                  raise RuntimeError('No aggregation function is defined for '
+                                     'signature %s.' % signature)
+
+                # The dimensions of the statistics tensor is
+                # num_cores x num_traced_tensors x num_signatures
+                # value[:,:,idx] will return the portion of the tensor relasted
+                # to signature.
+                signature_tensor = value[:, :, idx]
+                # Merge it along the first (core) axis.
+                agg_fn = agg_fn_map[signature]
+                agg_tensor = agg_fn(signature_tensor, axis=0)
+                aggregation_result.append(agg_tensor)
+              # Merge results corresponding to different signatures
+
+              merged_signatures = array_ops.stack(aggregation_result)
+              # merged_signatures has dimensions
+              # num_signatures x num_traced_tensors, transpose it so that it
+              # will match with the original structure
+              # num_traced_tensors x num_signatures.
+              transposed_signatures = array_ops.transpose(merged_signatures)
+              # Expand 1 more dimension so that it will match with the expected
+              # structure num_cores x num_traced_tensors x num_signatures.
+              value = array_ops.expand_dims(transposed_signatures, axis=0)
+          summary_write_ops.append(summary.write(
+              _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
+              step=step[0]))
+      return control_flow_ops.group(summary_write_ops)
 
     step = array_ops.reshape(training_util.get_or_create_global_step(), [1])
     self._host_call_fn = {}
 
-    local_cache = self._create_or_get_tensor_values_cache(
-        self._parameters.trace_mode)
     host_call_deps = op_fetches + [tensor.op for tensor in processed_t_fetches]
+
+    caches_to_write = {}
     with ops.control_dependencies(host_call_deps):
-      # Convert the 2D cache shape from num_tensors x num_signatures
-      # to 3D shape of 1 x num_tensors x num_signatures, so that the after host
-      # call the dimensions will be num_cores x num_tensors x num_signatures
-      cache = array_ops.reshape(local_cache.value(),
-                                [1, -1, self._num_signature_dimensions()])
-    self._host_call_fn['tensor_tracer_host_call'] = (_write_cache,
-                                                     [cache, step])
+      all_caches = self._get_all_cache_variables()
+      for cache_name, cache_variable in all_caches.items():
+        # Increase the cache rank by 1, so that when host call concatenates
+        # tensors from different replicas, we can identify them with [core_id].
+        new_cache_shape = [1]
+        new_cache_shape.extend(cache_variable.shape.as_list())
+        cache = array_ops.reshape(cache_variable.value(), new_cache_shape)
+        caches_to_write[cache_name] = cache
+    # Add step to parameter dictionary.
+    caches_to_write['step'] = step
+    # Other options without adding step to parameter dictionary are
+    #  * host_call_fn = (_write_cache(step, caches_to_write)) : fails as it
+    #    considers caches_to_write as a single parameter, rather than a keyword
+    #    parameters.
+    #  * host_call_fn = (_write_cache(step, **caches_to_write)) : fails with
+    #    a syntax error.
+    self._host_call_fn[_TT_HOSTCALL_KEY] = (_write_cache, caches_to_write)
 
   def host_call_deps_and_fn(self):
     return self._host_call_fn
@@ -1206,9 +1416,12 @@ class TensorTracer(object):
         return math_ops.cast(tensor, dtypes.float32)
       return tensor
 
-    TensorTracer.check_device_type(self._tt_config.device_type)
-    TensorTracer.check_trace_mode(self._tt_config.device_type,
-                                  self._parameters.trace_mode)
+    trace_mode = self._parameters.trace_mode
+    device_type = self._tt_config.device_type
+
+    analytics.track_usage('tensor_tracer', [trace_mode, device_type])
+    TensorTracer.check_device_type(device_type)
+    TensorTracer.check_trace_mode(device_type, trace_mode)
     # Check in_tensor_fetches, and op_fetches and convert them to lists.
     processed_t_fetches = self._process_tensor_fetches(tensor_fetches)
     op_fetches = self._process_op_fetches(op_fetches)
@@ -1264,9 +1477,17 @@ class TensorTracer(object):
                 processed_tensors[signature])
 
         if self._use_tensor_values_cache():
+          # Use a small cache to store the characteristics of the tensor.
           cache_idx = tensor_trace_order.tensorname_to_cache_idx[tensor_name]
           trace_op = self._save_tensor_value_to_cache_op(cache_idx,
                                                          processed_tensors)
+        elif self._use_tensor_buffer():
+          if len(processed_tensors) != 1:
+            raise RuntimeError('Multiple stats are only allowed in compact '
+                               'mode.')
+          processed_out_tensor = processed_tensors.values()[0]
+          # Store the whole tensor in a buffer.
+          trace_op = self._snapshot_tensor(processed_out_tensor)
         else:
 
           def tpu_wrap_trace_fn(tensor, out_tensor_name):
@@ -1291,7 +1512,7 @@ class TensorTracer(object):
           # Collecting multiple statistics are only supported in the summary
           # mode that uses compact format(self._use_tensor_values_cache = true).
           # Non-compact mode currently allows single stat per tensor.
-          processed_out_tensor = processed_tensors.values()[0]
+          processed_out_tensor = six.next(six.itervalues(processed_tensors))
 
           if self._parameters.is_conditional_trace:
             trace_op = conditional_trace_fn(processed_out_tensor, out_tensor,
@@ -1325,7 +1546,7 @@ class TensorTracer(object):
       # tracing_ops.
       processed_t_fetches = control_flow_ops.tuple(processed_t_fetches,
                                                    control_inputs=tracing_ops)
-    if self._use_tensor_values_cache():
+    if self._use_tensor_values_cache() or self._use_tensor_buffer():
       if self._create_host_call() and on_tpu:
         self._prepare_host_call_fn(processed_t_fetches, op_fetches)
       else:
@@ -1364,7 +1585,6 @@ class TensorTracer(object):
       RuntimeError: If num_replicas_per_host > 8.
       RuntimeError: If tensor_fetches is None or empty.
     """
-
     if graph in TensorTracer._traced_graphs:
       logging.warning('Graph is already rewritten with tensor tracer, ignoring '
                       'multiple calls.')

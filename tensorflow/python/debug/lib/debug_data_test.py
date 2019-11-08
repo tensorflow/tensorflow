@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import os
 import platform
-import shutil
 import tempfile
 
 import numpy as np
@@ -28,6 +27,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -156,7 +156,7 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     # Tear down temporary dump directory.
-    shutil.rmtree(self._dump_root)
+    file_io.delete_recursively(self._dump_root)
 
   def _makeDataDirWithMultipleDevicesAndDuplicateNodeNames(self):
     cpu_0_dir = os.path.join(

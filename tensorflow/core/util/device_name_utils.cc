@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/device_name_utils.h"
 
+#include <algorithm>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -26,51 +28,39 @@ static bool IsAlpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-static bool IsAlphaNum(char c) { return IsAlpha(c) || (c >= '0' && c <= '9'); }
+static bool IsAlphaNumOrUnderscore(char c) {
+  return IsAlpha(c) || (c >= '0' && c <= '9') || c == '_';
+}
 
 // Returns true iff "in" is a valid job name.
 static bool IsJobName(StringPiece in) {
-  if (in.empty()) return false;
-  if (!IsAlpha(in[0])) return false;
-  for (size_t i = 1; i < in.size(); ++i) {
-    if (!(IsAlphaNum(in[i]) || in[i] == '_')) return false;
+  return !in.empty() && IsAlpha(in.front()) &&
+         std::all_of(in.begin(), in.end(), IsAlphaNumOrUnderscore);
+}
+
+static bool ConsumePrefix(StringPiece* in, string* out,
+                          StringPiece prefix_terminators) {
+  if (in->empty() || !IsAlpha(in->front())) return false;
+  const auto end_it =
+      std::find_first_of(in->begin(), in->end(), prefix_terminators.begin(),
+                         prefix_terminators.end());
+  if (!std::all_of(in->begin(), end_it, IsAlphaNumOrUnderscore)) {
+    return false;
   }
+  out->assign(in->begin(), end_it);
+  in->remove_prefix(end_it - in->begin());
   return true;
 }
 
 // Returns true and fills in "*job" iff "*in" starts with a job name.
 static bool ConsumeJobName(StringPiece* in, string* job) {
-  if (in->empty()) return false;
-  if (!IsAlpha((*in)[0])) return false;
-  size_t i = 1;
-  for (; i < in->size(); ++i) {
-    const char c = (*in)[i];
-    if (c == '/') break;
-    if (!(IsAlphaNum(c) || c == '_')) {
-      return false;
-    }
-  }
-  job->assign(in->data(), i);
-  in->remove_prefix(i);
-  return true;
+  return ConsumePrefix(in, job, "/");
 }
 
 // Returns true and fills in "*device_type" iff "*in" starts with a device type
 // name.
 static bool ConsumeDeviceType(StringPiece* in, string* device_type) {
-  if (in->empty()) return false;
-  if (!IsAlpha((*in)[0])) return false;
-  size_t i = 1;
-  for (; i < in->size(); ++i) {
-    const char c = (*in)[i];
-    if (c == '/' || c == ':') break;
-    if (!(IsAlphaNum(c) || c == '_')) {
-      return false;
-    }
-  }
-  device_type->assign(in->data(), i);
-  in->remove_prefix(i);
-  return true;
+  return ConsumePrefix(in, device_type, "/:");
 }
 
 // Returns true and fills in "*val" iff "*in" starts with a decimal
@@ -441,6 +431,27 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
   ParsedName y;
   return ParseFullName(src, &x) && ParseFullName(dst, &y) &&
          IsSameAddressSpace(x, y);
+}
+
+/* static */
+bool DeviceNameUtils::IsDifferentAddressSpace(const ParsedName& a,
+                                              const ParsedName& b) {
+  return (a.has_job && b.has_job && (a.job != b.job)) ||
+         (a.has_replica && b.has_replica && (a.replica != b.replica)) ||
+         (a.has_task && b.has_task && (a.task != b.task));
+}
+
+/* static */
+const DeviceNameUtils::ParsedName DeviceNameUtils::AddressSpace(
+    const ParsedName& name) {
+  ParsedName address_space;
+  address_space.has_job = name.has_job;
+  address_space.has_replica = name.has_replica;
+  address_space.has_task = name.has_task;
+  address_space.job = name.job;
+  address_space.replica = name.replica;
+  address_space.task = name.task;
+  return address_space;
 }
 
 /* static */

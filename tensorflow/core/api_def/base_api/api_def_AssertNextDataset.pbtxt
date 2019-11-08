@@ -1,4 +1,29 @@
 op {
   graph_op_name: "AssertNextDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+`AssertNextDataset` passes through the outputs of its input dataset.
+END
+  }
+  in_arg {
+  name: "transformations"
+  description: <<END
+A `tf.string` vector `tf.Tensor` identifying the transformations that are
+expected to happen next.
+END
+  }
+  summary: "A transformation that asserts which transformations happen next."
+  description: <<END
+This transformation checks whether the camel-case names (i.e. "FlatMap", not
+"flat_map") of the transformations following this transformation match the list
+of names in the `transformations` argument. If there is a mismatch, the
+transformation raises an exception.
+
+The check occurs when iterating over the contents of the dataset, which
+means that the check happens *after* any static optimizations are applied
+to the dataset graph.
+END
 }

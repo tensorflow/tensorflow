@@ -23,7 +23,6 @@ import functools
 import uuid
 import six
 
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -461,14 +460,8 @@ class KeyValueTensorInitializer(TableInitializerBase):
     _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
         self._name, values=(table.resource_handle, self._keys, self._values)):
-      if fwd_compat.forward_compatible(2018, 9, 19):
-        init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
-                                                        self._keys,
-                                                        self._values)
-      else:
-        # To maintain forward compatibiltiy, use the old implementation.
-        init_op = gen_lookup_ops.initialize_table_v2(table.resource_handle,
-                                                     self._keys, self._values)
+      init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
+                                                      self._keys, self._values)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -627,7 +620,7 @@ class TextFileInitializer(TableInitializerBase):
     self._delimiter = delimiter
     self._name = name
     self._filename = self._track_trackable(
-        trackable.TrackableAsset(filename), "_filename")
+        trackable.Asset(filename), "_filename")
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 
@@ -1118,6 +1111,8 @@ class StaticVocabularyTable(LookupInterface):
       if initializer.value_dtype != dtypes.int64:
         raise TypeError("Invalid value dtype, expected %s but got %s." %
                         (dtypes.int64, initializer.value_dtype))
+      if isinstance(initializer, trackable_base.Trackable):
+        self._initializer = self._track_trackable(initializer, "_initializer")
       self._table = HashTable(initializer, default_value=-1)
       name = name or self._table.name
     else:

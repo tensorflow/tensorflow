@@ -21,9 +21,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
-pwd
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
 
-# Needed to solve CI build bug triggered by files added to source tree.
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
+
+TARGET=sparkfun_edge
+
+# TODO(b/143715361): downloading first to allow for parallel builds.
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
+readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} micro_speech_bin

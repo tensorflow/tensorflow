@@ -86,5 +86,20 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
   }
 }
 
+uint32_t NumElements(const TensorObjectDef& def) {
+  const auto& d = def.dimensions;
+  switch (def.object_def.data_layout) {
+    case DataLayout::BHWC:
+      return d.product();
+    case DataLayout::HWDC4:
+    case DataLayout::HDWC4:
+    case DataLayout::DHWC4:
+      return d.b * d.h * d.w * AlignByN(d.c, 4);
+    case DataLayout::UNKNOWN:
+      return 0;
+  }
+  return 0;
+}
+
 }  // namespace gpu
 }  // namespace tflite

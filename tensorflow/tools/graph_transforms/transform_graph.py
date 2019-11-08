@@ -44,10 +44,9 @@ def TransformGraph(input_graph_def, inputs, outputs, transforms):
   inputs_string = compat.as_bytes(",".join(inputs))
   outputs_string = compat.as_bytes(",".join(outputs))
   transforms_string = compat.as_bytes(" ".join(transforms))
-  with errors.raise_exception_on_not_ok_status() as status:
-    output_graph_def_string = TransformGraphWithStringInputs(
-        input_graph_def_string, inputs_string, outputs_string,
-        transforms_string, status)
+  output_graph_def_string = TransformGraphWithStringInputs(
+      input_graph_def_string, inputs_string, outputs_string, transforms_string)
   output_graph_def = graph_pb2.GraphDef()
   output_graph_def.ParseFromString(output_graph_def_string)
   return output_graph_def
+

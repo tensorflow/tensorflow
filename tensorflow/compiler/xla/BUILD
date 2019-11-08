@@ -15,7 +15,7 @@ package_group(
     includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/contrib/tpu/...",
+        "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -58,11 +58,22 @@ xla_proto_library(
     ],
 )
 
+tf_proto_library_py(
+    name = "xla_proto",  # bzl adds a _py suffix
+    srcs = ["xla.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
+    ],
+)
+
 cc_library(
     name = "bit_cast",
     hdrs = ["bit_cast.h"],
     visibility = [":friends"],
     deps = [
+        ":types",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
@@ -216,6 +227,8 @@ cc_library(
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:numbers",
+        "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -769,6 +782,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "window_util_test",
+    srcs = ["window_util_test.cc"],
+    deps = [
+        ":test",
+        ":window_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "reference_util",
     srcs = ["reference_util.cc"],
@@ -877,7 +900,6 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":xla_proto",
-            "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "@com_google_absl//absl/container:flat_hash_map",

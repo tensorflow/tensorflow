@@ -49,7 +49,8 @@ def save_model(model,
                overwrite=True,
                include_optimizer=True,
                save_format=None,
-               signatures=None):
+               signatures=None,
+               options=None):
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
   The saved model contains:
@@ -83,6 +84,8 @@ def save_model(model,
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
+      options: Optional `tf.saved_model.SaveOptions` object that specifies
+        options for saving to SavedModel.
 
   Raises:
       ImportError: If save format is hdf5, and h5py is not available.
@@ -109,7 +112,7 @@ def save_model(model,
         model, filepath, overwrite, include_optimizer)
   else:
     saved_model_save.save(model, filepath, overwrite, include_optimizer,
-                          signatures)
+                          signatures, options)
 
 
 @keras_export('keras.models.load_model')

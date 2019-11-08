@@ -25,6 +25,8 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -44,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
+
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
@@ -100,8 +102,8 @@ class TensorHandle : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   static Status CreateRemoteHandle(int64 op_id, int output_num,
                                    const TensorShape& shape,
-                                   eager::EagerClient* eager_client,
-                                   uint64 context_id, DataType dtype, Device* d,
+                                   const string& remote_task, uint64 context_id,
+                                   DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
@@ -109,7 +111,7 @@ class TensorHandle : public core::RefCounted {
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           eager::EagerClient* eager_client,
+                                           const string& remote_task,
                                            uint64 context_id, DataType dtype,
                                            Device* device, EagerContext* ctx,
                                            TensorHandle** h);
@@ -121,7 +123,7 @@ class TensorHandle : public core::RefCounted {
   // Symbolic tensor constructor.
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
-  ~TensorHandle() override { VLOG(3) << "Deleting TensorHandle " << this; }
+  ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
 
   Status Tensor(const tensorflow::Tensor** t);
 
@@ -134,7 +136,6 @@ class TensorHandle : public core::RefCounted {
   Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
   Status NumElements(int64* num_elements);
@@ -175,8 +176,18 @@ class TensorHandle : public core::RefCounted {
   // on a non-ready tensor.
   void Poison(Status status);
 
+  bool IsReady();
+
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
+
+  Status InferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      shape_inference::ShapeHandle* shape_handle);
+  void SetInferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      const shape_inference::ShapeHandle& shape_handle);
+  Status CopyInferenceShape(TensorHandle* other);
 
   // Warning: can return nullptr for CPU tensors.
   // TODO(b/136608821): Move away from nullptr
@@ -198,6 +209,9 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
+  void SetResourceHandleDtypeAndShape(
+      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
+
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
   // return data types and shapes of the underlying resource.
   Status GetResourceHandleDtypesAndShapes(
@@ -207,7 +221,7 @@ class TensorHandle : public core::RefCounted {
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
-  Status WaitReady();
+  Status WaitReady(const char* caller);
 
   // TODO(b/136608821): device_ == nullptr iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
@@ -245,7 +259,7 @@ class TensorHandle : public core::RefCounted {
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
   int32 remote_output_num_;
-  eager::EagerClient* remote_eager_client_;
+  string remote_task_;
   uint64 remote_context_id_;
 #endif
 
@@ -268,8 +282,9 @@ class TensorHandle : public core::RefCounted {
   // executing that graph node.
   std::unique_ptr<OutputGraphNode> symbolic_tensor_;
 
-  // If this TensorHandle is 1) a local tensor, and 2) a resource handle, we
-  // store data types and shapes for the underlying resource.
+  // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
+  // refers to a remote resource handle, we store data types and shapes for
+  // the underlying resource.
   std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -279,6 +294,8 @@ class TensorHandle : public core::RefCounted {
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
+
+  PartialTensorShape inference_shape_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

@@ -1,6 +1,18 @@
 path: "tensorflow.config"
 tf_module {
   member {
+    name: "LogicalDevice"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogicalDeviceConfiguration"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PhysicalDevice"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "experimental"
     mtype: "<type \'module\'>"
   }
@@ -14,14 +26,14 @@ tf_module {
   }
   member_method {
     name: "experimental_connect_to_cluster"
-    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\'], "
+    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\'], "
   }
   member_method {
     name: "experimental_connect_to_host"
     argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
   }
   member_method {
-    name: "experimental_list_devices"
+    name: "experimental_functions_run_eagerly"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -29,11 +41,35 @@ tf_module {
     argspec: "args=[\'run_eagerly\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_logical_device_configuration"
+    argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_soft_device_placement"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_visible_devices"
+    argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "list_logical_devices"
+    argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "list_physical_devices"
+    argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_logical_device_configuration"
+    argspec: "args=[\'device\', \'logical_devices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_soft_device_placement"
     argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_visible_devices"
+    argspec: "args=[\'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

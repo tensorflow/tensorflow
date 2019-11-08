@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = ["//visibility:public"],
@@ -31,9 +30,9 @@ cc_library(
     srcs = ["tfprof_options.cc"],
     hdrs = ["tfprof_options.h"],
     deps = [
+        ":protos_all_cc",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
 
@@ -44,12 +43,21 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "profiler_service_monitor_result_proto",
+    srcs = ["profiler_service_monitor_result.proto"],
+    cc_api_version = 2,
+)
+
+tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
+    protodeps = [
+        ":op_profile_proto",
+        ":profiler_service_monitor_result_proto",
+    ] + tf_additional_all_protos(),
 )
 
 tf_proto_library(
@@ -69,6 +77,7 @@ tf_proto_library(
             "profiler_service.proto",
             "profiler_analysis.proto",
             "op_profile.proto",
+            "profiler_service_monitor_result.proto",
         ],
     ),
     cc_api_version = 2,

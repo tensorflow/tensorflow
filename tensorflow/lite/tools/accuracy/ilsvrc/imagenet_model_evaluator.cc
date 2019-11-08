@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/accuracy/ilsvrc/imagenet_model_evaluator.h"
 
-#include <dirent.h>
-
 #include <fstream>
 #include <iomanip>
 #include <mutex>  // NOLINT(build/c++11)

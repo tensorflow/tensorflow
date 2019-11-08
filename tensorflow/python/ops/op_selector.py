@@ -276,11 +276,11 @@ def get_backward_walk_ops(seed_ops,
   else:
     seed_ops = make_list_of_op(seed_ops, allow_graph=False)
 
-  stop_at_ts = frozenset(make_list_of_t(stop_at_ts))
-  seed_ops = frozenset(make_list_of_op(seed_ops))
+  stop_at_ts = object_identity.ObjectIdentitySet(make_list_of_t(stop_at_ts))
+  seed_ops = object_identity.ObjectIdentitySet(make_list_of_op(seed_ops))
   if within_ops:
     within_ops = make_list_of_op(within_ops, allow_graph=False)
-    within_ops = frozenset(within_ops)
+    within_ops = object_identity.ObjectIdentitySet(within_ops)
     seed_ops &= within_ops
 
   def is_within(op):

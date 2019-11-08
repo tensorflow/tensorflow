@@ -23,13 +23,12 @@ limitations under the License.
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
 
-struct TF_Tensor {
-  ~TF_Tensor();
-
-  TF_DataType dtype;
-  tensorflow::TensorShape shape;
-  tensorflow::TensorBuffer* buffer;
-};
+// This struct forms part of the C API's public interface. It must strictly be
+// passed to or returned from C functions *by pointer*. Otherwise, changes to
+// its internal structure will break the C API's binary interface.
+typedef struct TF_Tensor {
+  ::tensorflow::Tensor tensor;
+} TF_Tensor;
 
 namespace tensorflow {
 

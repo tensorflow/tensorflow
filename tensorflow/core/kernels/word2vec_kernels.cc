@@ -209,14 +209,14 @@ class SkipgramOp : public OpKernel {
     vocab_size_ = static_cast<int32>(1 + ordered.size());
     Tensor word(DT_STRING, TensorShape({vocab_size_}));
     Tensor freq(DT_INT32, TensorShape({vocab_size_}));
-    word.flat<string>()(0) = "UNK";
+    word.flat<tstring>()(0) = "UNK";
     static const int32 kUnkId = 0;
     std::unordered_map<string, int32> word_id;
     int64 total_counted = 0;
     for (std::size_t i = 0; i < ordered.size(); ++i) {
       const auto& w = ordered[i].first;
       auto id = i + 1;
-      word.flat<string>()(id) = w;
+      word.flat<tstring>()(id) = w;
       auto word_count = ordered[i].second;
       freq.flat<int32>()(id) = word_count;
       total_counted += word_count;

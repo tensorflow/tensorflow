@@ -120,7 +120,7 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
-                            .TypeConstraint<string>("T"),
+                            .TypeConstraint<tstring>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(
@@ -148,7 +148,7 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp)
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<string>("T")
+                            .TypeConstraint<tstring>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER
@@ -175,8 +175,8 @@ class PassOn : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
@@ -318,12 +318,21 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   string target_device;
   OP_REQUIRES_OK_ASYNC(
       ctx,
-      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
+      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<tstring>()(),
                                               source_device, &target_device),
       done);
 
   AttrValueMap attr_values = func_.attr();
+
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    instantiate_opts.config_proto = *config;
+  }
+
   instantiate_opts.target = target_device;
 
   FunctionTarget function_target = {target_device, lib};

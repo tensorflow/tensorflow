@@ -97,7 +97,7 @@ class XlaExpression {
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
   xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
-      xla::Client* client) const;
+      xla::Client* client, bool dynamic_dimension_is_minus_one = false) const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),

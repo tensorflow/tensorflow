@@ -62,9 +62,9 @@ void TFProfTensor::Build() {
     }
     case DataType::DT_STRING: {
       // Not supported by TensorFlow.
-      std::vector<string> values_vec;
-      GetValueVec<string, string>(&values_vec);
-      BuildOutput<string>(0, 0, values_vec, &tfprof_tensor_pb_);
+      std::vector<tstring> values_vec;
+      GetValueVec<tstring, tstring>(&values_vec);
+      BuildOutput<tstring>(0, 0, values_vec, &tfprof_tensor_pb_);
       break;
     }
     default: {

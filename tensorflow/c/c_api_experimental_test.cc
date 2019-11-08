@@ -566,13 +566,19 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
   TFE_OpSetAttrType(fill_op, "T", TF_FLOAT);
   TFE_OpSetAttrType(fill_op, "Tshape", TF_INT32);
 
+  float five = 5.0;
+  TFE_TensorHandle* scalar = TestScalarTensorHandle(five);
+  TF_Tensor* scalarTensor = TFE_TensorHandleResolve(scalar, status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
   CheckOutputShapes(fill_op,
                     /* input_shapes*/ {unknown_shape(), unknown_shape()},
-                    /* input_tensors*/ {tensor_1X1X6, nullptr},
+                    /* input_tensors*/ {tensor_1X1X6, scalarTensor},
                     /*expected_shape*/ make_shape({1, 1, 6}));
   TFE_DeleteOp(fill_op);
   fill_op = nullptr;
 
+  TFE_DeleteTensorHandle(scalar);
+  TF_DeleteTensor(scalarTensor);
   TF_DeleteTensor(tensor_1X1X6);
   TF_DeleteTensor(tensor_1X6);
 }

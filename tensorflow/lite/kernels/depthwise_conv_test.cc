@@ -90,7 +90,8 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-
+    // The CPU kernel now ignores `depthwise_multiplier`. However delegates
+    // like NNAPI still relies on the attribute.
     int input_depth = GetShape(input_)[3];
     int output_depth = GetShape(filter_)[3];
     int depth_mul = output_depth / input_depth;
@@ -1647,9 +1648,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimpleTest) {
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40.5, 48, 27, 40, 0.5, -4, -24, -36})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -54})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({80, 95, 53, 79, 0, -9, -49, -73}));
+              ElementsAreArray({85, 95, 41, 43, 5, -9, -61, -109}));
 }
 
 // Same as previous test, except the shift will be negative for the outputs.
@@ -1695,9 +1696,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40, 50, 14.5, 16.5, 0, -2, -32, -42})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({79, 99, 28, 32, -1, -5, -65, -85}));
+              ElementsAreArray({85, 95, 36, 43, 5, -9, -58, -73}));
 }
 
 // Same as previous test, except the shift will be mixed for the outputs.
@@ -1743,9 +1744,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40, 48, 27, 16.5, 0, -4, -24, -42})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -36})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({79, 95, 53, 32, -1, -9, -49, -85}));
+              ElementsAreArray({85, 95, 41, 43, 5, -9, -61, -73}));
 }
 
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {

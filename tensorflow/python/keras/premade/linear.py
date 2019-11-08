@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import nn
@@ -92,6 +93,7 @@ class LinearModel(training.Model):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
     super(LinearModel, self).__init__(**kwargs)
+    base_layer._keras_model_gauge.get_cell('Linear').set(True)  # pylint: disable=protected-access
 
   def build(self, input_shape):
     self.dense_layers = []
@@ -143,3 +145,21 @@ class LinearModel(training.Model):
     if self.activation is not None:
       return self.activation(result)  # pylint: disable=not-callable
     return result
+
+  def get_config(self):
+    config = {
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+    }
+    base_config = base_layer.Layer.get_config(self)
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    del custom_objects
+    return cls(**config)

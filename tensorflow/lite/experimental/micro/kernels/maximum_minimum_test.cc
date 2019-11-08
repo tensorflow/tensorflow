@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -140,11 +139,10 @@ void TestMaxMinQuantized(
 
 void TestMaxMinQuantizedInt32(
     tflite::BuiltinOperator op, std::initializer_list<int> input1_dims_data,
-    std::initializer_list<int32_t> input1_data, float input1_min,
-    float input1_max, std::initializer_list<int> input2_dims_data,
-    std::initializer_list<int32_t> input2_data, float input2_min,
-    float input2_max, std::initializer_list<int32_t> expected_output_data,
-    float output_min, float output_max,
+    std::initializer_list<int32_t> input1_data, float input1_scale,
+    std::initializer_list<int> input2_dims_data,
+    std::initializer_list<int32_t> input2_data, float input2_scale,
+    std::initializer_list<int32_t> expected_output_data, float output_scale,
     std::initializer_list<int> output_dims_data, int32_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInitializer(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInitializer(input2_dims_data);
@@ -156,11 +154,11 @@ void TestMaxMinQuantizedInt32(
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor",
-                              input1_min, input1_max),
+                              input1_scale),
       CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor",
-                              input2_min, input2_max),
+                              input2_scale),
       CreateQuantized32Tensor(output_data, output_dims, "output_tensor",
-                              output_min, output_max),
+                              output_scale),
   };
 
   TfLiteContext context;
@@ -278,37 +276,34 @@ TF_LITE_MICRO_TEST(FloatWithBroadcastTest) {
 }
 
 TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
-  const float input1_min = -63.5;
-  const float input1_max = 64;
-  const float input2_min = -63.5;
-  const float input2_max = 64;
-  const float output_min = -63.5;
-  const float output_max = 64;
+  const float input1_scale = 0.5;
+  const float input2_scale = 0.5;
+  const float output_scale = 0.5;
   std::initializer_list<int32_t> data1 = {1, 0, -1, -2, 3, 11};
   std::initializer_list<int32_t> data2 = {2};
   int32_t output_data[6];
 
   tflite::testing::TestMaxMinQuantizedInt32(
       tflite::BuiltinOperator_MAXIMUM,
-      // input1 shape, data and bounds
-      {3, 3, 1, 2}, data1, input1_min, input1_max,
-      // input2 shape, data and bounds
-      {1, 1}, data2, input2_min, input2_max,
+      // input1 shape, data and scale
+      {3, 3, 1, 2}, data1, input1_scale,
+      // input2 shape, data and scale
+      {1, 1}, data2, input2_scale,
       // expected output
       {2, 2, 2, 2, 3, 11},
-      // output bounds, shape and data buffer
-      output_min, output_max, {3, 3, 1, 2}, output_data);
+      // output scale, shape and data buffer
+      output_scale, {3, 3, 1, 2}, output_data);
 
   tflite::testing::TestMaxMinQuantizedInt32(
       tflite::BuiltinOperator_MINIMUM,
-      // input1 shape, data and bounds
-      {3, 3, 1, 2}, data1, input1_min, input1_max,
-      // input2 shape, data and bounds
-      {1, 1}, data2, input2_min, input2_max,
+      // input1 shape, data and scale
+      {3, 3, 1, 2}, data1, input1_scale,
+      // input2 shape, data and scale
+      {1, 1}, data2, input2_scale,
       // expected output
       {1, 0, -1, -2, 2, 2},
-      // output bounds, shape and data buffer
-      output_min, output_max, {3, 3, 1, 2}, output_data);
+      // output scale, shape and data buffer
+      output_scale, {3, 3, 1, 2}, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

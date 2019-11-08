@@ -33,6 +33,8 @@ class Slack : public TFDataOptimizerBase {
 
   string name() const override { return "slack"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return errors::InvalidArgument("Config parameter required.");

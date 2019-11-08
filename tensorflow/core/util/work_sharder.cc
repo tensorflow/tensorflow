@@ -20,14 +20,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-/* ABSL_CONST_INIT */ thread_local int per_thread_max_parallism = 1000000;
+/* ABSL_CONST_INIT */ thread_local int per_thread_max_parallelism = 1000000;
 
 void SetPerThreadMaxParallelism(int max_parallelism) {
   CHECK_LE(0, max_parallelism);
-  per_thread_max_parallism = max_parallelism;
+  per_thread_max_parallelism = max_parallelism;
 }
 
-int GetPerThreadMaxParallelism() { return per_thread_max_parallism; }
+int GetPerThreadMaxParallelism() { return per_thread_max_parallelism; }
 
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {
@@ -45,13 +45,15 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
     workers->ParallelFor(total, cost_per_unit, work);
     return;
   }
-  Sharder::Do(total, cost_per_unit, work,
-              [&workers](Sharder::Closure c) { workers->Schedule(c); },
-              max_parallelism);
+  Sharder::Do(
+      total, cost_per_unit, work,
+      [&workers](Sharder::Closure c) { workers->Schedule(c); },
+      max_parallelism);
 }
 
-// DEPRECATED: Prefer threadpool->TransformRangeConcurrently, which allows you
-// to directly specify the shard size.
+// DEPRECATED: Prefer threadpool->ParallelFor with SchedulingStrategy, which
+// allows you to specify the strategy for choosing shard sizes, including using
+// a fixed shard size.
 void Sharder::Do(int64 total, int64 cost_per_unit, const Work& work,
                  const Runner& runner, int max_parallelism) {
   cost_per_unit = std::max(int64{1}, cost_per_unit);

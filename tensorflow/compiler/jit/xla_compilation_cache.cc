@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
@@ -122,6 +124,7 @@ XlaCompilationCache::BuildSignature(
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
   signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
+
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
@@ -129,7 +132,8 @@ XlaCompilationCache::BuildSignature(
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type, arg.DimensionSizes());
+        signature.arg_shapes.emplace_back(arg.type,
+                                          arg.DimensionSizesAsInlinedVector());
         break;
       default:
         return errors::InvalidArgument(
@@ -157,6 +161,7 @@ Status XlaCompilationCache::BuildExecutable(
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
   auto compile_result =
       client_->Compile(*result.computation, argument_layouts, build_options);
@@ -187,7 +192,7 @@ Status XlaCompilationCache::Compile(
                      out_compilation_result, out_executable);
 }
 
-static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
+static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
   const int64 kCompileThreshold = 10;
   const int64 kMinExecutionsPerCompile = 50;
 
@@ -226,6 +231,20 @@ Status XlaCompilationCache::CompileSingleOp(
                      out_compilation_result, out_executable);
 }
 
+namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
+}  // namespace
+
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
     absl::Span<const XlaCompiler::Argument> args,
@@ -240,7 +259,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 
@@ -280,9 +299,15 @@ Status XlaCompilationCache::CompileImpl(
 
     // The is_megamorphic bit is "sticky".  We assume clusters that have been
     // observed to be megamorphic once stay megamorphic forever.
-    it->second.is_megamorphic |=
-        IsMegamorphic(/*compile_count=*/it->second.compile_count,
-                      /*execution_count=*/it->second.execution_count);
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
     is_megamorphic = it->second.is_megamorphic;
   }
 
@@ -296,6 +321,7 @@ Status XlaCompilationCache::CompileImpl(
           << current_request_count << " and compile threshold "
           << compile_threshold.value_or(0);
   if (!entry->compiled) {
+    XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
     const bool should_compile = [&] {
       if (!compile_threshold.has_value()) {
         // Lazy compilation is disabled.
@@ -357,6 +383,7 @@ Status XlaCompilationCache::CompileImpl(
       auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
+      LogOnceXlaCompiledFirstCluster();
       VLOG(1) << "compiled " << function.name() << " "
               << it->second.compile_count
               << " times, compile time: " << compile_time_us

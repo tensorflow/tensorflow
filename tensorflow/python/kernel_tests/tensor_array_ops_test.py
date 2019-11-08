@@ -1365,7 +1365,7 @@ class TensorArrayTest(test.TestCase):
       x = constant_op.constant([1.0, 2.0, 3.0])
       ta = ta.write(0, x)
       t = ta.stack()
-      self.assertEqual(t.shape.as_list(), [None, 3])
+      self.assertEqual(t.shape.as_list(), [3, 3])
       return t
 
     ta_stack()
@@ -1778,6 +1778,22 @@ class TensorArrayTest(test.TestCase):
       ta = ta.write(
           2, array_ops.ones([1, 10, 20])
       )  # Inconsistent shapes: saw (1, 10, 20) but expected (50, 10, 20)
+
+  def testStackShapeOnEmpty(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=0, element_shape=(5, 10), dynamic_size=True)
+    self.assertAllEqual([0, 5, 10], self.evaluate(ta.stack()).shape)
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerStackOnPartiallyDefinedShape(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=0, element_shape=(5, None), dynamic_size=True)
+    self.assertEqual([None, 5, None], ta.stack().shape.as_list())
+
+  def testStackShapeOnStaticSize(self):
+    ta = tensor_array_ops.TensorArray(dtypes.float32, size=42)
+    ta = ta.write(0, [0])
+    self.assertEqual([42, 1], ta.stack().shape.as_list())
 
 
 class TensorArrayBenchmark(test.Benchmark):

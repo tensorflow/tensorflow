@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import collections
+import os
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -50,7 +50,7 @@ _FIELD_NAME_NUM_CACHE_INDICES = 'number-of-indices:'
 _FIELD_NAME_TOPOLOGICAL_SORT_SUCCEED = 'topological-sort-succeed:'
 
 _CURRENT_VERSION = 'use-outside-compilation'
-_TT_REPORT_PROTO = 'tensor_tracer_report.proto'
+_TT_REPORT_PROTO = 'tensor_tracer_report.report_pb'
 
 
 def topological_sort(g):
@@ -235,7 +235,7 @@ class TTReportHandle(object):
       tensor_trace_order: TensorTraceOrder object storing a topological order of
         the graph.
       tensor_trace_points: Progromatically added trace_points/checkpoints.
-        collected_signature_types: The signature types collected, e,g, norm,
+      collected_signature_types: The signature types collected, e,g, norm,
         max, min, mean...
     Returns:
       TensorTracerReport proto.

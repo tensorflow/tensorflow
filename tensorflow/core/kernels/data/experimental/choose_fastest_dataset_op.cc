@@ -158,13 +158,11 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
     int64 Cardinality() const override { return cardinality_; }
 
-    bool IsStateful() const override {
+    Status CheckExternalState() const override {
       for (const auto& input : inputs_) {
-        if (input->IsStateful()) {
-          return true;
-        }
+        TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
-      return false;
+      return Status::OK();
     }
 
    protected:

@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.training import server_lib
@@ -226,21 +223,15 @@ def id_in_cluster(cluster_spec, task_type, task_id):
   raise ValueError("There is no id for task_type %r" % task_type)
 
 
-def in_multi_worker_mode():
-  """Whether the program is operating in Multi-Worker setting."""
-  # TODO(rchao): Consider a warning if user uses multiple `model` method
-  # calls in multi-worker setting.
-  tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get("cluster", {}))
-  return tf_config and "master" not in cluster_spec.jobs
-
-
 def should_save_checkpoint():
   """Returns whether the current worker should save checkpoints.
 
   In multi-worker training, if saving checkpoint is requested by user, or needed
   for fault-tolerance, the cluster should save checkpoint but not necessarily
   every worker in the cluster should.
+
+  TODO(rchao): Consider generalizing this util to be `should_save_file` as there
+  can be other files to save such as summary.
 
   Returns:
       Whether this particular worker in the cluster should save checkpoints.

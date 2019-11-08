@@ -32,6 +32,8 @@ class InjectPrefetch : public TFDataOptimizerBase {
 
   string name() const override { return "inject_prefetch"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

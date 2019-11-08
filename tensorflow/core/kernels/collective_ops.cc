@@ -74,10 +74,17 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
       : CollectiveOpKernel(c) {
     col_params_.instance.type = GATHER_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES(
+        c, col_params_.group.group_size > 0,
+        errors::InvalidArgument("group_size must be positive integer but got ",
+                                col_params_.group.group_size));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Gather");
     col_params_.group.device_type = c->device_type();
@@ -147,6 +154,10 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
       : CollectiveOpKernel(c) {
     col_params_.instance.type = REDUCTION_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES(
+        c, col_params_.group.group_size > 0,
+        errors::InvalidArgument("group_size must be positive integer but got ",
+                                col_params_.group.group_size));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
@@ -155,10 +166,11 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                       &col_params_.instance.impl_details.subdiv_offsets));
     string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
-    OP_REQUIRES(c, merge_op_name == "Add" || merge_op_name == "Mul",
-                errors::InvalidArgument(
-                    "merge_op must be one of {\"Add\", \"Mul\"} but got ",
-                    merge_op_name));
+    if (merge_op_name == "Max") {
+      merge_op_name = "Maximum";
+    } else if (merge_op_name == "Min") {
+      merge_op_name = "Minimum";
+    }
     string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES(c, final_op_name == "Id" || final_op_name == "Div",
@@ -167,6 +179,13 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                     final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
+    VLOG(2) << "CollectiveReduce instance " << col_params_.instance.instance_key
+            << " merge_op " << merge_op_name << " final_op " << final_op_name
+            << " communication_hint "
+            << col_params_.instance.impl_details.communication_hint;
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",
@@ -256,11 +275,18 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
       : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES(
+        c, col_params_.group.group_size > 0,
+        errors::InvalidArgument("group_size must be positive integer but got ",
+                                col_params_.group.group_size));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -325,11 +351,18 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
       : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES(
+        c, col_params_.group.group_size > 0,
+        errors::InvalidArgument("group_size must be positive integer but got ",
+                                col_params_.group.group_size));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 

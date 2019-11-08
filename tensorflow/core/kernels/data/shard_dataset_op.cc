@@ -79,7 +79,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -106,6 +108,11 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), next_index_(0) {}
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(), "#num_shards=", dataset()->num_shards_,
+                             ",index=", dataset()->index_, "#");
+    }
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
@@ -138,12 +145,13 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         Status s = input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
-              "There aren't enough elements in this dataset for each shard "
-              "to have at least one element (# elems = ",
+              "There aren't enough elements in this dataset for each shard to "
+              "have at least one element (# elems = ",
               next_index_, ", ", "# shards = ", dataset()->num_shards_,
-              "). If you are using ",
-              "datasets with distribution strategy, consider turning ",
-              "dataset autosharding off with `tf.data.Options`.");
+              "). If you are using datasets with distribution strategy, "
+              "considering setting the auto sharding policy to either DATA or "
+              "OFF using the `experimental_distribute.auto_shard_policy` option"
+              "of `tf.data.Options()`.");
         } else if (!s.ok()) {
           return s;
         }

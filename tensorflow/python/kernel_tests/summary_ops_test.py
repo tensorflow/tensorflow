@@ -674,7 +674,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         summary_ops.flush()
     finally:
       # Ensure we clean up no matter how the test executes.
-      context.context().summary_writer_resource = None
+      summary_ops._summary_state.writer = None  # pylint: disable=protected-access
 
   def testCreate_immediateAsDefault_retainsReference(self):
     logdir = self.get_temp_dir()

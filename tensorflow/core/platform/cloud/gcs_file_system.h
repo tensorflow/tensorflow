@@ -261,6 +261,8 @@ class GcsFileSystem : public FileSystem {
   Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
+  std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
+
  private:
   // GCS file statistics.
   struct GcsFileStat {
@@ -343,7 +345,6 @@ class GcsFileSystem : public FileSystem {
   mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
       GUARDED_BY(block_cache_lock_);
-  std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 

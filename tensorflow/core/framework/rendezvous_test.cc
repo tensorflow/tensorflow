@@ -86,7 +86,7 @@ class LocalRendezvousTest : public ::testing::Test {
 // string -> Tensor<string>
 Tensor V(const string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = content;
+  tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
@@ -94,7 +94,7 @@ Tensor V(const string& content) {
 string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
-  return tensor.scalar<string>()();
+  return tensor.scalar<tstring>()();
 }
 
 Rendezvous::ParsedKey MakeKey(const string& name) {

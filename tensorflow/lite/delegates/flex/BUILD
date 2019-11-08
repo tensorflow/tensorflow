@@ -24,6 +24,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib_lite",
+        ],
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:framework",
@@ -61,6 +64,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
+        ],
         "//conditions:default": [
             "//tensorflow/core:tensorflow",
             "//tensorflow/lite/c:c_api_internal",
@@ -95,6 +101,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib_lite",
+        ],
         "//conditions:default": [
             "//tensorflow/core:lib",
         ],
@@ -125,6 +134,9 @@ cc_library(
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
@@ -168,6 +180,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib_lite",
+        ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -192,6 +207,9 @@ tf_cc_test(
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:tensorflow",
@@ -223,6 +241,9 @@ cc_library(
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",

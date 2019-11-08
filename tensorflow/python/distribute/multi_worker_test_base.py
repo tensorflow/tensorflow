@@ -41,8 +41,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -242,9 +244,10 @@ class MultiWorkerTestBase(test.TestCase):
   """Base class for testing multi node strategy and dataset."""
 
   @classmethod
-  def setUpClass(cls):
+  def setUpClass(cls, num_workers=2, num_ps=1):  # pylint: disable=g-missing-super-call
     """Create a local cluster with 2 workers."""
-    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=1)
+    cls._cluster_spec = create_in_process_cluster(num_workers=num_workers,
+                                                  num_ps=num_ps)
     cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):
@@ -357,6 +360,35 @@ class MultiWorkerTestBase(test.TestCase):
         t.start()
         threads.append(t)
     self._coord.join(threads)
+
+
+class SingleWorkerTestBaseGraph(MultiWorkerTestBase):
+  """Base class for testing remote single worker strategy graph and dataset."""
+
+  @classmethod
+  def setUpClass(cls):
+    super(SingleWorkerTestBaseGraph, cls).setUpClass(num_workers=1)
+
+
+class SingleWorkerTestBaseEager(test.TestCase):
+  """Base class for testing remote single worker strategy eager and dataset."""
+
+  def setUp(self):
+    super(SingleWorkerTestBaseEager, self).setUp()
+    workers, _ = test_util.create_local_cluster(num_workers=1, num_ps=0)
+    remote.connect_to_remote_host(workers[0].target)
+
+  def cached_session(self):
+    return DummySession()
+
+
+class DummySession(object):
+
+  def __enter__(self):
+    return
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    pass
 
 
 class MockOsEnv(collections_abc.Mapping):

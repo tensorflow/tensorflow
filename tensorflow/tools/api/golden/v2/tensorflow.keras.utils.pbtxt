@@ -69,6 +69,10 @@ tf_module {
     argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\', \'False\', \'96\'], "
   }
   member_method {
+    name: "register_keras_serializable"
+    argspec: "args=[\'package\', \'name\'], varargs=None, keywords=None, defaults=[\'Custom\', \'None\'], "
+  }
+  member_method {
     name: "serialize_keras_object"
     argspec: "args=[\'instance\'], varargs=None, keywords=None, defaults=None"
   }

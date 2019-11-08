@@ -985,7 +985,7 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   output_uint8_array.data_type = ArrayDataType::kUint8;
   OperatorSignature uint8_signature = {.op = &fully_connected_op,
                                        .model = &uint8_model};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+  EXPECT_EQ(op->GetVersion(uint8_signature), 6);
 
   Model int8_model;
   Array& input_int8_array =
@@ -999,7 +999,7 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   output_int8_array.data_type = ArrayDataType::kInt8;
   OperatorSignature int8_signature = {.op = &fully_connected_op,
                                       .model = &int8_model};
-  EXPECT_EQ(op->GetVersion(int8_signature), 4);
+  EXPECT_EQ(op->GetVersion(int8_signature), 6);
 }
 
 TEST_F(OperatorTest, VersioningDequantizeTest) {

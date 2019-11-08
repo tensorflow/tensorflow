@@ -4,6 +4,7 @@
 licenses(["notice"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -11,7 +12,10 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorrt_headers",
-    hdrs = [":tensorrt_include"],
+    hdrs = [
+        "tensorrt/include/tensorrt_config.h",
+        ":tensorrt_include",
+    ],
     include_prefix = "third_party/tensorrt",
     strip_include_prefix = "tensorrt/include",
 )
@@ -28,14 +32,22 @@ cc_library(
     ],
 )
 
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
+)
+
 genrule(
     name = "tensorrt_lib",
     outs = [
         "tensorrt/lib/libnvinfer.so.5",
         "tensorrt/lib/libnvinfer_plugin.so.5",
     ],
-    cmd = """cp -f "/usr/local/tensorrt/lib/libnvinfer.so.5" "$(location tensorrt/lib/libnvinfer.so.5)" && \
-cp -f "/usr/local/tensorrt/lib/libnvinfer_plugin.so.5" "$(location tensorrt/lib/libnvinfer_plugin.so.5)" """,
+    cmd = """cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5" "$(location tensorrt/lib/libnvinfer.so.5)" && \
+cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.5" "$(location tensorrt/lib/libnvinfer_plugin.so.5)" """,
 )
 
 genrule(
@@ -45,7 +57,7 @@ genrule(
         "tensorrt/include/NvUtils.h",
         "tensorrt/include/NvInferPlugin.h",
     ],
-    cmd = """cp -f "/usr/local/tensorrt/include/NvInfer.h" "$(location tensorrt/include/NvInfer.h)" && \
-cp -f "/usr/local/tensorrt/include/NvUtils.h" "$(location tensorrt/include/NvUtils.h)" && \
-cp -f "/usr/local/tensorrt/include/NvInferPlugin.h" "$(location tensorrt/include/NvInferPlugin.h)" """,
+    cmd = """cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" "$(location tensorrt/include/NvInfer.h)" && \
+cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" "$(location tensorrt/include/NvUtils.h)" && \
+cp -f "/usr/include/x86_64-linux-gnu/NvInferPlugin.h" "$(location tensorrt/include/NvInferPlugin.h)" """,
 )
