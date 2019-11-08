@@ -91,6 +91,11 @@ build:cuda_clang --define=using_cuda_clang=true
 build:cuda_clang --define=using_clang=true
 build:cuda_clang --action_env TF_CUDA_CLANG=1
 
+# dbg config, as a shorthand for '--config=opt -c dbg'
+build:dbg --config=opt -c dbg
+# for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
+build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
+
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
