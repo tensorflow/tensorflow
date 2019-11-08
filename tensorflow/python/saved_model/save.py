@@ -252,22 +252,14 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
-      elif ds_values.is_distributed_variable(obj):
-        # Put both the distributed variable and component variable handles in
-        # `captured_tensor_node_ids`.
-        # Also create a new distributed variable for `object_map` with newly
-        # created component variables.
-        new_vars = []
-        for v in obj.values:
-          new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
-          object_map[v] = new_variable
-          new_vars.append(new_variable)
-          resource_map[v.handle] = new_variable.handle
-          self.captured_tensor_node_ids[v.handle] = node_id
-        object_map[obj] = obj._clone_with_new_values(new_vars)  # pylint: disable=protected-access
-        self.captured_tensor_node_ids[obj] = node_id
-      elif resource_variable_ops.is_resource_variable(obj):
-        new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
+      elif (ds_values.is_distributed_variable(obj) or
+            resource_variable_ops.is_resource_variable(obj)):
+        obj_to_copy = obj.primary if ds_values.is_distributed_variable(
+            obj) else obj
+        new_variable = resource_variable_ops.copy_to_graph_uninitialized(
+            obj_to_copy)
+        if ds_values.is_distributed_variable(obj):
+          self.captured_tensor_node_ids[obj] = node_id
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
