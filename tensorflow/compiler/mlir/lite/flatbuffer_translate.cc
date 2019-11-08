@@ -221,17 +221,10 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   }
 }
 
-static bool IsInput(Operation* op) {
-  return isa<tfl::InputOp>(op) ||
-         op->getName().getStringRef() == "tf.Placeholder.input";
-}
-
 static bool IsConst(Operation* op) {
   return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
          isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
 }
-
-static bool IsConstOrInput(Operation* op) { return IsConst(op) || IsInput(op); }
 
 template <typename T>
 static bool HasValidTFLiteType(Value* value, T& error_handler) {
@@ -957,8 +950,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
       }
     }
 
-    // Skip constant and input ops as they don't represent a TFLite operator.
-    if (IsConstOrInput(&inst)) continue;
+    // Skip constant ops as they don't represent a TFLite operator.
+    if (IsConst(&inst)) continue;
 
     // Fetch operand and result tensor indices.
     std::vector<int32_t> operands;

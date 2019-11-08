@@ -168,22 +168,6 @@ func @const() -> tensor<2xi32> {
 // CHECK: "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
 }
 
-func @placeholder(%arg0: tensor<f32>) -> tensor<f32> {
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Input"} : (tensor<f32>) -> tensor<f32>
-  return %0: tensor<f32>
-
-// CHECK-LABEL: @placeholder
-// CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
-}
-
-func @placeholder_int(%arg0: tensor<i32>) -> tensor<i32> {
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Input"} : (tensor<i32>) -> tensor<i32>
-  return %0: tensor<i32>
-
-// CHECK-LABEL: @placeholder_int
-// CHECK-NEXT:  "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
-}
-
 func @shape(%arg0: tensor<?x1001xf32>) -> tensor<2xi32> {
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<?x1001xf32>) -> tensor<2xi32>
   %1 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT"} : (tensor<?x1001xf32>) -> tensor<2xi32>

@@ -159,8 +159,6 @@ def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
 def : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
-def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
-          (TFL_InputOp $inputs)>;
 
 //===----------------------------------------------------------------------===//
 // Binary ops patterns.

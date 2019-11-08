@@ -155,19 +155,9 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
     BlockArgument* arg = func.getArgument(i);
-    if (arg->hasOneUse() && llvm::isa<TFL::InputOp>(*arg->getUsers().begin())) {
-      // TODO(lyandy): Remove arg -> tfl.pseudo_input -> tfl.quantize once
-      // tfl.pseudo_input are not generated.
-      Operation* input = *arg->getUsers().begin();
-      auto input_op = llvm::cast<TFL::InputOp>(input);
-      add_quantize_op(input_op.getLoc(), input_op.input()->getType(),
-                      input->getBlock(), ++Block::iterator(input_op),
-                      input_op.output(), i);
-    } else {
-      auto* arg_block = arg->getOwner();
-      add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
-                      std::next(arg_block->begin(), i), arg, i);
-    }
+    auto* arg_block = arg->getOwner();
+    add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
+                    std::next(arg_block->begin(), i), arg, i);
   }
 
   return false;
