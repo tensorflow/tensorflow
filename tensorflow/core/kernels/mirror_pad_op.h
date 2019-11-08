@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MIRROR_PAD_OP_H_
 #define TENSORFLOW_CORE_KERNELS_MIRROR_PAD_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 template <typename PaddingDimensions, typename XprType>
@@ -223,7 +223,8 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     const Index right =
         (dimensions_[dim] - padding_[dim].second) * output_strides_[dim];
 
-    if (left <= index && (index + kPacketSize - 1) < right) {
+    const Index index_mod = index % (dimensions_[dim] * output_strides_[dim]);
+    if (left <= index_mod && (index_mod + kPacketSize - 1) < right) {
       return impl_.template packet<Unaligned>(input_index);
     }
 
