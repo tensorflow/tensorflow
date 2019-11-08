@@ -397,8 +397,10 @@ def any_(iterable):
 # as tf.data's filter+take is done in pipeline so it will stop
 # as soon as `take(1)` returns.
 def _tf_dataset_any(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
   specs = nest.flatten(iterable.element_spec)
-  if not all([spec.dtype == dtypes.bool for spec in specs]):
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
     raise ValueError(
         'in graph mode, the "any" builtin only supports datasets '
         'that return bool scalars; got: {}'.format(iterable.element_spec))
