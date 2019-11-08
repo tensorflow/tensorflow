@@ -26,8 +26,8 @@ namespace TFTPU {
 void createTPUBridge(OpPassManager &pm) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  func_pm.addPass(createCanonicalizerPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
+  func_pm.addPass(createCanonicalizerPass());
   func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
   func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
 
