@@ -127,7 +127,7 @@ def : Pat<(TF_FloorDivOp IntegerTensor:$l, IntegerTensor:$r),
           (HLO_CompareOp $r, (HLO_ConstOp (ConstantSplat<"0"> $r)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
           (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
-        (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+        (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r)),
           (HLO_DivOp
            (HLO_NegOp:$neg (HLO_AddOp (HLO_AbsOp $l),
                        (HLO_SubOp (HLO_AbsOp $r),
