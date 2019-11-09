@@ -669,6 +669,7 @@ def _EigGrad(op, grad_e, grad_v):
           _SafeReciprocal(
               array_ops.expand_dims(e, -2) - array_ops.expand_dims(e, -1)),
           array_ops.zeros_like(e))
+      f = math_ops.conj(f)
       vgv = math_ops.matmul(vt, grad_v)
       mid = array_ops.matrix_diag(grad_e)
       diag_grad_part = array_ops.matrix_diag(array_ops.matrix_diag_part(
