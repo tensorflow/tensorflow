@@ -46,19 +46,27 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 
 
+def _get_or_make_function(model, mode, key_fn, make_fn):
+  """Helper function for managing cached execution functions."""
+  model._init_distributed_function_cache_if_not_compiled()
+  key = key_fn(mode)
+
+  function = dist_utils.get_distributed_function(model, key)
+  if function:
+    return function
+
+  function = make_fn(model, mode)
+  dist_utils.set_distributed_function(model, key, function)
+  return function
+
+
 def _get_or_make_execution_function(model, mode):
   """Makes or reuses function to run one step of distributed model execution."""
-  model._init_distributed_function_cache_if_not_compiled()
-
-  # Use a key with 'v2' to distinguish from fall-back execution functions.
-  key = (mode, 'v2')
-  distributed_function = dist_utils.get_distributed_function(model, key)
-  if distributed_function:
-    return distributed_function
-
-  distribution_function = _make_execution_function(model, mode)
-  dist_utils.set_distributed_function(model, key, distribution_function)
-  return distribution_function
+  return _get_or_make_function(
+      model, mode,
+      # Use a key with 'v2' to distinguish from fall-back execution functions.
+      key_fn=lambda m: (m, 'v2'),
+      make_fn=_make_execution_function)
 
 
 def _make_execution_function(model, mode):
@@ -90,6 +98,30 @@ def _make_execution_function(model, mode):
                               distributed_function(input_fn))
 
   return execution_function
+
+
+def _get_or_make_on_batch_function(model, mode):
+  """Makes or reuses function to run one step of distributed model execution."""
+  return _get_or_make_function(
+      model, mode,
+      # Use a key with 'v2' to distinguish from fall-back execution functions.
+      key_fn=lambda m: (m, 'v2_on_batch'),
+      make_fn=_make_on_batch_function)
+
+
+def _make_on_batch_function(model, mode):
+  """Creates a function of Model.*_on_batch methods."""
+  if mode == ModeKeys.TRAIN:
+    func = training_eager.train_on_batch
+  elif mode == ModeKeys.TEST:
+    func = training_eager.test_on_batch
+  else:
+    func = model
+
+  if not model.run_eagerly:
+    func = def_function.function(func)
+
+  return func
 
 
 def _non_none_constant_value(v):
@@ -292,7 +324,8 @@ def train_on_batch(
     y=None,
     sample_weight=None,
     class_weight=None,
-    reset_metrics=True):
+    reset_metrics=True,
+    standalone=False):
   """Runs a single gradient update on a single batch of data.
 
   Arguments:
@@ -324,6 +357,8 @@ def train_on_batch(
       reset_metrics: If `True`, the metrics returned will be only for this
         batch. If `False`, the metrics will be statefully accumulated across
         batches.
+      standalone: If True, this method is not called as part of
+        Model.fit/evaluate/predict and can therefore be tf.function'd.
 
   Returns:
       Scalar training loss
@@ -348,7 +383,13 @@ def train_on_batch(
   # at this point because of the check above.  `train_on_batch` is being run
   # for each replica by `model._distribution_strategy` and the same code path
   # as Eager is expected to be taken.
-  outputs = training_eager.train_on_batch(
+
+  if standalone:
+    train_on_batch_fn = _get_or_make_on_batch_function(model, ModeKeys.TRAIN)
+  else:
+    train_on_batch_fn = training_eager.train_on_batch
+
+  outputs = train_on_batch_fn(
       model,
       x,
       y,
@@ -362,7 +403,8 @@ def train_on_batch(
   return outputs
 
 
-def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
+def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True,
+                  standalone=False):
   """Test the model on a single batch of samples.
 
   Arguments:
@@ -392,6 +434,8 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
       reset_metrics: If `True`, the metrics returned will be only for this
         batch. If `False`, the metrics will be statefully accumulated across
         batches.
+      standalone: If True, this method is not called as part of
+        Model.fit/evaluate/predict and can therefore be tf.function'd.
 
   Returns:
       Scalar test loss (if the model has a single output and no metrics)
@@ -411,7 +455,13 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
       x, y, sample_weight=sample_weight, extract_tensors_from_dataset=True)
 
   batch_size = array_ops.shape(nest.flatten(x, expand_composites=True)[0])[0]
-  outputs = training_eager.test_on_batch(
+
+  if standalone:
+    test_on_batch_fn = _get_or_make_on_batch_function(model, ModeKeys.TEST)
+  else:
+    test_on_batch_fn = training_eager.test_on_batch
+
+  outputs = test_on_batch_fn(
       model,
       x,
       y,
@@ -425,7 +475,7 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   return outputs
 
 
-def predict_on_batch(model, x):
+def predict_on_batch(model, x, standalone=False):
   """Returns predictions for a single batch of samples.
 
   Arguments:
@@ -436,6 +486,8 @@ def predict_on_batch(model, x):
         - A TensorFlow tensor, or a list of tensors
           (in case the model has multiple inputs).
         - A `tf.data` dataset.
+      standalone: If True, this method is not called as part of
+        Model.fit/evaluate/predict and can therefore be tf.function'd.
 
   Returns:
       Numpy array(s) of predictions.
@@ -458,5 +510,11 @@ def predict_on_batch(model, x):
     if len(inputs) == 1:
       inputs = inputs[0]
 
+  if standalone:
+    predict_on_batch_fn = _get_or_make_on_batch_function(
+        model, ModeKeys.PREDICT)
+  else:
+    predict_on_batch_fn = model
+
   with backend.eager_learning_phase_scope(0):
-    return model(inputs)  # pylint: disable=not-callable
+    return predict_on_batch_fn(inputs)  # pylint: disable=not-callable
