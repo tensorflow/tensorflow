@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
@@ -72,18 +73,34 @@ bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) {
 
 namespace {
 // Derives name from location.
-llvm::StringRef GetNameFromLoc(mlir::Location loc) {
+std::string GetNameFromLoc(mlir::Location loc) {
   if (auto name_loc = loc.dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().strref();
+    return name_loc.getName().str();
 
   if (auto call_loc = loc.dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().strref();
+      return name_loc.getName().str();
   }
 
-  return llvm::StringRef();
+  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+    llvm::ArrayRef<mlir::Location> locations = fused_loc.getLocations();
+    std::vector<std::string> names;
+    bool names_is_nonempty = false;
+    for (const auto& loc : locations) {
+      const std::string loc_name = GetNameFromLoc(loc);
+      names.push_back(loc_name);
+      if (!loc_name.empty()) {
+        names_is_nonempty = true;
+      }
+    }
+    if (names_is_nonempty) {
+      return llvm::join(names.begin(), names.end(), ",");
+    }
+  }
+
+  return "";
 }
 }  // anonymous namespace
 
