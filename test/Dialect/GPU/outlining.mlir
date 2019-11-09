@@ -111,6 +111,8 @@ func @extra_constants(%arg0 : memref<?xf32>) {
 
 // -----
 
+llvm.mlir.global @global(42 : i64) : !llvm.i64
+
 func @function_call(%arg0 : memref<?xf32>) {
   %cst = constant 8 : index
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
@@ -119,6 +121,7 @@ func @function_call(%arg0 : memref<?xf32>) {
                                         %block_z = %cst) {
     call @device_function() : () -> ()
     call @device_function() : () -> ()
+    %0 = llvm.mlir.addressof @global : !llvm<"i64*">
     gpu.return
   }
   return
@@ -134,7 +137,14 @@ func @recursive_device_function() {
   gpu.return
 }
 
-// CHECK: @device_function
-// CHECK: @recursive_device_function
-// CHECK: @device_function
-// CHECK: @recursive_device_function
+// CHECK: module @function_call_kernel attributes {gpu.kernel_module} {
+// CHECK:   func @function_call_kernel()
+// CHECK:     call @device_function() : () -> ()
+// CHECK:     call @device_function() : () -> ()
+// CHECK:     llvm.mlir.addressof @global : !llvm<"i64*">
+//
+// CHECK:   llvm.mlir.global @global(42 : i64) : !llvm.i64
+//
+// CHECK:   func @device_function()
+// CHECK:   func @recursive_device_function()
+// CHECK-NOT:   func @device_function
