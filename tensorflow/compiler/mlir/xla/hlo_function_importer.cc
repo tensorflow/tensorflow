@@ -21,9 +21,11 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/Region.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -358,22 +360,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kWhile: {
-      TF_ASSIGN_OR_RETURN(auto body, ImportFunction(instruction->while_body()));
-      TF_ASSIGN_OR_RETURN(auto cond,
-                          ImportFunction(instruction->while_condition()));
-
       llvm::SmallVector<Type, 4> types;
       types.reserve(operands.size());
       for (auto operand : operands) {
         types.push_back(operand->getType());
       }
 
-      auto cond_attr = func_builder->getSymbolRefAttr(cond);
-      auto body_attr = func_builder->getSymbolRefAttr(body);
-
-      Operation* op = func_builder->create<mlir::xla_hlo::WhileOp>(
-          loc, types, operands, cond_attr, body_attr);
-      return op;
+      auto op =
+          func_builder->create<mlir::xla_hlo::WhileOp>(loc, types, operands);
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->while_condition(), &op.cond()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->while_body(), &op.body()));
+      return op.getOperation();
     }
     case HloOpcode::kGetTupleElement: {
       attributes.push_back(builder_->getNamedAttr(
