@@ -260,6 +260,10 @@ class _SaveableView(object):
             obj_to_copy)
         if ds_values.is_distributed_variable(obj):
           self.captured_tensor_node_ids[obj] = node_id
+          for v in obj.values:
+            object_map[v] = new_variable
+            resource_map[v.handle] = new_variable.handle
+            self.captured_tensor_node_ids[v.handle] = node_id
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
