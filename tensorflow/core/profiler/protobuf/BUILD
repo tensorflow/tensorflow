@@ -6,6 +6,12 @@ package(
 )
 
 tf_proto_library(
+    name = "xplane_proto",
+    srcs = ["xplane.proto"],
+    cc_api_version = 2,
+)
+
+tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
     cc_api_version = 2,
