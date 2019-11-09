@@ -56,7 +56,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=10.0
+  SET TF_CUDA_VERSION=10.1
 )
 SET TF_CUDNN_VERSION=7
 SET TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
