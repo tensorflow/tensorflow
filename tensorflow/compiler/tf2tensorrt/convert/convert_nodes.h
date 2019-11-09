@@ -467,7 +467,10 @@ class Converter {
       const std::vector<EngineOutputInfo>& output_tensors);
 
   // Build a TRT engine using the created network.
-  Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine);
+  Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+                         int max_batch_size, size_t max_workspace_size_bytes,
+                         nvinfer1::IGpuAllocator* allocator,
+                         TRTInt8Calibrator* calibrator);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers
