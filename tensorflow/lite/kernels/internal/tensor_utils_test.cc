@@ -1466,7 +1466,6 @@ TEST(uKernels, ReductionSumVectorTest) {
 TEST(uKernels, MeanStddevNormalization) {
   constexpr int kVectorSize = 4;
   constexpr int kBatchSize = 8;  // 9, but large mean, small variance fails
-  constexpr float kNormalizationEpsilon = 1e-8;
 
   // None-zero input.
   static float input[kVectorSize * kBatchSize] = {
@@ -1480,8 +1479,7 @@ TEST(uKernels, MeanStddevNormalization) {
       -100.0f,  0.0f,    200.0f,  300.0f,   // large mean, large variance
   };
   float output[kVectorSize * kBatchSize];
-  MeanStddevNormalization(input, output, kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
+  MeanStddevNormalization(input, output, kVectorSize, kBatchSize);
   const float ksqrt16 = std::sqrt(1.6f);
   const float ksqrt04 = std::sqrt(0.4f);
   const std::vector<float> expected_output = {
