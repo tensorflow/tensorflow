@@ -605,7 +605,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
-                               "Expected values Tensor dtype: 7, found: 3"));
+                               "Expected values Tensor dtype: string, found: int32"));
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankNotGreaterThanOne) {

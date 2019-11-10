@@ -97,8 +97,8 @@ Status RaggedComponentsFromVariant(const Tensor& encoded_variant,
     }
     if (values_tensor->dtype() != value_dtype) {
       return errors::InvalidArgument(
-          "Expected values Tensor dtype: ", value_dtype,
-          ", found: ", values_tensor->dtype());
+          "Expected values Tensor dtype: ", DataTypeString(value_dtype),
+          ", found: ", DataTypeString(values_tensor->dtype()));
     }
     if (values_tensor->dims() < 1) {
       return errors::InvalidArgument(
