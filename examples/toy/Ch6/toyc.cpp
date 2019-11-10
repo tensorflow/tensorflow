@@ -106,6 +106,8 @@ int loadMLIR(mlir::MLIRContext &context, mlir::OwningModuleRef &module) {
   if (inputType != InputType::MLIR &&
       !llvm::StringRef(inputFilename).endswith(".mlir")) {
     auto moduleAST = parseInputFile(inputFilename);
+    if (!moduleAST)
+      return 6;
     module = mlirGen(context, *moduleAST);
     return !module ? 1 : 0;
   }

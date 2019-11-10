@@ -85,6 +85,8 @@ int dumpMLIR() {
   if (inputType != InputType::MLIR &&
       !llvm::StringRef(inputFilename).endswith(".mlir")) {
     auto moduleAST = parseInputFile(inputFilename);
+    if (!moduleAST)
+      return 6;
     mlir::OwningModuleRef module = mlirGen(context, *moduleAST);
     if (!module)
       return 1;
