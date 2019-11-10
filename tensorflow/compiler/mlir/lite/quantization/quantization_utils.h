@@ -307,21 +307,15 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
 // `narrow_range` is set to true for weights and `is_signed` is set to true
 // if it is using signed int symmetric quantization.
 //
-// Note that this method doesn't modify min and max, so they needs to be
-// adjusted before calling this method if symmetric quantized type needs to be
-// returned.
+// Note that this method may broadcast min and max to match the dimension length
+// of `input_type`, if the the `quant_dim` is valid. On the other hand, the
+// symmetry of min and max is not adjusted by this method. The QAT workflow
+// should set min/max correctly (and use `narrow_range`=true, `is_signed`=true)
+// if symmetric quantization is required.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, int quant_dim,
                               IntegerAttr num_bits, BoolAttr narrow_range,
                               bool is_signed);
-
-// Same above, but the `channel_dim` is hardcoded to the last dimension to match
-// the behavior of tf.FakeQuantWithMinMaxVarsPerChannel. This method is called
-// when converting tf.FakeQuant* ops to MLIR's quant parameter representation,
-// aka. quant::QuantType.
-TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
-                              Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range, bool is_signed);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.
